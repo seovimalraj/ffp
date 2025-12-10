@@ -168,7 +168,6 @@ const CustomerPortal = () => {
   };
 
   return (
-    <DefaultLayout>
       <div className="grid grid-cols-1 gap-9">
         {/* Customer Profile Header */}
         <div className="rounded-sm border border-stroke bg-white shadow-default dark:border-strokedark dark:bg-boxdark">
@@ -611,7 +610,6 @@ const CustomerPortal = () => {
           </div>
         )}
       </div>
-    </DefaultLayout>
   );
 };
 

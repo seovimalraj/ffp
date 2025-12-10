@@ -5,10 +5,11 @@
 
 const nextConfig = {
   reactStrictMode: true,
-  output: 'standalone',
+  output: "standalone",
+  transpilePackages: ["three"],
   experimental: {
     serverActions: {
-  allowedOrigins: ['localhost:3000', 'app.frigate.ai']
+      allowedOrigins: ["localhost:3000", "app.frigate.ai"],
     },
     forceSwcTransforms: true,
   },
@@ -23,12 +24,13 @@ const nextConfig = {
     // Handle .wasm files properly
     config.module.rules.push({
       test: /\.wasm$/,
-      type: 'asset/resource',
+      type: "asset/resource",
+      loader: "file-loader",
     });
 
     // Exclude OpenCascade.js from server-side processing entirely
     if (isServer) {
-      config.externals = [...config.externals, 'opencascade.js'];
+      config.externals = [...config.externals, "opencascade.js"];
     } else {
       config.resolve.fallback = {
         ...config.resolve.fallback,
@@ -41,7 +43,7 @@ const nextConfig = {
     return config;
   },
   // External packages that should not be bundled
-  serverExternalPackages: ['pg'],
+  serverExternalPackages: ["pg"],
   typescript: {
     ignoreBuildErrors: true,
   },
@@ -49,15 +51,13 @@ const nextConfig = {
     ignoreDuringBuilds: true,
   },
   images: {
-    domains: [
-  'app.frigate.ai'
-    ],
+    domains: ["app.frigate.ai", "frigate.ai"],
   },
   // Disable static generation completely
   trailingSlash: false,
   // Force all pages to be dynamic
   generateBuildId: async () => {
-    return 'build-' + Date.now()
+    return "build-" + Date.now();
   },
 
   // Commenting out aggressive headers for now to fix static asset loading

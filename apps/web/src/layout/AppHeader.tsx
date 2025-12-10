@@ -4,18 +4,32 @@ import { ThemeToggleButton } from "@/components/common/ThemeToggleButton";
 import NotificationDropdown from "@/components/Header/NotificationDropdown";
 import UserDropdown from "@/components/Header/UserDropdown";
 import { useSidebar } from "@/context/SidebarContext";
+import { useSession } from "next-auth/react";
 import Image from "next/image";
 import Link from "next/link";
 import React, { useState, useEffect, useRef } from "react";
+import { LayoutGrid } from "lucide-react";
 
-const AppHeader = ({ setOpen }: { setOpen: () => void }) => {
+interface AppHeaderProps {
+  setOpen: () => void;
+  isMegaMenuOpen?: boolean;
+  setIsMegaMenuOpen?: (open: boolean) => void;
+}
+
+const AppHeader = ({ setOpen, isMegaMenuOpen, setIsMegaMenuOpen }: AppHeaderProps) => {
   const [isApplicationMenuOpen, setApplicationMenuOpen] = useState(false);
-
+  const { data: user } = useSession();
   const { isMobileOpen, toggleSidebar, toggleMobileSidebar } = useSidebar();
 
+  const isSupplier = user?.user.role === "supplier";
   const handleToggle = () => {
-    setOpen();
-    toggleMobileSidebar();
+    if (isSupplier) {
+      setIsMegaMenuOpen && setIsMegaMenuOpen(!isMegaMenuOpen);
+      return
+    } else {
+      setOpen();
+      toggleMobileSidebar();
+    }
   };
 
   const toggleApplicationMenu = () => {
@@ -47,7 +61,9 @@ const AppHeader = ({ setOpen }: { setOpen: () => void }) => {
             onClick={handleToggle}
             aria-label="Toggle Sidebar"
           >
-            {isMobileOpen ? (
+            {isSupplier ? (
+              <LayoutGrid color="#009870" fill="#009870" width={32} height={32} />
+            ) : isMobileOpen ? (
               <svg
                 width="24"
                 height="24"
@@ -154,8 +170,9 @@ const AppHeader = ({ setOpen }: { setOpen: () => void }) => {
           </div>
         </div>
         <div
-          className={`${isApplicationMenuOpen ? "flex" : "hidden"
-            } items-center justify-between w-full gap-4 px-5 py-4 lg:flex shadow-theme-md lg:justify-end lg:px-0 lg:shadow-none`}
+          className={`${
+            isApplicationMenuOpen ? "flex" : "hidden"
+          } items-center justify-between w-full gap-4 px-5 py-4 lg:flex shadow-theme-md lg:justify-end lg:px-0 lg:shadow-none`}
         >
           <div className="flex items-center gap-2 2xsm:gap-3">
             {/* <!-- Dark Mode Toggler --> */}
@@ -167,7 +184,6 @@ const AppHeader = ({ setOpen }: { setOpen: () => void }) => {
           </div>
           {/* <!-- User Area --> */}
           <UserDropdown />
-
         </div>
       </div>
     </header>

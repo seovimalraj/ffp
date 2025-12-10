@@ -205,7 +205,7 @@ export default function InstantQuoteV2Page() {
                       </Button>
                     </div>
                     {/* 3D Preview */}
-                    <CadViewer3D fileName={file.name} height="300px" className="rounded-lg overflow-hidden" />
+                    <CadViewer3D fileName={file.name} file={file} height="300px" className="rounded-lg overflow-hidden" />
                   </div>
                 ))}
                 

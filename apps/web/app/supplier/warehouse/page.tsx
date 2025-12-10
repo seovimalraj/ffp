@@ -18,8 +18,10 @@ import {
   Package,
   TrendingUp,
   Box,
+  FactoryIcon,
 } from "lucide-react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useEffect, useState, useMemo } from "react";
 
 const StatCard = ({
@@ -55,6 +57,8 @@ const Page = () => {
     useState(false);
   const [isWarehousesLoading, setIsWarehousesLoading] = useState(true);
   const [refresh, setRefresh] = useState(false);
+
+  const router = useRouter();
 
   useEffect(() => {
     async function getWarehouses() {
@@ -230,17 +234,6 @@ const Page = () => {
 
   return (
     <div className="p-6 space-y-6">
-      <nav className="flex items-center gap-1 text-sm text-gray-500">
-        <Link
-          href="/supplier/inventory"
-          className="hover:text-primary transition-colors"
-        >
-          Inventory
-        </Link>
-        <ChevronRight className="h-4 w-4" />
-        <span className="text-gray-900 font-medium">Warehouses</span>
-      </nav>
-
       <div className="sm:flex sm:items-center sm:justify-between">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Warehouses</h1>
@@ -248,17 +241,36 @@ const Page = () => {
             Manage your warehouse locations and monitor storage capacity.
           </p>
         </div>
-        <PermissionsGuard permissions={PermissionsNames.warehouseWriteAccess}>
-          <div className="mt-4 sm:mt-0">
-            <Button
-              onClick={() => setIsCreateWarehouseModalOpen(true)}
-              className="inline-flex items-center rounded-md bg-primary px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-primary/90"
-            >
-              <PlusIcon className="-ml-0.5 mr-1.5 h-5 w-5" aria-hidden="true" />
-              Add Warehouse
-            </Button>
-          </div>
-        </PermissionsGuard>
+        <div className="flex items-center justify-center gap-x-2">
+          <PermissionsGuard permissions={PermissionsNames.warehouseWriteAccess}>
+            <div className="mt-4 sm:mt-0">
+              <Button
+                onClick={() => router.push("/supplier/warehouse/materials")}
+                className="inline-flex items-center rounded-md bg-white px-3 py-2 text-sm font-semibold text-black shadow-sm hover:bg-gray-100 border border-gray-300"
+              >
+                <FactoryIcon
+                  className="-ml-0.5 mr-1.5 h-5 w-5"
+                  aria-hidden="true"
+                />
+                Manage Materials
+              </Button>
+            </div>
+          </PermissionsGuard>
+          <PermissionsGuard permissions={PermissionsNames.warehouseWriteAccess}>
+            <div className="mt-4 sm:mt-0">
+              <Button
+                onClick={() => setIsCreateWarehouseModalOpen(true)}
+                className="inline-flex items-center rounded-md bg-primary px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-primary/90"
+              >
+                <PlusIcon
+                  className="-ml-0.5 mr-1.5 h-5 w-5"
+                  aria-hidden="true"
+                />
+                Add Warehouse
+              </Button>
+            </div>
+          </PermissionsGuard>
+        </div>
       </div>
 
       {/* Stats Overview */}
@@ -309,7 +321,7 @@ const Page = () => {
           {
             label: "View Details",
             icon: <Eye className="size-4" />,
-            onClick: (row) => console.log("View", row),
+            onClick: (row) => router.push(`/supplier/warehouse/entity/${row.id}`),
           },
           {
             label: "Delete",

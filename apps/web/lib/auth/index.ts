@@ -45,6 +45,19 @@ async function refreshAccessToken(token: any) {
 }
 
 const authOptions: NextAuthOptions = {
+    // Persistent cookie - keeps users logged in after browser close
+    cookies: {
+        sessionToken: {
+            name: process.env.NODE_ENV === 'production' ? '__Secure-next-auth.session-token' : 'next-auth.session-token',
+            options: {
+                httpOnly: true,
+                sameSite: 'lax',
+                path: '/',
+                secure: process.env.NODE_ENV === 'production',
+                maxAge: 30 * 24 * 60 * 60, // 30 days - persistent cookie
+            },
+        },
+    },
     providers: [
         CredentialsProvider({
             name: "Credentials",
@@ -100,8 +113,9 @@ const authOptions: NextAuthOptions = {
     },
     callbacks: {
         async jwt({ token, user, account }) {
-            // Initial sign in
-            if (account && user) {
+            // Initial sign in: Credentials provider may not provide `account`,
+            // so create the token whenever `user` is present.
+            if (user) {
                 console.log('Initial sign in, creating new token');
                 return {
                     id: user.id,
@@ -131,6 +145,8 @@ const authOptions: NextAuthOptions = {
                 session.error = "RefreshAccessTokenError";
                 return session;
             }
+
+            console.log(session, token, "<---")
 
             if (session.user && token) {
                 session.user.id = token.id as string;

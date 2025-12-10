@@ -10,7 +10,59 @@ import { StockMaterial, CurrencyType, Tables } from 'libs/constants';
 @Injectable()
 export class WarehouseService {
   constructor(private readonly supabaseService: SupabaseService) {}
-  async addStockToWarehouse(
+
+  async getWarehouseById(warehouseId: string, organizationId: string) {
+    const client = this.supabaseService.getClient();
+
+    try {
+      // 1. Fetch warehouse (required)
+      const { data: warehouse, error: warehouseError } = await client
+        .from(Tables.Warehouses)
+        .select('*')
+        .eq('id', warehouseId)
+        .eq('organization_id', organizationId)
+        .single();
+
+      console.log('warehouse:', warehouse);
+      if (warehouseError || !warehouse) {
+        throw new NotFoundException('Warehouse not found');
+      }
+
+      // 2. Fetch materials inside the warehouse (can be zero or more)
+      const { data: supplierMaterials, error: materialsError } = await client
+        .from(Tables.SupplierMaterials)
+        .select(
+          `
+          id,
+          supplier_price,
+          currency,
+          current_stock,
+          max_stock,
+          status,
+          material (
+            id,
+            name
+          )
+        `,
+        )
+        .eq('warehouse_id', warehouseId);
+
+      if (materialsError) {
+        throw new InternalServerErrorException('Failed to fetch materials' + JSON.stringify(materialsError));
+      }
+
+      // 3. Return a consolidated response
+      return {
+        warehouse,
+        materials: supplierMaterials ?? [],
+      };
+    } catch (error) {
+      console.error('getWarehouseById error:', error);
+      throw new InternalServerErrorException('Failed to fetch warehouse by ID');
+    }
+  }
+
+  async createStockForWarehouse(
     organizationId: string,
     materialId: string,
     warehouseId: string,
@@ -22,62 +74,84 @@ export class WarehouseService {
   ) {
     const client = this.supabaseService.getClient();
 
-    // 1. Get warehouse info
-    const { data: warehouse, error: warehouseError } = await client
-      .from(Tables.Warehouses)
-      .select('total_capacity, used_capacity')
-      .eq('id', warehouseId)
-      .eq('organization_id', organizationId)
-      .single();
+    try {
+      const { data, error } = await client.rpc('create_stock_for_warehouse', {
+        p_org_id: organizationId,
+        p_material_id: materialId,
+        p_warehouse_id: warehouseId,
+        p_quantity: quantity,
+        p_unit: unit,
+        p_price: price,
+        p_currency: currency,
+        p_max_stock: maxStock,
+      });
 
-    if (warehouseError || !warehouse) {
-      throw new NotFoundException('Warehouse not found');
+      if (error) {
+        if (error.message.includes('Warehouse not found')) {
+          throw new NotFoundException('Warehouse not found');
+        }
+
+        if (error.message.includes('Not enough warehouse capacity')) {
+          throw new BadRequestException('Not enough warehouse capacity');
+        }
+
+        console.error('Unexpected DB error:', error);
+        throw new InternalServerErrorException(
+          'Failed to create warehouse stock',
+        );
+      }
+
+      return data;
+    } catch (err) {
+      console.error('Transaction failed:', err);
+      throw err;
     }
+  }
 
-    if (warehouse.used_capacity + quantity > warehouse.total_capacity) {
-      throw new BadRequestException('Not enough warehouse capacity');
+  async addStockToWarehouse(
+    organizationId: string,
+    supplierMaterialId: string,
+    warehouseId: string,
+    quantity: number,
+  ) {
+    const client = this.supabaseService.getClient();
+
+    try {
+      const { data, error } = await client.rpc('add_stock_to_warehouse', {
+        p_supplier_material_id: supplierMaterialId,
+        p_warehouse_id: warehouseId,
+        p_org_id: organizationId,
+        p_quantity: quantity,
+      });
+
+      if (error) {
+        // Map DB errors to meaningful API errors
+        if (error.message.includes('Supplier material not found')) {
+          throw new NotFoundException('Supplier material not found');
+        }
+
+        if (error.message.includes('Warehouse not found')) {
+          throw new NotFoundException('Warehouse not found');
+        }
+
+        if (error.message.includes('Exceeds max stock')) {
+          throw new BadRequestException('Exceeds max stock');
+        }
+
+        if (error.message.includes('Not enough warehouse capacity')) {
+          throw new BadRequestException('Not enough warehouse capacity');
+        }
+
+        // unknown DB error → internal error
+        console.error('Unexpected DB error:', error);
+        throw new InternalServerErrorException('Failed to update inventory');
+      }
+
+      return { data, success: true };
+    } catch (err) {
+      console.error('Operation failed:', err);
+      throw err;
     }
-
-    // 2. Upsert supplier material
-    const { error: upsertError } = await client
-      .from(Tables.SupplierMaterials)
-      .upsert(
-        {
-          supplier_id: organizationId,
-          material_id: materialId,
-          warehouse_id: warehouseId,
-          current_stock: quantity,
-          stock_unit: unit,
-          supplier_price: price,
-          currency,
-          max_stock: maxStock,
-        },
-        {
-          onConflict: 'supplier_id,material_id,warehouse_id',
-        },
-      );
-
-    if (upsertError) {
-      console.error('Upsert failed:', upsertError);
-      throw new InternalServerErrorException('Failed to update material stock');
-    }
-
-    // 3. Update warehouse used capacity
-    const { error: capacityError } = await client
-      .from(Tables.Warehouses)
-      .update({
-        used_capacity: warehouse.used_capacity + quantity,
-      })
-      .eq('id', warehouseId);
-
-    if (capacityError) {
-      console.error('Capacity update failed:', capacityError);
-      throw new InternalServerErrorException(
-        'Failed to update warehouse capacity',
-      );
-    }
-
-    return { success: true };
   }
 
   async removeStockFromWarehouse(
@@ -88,40 +162,37 @@ export class WarehouseService {
   ) {
     const client = this.supabaseService.getClient();
 
-    const { data: stock } = await client
-      .from(Tables.SupplierMaterials)
-      .select('stock_quantity')
-      .eq('supplier_id', organizationId)
-      .eq('material_id', materialId)
-      .eq('warehouse_id', warehouseId)
-      .single();
+    try {
+      const { data, error } = await client.rpc('remove_stock_from_warehouse', {
+        p_org_id: organizationId,
+        p_material_id: materialId,
+        p_warehouse_id: warehouseId,
+        p_quantity: quantity,
+      });
 
-    if (!stock) throw new NotFoundException('Stock entry not found');
-    if (stock.stock_quantity < quantity)
-      throw new BadRequestException('Insufficient stock quantity');
+      if (error) {
+        if (error.message.includes('Stock entry not found')) {
+          throw new NotFoundException('Stock entry not found');
+        }
 
-    const transactionSQL = `
-      BEGIN;
+        if (error.message.includes('Insufficient stock quantity')) {
+          throw new BadRequestException('Insufficient stock quantity');
+        }
 
-      UPDATE ${Tables.SupplierMaterials}
-      SET stock_quantity = stock_quantity - ${quantity}
-      WHERE supplier_id = '${organizationId}' AND material_id = '${materialId}' AND warehouse_id = '${warehouseId}';
+        if (error.message.includes('Warehouse not found')) {
+          throw new NotFoundException('Warehouse not found');
+        }
 
-      UPDATE ${Tables.Warehouses}
-      SET used_capacity = used_capacity - ${quantity}
-      WHERE id = '${warehouseId}';
+        console.error('Unexpected remove stock error:', error);
+        throw new InternalServerErrorException(
+          'Failed to remove stock from warehouse',
+        );
+      }
 
-      COMMIT;
-    `;
-
-    const { error } = await client.rpc('execute_sql', { sql: transactionSQL });
-    if (error) {
-      console.error('Remove stock error:', error);
-      throw new InternalServerErrorException(
-        'Failed to remove stock from warehouse',
-      );
+      return data;
+    } catch (err) {
+      console.error('Remove stock transaction failed:', err);
+      throw err;
     }
-
-    return { success: true };
   }
 }

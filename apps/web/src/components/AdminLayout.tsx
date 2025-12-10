@@ -26,7 +26,8 @@ import {
   Key,
   Webhook,
   Clipboard,
-  MessageSquare
+  MessageSquare,
+  Target
 } from 'lucide-react';
 
 interface AdminLayoutProps {
@@ -54,6 +55,7 @@ const navigationGroups = [
     name: 'Catalog',
     items: [
       { label: 'Materials', href: '/admin/catalog/materials', icon: Database },
+      { label: 'Tolerances', href: '/admin/tolerance', icon: Target },
       { label: 'Machines', href: '/admin/machines', icon: Factory },
       { label: 'Capacity', href: '/admin/capacity', icon: Gauge },
       { label: 'Finishes', href: '/admin/catalog/finishes', icon: Palette },

@@ -392,7 +392,7 @@ export default function QuoteConfigPage({ params }: { params: Promise<{ id: stri
       <div className="grid grid-cols-1 xl:grid-cols-12 gap-6 max-w-[1800px] mx-auto">
         {/* COLUMN 1: Parts List (3 cols wide) */}
         <div className="xl:col-span-3">
-        <Card>
+        <Card className="sticky top-6">
           <CardHeader>
             <CardTitle className="text-lg">Your Parts ({parts.length})</CardTitle>
           </CardHeader>
@@ -744,7 +744,7 @@ export default function QuoteConfigPage({ params }: { params: Promise<{ id: stri
               </p>
 
               {/* Trust Badges */}
-              <div className="mt-4 pt-4 border-t border-gray-200">
+              {/* <div className="mt-4 pt-4 border-t border-gray-200">
                 <div className="space-y-2">
                   <div className="flex items-center gap-2 text-xs text-gray-600">
                     <CheckCircle className="w-4 h-4 text-green-600" />
@@ -773,7 +773,7 @@ export default function QuoteConfigPage({ params }: { params: Promise<{ id: stri
                     🔒 Your designs are safe and confidential
                   </p>
                 </div>
-              </div>
+              </div> */}
             </CardContent>
           </Card>
         </div>

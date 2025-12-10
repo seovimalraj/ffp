@@ -23,6 +23,7 @@ import { useRouter } from "next/navigation";
 import { notify } from "@/lib/toast";
 import { apiClient } from "@/lib/api";
 import Link from "next/link";
+import AddStockModal from "@/components/modals/add-stock-modal";
 
 interface SupplierMaterial {
   id: string;
@@ -74,8 +75,13 @@ const StatCard = ({
 );
 
 export default function SupplierInventoryPage() {
-  const [isCreateMaterialModalOpen, setIsCreateMaterialModalOpen] = useState(false);
-  const [supplierMaterials, setSupplierMaterials] = useState<SupplierMaterial[]>([]);
+  const [isCreateMaterialModalOpen, setIsCreateMaterialModalOpen] =
+    useState(false);
+  const [isAddStockModalOpen, setIsAddStockModalOpen] = useState(false);
+  const [selectedMaterial, setSelectedMaterial] = useState<SupplierMaterial>();
+  const [supplierMaterials, setSupplierMaterials] = useState<
+    SupplierMaterial[]
+  >([]);
   const [isLoadingMaterials, setIsLoadingMaterials] = useState(true);
   const [refresh, setRefresh] = useState(false);
   const router = useRouter();
@@ -169,7 +175,7 @@ export default function SupplierInventoryPage() {
         const percentage = (row.current_stock / row.max_stock) * 100;
         const getColor = () => {
           if (percentage <= 20) return "bg-red-500";
-          if (percentage <= 40) return "bg-amber-500";
+          if (percentage <= 50) return "bg-amber-500";
           return "bg-emerald-500";
         };
         return (
@@ -255,7 +261,8 @@ export default function SupplierInventoryPage() {
       },
       {
         label: "Price",
-        value: (row) => `${row.supplier_price} ${row.currency}/${row.stock_unit}`,
+        value: (row) =>
+          `${row.supplier_price} ${row.currency}/${row.stock_unit}`,
         icon: <DollarSign className="h-4 w-4" />,
       },
     ],
@@ -277,10 +284,10 @@ export default function SupplierInventoryPage() {
       {/* Breadcrumb */}
       <nav className="flex items-center gap-1 text-sm text-gray-500">
         <Link
-          href="/supplier"
+          href="/supplier/warehouse"
           className="hover:text-primary transition-colors"
         >
-          Supplier
+          Warehouse
         </Link>
         <ChevronRight className="h-4 w-4" />
         <span className="text-gray-900 font-medium">Materials</span>
@@ -289,20 +296,14 @@ export default function SupplierInventoryPage() {
       {/* Header */}
       <div className="sm:flex sm:items-center sm:justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">Supplier Materials</h1>
+          <h1 className="text-2xl font-bold text-gray-900">
+            Supplier Materials
+          </h1>
           <p className="mt-2 text-sm text-gray-700">
             Manage your material inventory and warehouse stock.
           </p>
         </div>
         <div className="mt-4 sm:mt-0 flex gap-2">
-          <Button
-            onClick={() => router.push("/supplier/inventory/warehouse")}
-            variant="outline"
-            className="inline-flex items-center rounded-md px-3 py-2 text-sm font-semibold shadow-sm"
-          >
-            <Warehouse className="-ml-0.5 mr-1.5 h-5 w-5" aria-hidden="true" />
-            Manage Warehouse
-          </Button>
           <Button
             onClick={() => setIsCreateMaterialModalOpen(true)}
             className="inline-flex items-center rounded-md bg-primary px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-primary/90"
@@ -358,11 +359,11 @@ export default function SupplierInventoryPage() {
         searchPlaceholder="Search materials..."
         actions={[
           {
-            label: "View Details",
-            icon: <Eye className="size-4" />,
+            label: "Restock",
+            icon: <ShoppingCart className="size-4" />,
             onClick: (row) => {
-              console.log("View material:", row);
-              notify.info("View details coming soon");
+              setIsAddStockModalOpen(true);
+              setSelectedMaterial(row);
             },
           },
           {
@@ -371,14 +372,6 @@ export default function SupplierInventoryPage() {
             onClick: (row) => {
               console.log("Edit material:", row);
               notify.info("Edit functionality coming soon");
-            },
-          },
-          {
-            label: "Restock",
-            icon: <ShoppingCart className="size-4" />,
-            onClick: (row) => {
-              console.log("Restock material:", row);
-              notify.info("Restock functionality coming soon");
             },
           },
           {
@@ -401,6 +394,24 @@ export default function SupplierInventoryPage() {
           setRefresh((o) => !o);
         }}
       />
+
+      {isAddStockModalOpen && selectedMaterial && (
+        <AddStockModal
+          isOpen={isAddStockModalOpen}
+          onClose={() => setIsAddStockModalOpen(false)}
+          materialData={{
+            material_id: selectedMaterial.id,
+            stock_unit: selectedMaterial.stock_unit,
+            max_stock: selectedMaterial.max_stock,
+            warehouse: selectedMaterial.warehouse_id,
+            current_stock: selectedMaterial.current_stock,
+          }}
+          onSuccess={() => {
+            setIsAddStockModalOpen(false);
+            setRefresh((o) => !o);
+          }}
+        />
+      )}
     </div>
   );
 }

@@ -27,6 +27,7 @@ import {
   CreateSupplierMaterialDto,
   CreateWarehouseDto,
   RemoveStockDto,
+  UpdateStockDto,
 } from './supplier.dto';
 import { WarehouseService } from './warehouse.service';
 import { PermissionGuard } from 'src/permissions/permission.guard';
@@ -271,8 +272,7 @@ export class SupplierController {
     @CurrentUser() currentUser: CurrentUserDto,
     @Body() body: CreateSupplierMaterialDto,
   ) {
-    
-    this.warehouseService.addStockToWarehouse(
+    this.warehouseService.createStockForWarehouse(
       currentUser.organizationId,
       body.material,
       body.warehouse,
@@ -344,23 +344,39 @@ export class SupplierController {
     return { warehouse: data };
   }
 
+  @Get('warehouses/:warehouseId')
+  @Roles(RoleNames.Admin, RoleNames.Supplier)
+  @RequirePermissions(PermissionsNames.warehouseReadAccess)
+  async getWarehouse(
+    @CurrentUser() currentUser: CurrentUserDto,
+    @Param() params: { warehouseId: string },
+  ) {
+    console.log(params.warehouseId, "<--warehouse");
+    const warehouse = await this.warehouseService.getWarehouseById(
+      params.warehouseId,
+      currentUser.organizationId,
+    );
+
+    if (!warehouse) {
+      throw new BadRequestException('Warehouse not found');
+    }
+
+    return { warehouse };
+  }
+
   @Post('warehouses/:warehouseId/add-stocks')
   @Roles(RoleNames.Admin, RoleNames.Supplier)
   @RequirePermissions(PermissionsNames.warehouseWriteAccess)
   async addStock(
     @CurrentUser() currentUser: CurrentUserDto,
-    @Body() body: AddStockDto,
+    @Body() body: UpdateStockDto,
     @Param() params: { warehouseId: string },
   ) {
     return this.warehouseService.addStockToWarehouse(
       currentUser.organizationId,
-      body.materialId,
+      body.supplierMaterialId,
       params.warehouseId,
       body.quantity,
-      body.unit,
-      body.price,
-      body.currency,
-      body.max_stock,
     );
   }
 

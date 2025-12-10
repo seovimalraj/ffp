@@ -31,8 +31,6 @@ export class AuthController {
                 throw new HttpException('Email and password are required', HttpStatus.BAD_REQUEST);
             }
 
-            console.log('here', email, password, Tables, ",,,")
-
             const client = this.supabaseService.getClient();
             const { data: user, error } = await client
                 .from(Tables.UserTable)

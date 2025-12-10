@@ -20,6 +20,11 @@ export type AddStockDto = {
   currency: CurrencyType;
 };
 
+export type UpdateStockDto = {
+  supplierMaterialId: string;
+  quantity: number;
+};
+
 export type RemoveStockDto = {
   materialId: string;
   quantity: number;

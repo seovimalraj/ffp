@@ -35,7 +35,9 @@ export enum Tables {
 
   Warehouses = 'warehouses',
 
-  MaterialTable = 'material'
+  MaterialTable = 'material',
+
+  GeneralTolerancesTable = 'general_tolerances',
 }
 
 /**
@@ -73,7 +75,7 @@ export enum RoleNames {
   Customer = 'customer',
 }
 
-export type CurrencyType = 'USD' | 'INR';
+export type CurrencyType = 'USD' | 'INR' | 'EUR';
 export type UnitType = 'kg' | 'tons' | 'liters' | 'pieces';
 
 /**

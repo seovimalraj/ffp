@@ -54,3 +54,12 @@ export type IGroupWarehouses = {
   unit: string;
   address: string;
 };
+
+
+export type IGroupTolerance = {
+  id: string;
+  name: string;
+  description: string;
+  range_value: number;
+  percentage: number;
+}

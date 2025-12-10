@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
+import { getToken } from 'next-auth/jwt';
 
 const ADMIN_ROLES = new Set(['admin','org_admin','reviewer','finance','auditor']);
 
@@ -14,13 +15,18 @@ export async function middleware(request: NextRequest) {
   // Prepare a response object we can mutate (cookies/headers)
   let response = NextResponse.next({ request });
 
-  // Parse lightweight session context from cookies (no Supabase dependency)
-  const authed = !!request.cookies.get('sb-access-token');
-  let parsedUser: { id?: string; role?: string; organization_id?: string } = {};
-  try {
-    const userDataRaw = request.cookies.get('user-data')?.value;
-    if (userDataRaw) parsedUser = JSON.parse(userDataRaw);
-  } catch {}
+  // Parse session from NextAuth JWT token
+  const token = await getToken({ 
+    req: request, 
+    secret: process.env.NEXTAUTH_SECRET 
+  });
+  
+  const authed = !!token;
+  const parsedUser: { id?: string; role?: string; organization_id?: string } = {
+    id: token?.id as string,
+    role: token?.role as string,
+    organization_id: token?.organizationId as string,
+  };
 
   // Handle widget endpoints with CORS + CSP (allowlist via env)
   if (pathname.startsWith('/widget')) {
@@ -71,7 +77,7 @@ export async function middleware(request: NextRequest) {
   }
 
   // RBAC + auth enforcement
-  let role = request.cookies.get('role')?.value || parsedUser.role || 'anon';
+  const role = parsedUser.role || 'anon';
 
   if (pathname.startsWith('/admin')) {
     if (!authed || !ADMIN_ROLES.has(role)) {
