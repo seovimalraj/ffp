@@ -131,6 +131,8 @@ export class SupplierController {
       throw new InternalServerErrorException(error.message);
     }
 
+    Tables;
+
     await this.supabaseService.refreshMaterializedView(
       SQLFunctions.userPermissionCodesMVRefresh,
     );
@@ -351,7 +353,7 @@ export class SupplierController {
     @CurrentUser() currentUser: CurrentUserDto,
     @Param() params: { warehouseId: string },
   ) {
-    console.log(params.warehouseId, "<--warehouse");
+    console.log(params.warehouseId, '<--warehouse');
     const warehouse = await this.warehouseService.getWarehouseById(
       params.warehouseId,
       currentUser.organizationId,

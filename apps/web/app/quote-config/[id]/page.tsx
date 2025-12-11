@@ -1,31 +1,39 @@
-'use client';
+"use client";
 
-import { useState, useEffect } from 'react';
-import { useRouter, useParams } from 'next/navigation';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Badge } from '@/components/ui/badge';
-import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
-import { 
-  Package, CheckCircle, Clock, DollarSign, Ruler, Palette, 
-  Box, ShoppingCart, ArrowRight, Zap, TrendingUp, Loader2, Upload, FileText, Trash2, X
-} from 'lucide-react';
-import CadViewer3D from '@/components/CadViewer3D';
-import DemoNavigation from '@/components/DemoNavigation';
-import { getQuote, getQuoteConfig, saveQuoteConfig } from '../../../lib/database';
-import { GeometryData } from '../../../lib/cad-analysis';
-import { 
-  calculatePricing, 
-  getMaterial, 
-  getFinish, 
-  PROCESSES, 
+import { useState, useEffect, useCallback } from "react";
+import { useRouter, useParams } from "next/navigation";
+import { Button } from "@/components/ui/button";
+import {
+  Package,
+  DollarSign,
+  ArrowRight,
+  Zap,
+  TrendingUp,
+  Loader2,
+  Upload,
+  Clock,
+  CheckCircle,
+} from "lucide-react";
+import {
+  getQuote,
+  getQuoteConfig,
+  saveQuoteConfig,
+} from "../../../lib/database";
+import { GeometryData, analyzeCADFile } from "../../../lib/cad-analysis";
+import {
+  calculatePricing,
+  getMaterial,
+  getFinish,
+  PROCESSES,
   MATERIALS,
   FINISHES,
-  PricingBreakdown 
-} from '../../../lib/pricing-engine';
+  PricingBreakdown,
+} from "../../../lib/pricing-engine";
+import { getItem } from "@/lib/item-storage";
+import { PartCardItem } from "../components/part-card-item";
+import { useDropzone } from "react-dropzone";
+import { LEAD_TIME_SHORT } from "@/lib/utils";
+import { notify } from "@/lib/toast";
 
 interface PartConfig {
   id: string;
@@ -39,743 +47,666 @@ interface PartConfig {
   threads: string;
   inspection: string;
   notes: string;
-  leadTimeType: 'economy' | 'standard' | 'expedited';
+  leadTimeType: "economy" | "standard" | "expedited";
   geometry?: GeometryData;
   pricing?: PricingBreakdown;
+  file2d?: File;
+  file2dPreview?: string;
 }
 
-export default function QuoteConfigPage({ params }: { params: Promise<{ id: string }> }) {
+// --- Constants (Moved Outside) ---
+const MATERIALS_LIST = Object.entries(MATERIALS).map(([key, mat]) => ({
+  value: key,
+  label: mat.name,
+  multiplier: mat.costPerKg / 8.5,
+  icon: key.includes("aluminum")
+    ? "🔷"
+    : key.includes("stainless")
+      ? "⚙️"
+      : key.includes("titanium")
+        ? "🔵"
+        : key.includes("plastic")
+          ? "🟢"
+          : "",
+}));
+
+const TOLERANCES_LIST = [
+  { value: "standard", label: 'Standard (±0.005")', multiplier: 1.0 },
+  { value: "precision", label: 'Precision (±0.002")', multiplier: 1.15 },
+  { value: "tight", label: 'Tight (±0.001")', multiplier: 1.3 },
+];
+
+const FINISHES_LIST = Object.entries(FINISHES).map(([key, fin]) => ({
+  value: key,
+  label: fin.name,
+  cost: fin.baseCost,
+}));
+
+const THREAD_OPTIONS = [
+  { value: "none", label: "No Threads" },
+  { value: "tapped", label: "Tapped Holes" },
+  { value: "threaded-studs", label: "Threaded Studs" },
+  { value: "helicoils", label: "Helicoil Inserts" },
+];
+
+const INSPECTION_OPTIONS = [
+  { value: "standard", label: "Standard Inspection (Included)" },
+  { value: "first-article", label: "First Article Inspection (+$75)" },
+  { value: "full-cmm", label: "Full CMM Report (+$150)" },
+  { value: "material-cert", label: "Material Certification (+$25)" },
+];
+
+function calcLeadTime(
+  leadTimeType: "economy" | "standard" | "expedited",
+  baseLeadTime: number,
+) {
+  return (
+    baseLeadTime *
+    (leadTimeType === "expedited" ? 1 : leadTimeType === "standard" ? 3 : 2.1)
+  );
+}
+
+export default function QuoteConfigPage() {
   const router = useRouter();
   const paramsHook = useParams();
   const quoteId = paramsHook?.id as string;
 
-  const [email, setEmail] = useState('');
+  const [email, setEmail] = useState("");
   const [parts, setParts] = useState<PartConfig[]>([]);
-  const [currentPartIndex, setCurrentPartIndex] = useState(0);
+  // currentPartIndex removed as we list all parts
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [fileUrls, setFileUrls] = useState<Map<string, string>>(new Map());
 
   // Handle adding more files
-  const handleAddMoreFiles = async (event: React.ChangeEvent<HTMLInputElement>) => {
-    const newFiles = event.target.files;
-    if (!newFiles || newFiles.length === 0) return;
+  // const handleAddMoreFiles = async (
+  //   event: React.ChangeEvent<HTMLInputElement>,
+  // ) => {
+  //   const newFiles = event.target.files;
+  //   if (!newFiles || newFiles.length === 0) return;
 
-    const filesArray = Array.from(newFiles);
-    const newParts: PartConfig[] = [];
+  //   const filesArray = Array.from(newFiles);
+  //   const newParts: PartConfig[] = [];
 
-    for (const file of filesArray) {
-      // Basic analysis - in production you'd use CAD analysis
-      const newPart: PartConfig = {
-        id: `part-${parts.length + newParts.length + 1}`,
-        fileName: file.name,
-        filePath: `temp/${file.name}`,
-        fileObject: file,
-        material: 'aluminum-6061',
-        quantity: 1,
-        tolerance: 'standard',
-        finish: 'as-machined',
-        threads: 'none',
-        inspection: 'standard',
-        notes: '',
-        leadTimeType: 'standard',
-        geometry: undefined,
-        pricing: undefined
-      };
-      newParts.push(newPart);
-    }
+  //   for (const file of filesArray) {
+  //     // Analyze CAD geometry (same as instant-quote page)
+  //     console.log(`Analyzing CAD file: ${file.name}`);
+  //     const geometry = await analyzeCADFile(file);
+  //     console.log(`Geometry analysis complete:`, geometry);
 
-    setParts(prev => [...prev, ...newParts]);
-    // Clear the input
-    event.target.value = '';
-  };
+  //     const newPart: PartConfig = {
+  //       id: `part-${parts.length + newParts.length + 1}`,
+  //       fileName: file.name,
+  //       filePath: `temp/${file.name}`,
+  //       fileObject: file,
+  //       material: "aluminum-6061",
+  //       quantity: 1,
+  //       tolerance: "standard",
+  //       finish: "as-machined",
+  //       threads: "none",
+  //       inspection: "standard",
+  //       notes: "",
+  //       leadTimeType: "standard",
+  //       geometry, // Add the analyzed geometry
+  //       pricing: undefined,
+  //       file2d: undefined,
+  //     };
+  //     newParts.push(newPart);
+  //   }
+
+  //   setParts((prev) => [...prev, ...newParts]);
+  //   // Clear the input
+  //   event.target.value = "";
+  // };
+
+  // Dropzone callback for drag and drop
+  const onDropFiles = useCallback(
+    async (acceptedFiles: File[]) => {
+      if (acceptedFiles.length === 0) return;
+
+      const newParts: PartConfig[] = [];
+
+      for (const file of acceptedFiles) {
+        console.log(`Analyzing CAD file: ${file.name}`);
+        const geometry = await analyzeCADFile(file);
+        console.log(`Geometry analysis complete:`, geometry);
+
+        const newPart: PartConfig = {
+          id: `part-${parts.length + newParts.length + 1}`,
+          fileName: file.name,
+          filePath: `temp/${file.name}`,
+          fileObject: file,
+          material: "aluminum-6061",
+          quantity: 1,
+          tolerance: "standard",
+          finish: "as-machined",
+          threads: "none",
+          inspection: "standard",
+          notes: "",
+          leadTimeType: "standard",
+          geometry,
+          pricing: undefined,
+          file2d: undefined,
+        };
+        newParts.push(newPart);
+      }
+
+      setParts((prev) => [...prev, ...newParts]);
+    },
+    [parts.length],
+  );
+
+  // Setup dropzone
+  const { getRootProps, getInputProps, isDragActive } = useDropzone({
+    onDrop: onDropFiles,
+    accept: {
+      "model/stl": [".stl"],
+      "model/step": [".step", ".stp"],
+      "application/octet-stream": [".stl", ".step", ".stp"],
+      "application/sla": [".stl"],
+      "application/vnd.ms-pki.stl": [".stl"],
+      "application/iges": [".iges", ".igs"],
+      "image/vnd.dxf": [".dxf"],
+      "image/vnd.dwg": [".dwg"],
+      "model/x.stl-binary": [".stl"],
+      "application/x-navistyle": [".x_t", ".x_b"],
+      "model/obj": [".obj"],
+    },
+    multiple: true,
+  });
 
   // Handle deleting a part
   const handleDeletePart = (indexToDelete: number) => {
     if (parts.length === 1) {
-      alert('Cannot delete the last part. At least one part is required.');
+      notify.error(
+        "Cannot delete the last part. At least one part is required.",
+      );
       return;
     }
-    
-    setParts(prev => prev.filter((_, index) => index !== indexToDelete));
-    
-    // Adjust current part index if needed
-    if (currentPartIndex >= parts.length - 1) {
-      setCurrentPartIndex(Math.max(0, parts.length - 2));
-    }
+
+    setParts((prev) => prev.filter((_, index) => index !== indexToDelete));
   };
 
   useEffect(() => {
     async function loadQuote() {
       if (!quoteId) return;
-      
+
       try {
         setLoading(true);
-        
+
         // Check if this is a temporary quote ID (starts with 'temp-')
-        const isTempQuote = quoteId.startsWith('temp-');
-        
+        const isTempQuote = quoteId.startsWith("temp-");
+
         if (isTempQuote) {
-          // Load from sessionStorage only (no database call)
-          const filesDataStr = sessionStorage.getItem(`quote-${quoteId}-files`);
-          const emailStr = sessionStorage.getItem(`quote-${quoteId}-email`);
-          
+          // Load from IndexedDB (item-storage)
+          // const filesDataStr = sessionStorage.getItem(`quote-${quoteId}-files`);
+          // const emailStr = sessionStorage.getItem(`quote-${quoteId}-email`);
+          const [filesDataStr, emailStr] = await Promise.all([
+            getItem<string>(`quote-${quoteId}-files`),
+            getItem<string>(`quote-${quoteId}-email`),
+          ]);
+
           if (!filesDataStr) {
-            console.error('SessionStorage data not found for quote:', quoteId);
-            alert('Quote session expired. Please upload your files again.');
-            router.push('/instant-quote');
+            console.error("Storage data not found for quote:", quoteId);
+            notify.error(
+              "Quote session expired. Please upload your files again.",
+            );
+            router.push("/instant-quote");
             return;
           }
-          
+
           const filesData = JSON.parse(filesDataStr);
           setEmail(emailStr || `guest-${Date.now()}@temp.quote`);
-          
-          // Initialize parts from sessionStorage
+
+          // Initialize parts from storage
           const initialParts: PartConfig[] = await Promise.all(
             filesData.map(async (file: any, index: number) => {
-              // Retrieve file data from sessionStorage
-              const fileDataUrl = sessionStorage.getItem(`quote-${quoteId}-file-${index}`);
-              let fileObject: File | undefined;
-              
-              if (fileDataUrl) {
-                try {
-                  // Convert base64 back to File
-                  const response = await fetch(fileDataUrl);
-                  const blob = await response.blob();
-                  fileObject = new File([blob], file.name, { type: file.type || blob.type });
-                } catch (error) {
-                  console.error(`Failed to reconstruct file ${index}:`, error);
-                }
-              }
-              
+              // Retrieve file data from IndexedDB
+              const fileObject = await getItem<File>(
+                `quote-${quoteId}-file-${index}`,
+              );
+
+              // No need to reconstruct from base64, IndexedDB stores File objects directly
               return {
                 id: `part-${index + 1}`,
                 fileName: file.name,
                 filePath: file.path || `temp/${file.name}`,
-                fileObject,
-                material: 'aluminum-6061',
+                fileObject: fileObject || undefined,
+                material: "aluminum-6061",
                 quantity: 1,
-                tolerance: 'standard',
-                finish: 'as-machined',
-                threads: 'none',
-                inspection: 'standard',
-                notes: '',
-                leadTimeType: 'standard',
+                tolerance: "standard",
+                finish: "as-machined",
+                threads: "none",
+                inspection: "standard",
+                notes: "",
+                leadTimeType: "standard",
                 geometry: file.geometry,
-                pricing: undefined
+                pricing: undefined,
+                file2d: file.file2d,
               };
-            })
+            }),
           );
-          
+
           setParts(initialParts);
         } else {
           // Load quote from database (original flow)
           const quote = await getQuote(quoteId);
           if (!quote) {
-            console.error('Quote not found in database:', quoteId);
-            alert('Quote not found');
-            router.push('/instant-quote');
+            console.error("Quote not found in database:", quoteId);
+            alert("Quote not found");
+            router.push("/instant-quote");
             return;
           }
-          
+
           setEmail(quote.email);
-          
+
           // Check if configuration already exists
           try {
             const existingConfig = await getQuoteConfig(quoteId);
             if (existingConfig) {
               setParts(existingConfig.parts);
             } else {
-              throw new Error('No config found');
+              throw new Error("No config found");
             }
           } catch (error) {
             // Initialize new configuration
-            const filesDataStr = sessionStorage.getItem(`quote-${quoteId}-files`);
+            const filesDataStr = await getItem<string>(
+              `quote-${quoteId}-files`,
+            );
             const filesData = filesDataStr ? JSON.parse(filesDataStr) : [];
-            
+
             // Initialize parts from uploaded files with real geometry data
             const initialParts: PartConfig[] = await Promise.all(
               quote.files.map(async (file: any, index: number) => {
-                // Retrieve file data from sessionStorage
-                const fileDataUrl = sessionStorage.getItem(`quote-${quoteId}-file-${index}`);
-                let fileObject: File | undefined;
-                
-                if (fileDataUrl) {
-                  try {
-                    // Convert base64 back to File
-                    const response = await fetch(fileDataUrl);
-                    const blob = await response.blob();
-                    fileObject = new File([blob], file.name, { type: file.mimeType || blob.type });
-                  } catch (error) {
-                    console.error(`Failed to reconstruct file ${index}:`, error);
-                  }
-                }
-                
+                // Retrieve file data from storage if available
+                const fileObject = await getItem<File>(
+                  `quote-${quoteId}-file-${index}`,
+                );
+
                 return {
                   id: `part-${index + 1}`,
                   fileName: file.name,
                   filePath: file.path,
-                  fileObject,
-                  material: 'aluminum-6061',
+                  fileObject: fileObject || undefined,
+                  material: "aluminum-6061",
                   quantity: 1,
-                  tolerance: 'standard',
-                  finish: 'as-machined',
-                  threads: 'none',
-                  inspection: 'standard',
-                  notes: '',
-                  leadTimeType: 'standard',
+                  tolerance: "standard",
+                  finish: "as-machined",
+                  threads: "none",
+                  inspection: "standard",
+                  notes: "",
+                  leadTimeType: "standard",
                   geometry: file.geometry,
-                  pricing: file.pricing
+                  pricing: file.pricing,
                 };
-              })
+              }),
             );
-            
+
             setParts(initialParts);
           }
         }
       } catch (error) {
-        console.error('Error loading quote:', error);
-        alert('Failed to load quote. Please try again.');
-        router.push('/instant-quote');
+        console.error("Error loading quote:", error);
+        alert("Failed to load quote. Please try again.");
+        router.push("/instant-quote");
       } finally {
         setLoading(false);
       }
     }
-    
+
     loadQuote();
   }, [quoteId, router]);
 
-  const materials = Object.entries(MATERIALS).map(([key, mat]) => ({
-    value: key,
-    label: mat.name,
-    multiplier: mat.costPerKg / 8.50, // Relative to aluminum 6061
-    icon: key.includes('aluminum') ? '🔷' : 
-          key.includes('stainless') ? '⚙️' :
-          key.includes('titanium') ? '🔵' :
-          key.includes('plastic') ? '🟢' :
-          '�'
-  }));
-
-  const tolerances = [
-    { value: 'standard', label: 'Standard (±0.005")', multiplier: 1.0 },
-    { value: 'precision', label: 'Precision (±0.002")', multiplier: 1.15 },
-    { value: 'tight', label: 'Tight (±0.001")', multiplier: 1.30 }
-  ];
-
-  const finishes = Object.entries(FINISHES).map(([key, fin]) => ({
-    value: key,
-    label: fin.name,
-    cost: fin.baseCost
-  }));
-
-  const threadOptions = [
-    { value: 'none', label: 'No Threads' },
-    { value: 'tapped', label: 'Tapped Holes' },
-    { value: 'threaded-studs', label: 'Threaded Studs' },
-    { value: 'helicoils', label: 'Helicoil Inserts' }
-  ];
-
-  const inspectionOptions = [
-    { value: 'standard', label: 'Standard Inspection (Included)' },
-    { value: 'first-article', label: 'First Article Inspection (+$75)' },
-    { value: 'full-cmm', label: 'Full CMM Report (+$150)' },
-    { value: 'material-cert', label: 'Material Certification (+$25)' }
-  ];
-
+  // Lead Time & Pricing Calculations
   const calculateLeadTime = (part: PartConfig) => {
     if (!part.pricing) return 7;
     return part.pricing.leadTimeDays;
   };
 
-  const calculatePrice = (part: PartConfig, tier: 'economy' | 'standard' | 'premium' = 'economy'): number => {
+  const calculatePrice = (
+    part: PartConfig,
+    tier: "economy" | "standard" | "expedited" = "economy",
+  ): number => {
     // If no geometry data, return 0
     if (!part.geometry) {
       return 0;
     }
-    
+
     // Calculate base pricing
     const material = getMaterial(part.material);
     if (!material) return 0;
-    
-    const process = PROCESSES['cnc-milling'];
+
+    const process = PROCESSES["cnc-milling"];
     const finish = getFinish(part.finish);
-    
+
     const pricing = calculatePricing({
       geometry: part.geometry,
       material,
       process,
       finish,
       quantity: part.quantity,
-      tolerance: part.tolerance as 'standard' | 'precision' | 'tight',
-      leadTimeType: 'standard' // Always use standard as base
+      tolerance: part.tolerance as "standard" | "precision" | "tight",
+      leadTimeType: "standard", // Always use standard as base
     });
-    
+
     // Apply tier multipliers
     const multipliers = {
       economy: 1.0,
       standard: 2.1,
-      premium: 3.5
+      expedited: 3.5,
     };
-    
+
     return pricing.totalPrice * multipliers[tier];
   };
 
-  const updatePart = (field: keyof PartConfig, value: any) => {
-    setParts(prev => prev.map((p, i) => {
-      if (i !== currentPartIndex) return p;
-      
-      const updatedPart = { ...p, [field]: value };
-      
-      // Recalculate pricing if geometry exists
-      if (updatedPart.geometry) {
-        const material = getMaterial(updatedPart.material);
-        if (material) {
-          const process = PROCESSES['cnc-milling'];
-          const finish = getFinish(updatedPart.finish);
-          
-          updatedPart.pricing = calculatePricing({
-            geometry: updatedPart.geometry,
-            material,
-            process,
-            finish,
-            quantity: updatedPart.quantity,
-            tolerance: updatedPart.tolerance as 'standard' | 'precision' | 'tight',
-            leadTimeType: 'standard' // Always use standard as base
-          });
+  const updatePart = (index: number, field: keyof PartConfig, value: any) => {
+    setParts((prev) =>
+      prev.map((p, i) => {
+        if (i !== index) return p;
+
+        const updatedPart = { ...p, [field]: value };
+
+        // Recalculate pricing if geometry exists
+        if (updatedPart.geometry) {
+          const material = getMaterial(updatedPart.material);
+          if (material) {
+            const process = PROCESSES["cnc-milling"];
+            const finish = getFinish(updatedPart.finish);
+
+            updatedPart.pricing = calculatePricing({
+              geometry: updatedPart.geometry,
+              material,
+              process,
+              finish,
+              quantity: updatedPart.quantity,
+              tolerance: updatedPart.tolerance as
+                | "standard"
+                | "precision"
+                | "tight",
+              leadTimeType: "standard", // Always use standard as base
+            });
+          }
         }
-      }
-      
-      return updatedPart;
-    }));
+
+        return updatedPart;
+      }),
+    );
   };
 
-  const currentPart = parts[currentPartIndex];
-  
-  // Calculate prices for all three tiers
-  const economyPrice = parts.reduce((sum, part) => sum + calculatePrice(part, 'economy'), 0);
-  const standardPrice = parts.reduce((sum, part) => sum + calculatePrice(part, 'standard'), 0);
-  const premiumPrice = parts.reduce((sum, part) => sum + calculatePrice(part, 'premium'), 0);
-  
-  const baseLeadTime = Math.max(...parts.map(p => calculateLeadTime(p)));
+  const standardPrice = parts.reduce(
+    (sum, part) => sum + calculatePrice(part, part.leadTimeType || "standard"),
+    0,
+  );
+
+  const baseLeadTime = Math.max(...parts.map((p) => calculateLeadTime(p)));
 
   const handleCheckout = async () => {
     try {
       setSaving(true);
-      
+
       // Save configuration to database (use standardPrice as default total)
       await saveQuoteConfig(quoteId, parts, standardPrice, baseLeadTime);
-      
+
       // Navigate to checkout
       router.push(`/checkout/${quoteId}`);
     } catch (error) {
-      console.error('Error saving configuration:', error);
-      alert('Failed to save configuration. Please try again.');
+      console.error("Error saving configuration:", error);
+      alert("Failed to save configuration. Please try again.");
       setSaving(false);
     }
   };
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50 flex items-center justify-center">
-        <div className="text-center">
-          <Loader2 className="w-12 h-12 animate-spin text-blue-600 mx-auto mb-4" />
-          <p className="text-gray-600">Loading quote configuration...</p>
+      <div className="min-h-screen bg-[conic-gradient(at_top_right,_var(--tw-gradient-stops))] from-blue-100 via-blue-50 to-white flex items-center justify-center relative overflow-hidden">
+        {/* Animated Background Blobs */}
+        <div className="absolute top-[-10%] right-[-5%] w-96 h-96 bg-blue-400 rounded-full mix-blend-multiply filter blur-3xl opacity-20 animate-pulse"></div>
+        <div className="absolute bottom-[-10%] left-[-5%] w-96 h-96 bg-indigo-400 rounded-full mix-blend-multiply filter blur-3xl opacity-20 animate-pulse delay-200"></div>
+
+        <div className="backdrop-blur-xl bg-white/30 border border-white/50 shadow-2xl p-8 rounded-3xl flex flex-col items-center">
+          <Loader2 className="w-12 h-12 animate-spin text-blue-600 mb-4" />
+          <p className="text-blue-900 font-medium">Loading your design...</p>
         </div>
       </div>
     );
   }
 
-  if (!currentPart) return <div>Loading...</div>;
+  if (parts.length === 0 && !loading) return <div>No parts loaded</div>;
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50 p-6">
-      <div className="grid grid-cols-1 xl:grid-cols-12 gap-6 max-w-[1800px] mx-auto">
-        {/* COLUMN 1: Parts List (3 cols wide) */}
-        <div className="xl:col-span-3">
-        <Card className="sticky top-6">
-          <CardHeader>
-            <CardTitle className="text-lg">Your Parts ({parts.length})</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-3">
-              {parts.map((part, index) => (
+    <div className="min-h-screen bg-[#F0F4F8] relative font-sans text-slate-900">
+      <style jsx global>{`
+        .custom-scrollbar::-webkit-scrollbar {
+          width: 6px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-track {
+          background: rgba(0, 0, 0, 0.05);
+          border-radius: 10px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-thumb {
+          background: rgba(0, 0, 0, 0.1);
+          border-radius: 10px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+          background: rgba(0, 0, 0, 0.2);
+        }
+      `}</style>
+
+      {/* Dynamic Background Elements */}
+      <div className="fixed inset-0 z-0 pointer-events-none">
+        <div className="absolute top-[-20%] right-[-10%] w-[800px] h-[800px] bg-blue-400/20 rounded-full blur-[100px] opacity-40"></div>
+        <div className="absolute bottom-[-20%] left-[-10%] w-[600px] h-[600px] bg-indigo-400/20 rounded-full blur-[100px] opacity-40"></div>
+      </div>
+
+      {/* HEADER - Updated to be flat and at top */}
+      <header className="sticky top-0 z-50 backdrop-blur-md bg-white/80 border-b border-white/60 shadow-sm">
+        <div className="max-w-[1920px] mx-auto px-6 py-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          <div>
+            <h1 className="text-2xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-blue-700 to-indigo-600">
+              Configure Quote
+            </h1>
+            <p className="text-slate-500 text-sm mt-0.5">
+              Customize your parts specifically for manufacturing.
+            </p>
+          </div>
+          <div className="flex items-center gap-3">
+            <div className="px-3 py-1.5 rounded-full bg-blue-50 text-blue-700 text-xs font-medium border border-blue-100 flex items-center">
+              <Package className="w-3.5 h-3.5 mr-2" />
+              Quote ID: {quoteId.substring(0, 8)}...
+            </div>
+          </div>
+        </div>
+      </header>
+
+      <div className="flex flex-col lg:flex-row max-w-[1440px] mx-auto">
+        {/* LEFT MAIN CONTENT (PARTS) */}
+        <div className="flex-1 p-4 sm:p-6 lg:p-10 overflow-scroll invisible-scrollbar space-y-8 pb-32">
+          {parts.map((part, index) => (
+            <PartCardItem
+              key={part.id}
+              part={part}
+              index={index}
+              updatePart={updatePart}
+              handleDeletePart={handleDeletePart}
+              calculatePrice={calculatePrice}
+              MATERIALS_LIST={MATERIALS_LIST}
+              TOLERANCES_LIST={TOLERANCES_LIST}
+              FINISHES_LIST={FINISHES_LIST}
+              THREAD_OPTIONS={THREAD_OPTIONS}
+            />
+          ))}
+
+          {/* Add Part Button */}
+          <div className="pt-8 w-full">
+            <div
+              {...getRootProps()}
+              className={`bg-gradient-to-br from-white to-slate-50/80 rounded-2xl border-2 shadow-sm overflow-hidden transition-all duration-300 cursor-pointer ${
+                isDragActive
+                  ? "border-blue-500 border-dashed bg-blue-50/50 shadow-lg scale-[1.01]"
+                  : "border-slate-200 hover:border-blue-400 border-dashed hover:shadow-md"
+              }`}
+            >
+              <input {...getInputProps()} />
+
+              {/* Upload Area */}
+              <div className="p-8 lg:p-12 bg-white/50 flex flex-col items-center justify-center gap-4 text-center border-b border-slate-200">
                 <div
-                  key={part.id}
-                  className={`p-3 rounded-lg border-2 cursor-pointer transition-all relative group ${
-                    index === currentPartIndex
-                      ? 'border-blue-600 bg-blue-50 shadow-md'
-                      : 'border-gray-200 hover:border-blue-300'
+                  className={`p-4 bg-gradient-to-br rounded-2xl transition-all shadow-sm ${
+                    isDragActive
+                      ? "from-blue-200 to-blue-100 scale-110"
+                      : "from-blue-50 to-slate-50"
                   }`}
                 >
-                  <div 
-                    className="flex items-start gap-2"
-                    onClick={() => setCurrentPartIndex(index)}
+                  <Upload
+                    className={`w-10 h-10 transition-colors ${
+                      isDragActive ? "text-blue-700" : "text-blue-600"
+                    }`}
+                  />
+                </div>
+                <div>
+                  <p
+                    className={`font-bold text-xl mb-2 transition-colors ${
+                      isDragActive ? "text-blue-700" : "text-slate-900"
+                    }`}
                   >
-                    <div className={`p-2 rounded ${
-                      index === currentPartIndex ? 'bg-blue-600' : 'bg-gray-400'
-                    }`}>
-                      <FileText className="w-4 h-4 text-white" />
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <p className={`font-semibold text-sm truncate ${
-                        index === currentPartIndex ? 'text-blue-900' : 'text-gray-900'
-                      }`}>
-                        {part.fileName}
-                      </p>
-                      <p className="text-xs text-gray-600 mt-1">
-                        {getMaterial(part.material)?.name}
-                      </p>
-                      <p className="text-xs text-gray-500">
-                        Qty: {part.quantity}
-                      </p>
-                    </div>
-                  </div>
-                  
-                  {/* Delete button */}
-                  {parts.length > 1 && (
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        handleDeletePart(index);
-                      }}
-                      className="absolute top-2 right-2 p-1 rounded bg-red-50 text-red-600 hover:bg-red-100 opacity-0 group-hover:opacity-100 transition-opacity"
-                      title="Delete part"
-                    >
-                      <X className="w-4 h-4" />
-                    </button>
-                  )}
-                </div>
-              ))}
-            </div>
-            
-            <Button 
-              variant="outline" 
-              className="w-full mt-4"
-              onClick={() => document.getElementById('add-more-files')?.click()}
-            >
-              <Upload className="w-4 h-4 mr-2" />
-              Add More Files
-            </Button>
-            <input
-              type="file"
-              multiple
-              accept=".stl,.step,.stp,.iges,.igs,.dxf,.dwg,.x_t,.x_b,.obj"
-              className="hidden"
-              id="add-more-files"
-              onChange={handleAddMoreFiles}
-            />
-          </CardContent>
-        </Card>
-        </div>
-
-        {/* COLUMN 2: 3D Viewer + Configuration (6 cols wide) */}
-        <div className="xl:col-span-6 space-y-6">
-          {/* 3D Viewer */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Box className="w-5 h-5" />
-                3D Preview: {currentPart.fileName}
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <CadViewer3D 
-                fileName={currentPart.fileName}
-                file={currentPart.fileObject}
-                height="400px"
-              />
-              
-              {/* Geometry Info */}
-              {currentPart.geometry && (
-                <div className="mt-4 p-4 bg-blue-50 rounded-lg border border-blue-200">
-                  <h4 className="font-semibold text-sm mb-2 text-slate-900">Part Analysis</h4>
-                  <div className="grid grid-cols-2 gap-3 text-sm">
-                    <div>
-                      <p className="text-slate-600 text-xs">Volume</p>
-                      <p className="font-semibold text-slate-900">{(currentPart.geometry.volume / 1000).toFixed(2)} cm³</p>
-                    </div>
-                    <div>
-                      <p className="text-slate-600 text-xs">Surface Area</p>
-                      <p className="font-semibold text-slate-900">{(currentPart.geometry.surfaceArea / 100).toFixed(2)} cm²</p>
-                    </div>
-                    <div>
-                      <p className="text-slate-600 text-xs">Bounding Box</p>
-                      <p className="font-semibold text-slate-900 text-xs">
-                        {currentPart.geometry.boundingBox.x.toFixed(1)} × {currentPart.geometry.boundingBox.y.toFixed(1)} × {currentPart.geometry.boundingBox.z.toFixed(1)} mm
-                      </p>
-                    </div>
-                    <div>
-                      <p className="text-slate-600 text-xs">Complexity</p>
-                      <p className="font-semibold text-slate-900 capitalize">{currentPart.geometry.complexity}</p>
-                    </div>
-                  </div>
-                </div>
-              )}
-            </CardContent>
-          </Card>
-
-          {/* Configuration */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Ruler className="w-5 h-5" />
-                Part Configuration
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              {/* Material Selection */}
-              <div>
-                <Label htmlFor="material">Material</Label>
-                <Select
-                  value={currentPart.material}
-                  onValueChange={(value) => updatePart('material', value)}
-                >
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {materials.map((mat) => (
-                      <SelectItem key={mat.value} value={mat.value}>
-                        {mat.icon} {mat.label}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                {currentPart.geometry && (
-                  <p className="text-xs text-slate-500 mt-1">
-                    Density: {getMaterial(currentPart.material)?.density.toFixed(2)} g/cm³ • 
-                    Weight: {currentPart.geometry.materialWeight.toFixed(1)}g
+                    {isDragActive ? "Drop your files here" : "Add Another Part"}
                   </p>
-                )}
+                  <p className="text-sm text-slate-500 max-w-xs mx-auto">
+                    {isDragActive
+                      ? "Release to upload your CAD files"
+                      : "Click to upload or drag and drop your CAD files here"}
+                  </p>
+                </div>
+                <div className="flex flex-wrap gap-2 justify-center mt-2">
+                  <span
+                    className={`px-2.5 py-1 text-xs font-medium rounded-md transition-colors ${
+                      isDragActive
+                        ? "bg-blue-200 text-blue-800"
+                        : "bg-slate-100 text-slate-600"
+                    }`}
+                  >
+                    STEP
+                  </span>
+                  <span
+                    className={`px-2.5 py-1 text-xs font-medium rounded-md transition-colors ${
+                      isDragActive
+                        ? "bg-blue-200 text-blue-800"
+                        : "bg-slate-100 text-slate-600"
+                    }`}
+                  >
+                    STL
+                  </span>
+                  <span
+                    className={`px-2.5 py-1 text-xs font-medium rounded-md transition-colors ${
+                      isDragActive
+                        ? "bg-blue-200 text-blue-800"
+                        : "bg-slate-100 text-slate-600"
+                    }`}
+                  >
+                    IGES
+                  </span>
+                  <span
+                    className={`px-2.5 py-1 text-xs font-medium rounded-md transition-colors ${
+                      isDragActive
+                        ? "bg-blue-200 text-blue-800"
+                        : "bg-slate-100 text-slate-600"
+                    }`}
+                  >
+                    OBJ
+                  </span>
+                  <span
+                    className={`px-2.5 py-1 text-xs font-medium rounded-md transition-colors ${
+                      isDragActive
+                        ? "bg-blue-200 text-blue-800"
+                        : "bg-slate-100 text-slate-600"
+                    }`}
+                  >
+                    and more
+                  </span>
+                </div>
               </div>
-
-              {/* Quantity */}
-              <div>
-                <Label htmlFor="quantity">Quantity</Label>
-                <Input
-                  id="quantity"
-                  type="number"
-                  min="1"
-                  value={currentPart.quantity}
-                  onChange={(e) => updatePart('quantity', parseInt(e.target.value) || 1)}
-                />
-              </div>
-
-              {/* Tolerance */}
-              <div>
-                <Label htmlFor="tolerance">Tolerance</Label>
-                <RadioGroup
-                  value={currentPart.tolerance}
-                  onValueChange={(value) => updatePart('tolerance', value)}
-                >
-                  {tolerances.map((tol) => (
-                    <div key={tol.value} className="flex items-center space-x-2">
-                      <RadioGroupItem value={tol.value} id={tol.value} />
-                      <Label htmlFor={tol.value} className="font-normal">
-                        {tol.label}
-                      </Label>
-                    </div>
-                  ))}
-                </RadioGroup>
-              </div>
-
-              {/* Finish */}
-              <div>
-                <Label htmlFor="finish">Surface Finish</Label>
-                <Select
-                  value={currentPart.finish}
-                  onValueChange={(value) => updatePart('finish', value)}
-                >
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {finishes.map((finish) => (
-                      <SelectItem key={finish.value} value={finish.value}>
-                        {finish.label} {finish.cost > 0 && `(+$${finish.cost})`}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-
-              {/* Threads */}
-              <div>
-                <Label htmlFor="threads">Thread Requirements</Label>
-                <Select
-                  value={currentPart.threads}
-                  onValueChange={(value) => updatePart('threads', value)}
-                >
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {threadOptions.map((thread) => (
-                      <SelectItem key={thread.value} value={thread.value}>
-                        {thread.label}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-
-              {/* Inspection */}
-              <div>
-                <Label htmlFor="inspection">Inspection Level</Label>
-                <Select
-                  value={currentPart.inspection}
-                  onValueChange={(value) => updatePart('inspection', value)}
-                >
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {inspectionOptions.map((insp) => (
-                      <SelectItem key={insp.value} value={insp.value}>
-                        {insp.label}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-
-              {/* Notes */}
-              <div>
-                <Label htmlFor="notes">Special Instructions</Label>
-                <textarea
-                  id="notes"
-                  value={currentPart.notes}
-                  onChange={(e) => updatePart('notes', e.target.value)}
-                  className="w-full min-h-[80px] p-3 border border-slate-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  placeholder="Critical dimensions, special requirements..."
-                />
-              </div>
-            </CardContent>
-          </Card>
+            </div>
+          </div>
         </div>
 
-        {/* COLUMN 3: Pricing Summary + Checkout (3 cols wide) */}
-        <div className="xl:col-span-3">
-          <Card className="sticky top-6">
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <DollarSign className="w-5 h-5" />
-                Pricing
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              {/* All Parts Summary */}
-              <div>
-                <h3 className="font-semibold text-sm mb-2">All Parts</h3>
-                <div className="space-y-2">
-                  {parts.map((part, index) => {
-                    const partPrice = calculatePrice(part, 'standard');
-                    return (
-                      <div
-                        key={part.id}
-                        className={`p-2 rounded text-xs ${
-                          index === currentPartIndex ? 'bg-blue-50 border border-blue-200' : 'bg-gray-50'
-                        }`}
-                      >
-                        <p className="font-medium truncate">{part.fileName}</p>
-                        <p className="text-gray-600">Qty {part.quantity} • ${partPrice.toFixed(2)}</p>
+        {/* RIGHT SIDEBAR (FIXED) */}
+        <div className="w-full lg:w-[400px] lg:flex-shrink-0 lg:border-r border-slate-200 lg:bg-white/40 z-30">
+          <div className="lg:sticky lg:top-[85px] p-6 custom-scrollbar">
+            <div className="backdrop-blur-xl border border-white/60 shadow-xl rounded-2xl p-6 flex flex-col gap-6">
+              <div className="flex items-center gap-2 pb-4 border-b border-slate-100">
+                <div className="p-2 bg-green-100 text-green-700 rounded-lg">
+                  <DollarSign className="w-5 h-5" />
+                </div>
+                <h2 className="text-lg font-bold text-slate-800">
+                  Order Summary
+                </h2>
+              </div>
+
+              {/* Mini Breakdown */}
+              <div className="space-y-3 max-h-[calc(100vh-85px)]   overflow-y-auto custom-scrollbar pr-1">
+                {parts.map((p, i) => {
+                  const pPrice = calculatePrice(p, p.leadTimeType);
+                  const calculatedLeadTime = calcLeadTime(
+                    p.leadTimeType,
+                    baseLeadTime,
+                  );
+                  return (
+                    <div
+                      key={p.id}
+                      className="flex justify-between items-center text-sm p-2 rounded-lg hover:bg-white/50 transition-colors"
+                    >
+                      <div className="flex flex-col gap-0.5">
+                        <div className="flex items-center gap-1.5">
+                          <span className="font-medium text-slate-800">
+                            <span className="truncate max-w-[120px] inline-block">
+                              {i + 1}. {p.fileName}
+                            </span>
+                          </span>
+                        </div>
+                        <span className="text-xs text-slate-500">
+                          Qty: {p.quantity}
+                        </span>
+                        <span className="text-xs text-slate-500">
+                          {LEAD_TIME_SHORT[p.leadTimeType]} (
+                          {calculatedLeadTime.toFixed(2)} Business Days)
+                        </span>
                       </div>
-                    );
-                  })}
-                </div>
+                      <span className="font-semibold mt-0.5 text-slate-700">
+                        ${pPrice.toFixed(3)}
+                      </span>
+                    </div>
+                  );
+                })}
               </div>
 
-              {/* Pricing Tiers */}
-              <div className="border-t pt-4">
-                <h3 className="font-semibold mb-3">Select Tier</h3>
-                
-                {/* Premium */}
-                <div className="p-3 bg-purple-50 rounded-lg border-2 border-purple-200 mb-3 cursor-pointer hover:shadow-md transition-all">
-                  <div className="flex items-center gap-2 mb-1">
-                    <Zap className="w-4 h-4 text-yellow-500" />
-                    <h4 className="font-bold text-purple-700 text-sm">Premium</h4>
-                  </div>
-                  <p className="text-2xl font-bold text-purple-600">${premiumPrice.toFixed(2)}</p>
-                  <p className="text-xs text-gray-600">{baseLeadTime} days</p>
-                </div>
-
-                {/* Standard */}
-                <div className="p-3 bg-green-50 rounded-lg border-2 border-green-300 mb-3 cursor-pointer hover:shadow-md transition-all relative">
-                  <Badge className="absolute -top-2 -right-2 bg-green-600 text-white text-xs">Popular</Badge>
-                  <div className="flex items-center gap-2 mb-1">
-                    <TrendingUp className="w-4 h-4 text-green-600" />
-                    <h4 className="font-bold text-green-700 text-sm">Standard</h4>
-                  </div>
-                  <p className="text-2xl font-bold text-green-600">${standardPrice.toFixed(2)}</p>
-                  <p className="text-xs text-gray-600">{Math.round(baseLeadTime * 2.1)} days</p>
-                </div>
-
-                {/* Economy */}
-                <div className="p-3 bg-blue-50 rounded-lg border-2 border-blue-200 mb-3 cursor-pointer hover:shadow-md transition-all">
-                  <div className="flex items-center gap-2 mb-1">
-                    <Clock className="w-4 h-4 text-blue-600" />
-                    <h4 className="font-bold text-blue-700 text-sm">Economy</h4>
-                  </div>
-                  <p className="text-2xl font-bold text-blue-600">${economyPrice.toFixed(2)}</p>
-                  <p className="text-xs text-gray-600">{Math.round(baseLeadTime * 3)} days</p>
-                </div>
+              <div className="flex items-center justify-between mt-4">
+                <span className="text-lg font-semibold text-slate-800">
+                  Total:
+                </span>
+                <span className="text-lg font-semibold text-slate-800">
+                  ${standardPrice.toFixed(3)}
+                </span>
               </div>
 
-              {/* Checkout */}
               <Button
-                className="w-full bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white"
+                size="lg"
                 onClick={handleCheckout}
                 disabled={saving}
+                className="w-full bg-blue-600 hover:bg-blue-700 text-white shadow-lg shadow-blue-500/30 rounded-xl h-14 text-lg font-bold transition-all hover:scale-[1.02] active:scale-[0.98]"
               >
                 {saving ? (
                   <>
-                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                    Saving...
+                    <Loader2 className="w-5 h-5 mr-2 animate-spin" />
                   </>
                 ) : (
-                  <>
+                  <div className="flex items-center justify-center w-full">
                     Checkout
-                    <ShoppingCart className="w-4 h-4 ml-2" />
-                  </>
+                    <ArrowRight className="w-5 h-5 ml-2" />
+                  </div>
                 )}
               </Button>
-              <p className="text-center text-xs text-gray-500 mt-2">
-                No credit card required
-              </p>
-
-              {/* Trust Badges */}
-              {/* <div className="mt-4 pt-4 border-t border-gray-200">
-                <div className="space-y-2">
-                  <div className="flex items-center gap-2 text-xs text-gray-600">
-                    <CheckCircle className="w-4 h-4 text-green-600" />
-                    <span>ISO 9001:2015 Certified</span>
-                  </div>
-                  <div className="flex items-center gap-2 text-xs text-gray-600">
-                    <CheckCircle className="w-4 h-4 text-green-600" />
-                    <span>100% Quality Guarantee</span>
-                  </div>
-                  <div className="flex items-center gap-2 text-xs text-gray-600">
-                    <CheckCircle className="w-4 h-4 text-green-600" />
-                    <span>Secure File Encryption</span>
-                  </div>
-                  <div className="flex items-center gap-2 text-xs text-gray-600">
-                    <CheckCircle className="w-4 h-4 text-green-600" />
-                    <span>10,000+ Parts Manufactured</span>
-                  </div>
-                  <div className="flex items-center gap-2 text-xs text-gray-600">
-                    <CheckCircle className="w-4 h-4 text-green-600" />
-                    <span>Free Design Review</span>
-                  </div>
-                </div>
-                
-                <div className="mt-3 pt-3 border-t border-gray-100">
-                  <p className="text-xs text-center text-gray-500">
-                    🔒 Your designs are safe and confidential
-                  </p>
-                </div>
-              </div> */}
-            </CardContent>
-          </Card>
+            </div>
+          </div>
         </div>
       </div>
     </div>

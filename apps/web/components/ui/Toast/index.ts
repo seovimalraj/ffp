@@ -1,1 +1,1 @@
-export * from "../toast-card"
+export * from "./toast-card";
