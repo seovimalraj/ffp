@@ -9,9 +9,14 @@ import { validate } from './config/env.validation';
 import { MaterialsModule } from './materials/materials.module';
 import { SupplierModule } from './supplier/supplier.module';
 import { ToleranceModule } from './tolerance/tolerance.module';
+import { MulterModule } from '@nestjs/platform-express';
+import { FilesModule } from './files/files.module';
 
 @Module({
   imports: [
+    MulterModule.register({
+      // des
+    }),
     ConfigModule.forRoot({
       isGlobal: true,
       envFilePath: '.env',
@@ -24,6 +29,7 @@ import { ToleranceModule } from './tolerance/tolerance.module';
     MaterialsModule,
     SupplierModule,
     ToleranceModule,
+    FilesModule,
   ],
   controllers: [AppController],
   providers: [AppService],

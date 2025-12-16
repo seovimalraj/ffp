@@ -6,23 +6,19 @@
 -- FROM role_permissions rp
 -- JOIN permissions p
 --     ON p.id = rp.permission_id;
-
 -- CREATE UNIQUE INDEX idx_user_permission_codes_mv_unique
 -- ON user_permission_codes_mv (user_id, permission_code, permission_id);
-
-CREATE OR REPLACE FUNCTION refresh_user_permission_codes_mv()
-RETURNS void
-LANGUAGE plpgsql
-SECURITY DEFINER
-AS
-$$
-BEGIN
-    -- Non-blocking for readers thanks to unique index
+CREATE OR REPLACE FUNCTION refresh_user_permission_codes_mv() RETURNS void LANGUAGE plpgsql SECURITY DEFINER AS $$ BEGIN -- Non-blocking for readers thanks to unique index
     REFRESH MATERIALIZED VIEW CONCURRENTLY user_permission_codes_mv;
 END;
 $$;
-
-
-REVOKE ALL ON FUNCTION refresh_user_permission_codes_mv() FROM PUBLIC;
-
-
+REVOKE ALL ON FUNCTION refresh_user_permission_codes_mv()
+FROM PUBLIC;
+CREATE table IF NOT EXISTS refresh_tokens (
+    id uuid primary key default gen_random_uuid(),
+    user_id uuid not null references users(id) on delete cascade,
+    token text not null,
+    created_at timestamp default now(),
+    expires_at timestamp,
+    updated_at timestamp default now()
+)

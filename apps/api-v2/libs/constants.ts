@@ -58,9 +58,8 @@ export enum MaterializedViewNames {
   userPermissionCodesMV = 'user_permission_codes_mv',
 }
 
-
 export enum SQLFunctions {
-  userPermissionCodesMVRefresh = 'refresh_user_permission_codes_mv'
+  userPermissionCodesMVRefresh = 'refresh_user_permission_codes_mv',
 }
 
 /**
@@ -73,6 +72,10 @@ export enum RoleNames {
   Supplier = 'supplier',
   /** Customer role for end users */
   Customer = 'customer',
+}
+
+export enum BucketNames {
+  storage = 'demo bucket',
 }
 
 export type CurrencyType = 'USD' | 'INR' | 'EUR';

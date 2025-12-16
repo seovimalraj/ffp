@@ -8,48 +8,27 @@ import { useDropzone } from "react-dropzone";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Badge } from "@/components/ui/badge";
 import {
   Upload,
   Sparkles,
   FileText,
-  CheckCircle,
   Shield,
   Clock,
-  Zap,
   Award,
-  Users,
   Package,
-  DollarSign,
-  Phone,
-  Mail,
-  MapPin,
   X,
   Loader2,
-  LogIn,
-  UserPlus,
   Eye,
   ArrowRight,
-  ArrowLeft,
   User,
   Settings,
-  ChevronRight,
   Layers,
   Box,
+  LogOut,
 } from "lucide-react";
-import {
-  createQuote,
-  uploadFile,
-  getFileDownloadUrl,
-} from "../../lib/database";
+import { getFileDownloadUrl } from "../../lib/database";
 import { analyzeCADFile, GeometryData } from "../../lib/cad-analysis";
-import {
-  calculatePricing,
-  getMaterial,
-  getFinish,
-  PROCESSES,
-  PricingBreakdown,
-} from "../../lib/pricing-engine";
+import { PricingBreakdown } from "../../lib/pricing-engine";
 import {
   Dialog,
   DialogContent,
@@ -57,8 +36,20 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { useSession } from "next-auth/react";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { signIn, signOut, useSession } from "next-auth/react";
 import { setItem } from "@/lib/item-storage";
+import { notify } from "@/lib/toast";
+import { randomInt } from "crypto";
+import ExpandFileModal from "../quote-config/components/expand-file-modal";
+import { useFileUpload } from "@/lib/hooks/use-file-upload";
 
 // Dynamically import 3D viewer to avoid SSR issues
 const CadViewer3D = dynamic(() => import("@/components/viewer/CadViewer3D"), {
@@ -83,16 +74,14 @@ interface UploadedFileData {
 export default function InstantQuotePage() {
   const router = useRouter();
   const [files, setFiles] = useState<File[]>([]);
-  const [uploadedFiles, setUploadedFiles] = useState<UploadedFileData[]>([]);
   const [isUploading, setIsUploading] = useState(false);
   const [showAuthModal, setShowAuthModal] = useState(false);
-  const [show3DViewer, setShow3DViewer] = useState(false);
-  const [selected3DFile, setSelected3DFile] = useState<UploadedFileData | null>(
+  const [selected3DFile, setSelected3DFile] = useState<File | string | null>(
     null,
   );
-  const [authMode, setAuthMode] = useState<"signin" | "signup">("signup");
-  const [quoteId, setQuoteId] = useState<string>("");
-  const [isLoggedIn, setIsLoggedIn] = useState(false); // Simulated login state
+  const [authMode, setAuthMode] = useState<"signin" | "signup">("signin");
+  const [isAuthLoading, setIsAuthLoading] = useState(false);
+  const [redirectUrl, setRedirectUrl] = useState<string>("");
   const [authForm, setAuthForm] = useState({
     email: "",
     password: "",
@@ -101,9 +90,15 @@ export default function InstantQuotePage() {
   });
 
   const session = useSession();
+  const { upload } = useFileUpload();
 
   const onDrop = useCallback((acceptedFiles: File[]) => {
     setFiles((prev) => [...prev, ...acceptedFiles]);
+
+    if (session.status === "unauthenticated") {
+      setShowAuthModal(true);
+      return;
+    }
   }, []);
 
   const { getRootProps, getInputProps, isDragActive, open } = useDropzone({
@@ -142,31 +137,36 @@ export default function InstantQuotePage() {
 
     try {
       // Analyze files and prepare for quote configuration
-      const uploadResults: UploadedFileData[] = [];
-
-      for (const file of files) {
+      const uploadPromises = files.map(async (file) => {
         // Analyze CAD geometry
         console.log(`Analyzing CAD file: ${file.name}`);
         const geometry = await analyzeCADFile(file);
         console.log(`Geometry analysis complete:`, geometry);
 
-        // Create mock storage path (will be uploaded later in quote-config)
-        const mockPath = `quotes/temp-${Date.now()}/${file.name}`;
+        // Upload file to Supabase
+        let uploadedPath = `quotes/temp-${Date.now()}/${file.name}`;
+        try {
+          const { url } = await upload(file);
+          uploadedPath = url;
+        } catch (error) {
+          console.error(`Failed to upload ${file.name}:`, error);
+          notify.error(`Failed to upload ${file.name}`);
+        }
 
-        uploadResults.push({
+        return {
           file,
-          uploadedPath: mockPath,
+          uploadedPath,
           name: file.name,
           size: file.size,
           mimeType: file.type,
           geometry,
-        });
-      }
+        } as UploadedFileData;
+      });
 
-      setUploadedFiles(uploadResults);
+      const uploadResults = await Promise.all(uploadPromises);
 
       // Generate temporary quote ID (no database call to avoid 502)
-      const tempQuoteId = `temp-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+      const tempQuoteId = `FRI_RFQ_${Math.floor(100000 + Math.random() * 900000)}`;
 
       // Store files in sessionStorage for quote-config page
       const filesData = uploadResults.map((r) => ({
@@ -196,64 +196,43 @@ export default function InstantQuotePage() {
         `Files stored in sessionStorage. Redirecting to quote config: ${tempQuoteId}`,
       );
 
-      // Redirect to quote config immediately
-      router.push(`/quote-config/${tempQuoteId}`);
+      if (session.status === "authenticated" || session.status === "loading") {
+        router.push(`/quote-config/${tempQuoteId}`);
+      } else {
+        setRedirectUrl(`/quote-config/${tempQuoteId}`);
+        setShowAuthModal(true);
+      }
     } catch (error: any) {
       console.error("Upload error:", error);
-      alert(`Failed to process files: ${error.message || "Please try again"}`);
+      notify.error(
+        "Failed to process files: " + error.message || "Please try again",
+      );
       setIsUploading(false);
-    }
-  };
-
-  const handle3DPreview = async (uploadedFile: UploadedFileData) => {
-    // Check if file is 3D viewable (STL, STEP, OBJ)
-    const ext = uploadedFile.name.toLowerCase().split(".").pop();
-    if (!ext || !["stl", "step", "stp", "obj"].includes(ext)) {
-      alert("This file type cannot be previewed in 3D viewer");
-      return;
-    }
-
-    try {
-      // For uploaded files, we already have the path
-      // Just need to get download URL if it's from storage
-      let viewerUrl = uploadedFile.uploadedPath;
-
-      // If the path looks like a storage path, get signed URL
-      if (
-        uploadedFile.uploadedPath.startsWith("quotes/") ||
-        uploadedFile.uploadedPath.startsWith("/")
-      ) {
-        viewerUrl = await getFileDownloadUrl(uploadedFile.uploadedPath);
-      }
-
-      setSelected3DFile({
-        ...uploadedFile,
-        uploadedPath: viewerUrl,
-      });
-      setShow3DViewer(true);
-    } catch (error) {
-      console.error("Failed to get download URL:", error);
-      alert("Failed to load 3D preview");
     }
   };
 
   const handleAuth = async (e: React.FormEvent) => {
     e.preventDefault();
+    setIsAuthLoading(true);
 
-    // Mock auth for now - in production this would call auth API
-    if (authMode === "signup" && !authForm.name) {
-      alert("Please enter your name");
-      return;
-    }
-    if (!authForm.email || !authForm.password) {
-      alert("Please enter email and password");
-      return;
+    if (authMode === "signin") {
+      const respone = await signIn("credentials", {
+        email: authForm.email,
+        password: authForm.password,
+        redirect: false,
+      });
+
+      if (respone?.error) {
+        notify.error("Error while signing in");
+        return;
+      }
     }
 
-    // Close modal and redirect to quote config
     setShowAuthModal(false);
-    setIsLoggedIn(true);
-    router.push(`/quote-config/${quoteId}`);
+    setIsAuthLoading(false);
+    if (redirectUrl) {
+      router.push(redirectUrl);
+    }
   };
 
   return (
@@ -263,36 +242,56 @@ export default function InstantQuotePage() {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-full flex items-center justify-between">
           {/* Left: Back to Home */}
           <Link href="/" className="flex items-center space-x-2">
-            <div className="h-8 px-3 rounded flex items-center justify-center">
+            <div className="h-16 px-3 rounded flex items-center justify-center">
               <img
                 src="https://frigate.ai/wp-content/uploads/2025/03/FastParts-logo-1024x351.png"
-                className="h-12 w-24"
+                className="aspect-video w-full h-full object-contain"
               />
             </div>
           </Link>
 
           {/* Right: Profile / Sign In */}
-          <Button
-            variant="ghost"
-            onClick={() => setShowAuthModal(true)}
-            className={`
-              font-medium text-sm transition-all duration-300
-              ${
-                session.status === "authenticated"
-                  ? "text-slate-700 hover:bg-slate-100"
-                  : "text-blue-700 hover:text-blue-800 hover:bg-blue-50"
-              }
-            `}
-          >
-            {session.status === "authenticated" ? (
-              <>
-                <User className="w-4 h-4 mr-2" />
-                Profile
-              </>
-            ) : (
-              "Sign In"
-            )}
-          </Button>
+          {session.status === "authenticated" ? (
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button
+                  variant="ghost"
+                  className="font-medium text-sm transition-all duration-300 text-slate-700 hover:bg-slate-100"
+                >
+                  <User className="w-4 h-4 mr-2" />
+                  {session.data.user.name}
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-56">
+                <DropdownMenuLabel className="font-normal">
+                  <div className="flex flex-col space-y-1">
+                    <p className="text-sm font-medium leading-none">
+                      {session.data.user.name}
+                    </p>
+                    <p className="text-xs leading-none text-muted-foreground">
+                      {session.data.user.email}
+                    </p>
+                  </div>
+                </DropdownMenuLabel>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem
+                  onClick={() => signOut()}
+                  className="text-red-600 cursor-pointer"
+                >
+                  <LogOut className="w-4 h-4 mr-2" />
+                  Sign Out
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          ) : (
+            <Button
+              variant="ghost"
+              onClick={() => setShowAuthModal(true)}
+              className="font-medium text-sm transition-all duration-300 text-blue-700 hover:text-blue-800 hover:bg-blue-50"
+            >
+              Sign In
+            </Button>
+          )}
         </div>
       </header>
 
@@ -394,6 +393,7 @@ export default function InstantQuotePage() {
           <div
             className={`
               relative group rounded-3xl p-1
+              cursor-pointer
               bg-gradient-to-br from-white/80 to-white/40
               backdrop-blur-xl border border-white/50 shadow-[0_8px_32px_rgba(0,0,0,0.04)]
               transition-all duration-500
@@ -510,14 +510,7 @@ export default function InstantQuotePage() {
                                 title="3D Preview"
                                 onClick={(e) => {
                                   e.stopPropagation();
-                                  const objectUrl = URL.createObjectURL(file);
-                                  handle3DPreview({
-                                    file,
-                                    name: file.name,
-                                    uploadedPath: objectUrl,
-                                    size: file.size,
-                                    mimeType: file.type,
-                                  });
+                                  setSelected3DFile(file);
                                 }}
                               >
                                 <Eye className="w-4 h-4" />
@@ -588,22 +581,22 @@ export default function InstantQuotePage() {
             <img
               src="https://frigate.ai/wp-content/uploads/2024/04/Reliance-1-150x90.png"
               alt="Reliance"
-              className="h-20 w-20"
+              className="aspect-auto h-20"
             />
             <img
               src="https://frigate.ai/wp-content/uploads/2024/04/TATA-1-1-150x90.png"
               alt="TATA"
-              className="h-20 w-20"
+              className="aspect-auto h-20"
             />
             <img
-              src="https://frigate.ai/wp-content/uploads/2024/03/client-logoAsset-29.png"
+              src="https://frigate.ai/wp-content/uploads/2024/07/Indian-oil-logo-300x113.png"
               alt=""
-              className="h-20 w-24"
+              className="aspect-auto h-20"
             />
             <img
-              src="https://frigate.ai/wp-content/uploads/2024/03/client-logoAsset-8.png"
+              src="https://frigate.ai/wp-content/uploads/2024/07/MRG-logo-300x113.png"
               alt=""
-              className="h-20 w-24"
+              className="aspect-auto h-20"
             />
           </div>
         </div>
@@ -732,13 +725,17 @@ export default function InstantQuotePage() {
               Support
             </Link>
           </div>
-          <p>© 2024 Frigate CNC. Secure & Confidential.</p>
+          <p>© 2025 Frigate Engineering Services. Secure & Confidential.</p>
         </footer>
       </main>
 
       {/* Auth Modal - Preserves functionality, updates style */}
       <Dialog open={showAuthModal} onOpenChange={setShowAuthModal}>
-        <DialogContent className="sm:max-w-md border-0 shadow-2xl bg-white/95 backdrop-blur-md">
+        <DialogContent
+          onInteractOutside={(e) => e.preventDefault()}
+          onEscapeKeyDown={(e) => e.preventDefault()}
+          className="sm:max-w-md border-0 shadow-2xl bg-white/95 backdrop-blur-md"
+        >
           <DialogHeader>
             <DialogTitle className="text-2xl font-light text-center mb-2">
               {authMode === "signup" ? "Create Account" : "Welcome Back"}
@@ -746,7 +743,7 @@ export default function InstantQuotePage() {
             <DialogDescription className="text-center">
               {authMode === "signup"
                 ? "Save your quotes and track your orders."
-                : "Sign in to access your dashboard."}
+                : "Sign in to access your quotes and orders."}
             </DialogDescription>
           </DialogHeader>
 
@@ -816,39 +813,42 @@ export default function InstantQuotePage() {
 
             <Button
               type="submit"
+              loading={isAuthLoading}
               className="w-full bg-blue-600 hover:bg-blue-700 text-white font-medium h-11"
             >
               {authMode === "signup" ? "Create Account" : "Sign In"}
             </Button>
 
-            <div className="text-center text-sm pt-2">
+            <div className="text-center text-white text-sm pt-2">
               {authMode === "signup" ? (
                 <p className="text-slate-500">
                   Already have an account?{" "}
-                  <button
+                  <Button
                     type="button"
+                    variant="link"
                     onClick={() => {
                       setAuthMode("signin");
-                      setShowAuthModal(false);
+                      setShowAuthModal(true);
                     }}
-                    className="text-blue-600 hover:underline font-medium"
+                    className="text-blue-600 hover:text-blue-700 hover:underline font-medium p-0 h-auto"
                   >
                     Sign in
-                  </button>
+                  </Button>
                 </p>
               ) : (
                 <p className="text-slate-500">
                   Don't have an account?{" "}
-                  <button
+                  <Button
                     type="button"
+                    variant="link"
                     onClick={() => {
                       setAuthMode("signup");
-                      setShowAuthModal(false);
+                      setShowAuthModal(true);
                     }}
-                    className="text-blue-600 hover:underline font-medium"
+                    className="text-blue-600 hover:text-blue-700 hover:underline font-medium p-0 h-auto"
                   >
                     Sign up
-                  </button>
+                  </Button>
                 </p>
               )}
             </div>
@@ -857,51 +857,12 @@ export default function InstantQuotePage() {
       </Dialog>
 
       {/* 3D Viewer Dialog */}
-      <Dialog open={show3DViewer} onOpenChange={setShow3DViewer}>
-        <DialogContent className="sm:max-w-[90vw] max-h-[90vh] p-0 border-0 bg-white backdrop-blur shadow-2xl overflow-hidden">
-          <DialogHeader className="px-6 py-4 border-b border-white/10 flex flex-row items-center justify-between">
-            <div>
-              <DialogTitle className="text-white font-medium flex items-center gap-2">
-                <Package className="w-5 h-5 text-green-400" />
-                {selected3DFile?.name}
-              </DialogTitle>
-              <DialogDescription className="text-slate-400 text-xs">
-                Interactive 3D Preview
-              </DialogDescription>
-            </div>
-            <Button
-              variant="ghost"
-              size="icon"
-              onClick={() => setShow3DViewer(false)}
-              className="text-slate-400 hover:text-white hover:bg-white/10"
-            >
-              <X className="w-5 h-5" />
-            </Button>
-          </DialogHeader>
-
-          <div className="h-[70vh] bg-slate-950 relative">
-            {selected3DFile && (
-              <CadViewer3D
-                modelUrl={selected3DFile.uploadedPath}
-                fileType={
-                  selected3DFile.name.toLowerCase().split(".").pop() as
-                    | "stl"
-                    | "step"
-                    | "obj"
-                    | "stp"
-                }
-                width="100%"
-                height="100%"
-                showMeasurementTools={true}
-                showCrossSectionControls={true}
-                backgroundColor="#0f172a"
-                enableShadows={true}
-                units="mm"
-              />
-            )}
-          </div>
-        </DialogContent>
-      </Dialog>
+      {selected3DFile && (
+        <ExpandFileModal
+          expandedFile={selected3DFile}
+          setExpandedFile={setSelected3DFile}
+        />
+      )}
     </div>
   );
 }

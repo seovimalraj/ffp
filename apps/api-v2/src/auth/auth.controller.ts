@@ -1,4 +1,12 @@
-import { Body, Controller, Get, HttpException, HttpStatus, Post, UseGuards } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Get,
+  HttpException,
+  HttpStatus,
+  Post,
+  UseGuards,
+} from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { SupabaseService } from 'src/supabase/supabase.service';
 import { AuthGuard } from './auth.guard';
@@ -11,218 +19,258 @@ import { AuthDto, LogoutDto, RefreshTokenDto } from './auth.dto';
 
 @Controller('auth')
 export class AuthController {
-    constructor(
-        private readonly supabaseService: SupabaseService,
-        private readonly jwtService: JwtService
-    ) { }
+  constructor(
+    private readonly supabaseService: SupabaseService,
+    private readonly jwtService: JwtService,
+  ) {}
 
-    @Get('profile')
-    @UseGuards(AuthGuard)
-    async getProfile(@CurrentUser() user: any) {
-        return user
+  @Get('profile')
+  @UseGuards(AuthGuard)
+  async getProfile(@CurrentUser() user: any) {
+    return user;
+  }
+
+  @Post('login')
+  async login(@Body() body: AuthDto) {
+    try {
+      const { email, password } = body;
+
+      if (!email || !password) {
+        throw new HttpException(
+          'Email and password are required',
+          HttpStatus.BAD_REQUEST,
+        );
+      }
+
+      const client = this.supabaseService.getClient();
+      const { data: user, error } = await client
+        .from(Tables.UserTable)
+        .select('*')
+        .eq('email', email)
+        .single();
+
+      console.log(user);
+
+      if (error || !user) {
+        throw new HttpException('Invalid credentials', HttpStatus.UNAUTHORIZED);
+      }
+
+      const isPasswordValid = await compare(password, user.password_hash);
+
+      if (!isPasswordValid) {
+        throw new HttpException('Invalid credentials', HttpStatus.UNAUTHORIZED);
+      }
+
+      const refreshToken = randomBytes(32).toString('hex');
+      const refreshTokenHash = await hash(refreshToken, 12);
+      const refreshTokenExpiresAt = new Date();
+      refreshTokenExpiresAt.setDate(refreshTokenExpiresAt.getDate() + 30);
+
+      const { error: refreshTokenError } = await client
+        .from(Tables.RefreshTokensTable)
+        .upsert(
+          {
+            user_id: user.id,
+            token: refreshTokenHash,
+            expires_at: refreshTokenExpiresAt.toISOString(),
+          },
+          { onConflict: 'user_id' },
+        );
+
+      if (refreshTokenError) {
+        console.error(refreshTokenError);
+        throw new HttpException(
+          'Failed to generate refresh token',
+          HttpStatus.INTERNAL_SERVER_ERROR,
+        );
+      }
+
+      // Generate JWT access token
+      const accessToken = this.jwtService.sign({
+        sub: user.id,
+        email: user.email,
+        role: user.role,
+        organizationId: user.organization_id || null,
+      });
+
+      const result = {
+        id: user.id,
+        email: user.email,
+        name: user.full_name || user.name || user.email,
+        role: user.role,
+        organizationId: user.organization_id || null,
+        accessToken: accessToken,
+        refreshToken: refreshToken,
+      };
+      return result;
+    } catch (error) {
+      console.error(error);
+      if (error instanceof Error) {
+        throw error;
+      }
+
+      throw new HttpException(
+        'Internal Server Error',
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
     }
+  }
 
-    @Post('login')
-    async login(@Body() body: AuthDto) {
-        try {
-            const { email, password } = body;
+  @Post('refresh')
+  async refreshToken(@Body() body: RefreshTokenDto) {
+    try {
+      const { refreshToken, userId } = body;
 
-            if (!email || !password) {
-                throw new HttpException('Email and password are required', HttpStatus.BAD_REQUEST);
-            }
+      console.log('Refresh token request:', {
+        userId,
+        hasRefreshToken: !!refreshToken,
+      });
 
-            const client = this.supabaseService.getClient();
-            const { data: user, error } = await client
-                .from(Tables.UserTable)
-                .select("*")
-                .eq('email', email)
-                .single();
+      if (!refreshToken || !userId) {
+        throw new HttpException(
+          'Refresh token and user ID are required',
+          HttpStatus.BAD_REQUEST,
+        );
+      }
 
-            if (error || !user) {
-                throw new HttpException('Invalid credentials', HttpStatus.UNAUTHORIZED);
-            }
+      const client = this.supabaseService.getClient();
 
-            const isPasswordValid = await compare(password, user.password_hash);
+      // Get user info
+      const { data: user, error: userError } = await client
+        .from(Tables.UserTable)
+        .select('*')
+        .eq('id', userId)
+        .single();
 
-            if (!isPasswordValid) {
-                throw new HttpException('Invalid credentials', HttpStatus.UNAUTHORIZED);
-            }
+      if (userError || !user) {
+        console.log('User not found during refresh:', {
+          userId,
+          error: userError,
+        });
+        throw new HttpException('User not found', HttpStatus.UNAUTHORIZED);
+      }
 
-            const refreshToken = randomBytes(32).toString('hex');
-            const refreshTokenHash = await hash(refreshToken, 12);
-            const refreshTokenExpiresAt = new Date();
-            refreshTokenExpiresAt.setDate(refreshTokenExpiresAt.getDate() + 30);
+      // Get refresh token from refresh_tokens table
+      const { data: tokenData, error: tokenError } = await client
+        .from(Tables.RefreshTokensTable)
+        .select('*')
+        .eq('user_id', userId)
+        .single();
 
-            const { error: refreshTokenError } = await client
-                .from(Tables.RefreshTokensTable)
-                .upsert({
-                    user_id: user.id,
-                    token: refreshTokenHash,
-                    expires_at: refreshTokenExpiresAt.toISOString()
-                }, { onConflict: 'user_id' });
+      if (tokenError || !tokenData) {
+        console.log('No refresh token in database for user:', userId);
+        throw new HttpException(
+          'No valid refresh token',
+          HttpStatus.UNAUTHORIZED,
+        );
+      }
 
-            if (refreshTokenError) {
-                console.error(refreshTokenError)
-                throw new HttpException('Failed to generate refresh token', HttpStatus.INTERNAL_SERVER_ERROR);
-            }
+      // Check if refresh token is expired
+      const tokenExpiresAt = new Date(tokenData.expires_at);
+      const now = new Date();
 
-            // Generate JWT access token
-            const accessToken = this.jwtService.sign({
-                sub: user.id,
-                email: user.email,
-                role: user.role,
-                organizationId: user.organization_id || null,
-            });
+      console.log('Token expiry check:', {
+        tokenExpiresAt: tokenExpiresAt.toISOString(),
+        now: now.toISOString(),
+        isExpired: tokenExpiresAt < now,
+      });
 
-            const result = {
-                id: user.id,
-                email: user.email,
-                name: user.full_name || user.email,
-                role: user.role,
-                organizationId: user.organization_id || null,
-                accessToken: accessToken,
-                refreshToken: refreshToken,
-            }
-            return result;
-        } catch (error) {
-            console.error(error);
-            if (error instanceof Error) {
-                throw error;
-            }
+      if (tokenExpiresAt < now) {
+        console.log('Refresh token expired for user:', userId);
+        // Delete expired token
+        await client
+          .from(Tables.RefreshTokensTable)
+          .delete()
+          .eq('user_id', userId);
+        throw new HttpException(
+          'Refresh token expired',
+          HttpStatus.UNAUTHORIZED,
+        );
+      }
 
-            throw new HttpException('Internal Server Error', HttpStatus.INTERNAL_SERVER_ERROR);
-        }
+      // Verify refresh token
+      const isValidRefreshToken = await compare(refreshToken, tokenData.token);
+
+      console.log('Refresh token validation:', {
+        userId,
+        isValid: isValidRefreshToken,
+        tokenLength: refreshToken.length,
+      });
+
+      if (!isValidRefreshToken) {
+        console.log('Invalid refresh token for user:', userId);
+        throw new HttpException(
+          'Invalid refresh token',
+          HttpStatus.UNAUTHORIZED,
+        );
+      }
+
+      // Generate new JWT access token
+      const accessToken = this.jwtService.sign({
+        sub: user.id,
+        email: user.email,
+        role: user.role,
+        organizationId: user.organization_id || null,
+      });
+
+      // Don't rotate refresh token - just return the same one
+      // This prevents issues with NextAuth trying to use old tokens
+      const result = {
+        id: user.id,
+        email: user.email,
+        name: user.full_name || user.name || user.email,
+        role: user.role || 'customer',
+        organizationId: user.organization_id || null,
+        accessToken: accessToken,
+        refreshToken: refreshToken, // Return the same refresh token
+      };
+
+      console.log('Token refresh successful');
+      return result;
+    } catch (error) {
+      console.error('Refresh token error:', error);
+      if (error instanceof HttpException) {
+        throw error;
+      }
+      throw new HttpException(
+        'Internal server error',
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
     }
+  }
 
-    @Post('refresh')
-    async refreshToken(@Body() body: RefreshTokenDto) {
-        try {
-            const { refreshToken, userId } = body;
+  @Post('logout')
+  async logout(@Body() body: LogoutDto) {
+    try {
+      const { userId } = body;
 
-            console.log('Refresh token request:', { userId, hasRefreshToken: !!refreshToken });
+      if (!userId) {
+        throw new HttpException('User ID is required', HttpStatus.BAD_REQUEST);
+      }
 
-            if (!refreshToken || !userId) {
-                throw new HttpException('Refresh token and user ID are required', HttpStatus.BAD_REQUEST);
-            }
+      const client = this.supabaseService.getClient();
+      const { error } = await client
+        .from(Tables.RefreshTokensTable)
+        .delete()
+        .eq('user_id', userId);
 
-            const client = this.supabaseService.getClient();
+      if (error) {
+        throw new HttpException(
+          'Failed to invalidate refresh token',
+          HttpStatus.INTERNAL_SERVER_ERROR,
+        );
+      }
 
-            // Get user info
-            const { data: user, error: userError } = await client
-                .from(Tables.UserTable)
-                .select("*")
-                .eq("id", userId)
-                .single();
-
-            if (userError || !user) {
-                console.log('User not found during refresh:', { userId, error: userError });
-                throw new HttpException('User not found', HttpStatus.UNAUTHORIZED);
-            }
-
-            // Get refresh token from refresh_tokens table
-            const { data: tokenData, error: tokenError } = await client
-                .from(Tables.RefreshTokensTable)
-                .select('*')
-                .eq('user_id', userId)
-                .single();
-
-            if (tokenError || !tokenData) {
-                console.log('No refresh token in database for user:', userId);
-                throw new HttpException('No valid refresh token', HttpStatus.UNAUTHORIZED);
-            }
-
-            // Check if refresh token is expired
-            const tokenExpiresAt = new Date(tokenData.expires_at);
-            const now = new Date();
-
-            console.log('Token expiry check:', {
-                tokenExpiresAt: tokenExpiresAt.toISOString(),
-                now: now.toISOString(),
-                isExpired: tokenExpiresAt < now
-            });
-
-            if (tokenExpiresAt < now) {
-                console.log('Refresh token expired for user:', userId);
-                // Delete expired token
-                await client
-                    .from(Tables.RefreshTokensTable)
-                    .delete()
-                    .eq('user_id', userId);
-                throw new HttpException('Refresh token expired', HttpStatus.UNAUTHORIZED);
-            }
-
-            // Verify refresh token
-            const isValidRefreshToken = await compare(refreshToken, tokenData.token);
-
-            console.log('Refresh token validation:', {
-                userId,
-                isValid: isValidRefreshToken,
-                tokenLength: refreshToken.length
-            });
-
-            if (!isValidRefreshToken) {
-                console.log('Invalid refresh token for user:', userId);
-                throw new HttpException('Invalid refresh token', HttpStatus.UNAUTHORIZED);
-            }
-
-            // Generate new JWT access token
-            const accessToken = this.jwtService.sign({
-                sub: user.id,
-                email: user.email,
-                role: user.role,
-                organizationId: user.organization_id || null,
-            });
-
-            // Don't rotate refresh token - just return the same one
-            // This prevents issues with NextAuth trying to use old tokens
-            const result = {
-                id: user.id,
-                email: user.email,
-                name: user.full_name || user.email,
-                role: user.role || 'customer',
-                organizationId: user.organization_id || null,
-                accessToken: accessToken,
-                refreshToken: refreshToken // Return the same refresh token
-            };
-
-            console.log('Token refresh successful');
-            return result;
-        } catch (error) {
-            console.error('Refresh token error:', error);
-            if (error instanceof HttpException) {
-                throw error;
-            }
-            throw new HttpException('Internal server error', HttpStatus.INTERNAL_SERVER_ERROR);
-        }
+      return { message: 'Logged out successfully' };
+    } catch (error) {
+      console.error(error);
+      if (error instanceof HttpException) {
+        throw error;
+      }
+      throw new HttpException(
+        'Internal server error',
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
     }
-
-    @Post('logout')
-    async logout(@Body() body: LogoutDto) {
-        try {
-            const { userId } = body;
-
-            if (!userId) {
-                throw new HttpException('User ID is required', HttpStatus.BAD_REQUEST);
-            }
-
-            const client = this.supabaseService.getClient();
-            const { error } = await client
-                .from(Tables.RefreshTokensTable)
-                .delete()
-                .eq('user_id', userId);
-
-            if (error) {
-                throw new HttpException('Failed to invalidate refresh token', HttpStatus.INTERNAL_SERVER_ERROR);
-            }
-
-            return { message: 'Logged out successfully' };
-        } catch (error) {
-            console.error(error);
-            if (error instanceof HttpException) {
-                throw error;
-            }
-            throw new HttpException('Internal server error', HttpStatus.INTERNAL_SERVER_ERROR);
-        }
-    }
-
+  }
 }

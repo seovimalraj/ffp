@@ -185,8 +185,6 @@ function OBJModel({ file }: { file: File }) {
   return <primitive ref={groupRef} object={object} />;
 }
 
-
-
 function Scene({ file, extension }: { file: File; extension: string }) {
   useEffect(() => {
     console.log(`Loading 3D model: ${file.name} (${extension})`);
@@ -272,7 +270,7 @@ export default function CadViewer3D({
     return (
       <Card
         className={`flex items-center justify-center bg-gray-50 border-2 border-dashed ${className}`}
-        style={{ width, height }}
+        style={{ width, height, maxHeight: "100px" }}
       >
         <div className="text-center p-6">
           <AlertCircle className="w-12 h-12 text-gray-400 mx-auto mb-2" />

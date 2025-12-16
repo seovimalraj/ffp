@@ -12,10 +12,23 @@ CREATE TABLE IF NOT EXISTS general_tolerances (
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
-
 CREATE index IF NOT EXISTS idx_general_tolerances_name ON general_tolerances(name);
-
-INSERT INTO general_tolerances (name, range_value, percentage, description) VALUES
-("Standard", 0.005, 0, "Standard general tolerance"),
-("Precision", 0.002, 5, "Higher precision tolerance"),
-("Tight",   0.001, 25, "Custom tolerance as specified by the user");
+INSERT INTO general_tolerances (name, range_value, percentage, description)
+VALUES (
+        "Standard",
+        0.005,
+        0,
+        "Standard general tolerance"
+    ),
+    (
+        "Precision",
+        0.002,
+        5,
+        "Higher precision tolerance"
+    ),
+    (
+        "Tight",
+        0.001,
+        25,
+        "Custom tolerance as specified by the user"
+    );
