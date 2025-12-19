@@ -251,7 +251,7 @@ export default function InstantQuotePage() {
           </Link>
 
           {/* Right: Profile / Sign In */}
-          {session.status === "authenticated" ? (
+          {session.status === "authenticated" && session.data.user ? (
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button
@@ -259,17 +259,17 @@ export default function InstantQuotePage() {
                   className="font-medium text-sm transition-all duration-300 text-slate-700 hover:bg-slate-100"
                 >
                   <User className="w-4 h-4 mr-2" />
-                  {session.data.user.name}
+                  {session?.data?.user?.name}
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end" className="w-56">
                 <DropdownMenuLabel className="font-normal">
                   <div className="flex flex-col space-y-1">
                     <p className="text-sm font-medium leading-none">
-                      {session.data.user.name}
+                      {session?.data?.user?.name}
                     </p>
                     <p className="text-xs leading-none text-muted-foreground">
-                      {session.data.user.email}
+                      {session?.data?.user?.email}
                     </p>
                   </div>
                 </DropdownMenuLabel>

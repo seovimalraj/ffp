@@ -49,11 +49,11 @@ import dynamic from "next/dynamic";
 import { ImageViewerModal } from "@/components/image-viewer-modal";
 import { CubeIcon } from "@heroicons/react/24/outline";
 import { formatCurrencyFixed } from "@/lib/utils";
-import { CadViewer } from "@/components/cad/cad-viewer";
 import ExpandFileModal from "./expand-file-modal";
 import { EditPartModal } from "./edit-part-modal";
 import { useFileUpload } from "@/lib/hooks/use-file-upload";
 import { notify } from "@/lib/toast";
+import { CadViewer, Viewer } from "@cnc-quote/ui/components/viewer";
 
 // Dynamically import PDF viewer to avoid SSR issues with DOMMatrix
 const PdfViewerModal = dynamic(

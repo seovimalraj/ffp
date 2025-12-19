@@ -1,11 +1,7 @@
 {
   "compilerOptions": {
     "target": "es5",
-    "lib": [
-      "dom",
-      "dom.iterable",
-      "esnext"
-    ],
+    "lib": ["dom", "dom.iterable", "esnext"],
     "allowJs": true,
     "skipLibCheck": true,
     "strict": true,
@@ -21,27 +17,15 @@
     "jsxImportSource": "react",
     "baseUrl": ".",
     "paths": {
-      "@/*": [
-        "./src/*",
-        "./*"
-      ],
-      "@/app/*": [
-        "./app/*"
-      ],
-      "@/lib/*": [
-        "./lib/*",
-        "./src/lib/*"
-      ],
-      "@/components/*": [
-        "./components/*",
-        "./src/components/*"
-      ],
-      "@cnc-quote/shared": [
-        "../../packages/shared/src/index.ts"
-      ],
+      "@/*": ["./src/*", "./*"],
+      "@/app/*": ["./app/*"],
+      "@/lib/*": ["./lib/*", "./src/lib/*"],
+      "@/components/*": ["./components/*", "./src/components/*"],
+      "@cnc-quote/shared": ["../../packages/shared/src/index.ts"],
       "@cnc-quote/shared/contracts/*": [
         "../../packages/shared/src/contracts/*"
-      ]
+      ],
+      "@cnc-quote/ui/*": ["../../packages/ui/src/*"]
     },
     "plugins": [
       {
@@ -57,7 +41,5 @@
     ".next/types/**/*.ts",
     "../../packages/shared/src/**/*"
   ],
-  "exclude": [
-    "node_modules"
-  ]
+  "exclude": ["node_modules"]
 }
