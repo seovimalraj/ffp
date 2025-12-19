@@ -2,8 +2,6 @@
 
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import {
   Dialog,
   DialogContent,
@@ -11,31 +9,15 @@ import {
   DialogTitle,
   DialogDescription,
 } from "@/components/ui/dialog";
+
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
-import { GeometryData } from "@/lib/cad-analysis";
-import { PricingBreakdown } from "@/lib/pricing-engine";
-import {
-  Package,
-  CheckCircle,
-  Clock,
-  DollarSign,
-  ArrowRight,
   Zap,
-  TrendingUp,
   Loader2,
   Upload,
   Trash2,
   Settings,
   FileIcon,
   FileText,
-  PencilIcon,
   Maximize2,
   Activity,
   Ruler,
@@ -62,63 +44,23 @@ const PdfViewerModal = dynamic(
   { ssr: false },
 );
 
-export interface File2D {
-  file: File;
-  preview: string;
-}
-
-export interface PartConfig {
-  id: string;
-  fileName: string;
-  filePath: string;
-  fileObject?: File;
-  material: string;
-  quantity: number;
-  tolerance: string;
-  finish: string;
-  threads: string;
-  inspection: string;
-  notes: string;
-  leadTimeType: "economy" | "standard" | "expedited";
-  geometry?: GeometryData;
-  pricing?: PricingBreakdown;
-  files2d?: File2D[];
-  certificates?: string[];
-}
-
-export type MaterialItem = {
-  value: string;
-  label: string;
-  multiplier: number;
-  icon: string;
-};
-
-export type ToleranceItem = {
-  value: string;
-  label: string;
-};
-
-export type FinishItem = {
-  value: string;
-  label: string;
-  cost: number;
-};
-
-export type InspectionItem = {
-  value: string;
-  label: string;
-};
-
-export type ThreadItem = {
-  value: string;
-  label: string;
-};
+import {
+  PartConfig,
+  File2D,
+  MaterialItem,
+  ToleranceItem,
+  FinishItem,
+  InspectionItem,
+  ThreadItem,
+} from "@/types/part-config";
+import { apiClient } from "@/lib/api";
 
 // --- Sub-Component: PartCardItem ---
 export function PartCardItem({
   part,
   index,
   updatePart,
+  updatePartFields,
   handleDeletePart,
   handleArchivePart,
   calculatePrice,
@@ -128,12 +70,21 @@ export function PartCardItem({
   THREAD_OPTIONS,
   INSPECTIONS_OPTIONS,
   isSelected,
-  isSelectionMode,
   onToggleSelection,
 }: {
   part: PartConfig;
   index: number;
-  updatePart: (index: number, field: keyof PartConfig, value: any) => void;
+  updatePart: (
+    index: number,
+    field: keyof PartConfig,
+    value: any,
+    saveToDb?: boolean,
+  ) => void;
+  updatePartFields?: (
+    index: number,
+    updates: Partial<PartConfig>,
+    saveToDb?: boolean,
+  ) => void;
   handleDeletePart: (index: number) => void;
   handleArchivePart?: (partId: string) => void;
   calculatePrice: (
@@ -145,46 +96,73 @@ export function PartCardItem({
   FINISHES_LIST: FinishItem[];
   INSPECTIONS_OPTIONS: InspectionItem[];
   THREAD_OPTIONS: ThreadItem[];
-  isSelectionMode?: boolean;
   isSelected?: boolean;
   onToggleSelection?: () => void;
 }) {
   // const [isEditing, setIsEditing] = useState(false);
   const [selectedFile, setSelectedFile] = useState<File2D | null>(null);
+  const [isUploading, setIsUploading] = useState(false);
   const [isViewerOpen, setIsViewerOpen] = useState(false);
   const [isPdfViewerOpen, setIsPdfViewerOpen] = useState(false);
   const [isFilesModalOpen, setIsFilesModalOpen] = useState(false);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [expandedFile, setExpandedFile] = useState<File | string | null>(null);
-  const price = calculatePrice(part, "standard");
 
   const { upload } = useFileUpload();
 
   const onDrop = useCallback(
     async (acceptedFiles: File[]) => {
       if (acceptedFiles.length > 0) {
-        const newFiles = await Promise.all(
-          acceptedFiles.map(async (file) => {
-            let preview = URL.createObjectURL(file);
-            try {
-              const { url } = await upload(file);
-              preview = url;
-            } catch (error) {
-              console.error("Failed to upload 2D file:", error);
-              notify.error(`Failed to upload ${file.name}`);
-            }
-            return {
-              file,
-              preview,
-            };
-          }),
-        );
+        setIsUploading(true);
+        try {
+          const newFiles = await Promise.all(
+            acceptedFiles.map(async (file) => {
+              let preview = URL.createObjectURL(file);
+              try {
+                const { url } = await upload(file);
+                preview = url;
+              } catch (error) {
+                console.error("Failed to upload 2D file:", error);
+                notify.error(`Failed to upload ${file.name}`);
+              }
+              return {
+                file,
+                preview,
+              };
+            }),
+          );
 
-        const currentFiles = part.files2d || [];
-        updatePart(index, "files2d", [...currentFiles, ...newFiles]);
+          const { data } = await apiClient.post(
+            `/rfq/${part.rfqId}/${part.id}/add-2d-drawings`,
+            {
+              drawings: newFiles.map((f) => ({
+                file_name: f.file.name,
+                file_url: f.preview,
+                mime_type: f.file.type,
+              })),
+            },
+          );
+
+          if (!data || !data.drawings) {
+            throw new Error("Failed to upload files");
+          }
+
+          const uploadedFiles = newFiles.map((f, i) => ({
+            ...f,
+            id: data.drawings[i]?.id,
+          }));
+
+          const currentFiles = part.files2d || [];
+          updatePart(index, "files2d", [...currentFiles, ...uploadedFiles]);
+        } catch (error) {
+          console.error("Error uploading files:", error);
+          notify.error("Failed to upload files");
+        } finally {
+          setIsUploading(false);
+        }
       }
     },
-    [index, updatePart, upload],
+    [index, updatePart, upload, part.files2d],
   );
 
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
@@ -215,7 +193,28 @@ export function PartCardItem({
     }
   };
 
-  const handleDeleteFile = (fileIndex: number) => {
+  const handleDeleteFile = async (fileIndex: number) => {
+    const fileToDelete = part.files2d?.[fileIndex];
+    if (!fileToDelete) return;
+
+    const fileId =
+      "id" in fileToDelete.file ? fileToDelete.file.id : fileToDelete.id;
+
+    console.log("in", fileId);
+
+    if (fileId) {
+      try {
+        await apiClient.delete(
+          `/rfq/${part.rfqId}/parts/${part.id}/drawings/${fileId}`,
+        );
+        notify.success("Drawing removed");
+      } catch (error) {
+        console.error("Failed to delete drawing", error);
+        notify.error("Failed to delete drawing");
+        return;
+      }
+    }
+
     const currentFiles = part.files2d || [];
     const updatedFiles = currentFiles.filter((_, i) => i !== fileIndex);
     updatePart(index, "files2d", updatedFiles);
@@ -243,7 +242,7 @@ export function PartCardItem({
         {/* LEFT SIDEBAR: Visuals, Pricing, Key Metrics */}
         <div className="w-full md:w-[340px] bg-slate-50/80 border-b md:border-b-0 md:border-r border-slate-100 p-6 flex flex-col gap-6 flex-shrink-0">
           {/* 3D Thumbnail */}
-          <div className="aspect-square w-full md:max-h-[200px] lg:max-h-[300px] bg-white rounded-xl border border-slate-200 overflow-hidden shadow-sm relative hover:border-blue-400 transition-colors">
+          <div className="aspect-square w-full max-h-[200px] md:max-w-[200px] md:max-h-[200px] lg:max-h-[300px] bg-white rounded-xl border border-slate-200 overflow-hidden shadow-sm relative hover:border-blue-400 transition-colors">
             <CadViewer
               file={part.fileObject || part.filePath}
               className="h-full w-full"
@@ -313,6 +312,7 @@ export function PartCardItem({
                       index,
                       "leadTimeType",
                       leadTimeType as "economy" | "standard" | "expedited",
+                      false, // Deferred save
                     )
                   }
                 >
@@ -351,7 +351,7 @@ export function PartCardItem({
         {/* RIGHT MAIN CONTENT: Configuration & Details */}
         <div className="flex-1 p-6 lg:p-8 flex flex-col min-w-0">
           {/* Header Row */}
-          <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4 border-b border-slate-100 pb-6 mb-6">
+          <div className="flex flex-col md:flex-row md:items-start justify-between gap-4 border-b border-slate-100 pb-6 mb-6">
             <div className="flex-1 min-w-0">
               <div className="flex items-center gap-3 mb-2">
                 <span className="flex items-center justify-center w-7 h-7 rounded-full bg-slate-100 text-slate-500 text-xs font-bold flex-shrink-0">
@@ -404,7 +404,7 @@ export function PartCardItem({
                     className="h-8 w-8 rounded-md border-slate-200 hover:bg-slate-50"
                     onClick={() => {
                       const newQ = part.quantity - 1;
-                      if (newQ >= 1) updatePart(index, "quantity", newQ);
+                      if (newQ >= 1) updatePart(index, "quantity", newQ, false);
                     }}
                   >
                     <span className="text-lg leading-none mb-0.5">-</span>
@@ -415,7 +415,7 @@ export function PartCardItem({
                     onChange={(e) => {
                       const val = parseInt(e.target.value || "1");
                       if (!isNaN(val) && val >= 1) {
-                        updatePart(index, "quantity", val);
+                        updatePart(index, "quantity", val, false);
                       }
                     }}
                     className="w-14 text-center font-bold text-slate-800 border border-slate-200 rounded-md h-8 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
@@ -426,7 +426,7 @@ export function PartCardItem({
                     size="icon"
                     className="h-8 w-8 rounded-md border-slate-200 hover:bg-slate-50"
                     onClick={() =>
-                      updatePart(index, "quantity", part.quantity + 1)
+                      updatePart(index, "quantity", part.quantity + 1, false)
                     }
                   >
                     <span className="text-lg leading-none mb-0.5">+</span>
@@ -546,9 +546,8 @@ export function PartCardItem({
                             {file2d.file.name}
                           </h4>
                           <p className="text-xs text-slate-500 mb-1">
-                            {(file2d.file.size / 1024).toFixed(0)} KB
                             {isPdfFile && (
-                              <span className="ml-2 inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-red-100 text-red-700">
+                              <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-red-100 text-red-700">
                                 PDF
                               </span>
                             )}
@@ -593,14 +592,18 @@ export function PartCardItem({
                       {...getInputProps()}
                       key={`file-input-${part.files2d?.length || 0}`}
                     />
-                    <div className="flex items-center gap-2">
-                      <div className="p-1.5 bg-white rounded-full border border-slate-200 shadow-sm group-hover:border-blue-300">
-                        <Upload className="w-3.5 h-3.5 text-slate-400 group-hover:text-blue-500" />
+                    {isUploading ? (
+                      <Loader2 className="w-5 h-5 text-blue-600 animate-spin" />
+                    ) : (
+                      <div className="flex items-center gap-2">
+                        <div className="p-1.5 bg-white rounded-full border border-slate-200 shadow-sm group-hover:border-blue-300">
+                          <Upload className="w-3.5 h-3.5 text-slate-400 group-hover:text-blue-500" />
+                        </div>
+                        <p className="text-xs font-medium text-slate-600 group-hover:text-blue-700 transition-colors">
+                          Add More Files
+                        </p>
                       </div>
-                      <p className="text-xs font-medium text-slate-600 group-hover:text-blue-700 transition-colors">
-                        Add More Files
-                      </p>
-                    </div>
+                    )}
                   </div>
                 </div>
               ) : (
@@ -609,15 +612,26 @@ export function PartCardItem({
                   className="border border-dashed border-slate-300 rounded-lg p-8 bg-slate-50/50 hover:bg-slate-50 hover:border-blue-400 transition-all cursor-pointer text-center group flex flex-col items-center justify-center gap-3"
                 >
                   <input {...getInputProps()} />
-                  <div className="p-2 bg-white rounded-full border border-slate-200 shadow-sm group-hover:border-blue-300">
-                    <Upload className="w-4 h-4 text-slate-400 group-hover:text-blue-500" />
-                  </div>
-                  <p className="text-xs font-medium text-slate-600 group-hover:text-blue-700 transition-colors">
-                    Upload 2D Drawings <br />
-                    <span className="text-slate-400 font-normal">
-                      (PDF, JPG, PNG, DXF, DWG - Multiple files supported)
-                    </span>
-                  </p>
+                  {isUploading ? (
+                    <div className="flex flex-col items-center justify-center">
+                      <Loader2 className="w-8 h-8 text-blue-600 animate-spin mb-2" />
+                      <p className="text-sm font-medium text-blue-600">
+                        Uploading...
+                      </p>
+                    </div>
+                  ) : (
+                    <>
+                      <div className="p-2 bg-white rounded-full border border-slate-200 shadow-sm group-hover:border-blue-300">
+                        <Upload className="w-4 h-4 text-slate-400 group-hover:text-blue-500" />
+                      </div>
+                      <p className="text-xs font-medium text-slate-600 group-hover:text-blue-700 transition-colors">
+                        Upload 2D Drawings <br />
+                        <span className="text-slate-400 font-normal">
+                          (PDF, JPG, PNG, DXF, DWG - Multiple files supported)
+                        </span>
+                      </p>
+                    </>
+                  )}
                 </div>
               )}
             </div>
@@ -669,19 +683,28 @@ export function PartCardItem({
                 className="border-2 border-dashed border-slate-300 rounded-lg p-6 bg-slate-50/50 hover:bg-slate-50 hover:border-blue-400 transition-all cursor-pointer text-center group"
               >
                 <input {...getInputProps()} />
-                <div className="flex flex-col items-center gap-2">
-                  <div className="p-3 bg-white rounded-full border border-slate-200 shadow-sm group-hover:border-blue-300">
-                    <Upload className="w-6 h-6 text-slate-400 group-hover:text-blue-500" />
-                  </div>
-                  <div>
-                    <p className="text-sm font-medium text-slate-700 group-hover:text-blue-700">
-                      Upload more files
-                    </p>
-                    <p className="text-xs text-slate-500 mt-1">
-                      PDF, JPG, PNG, DXF, DWG - Multiple files supported
+                {isUploading ? (
+                  <div className="flex flex-col items-center justify-center gap-2">
+                    <Loader2 className="w-6 h-6 text-blue-600 animate-spin" />
+                    <p className="text-sm font-medium text-slate-700">
+                      Uploading...
                     </p>
                   </div>
-                </div>
+                ) : (
+                  <div className="flex flex-col items-center gap-2">
+                    <div className="p-3 bg-white rounded-full border border-slate-200 shadow-sm group-hover:border-blue-300">
+                      <Upload className="w-6 h-6 text-slate-400 group-hover:text-blue-500" />
+                    </div>
+                    <div>
+                      <p className="text-sm font-medium text-slate-700 group-hover:text-blue-700">
+                        Upload more files
+                      </p>
+                      <p className="text-xs text-slate-500 mt-1">
+                        PDF, JPG, PNG, DXF, DWG - Multiple files supported
+                      </p>
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
 
@@ -725,9 +748,6 @@ export function PartCardItem({
                           {file2d.file.name}
                         </h4>
                         <div className="flex items-center justify-between">
-                          <p className="text-xs text-slate-500">
-                            {(file2d.file.size / 1024).toFixed(0)} KB
-                          </p>
                           {isPdfFile && (
                             <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-red-100 text-red-700">
                               PDF
@@ -777,6 +797,7 @@ export function PartCardItem({
         part={part}
         index={index}
         updatePart={updatePart}
+        updatePartFields={updatePartFields}
         calculatePrice={(
           part: PartConfig,
           leadTimeType: typeof part.leadTimeType,

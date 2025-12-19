@@ -1,8 +1,10 @@
 "use client";
 
-import { Upload } from "lucide-react";
-import React, { useCallback } from "react";
+import { Upload, Loader2 } from "lucide-react";
+import React, { useCallback, useState } from "react";
 import { useDropzone } from "react-dropzone";
+import { useRouter } from "next/navigation";
+import { useSession } from "next-auth/react";
 
 import {
   Dialog,
@@ -11,77 +13,115 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 
-import { PartConfig } from "../[id]/page";
+import { PartConfig } from "@/types/part-config";
 import { analyzeCADFile } from "@/lib/cad-analysis";
+import { useFileUpload } from "@/lib/hooks/use-file-upload";
+import { notify } from "@/lib/toast";
+import { apiClient } from "@/lib/api";
 
 type UploadFileModalProps = {
   open: boolean;
   setOpen: (value: boolean) => void;
-  parts: PartConfig[];
-  setParts: React.Dispatch<React.SetStateAction<PartConfig[]>>;
+  parts?: PartConfig[];
+  setParts?: React.Dispatch<React.SetStateAction<PartConfig[]>>;
+  saveAsDraft?: () => void;
 };
-
-import { useFileUpload } from "@/lib/hooks/use-file-upload";
-import { notify } from "@/lib/toast";
 
 const UploadFileModal = ({
   open,
   setOpen,
-  parts,
-  setParts,
+  saveAsDraft,
 }: UploadFileModalProps) => {
+  const router = useRouter();
+  const { data: session } = useSession();
   const { upload } = useFileUpload();
+  const [isUploading, setIsUploading] = useState(false);
 
   const onDropFiles = useCallback(
     async (acceptedFiles: File[]) => {
       if (acceptedFiles.length === 0) return;
 
-      const newParts: PartConfig[] = [];
+      setIsUploading(true);
+      try {
+        const uploadResults = [];
 
-      for (const file of acceptedFiles) {
-        let uploadedPath = `temp/${file.name}`;
-        try {
-          const { url } = await upload(file);
-          uploadedPath = url;
-        } catch (error) {
-          console.error("File upload failed:", error);
-          notify.error(`Failed to upload ${file.name}`);
+        for (const file of acceptedFiles) {
+          console.log(`Analyzing CAD file: ${file.name}`);
+          const geometry = await analyzeCADFile(file);
+
+          let uploadedPath = `quotes/temp-${Date.now()}/${file.name}`;
+          try {
+            const { url } = await upload(file);
+            uploadedPath = url;
+          } catch (error) {
+            console.error(`Failed to upload ${file.name}:`, error);
+            notify.error(`Failed to upload ${file.name}`);
+            continue; // Skip if upload fails
+          }
+
+          uploadResults.push({
+            file_name: file.name,
+            cad_file_url: uploadedPath,
+            cad_file_type: file.name.split(".").pop() || "unknown",
+            material: "aluminum-6061",
+            quantity: 1,
+            tolerance: "standard",
+            finish: "as-machined",
+            threads: "none",
+            inspection: "standard",
+            notes: "",
+            lead_time_type: "standard",
+            lead_time: 7,
+            geometry,
+            certificates: [],
+          });
         }
 
-        const geometry = await analyzeCADFile(file);
+        if (uploadResults.length === 0) {
+          setIsUploading(false);
+          return;
+        }
 
-        const newPart: PartConfig = {
-          id: `part-${parts.length + newParts.length + 1}`,
-          fileName: file.name,
-          filePath: uploadedPath,
-          fileObject: file,
-          material: "aluminum-6061",
-          quantity: 1,
-          tolerance: "standard",
-          finish: "as-machined",
-          threads: "none",
-          inspection: "standard",
-          notes: "",
-          leadTimeType: "standard",
-          geometry,
-          pricing: undefined,
-          files2d: [],
+        // Call saveAsDraft before redirecting if we are in an existing quote
+        if (saveAsDraft) {
+          try {
+            await saveAsDraft();
+          } catch (error) {
+            console.error("Failed to save current draft:", error);
+            // Continue anyway? Usually yes, we want to create the new one
+          }
+        }
+
+        const rfqPayload = {
+          user_id: session?.user?.id,
+          parts: uploadResults,
         };
 
-        newParts.push(newPart);
+        const response = await apiClient.post("/rfq", rfqPayload);
+
+        if (response.data?.success && response.data?.rfq_id) {
+          notify.success("New quote created successfully");
+          setOpen(false);
+          router.push(`/quote-config/${response.data.rfq_id}`);
+        } else {
+          throw new Error("Failed to create quote");
+        }
+      } catch (error: any) {
+        console.error("Error creating new quote:", error);
+        notify.error(
+          "Failed to process files: " + (error.message || "Please try again"),
+        );
+      } finally {
+        setIsUploading(false);
       }
-
-      setParts([...newParts]);
-
-      // Close modal after upload
-      setOpen(false);
     },
-    [parts.length, setOpen, upload],
+    [upload, saveAsDraft, session?.user?.id, setOpen, router],
   );
 
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
     onDrop: onDropFiles,
     multiple: true,
+    disabled: isUploading,
     accept: {
       "model/stl": [".stl"],
       "model/step": [".step", ".stp"],
@@ -101,8 +141,8 @@ const UploadFileModal = ({
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogContent
         className="max-w-xl p-0 overflow-hidden"
-        onInteractOutside={(e) => e.preventDefault()}
-        onEscapeKeyDown={(e) => e.preventDefault()}
+        onInteractOutside={(e) => (isUploading ? e.preventDefault() : null)}
+        onEscapeKeyDown={(e) => (isUploading ? e.preventDefault() : null)}
       >
         <DialogHeader className="px-6 pt-6">
           <DialogTitle className="text-xl font-bold">New Quote</DialogTitle>
@@ -111,10 +151,16 @@ const UploadFileModal = ({
         <div className="pt-4 w-full px-6 pb-8">
           <div
             {...getRootProps()}
-            className={`bg-gradient-to-br from-white to-slate-50/80 rounded-2xl border-2 shadow-sm overflow-hidden transition-all duration-300 cursor-pointer ${
-              isDragActive
+            className={`bg-gradient-to-br from-white to-slate-50/80 rounded-2xl border-2 shadow-sm overflow-hidden transition-all duration-300 ${
+              isUploading
+                ? "opacity-60 cursor-not-allowed border-slate-200"
+                : "cursor-pointer"
+            } ${
+              !isUploading && isDragActive
                 ? "border-blue-500 border-dashed bg-blue-50/50 shadow-lg scale-[1.01]"
-                : "border-slate-200 hover:border-blue-400 border-dashed hover:shadow-md"
+                : !isUploading
+                  ? "border-slate-200 hover:border-blue-400 border-dashed hover:shadow-md"
+                  : ""
             }`}
           >
             <input {...getInputProps()} />
@@ -123,27 +169,39 @@ const UploadFileModal = ({
             <div className="p-8 flex flex-col items-center justify-center gap-4 text-center border-b border-slate-200">
               <div
                 className={`p-4 bg-gradient-to-br rounded-2xl transition-all shadow-sm ${
-                  isDragActive
-                    ? "from-blue-200 to-blue-100 scale-110"
-                    : "from-blue-50 to-slate-50"
+                  isUploading
+                    ? "from-slate-100 to-slate-50"
+                    : isDragActive
+                      ? "from-blue-200 to-blue-100 scale-110"
+                      : "from-blue-50 to-slate-50"
                 }`}
               >
-                <Upload
-                  className={`w-10 h-10 transition-colors ${
-                    isDragActive ? "text-blue-700" : "text-blue-600"
-                  }`}
-                />
+                {isUploading ? (
+                  <Loader2 className="w-10 h-10 text-blue-600 animate-spin" />
+                ) : (
+                  <Upload
+                    className={`w-10 h-10 transition-colors ${
+                      isDragActive ? "text-blue-700" : "text-blue-600"
+                    }`}
+                  />
+                )}
               </div>
 
               <div>
                 <p
                   className={`font-bold text-xl mb-2 transition-colors ${
-                    isDragActive ? "text-blue-700" : "text-slate-900"
+                    isUploading
+                      ? "text-slate-500"
+                      : isDragActive
+                        ? "text-blue-700"
+                        : "text-slate-900"
                   }`}
                 >
-                  {isDragActive
-                    ? "Drop your files here"
-                    : "Start by uploading a part"}
+                  {isUploading
+                    ? "Creating New Quote..."
+                    : isDragActive
+                      ? "Drop your files here"
+                      : "Start by uploading a part"}
                 </p>
                 <p className="text-sm text-slate-500 max-w-xs mx-auto">
                   {isDragActive

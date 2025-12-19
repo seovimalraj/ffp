@@ -25,12 +25,9 @@ import {
   ChevronDown,
   Archive,
   ScrollText,
+  Save,
+  Plus,
 } from "lucide-react";
-import {
-  getQuote,
-  getQuoteConfig,
-  saveQuoteConfig,
-} from "../../../lib/database";
 import { GeometryData, analyzeCADFile } from "../../../lib/cad-analysis";
 import {
   calculatePricing,
@@ -44,7 +41,11 @@ import {
 import { getItem } from "@/lib/item-storage";
 import { PartCardItem } from "../components/part-card-item";
 import { useDropzone } from "react-dropzone";
-import { formatCurrencyFixed, LEAD_TIME_SHORT } from "@/lib/utils";
+import {
+  formatCurrencyFixed,
+  LEAD_TIME_SHORT,
+  processParts,
+} from "@/lib/utils";
 import { notify } from "@/lib/toast";
 import Link from "next/link";
 import {
@@ -65,30 +66,11 @@ import {
 import { signOut, useSession } from "next-auth/react";
 import UploadFileModal from "../components/upload-file-modal";
 import { useFileUpload } from "@/lib/hooks/use-file-upload";
+import { apiClient } from "@/lib/api";
 
-interface File2D {
-  file: File;
-  preview: string;
-}
-
-export interface PartConfig {
-  id: string;
-  fileName: string;
-  filePath: string;
-  fileObject?: File;
-  material: string;
-  quantity: number;
-  tolerance: string;
-  finish: string;
-  threads: string;
-  inspection: string;
-  notes: string;
-  leadTimeType: "economy" | "standard" | "expedited";
-  geometry?: GeometryData;
-  pricing?: PricingBreakdown;
-  files2d?: File2D[];
-  certificates?: string[];
-}
+import { PartConfig, File2D } from "@/types/part-config";
+import Logo from "@/components/ui/logo";
+import ArchiveModal from "../components/archive-modal";
 
 // --- Constants (Moved Outside) ---
 const MATERIALS_LIST = Object.entries(MATERIALS).map(([key, mat]) => ({
@@ -146,25 +128,74 @@ function calcLeadTime(
   );
 }
 
+type IRFQ = {
+  id: string;
+  rfq_code: string;
+  status: string;
+  user_id: string;
+};
+
+// --- Moved Helper Functions ---
+
+const calculateLeadTime = (part: PartConfig) => {
+  if (!part.pricing) return 7;
+  return Math.round(part.pricing.leadTimeDays);
+};
+
+const calculatePrice = (
+  part: PartConfig,
+  tier: "economy" | "standard" | "expedited" = "economy",
+): number => {
+  // If no geometry data, return 0
+  if (!part.geometry) {
+    return 0;
+  }
+
+  // Calculate base pricing
+  const material = getMaterial(part.material);
+  if (!material) return 0;
+
+  const process = PROCESSES["cnc-milling"];
+  const finish = getFinish(part.finish);
+
+  const pricing = calculatePricing({
+    geometry: part.geometry,
+    material,
+    process,
+    finish,
+    quantity: part.quantity,
+    tolerance: part.tolerance as "standard" | "precision" | "tight",
+    leadTimeType: "standard", // Always use standard as base
+  });
+
+  // Apply tier multipliers
+  const multipliers = {
+    economy: 1.0,
+    standard: 2.1,
+    expedited: 3.5,
+  };
+
+  return pricing.totalPrice * multipliers[tier];
+};
+
 export default function QuoteConfigPage() {
   const router = useRouter();
   const paramsHook = useParams();
   const quoteId = paramsHook?.id as string;
 
-  const [email, setEmail] = useState("");
+  const [rfq, setRfq] = useState<IRFQ>({} as IRFQ);
   const [parts, setParts] = useState<PartConfig[]>([]);
   // currentPartIndex removed as we list all parts
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [is3DFileUploading, setIs3DFileUploading] = useState(false);
-  const [is2DFileUploading, setIs2DFileUploading] = useState(false);
 
   const [archivedParts, setArchivedParts] = useState<PartConfig[]>([]);
   const [showArchiveModal, setShowArchiveModal] = useState(false);
 
   // Bulk selection state
-  const [isSelectionMode, setIsSelectionMode] = useState(false);
   const [selectedParts, setSelectedParts] = useState<Set<string>>(new Set());
+  const [unsavedChanges, setUnsavedChanges] = useState<Set<string>>(new Set()); // Track parts with pending changes
   const [showUploadModal, setShowUploadModal] = useState(false);
 
   const session = useSession();
@@ -176,47 +207,69 @@ export default function QuoteConfigPage() {
     async (acceptedFiles: File[]) => {
       if (acceptedFiles.length === 0) return;
 
-      const newParts: PartConfig[] = [];
+      setIs3DFileUploading(true);
 
-      for (const file of acceptedFiles) {
-        let uploadedPath = `temp/${file.name}`;
-        try {
-          const { url } = await upload(file);
-          uploadedPath = url;
-        } catch (error) {
-          console.error("File upload failed:", error);
-          notify.error(`Failed to upload ${file.name}`);
-          // Optionally continue with local path or return
+      try {
+        const newParts = [];
+
+        for (const file of acceptedFiles) {
+          let uploadedPath = `temp/${file.name}`;
+          try {
+            const { url } = await upload(file);
+            uploadedPath = url;
+          } catch (error) {
+            console.error("File upload failed:", error);
+            notify.error(`Failed to upload ${file.name}`);
+            // Optionally continue with local path or return
+          }
+
+          console.log(`Analyzing CAD file: ${file.name}`);
+          const geometry = await analyzeCADFile(file);
+          console.log(`Geometry analysis complete:`, geometry);
+
+          const newPart: any = {
+            file_name: file.name,
+            cad_file_url: uploadedPath,
+            cad_file_type: file.type,
+            material: "aluminum-6061",
+            quantity: 1,
+            status: "active",
+            tolerance: "standard",
+            finish: "as-machined",
+            threads: "none",
+            inspection: "standard",
+            notes: "",
+            lead_time_type: "standard",
+            lead_time: 7,
+            geometry,
+            pricing: undefined,
+            final_price: 0,
+            certificates: [],
+          };
+
+          newParts.push(newPart);
+        }
+        const { data } = await apiClient.post(`/rfq/${rfq.id}/add-parts`, {
+          parts: newParts,
+        });
+
+        if (!data) {
+          notify.error("Failed to add parts");
+          return;
         }
 
-        console.log(`Analyzing CAD file: ${file.name}`);
-        const geometry = await analyzeCADFile(file);
-        console.log(`Geometry analysis complete:`, geometry);
+        const proccessedParts = processParts(data.parts);
 
-        const newPart: PartConfig = {
-          id: `part-${parts.length + newParts.length + 1}`,
-          fileName: file.name,
-          filePath: uploadedPath,
-          fileObject: file,
-          material: "aluminum-6061",
-          quantity: 1,
-          tolerance: "standard",
-          finish: "as-machined",
-          threads: "none",
-          inspection: "standard",
-          notes: "",
-          leadTimeType: "standard",
-          geometry,
-          pricing: undefined,
-          files2d: [],
-          certificates: [],
-        };
-        newParts.push(newPart);
+        setParts((prev) => [...prev, ...proccessedParts]);
+        notify.success(`Successfully added ${newParts.length} part(s)`);
+      } catch (error) {
+        console.error("Error processing files:", error);
+        notify.error("Failed to process files");
+      } finally {
+        setIs3DFileUploading(false);
       }
-
-      setParts((prev) => [...prev, ...newParts]);
     },
-    [parts.length],
+    [parts.length, upload],
   );
 
   // Setup dropzone
@@ -238,8 +291,29 @@ export default function QuoteConfigPage() {
     multiple: true,
   });
 
+  const deleteParts = async (partIds: string[]) => {
+    try {
+      const data = await apiClient.delete(`/rfq/${rfq.id}/remove-parts`, {
+        data: {
+          partIds,
+        },
+      });
+
+      if (!data) {
+        notify.error("Failed to delete parts");
+        return;
+      }
+
+      setParts((prev) => prev.filter((p) => !partIds.includes(p.id)));
+      notify.success(`Successfully deleted ${partIds.length} part(s)`);
+    } catch (error) {
+      console.error(error);
+      notify.error("Failed to delete parts");
+    }
+  };
+
   // Handle deleting a part
-  const handleDeletePart = (indexToDelete: number) => {
+  const handleDeletePart = async (indexToDelete: number) => {
     if (parts.length === 1) {
       notify.error(
         "Cannot delete the last part. At least one part is required.",
@@ -247,6 +321,7 @@ export default function QuoteConfigPage() {
       return;
     }
 
+    await deleteParts([parts[indexToDelete].id]);
     setParts((prev) => prev.filter((_, index) => index !== indexToDelete));
   };
 
@@ -273,7 +348,7 @@ export default function QuoteConfigPage() {
   };
 
   // Handle archiving a single part
-  const handleArchivePart = (partId: string) => {
+  const handleArchivePart = async (partId: string) => {
     const partToArchive = parts.find((p) => p.id === partId);
     if (!partToArchive) return;
 
@@ -284,13 +359,27 @@ export default function QuoteConfigPage() {
       return;
     }
 
-    setParts((prev) => prev.filter((p) => p.id !== partId));
-    setArchivedParts((prev) => [...prev, partToArchive]);
-    notify.success("Part archived successfully");
+    try {
+      await updatePartFields(
+        parts.findIndex((p) => p.id === partId),
+        { is_archived: true },
+        true,
+      );
+
+      setParts((prev) => prev.filter((p) => p.id !== partId));
+      setArchivedParts((prev) => [
+        ...prev,
+        { ...partToArchive, is_archived: true },
+      ]);
+      notify.success("Part archived successfully");
+    } catch (error) {
+      console.error("Failed to archive part:", error);
+      notify.error("Failed to archive part");
+    }
   };
 
   // Handle bulk archive
-  const handleBulkArchive = () => {
+  const handleBulkArchive = async () => {
     if (selectedParts.size === 0) return;
 
     if (parts.length - selectedParts.size === 0) {
@@ -299,34 +388,75 @@ export default function QuoteConfigPage() {
     }
 
     const partsToArchive = parts.filter((p) => selectedParts.has(p.id));
-    setParts((prev) => prev.filter((p) => !selectedParts.has(p.id)));
-    setArchivedParts((prev) => [...prev, ...partsToArchive]);
-    setSelectedParts(new Set());
-    setIsSelectionMode(false);
-    notify.success(`Archived ${partsToArchive.length} part(s)`);
+
+    try {
+      await Promise.all(
+        partsToArchive.map((part) =>
+          apiClient.patch(`/rfq/${rfq.id}/parts/${part.id}`, {
+            is_archived: true,
+          }),
+        ),
+      );
+
+      setParts((prev) => prev.filter((p) => !selectedParts.has(p.id)));
+      setArchivedParts((prev) => [
+        ...prev,
+        ...partsToArchive.map((p) => ({ ...p, is_archived: true })),
+      ]);
+      setSelectedParts(new Set());
+      notify.success(`Archived ${partsToArchive.length} part(s)`);
+    } catch (error) {
+      console.error("Failed to archive active parts:", error);
+      notify.error("Failed to archive selection");
+    }
   };
 
   // Handle unarchiving a part
-  const handleUnarchivePart = (partId: string) => {
+  const handleUnarchivePart = async (partId: string) => {
     const partToUnarchive = archivedParts.find((p) => p.id === partId);
     if (!partToUnarchive) return;
 
-    setArchivedParts((prev) => prev.filter((p) => p.id !== partId));
-    setParts((prev) => [...prev, partToUnarchive]);
-    notify.success("Part restored successfully");
+    try {
+      await apiClient.patch(`/rfq/${rfq.id}/parts/${partId}`, {
+        is_archived: false,
+      });
+
+      setArchivedParts((prev) => prev.filter((p) => p.id !== partId));
+      setParts((prev) => [...prev, { ...partToUnarchive, is_archived: false }]);
+      notify.success("Part restored successfully");
+    } catch (error) {
+      console.error("Failed to unarchive part:", error);
+      notify.error("Failed to restore part");
+    }
   };
 
   // Handle unarchiving all parts
-  const handleUnarchiveAll = () => {
+  const handleUnarchiveAll = async () => {
     if (archivedParts.length === 0) return;
 
-    setParts((prev) => [...prev, ...archivedParts]);
-    setArchivedParts([]);
-    notify.success(`Restored ${archivedParts.length} part(s)`);
+    try {
+      await Promise.all(
+        archivedParts.map((part) =>
+          apiClient.patch(`/rfq/${rfq.id}/parts/${part.id}`, {
+            is_archived: false,
+          }),
+        ),
+      );
+
+      setParts((prev) => [
+        ...prev,
+        ...archivedParts.map((p) => ({ ...p, is_archived: false })),
+      ]);
+      setArchivedParts([]);
+      notify.success(`Restored ${archivedParts.length} part(s)`);
+    } catch (error) {
+      console.error("Failed to unarchive all parts:", error);
+      notify.error("Failed to restore all parts");
+    }
   };
 
   // Handle bulk delete
-  const handleBulkDelete = () => {
+  const handleBulkDelete = async () => {
     if (selectedParts.size === 0) return;
 
     if (parts.length - selectedParts.size === 0) {
@@ -334,15 +464,13 @@ export default function QuoteConfigPage() {
       return;
     }
 
-    setParts((prev) => prev.filter((p) => !selectedParts.has(p.id)));
+    await deleteParts(Array.from(selectedParts));
     setSelectedParts(new Set());
-    setIsSelectionMode(false);
     notify.success(`Deleted ${selectedParts.size} part(s)`);
   };
 
   // Exit selection mode when no parts are selected
   const exitSelectionMode = () => {
-    setIsSelectionMode(false);
     setSelectedParts(new Set());
   };
 
@@ -355,126 +483,147 @@ export default function QuoteConfigPage() {
       try {
         setLoading(true);
 
-        // Check if this is a temporary quote ID (starts with 'temp-')
-        const isTempQuote = quoteId.startsWith("FRI_");
+        try {
+          const response = await apiClient.get(`/rfq/${quoteId}`);
 
-        if (isTempQuote) {
-          // Load from IndexedDB (item-storage)
-          // const filesDataStr = sessionStorage.getItem(`quote-${quoteId}-files`);
-          // const emailStr = sessionStorage.getItem(`quote-${quoteId}-email`);
-          const [filesDataStr, emailStr] = await Promise.all([
-            getItem<string>(`quote-${quoteId}-files`),
-            getItem<string>(`quote-${quoteId}-email`),
-          ]);
+          if (response.data && response.data.parts) {
+            const apiPartsRaw = response.data.parts;
+            let currentRfq = response.data.rfq;
 
-          if (!filesDataStr) {
-            console.error("Storage data not found for quote:", quoteId);
-            notify.error(
-              "Quote session expired. Please upload your files again.",
-            );
-            router.push("/instant-quote");
-            return;
-          }
+            // Map and Calculate
+            let partsToSync: {
+              id: string;
+              final_price: number;
+              lead_time: number;
+            }[] = [];
+            let rfqTotalCalculated = 0;
+            let syncNeeded = false;
 
-          const filesData = JSON.parse(filesDataStr);
-          setEmail(emailStr || `guest-${Date.now()}@temp.quote`);
-
-          // Initialize parts from storage
-          const initialParts: PartConfig[] = await Promise.all(
-            filesData.map(async (file: any, index: number) => {
-              // Retrieve file data from IndexedDB
-              const fileObject = await getItem<File>(
-                `quote-${quoteId}-file-${index}`,
-              );
-
-              // No need to reconstruct from base64, IndexedDB stores File objects directly
-              return {
-                id: `part-${index + 1}`,
-                fileName: file.name,
-                filePath: file.path || `temp/${file.name}`,
-                fileObject: fileObject || undefined,
-                material: "aluminum-6061",
-                quantity: 1,
-                tolerance: "standard",
-                finish: "as-machined",
-                threads: "none",
-                inspection: "standard",
-                notes: "",
-                leadTimeType: "standard",
-                geometry: file.geometry,
-                pricing: undefined,
-                files2d: file.files2d || [],
-                certificates: file.certificates || [],
-              };
-            }),
-          );
-
-          setParts(initialParts);
-        } else {
-          // Load quote from database (original flow)
-          // If user is guest accessing a permanent quote, they might be blocked by the API, but we handle it here
-          if (session.status === "unauthenticated") {
-            // Optional: could redirect here if we strictly know it's a private DB quote
-            // But for now let's let getQuote fail if it must
-            router.push("/signin");
-            return;
-          }
-
-          const quote = await getQuote(quoteId);
-          if (!quote) {
-            console.error("Quote not found in database:", quoteId);
-            alert("Quote not found");
-            router.push("/instant-quote");
-            return;
-          }
-
-          setEmail(quote.email);
-
-          // Check if configuration already exists
-          try {
-            const existingConfig = await getQuoteConfig(quoteId);
-            if (existingConfig) {
-              setParts(existingConfig.parts);
-            } else {
-              throw new Error("No config found");
-            }
-          } catch (error) {
-            // Initialize new configuration
-            const filesDataStr = await getItem<string>(
-              `quote-${quoteId}-files`,
-            );
-            const filesData = filesDataStr ? JSON.parse(filesDataStr) : [];
-
-            // Initialize parts from uploaded files with real geometry data
-            const initialParts: PartConfig[] = await Promise.all(
-              quote.files.map(async (file: any, index: number) => {
-                // Retrieve file data from storage if available
-                const fileObject = await getItem<File>(
-                  `quote-${quoteId}-file-${index}`,
-                );
-
-                return {
-                  id: `part-${index + 1}`,
-                  fileName: file.name,
-                  filePath: file.path,
-                  fileObject: fileObject || undefined,
-                  material: "aluminum-6061",
-                  quantity: 1,
-                  tolerance: "standard",
-                  finish: "as-machined",
-                  threads: "none",
-                  inspection: "standard",
-                  notes: "",
-                  leadTimeType: "standard",
-                  geometry: file.geometry,
-                  pricing: file.pricing,
-                  certificates: file.certificates,
+            const processedParts: PartConfig[] = apiPartsRaw.map(
+              (p: any, index: number) => {
+                const part: PartConfig = {
+                  id: p.id || `part-${index + 1}`,
+                  rfqId: p.rfq_id,
+                  status: p.status || "active",
+                  fileName: p.file_name,
+                  filePath: p.cad_file_url,
+                  fileObject: undefined, // URL only
+                  material: p.material || "aluminum-6061",
+                  quantity: p.quantity || 1,
+                  tolerance: p.tolerance || "standard",
+                  finish: p.finish || "as-machined",
+                  threads: p.threads || "none",
+                  inspection: p.inspection || "standard",
+                  notes: p.notes || "",
+                  leadTimeType: (p.lead_time_type as any) || "standard",
+                  geometry: p.geometry,
+                  pricing: undefined,
+                  certificates: p.certificates || [],
+                  final_price: undefined,
+                  leadTime: undefined,
+                  is_archived: p.is_archived,
+                  files2d: (p.files2d || []).map((f: any) => ({
+                    file: {
+                      name: f.file_name || "Drawing",
+                      type: f.mime_type || "application/pdf",
+                      size: 0,
+                      id: f.id,
+                    },
+                    preview: f.file_url,
+                  })),
                 };
-              }),
+
+                // Recalculate Pricing Object
+                if (part.geometry) {
+                  const material = getMaterial(part.material);
+                  if (material) {
+                    const process = PROCESSES["cnc-milling"];
+                    const finish = getFinish(part.finish);
+
+                    part.pricing = calculatePricing({
+                      geometry: part.geometry,
+                      material,
+                      process,
+                      finish,
+                      quantity: part.quantity,
+                      tolerance: part.tolerance as any,
+                      leadTimeType: "standard",
+                    });
+                  }
+                }
+
+                // Recalculate Final Price and Lead Time
+                const calculatedPrice = calculatePrice(part, part.leadTimeType);
+                const calculatedLeadTime = calculateLeadTime(part);
+
+                part.final_price = calculatedPrice;
+                part.leadTime = calculatedLeadTime;
+
+                rfqTotalCalculated += calculatedPrice;
+
+                // Check for discrepancies
+                const dbPrice = p.final_price ? Number(p.final_price) : 0;
+                const dbLeadTime = p.lead_time ? Number(p.lead_time) : 0;
+
+                if (
+                  Math.abs(calculatedPrice - dbPrice) > 0.01 ||
+                  calculatedLeadTime !== dbLeadTime
+                ) {
+                  syncNeeded = true;
+                  partsToSync.push({
+                    id: part.id,
+                    final_price: calculatedPrice,
+                    lead_time: calculatedLeadTime,
+                  });
+                }
+
+                return part;
+              },
             );
 
-            setParts(initialParts);
+            // Check RFQ Total Sync
+            const dbRfqTotal = currentRfq.final_price
+              ? Number(currentRfq.final_price)
+              : 0;
+            if (Math.abs(rfqTotalCalculated - dbRfqTotal) > 0.01) {
+              syncNeeded = true;
+            }
+
+            if (syncNeeded) {
+              console.log("Syncing pricing with backend...", {
+                partsToSync,
+                rfqTotalCalculated,
+              });
+              await apiClient
+                .post(`/rfq/${quoteId}/sync-pricing`, {
+                  rfq_final_price: rfqTotalCalculated,
+                  parts: partsToSync,
+                })
+                .then(() => {
+                  notify.success(
+                    "Pricing updated based on recent material cost.",
+                  );
+                  currentRfq = {
+                    ...currentRfq,
+                    final_price: rfqTotalCalculated,
+                  };
+                })
+                .catch((err) => {
+                  console.error("Failed to sync pricing", err);
+                });
+            }
+
+            setRfq(currentRfq);
+            setParts(processedParts.filter((p) => !p.is_archived));
+            setArchivedParts(processedParts.filter((p) => p.is_archived));
+          } else {
+            throw new Error("Invalid API response");
           }
+        } catch (error) {
+          console.error("Error loading quote from API:", error);
+          notify.error("Failed to load quote. Please try again.");
+          // Don't auto-redirect immediately, let user see error or use back button
+          // router.push("/instant-quote");
         }
       } catch (error) {
         console.error("Error loading quote:", error);
@@ -489,79 +638,108 @@ export default function QuoteConfigPage() {
   }, [quoteId, router, session.status]);
 
   // Lead Time & Pricing Calculations
-  const calculateLeadTime = (part: PartConfig) => {
-    if (!part.pricing) return 7;
-    return Math.round(part.pricing.leadTimeDays);
-  };
 
-  const calculatePrice = (
-    part: PartConfig,
-    tier: "economy" | "standard" | "expedited" = "economy",
-  ): number => {
-    // If no geometry data, return 0
-    if (!part.geometry) {
-      return 0;
+  const updatePartFields = async (
+    index: number,
+    updates: Partial<PartConfig>,
+    saveToDb: boolean = true,
+  ) => {
+    const currentPart = parts[index];
+    if (!currentPart) return;
+
+    // Calculate new state logic
+    const updatedPart = { ...currentPart, ...updates };
+
+    // Recalculate pricing if geometry exists
+    if (updatedPart.geometry) {
+      const material = getMaterial(updatedPart.material);
+      if (material) {
+        const process = PROCESSES["cnc-milling"];
+        const finish = getFinish(updatedPart.finish);
+
+        updatedPart.pricing = calculatePricing({
+          geometry: updatedPart.geometry,
+          material,
+          process,
+          finish,
+          quantity: updatedPart.quantity,
+          tolerance: updatedPart.tolerance as
+            | "standard"
+            | "precision"
+            | "tight",
+          leadTimeType: "standard", // Always use standard as base
+        });
+
+        // Recalculate derived fields
+        updatedPart.final_price = calculatePrice(
+          updatedPart,
+          updatedPart.leadTimeType,
+        );
+        updatedPart.leadTime = calculateLeadTime(updatedPart);
+      }
     }
 
-    // Calculate base pricing
-    const material = getMaterial(part.material);
-    if (!material) return 0;
-
-    const process = PROCESSES["cnc-milling"];
-    const finish = getFinish(part.finish);
-
-    const pricing = calculatePricing({
-      geometry: part.geometry,
-      material,
-      process,
-      finish,
-      quantity: part.quantity,
-      tolerance: part.tolerance as "standard" | "precision" | "tight",
-      leadTimeType: "standard", // Always use standard as base
-    });
-
-    // Apply tier multipliers
-    const multipliers = {
-      economy: 1.0,
-      standard: 2.1,
-      expedited: 3.5,
-    };
-
-    return pricing.totalPrice * multipliers[tier];
-  };
-
-  const updatePart = (index: number, field: keyof PartConfig, value: any) => {
+    // Optimistic Update
     setParts((prev) =>
       prev.map((p, i) => {
         if (i !== index) return p;
-
-        const updatedPart = { ...p, [field]: value };
-
-        // Recalculate pricing if geometry exists
-        if (updatedPart.geometry) {
-          const material = getMaterial(updatedPart.material);
-          if (material) {
-            const process = PROCESSES["cnc-milling"];
-            const finish = getFinish(updatedPart.finish);
-
-            updatedPart.pricing = calculatePricing({
-              geometry: updatedPart.geometry,
-              material,
-              process,
-              finish,
-              quantity: updatedPart.quantity,
-              tolerance: updatedPart.tolerance as
-                | "standard"
-                | "precision"
-                | "tight",
-              leadTimeType: "standard", // Always use standard as base
-            });
-          }
-        }
-
         return updatedPart;
       }),
     );
+
+    // Backend Update
+    if (!saveToDb) {
+      setUnsavedChanges((prev) => new Set(prev).add(updatedPart.id));
+      return;
+    }
+
+    try {
+      const payload: any = {};
+
+      // Explicitly map fields that are changing or relevant
+      if (updates.material !== undefined)
+        payload.material = updatedPart.material;
+      if (updates.quantity !== undefined)
+        payload.quantity = updatedPart.quantity;
+      if (updates.tolerance !== undefined)
+        payload.tolerance = updatedPart.tolerance;
+      if (updates.finish !== undefined) payload.finish = updatedPart.finish;
+      if (updates.threads !== undefined) payload.threads = updatedPart.threads;
+      if (updates.inspection !== undefined)
+        payload.inspection = updatedPart.inspection;
+      if (updates.notes !== undefined) payload.notes = updatedPart.notes;
+      if (updates.leadTimeType !== undefined)
+        payload.lead_time_type = updatedPart.leadTimeType;
+      if (updates.certificates !== undefined)
+        payload.certificates = updatedPart.certificates;
+      if (updates.is_archived !== undefined)
+        payload.is_archived = updatedPart.is_archived;
+
+      // Always send price and lead time if they exist, as they might have changed due to other updates
+      if (updatedPart.final_price !== undefined)
+        payload.final_price = updatedPart.final_price;
+      if (updatedPart.leadTime !== undefined)
+        payload.lead_time = updatedPart.leadTime;
+
+      if (Object.keys(payload).length > 0) {
+        await apiClient.patch(
+          `/rfq/${rfq.id}/parts/${updatedPart.id}`,
+          payload,
+        );
+      }
+    } catch (error) {
+      console.error("Failed to update part in backend:", error);
+      notify.error("Failed to save changes to server");
+    }
+  };
+
+  const updatePart = (
+    index: number,
+    field: keyof PartConfig,
+    value: any,
+    saveToDb: boolean = true,
+  ) => {
+    updatePartFields(index, { [field]: value }, saveToDb);
   };
 
   const standardPrice = parts.reduce(
@@ -571,18 +749,52 @@ export default function QuoteConfigPage() {
 
   const baseLeadTime = Math.max(...parts.map((p) => calculateLeadTime(p)));
 
+  const handleSaveDraft = async () => {
+    if (unsavedChanges.size === 0) {
+      notify.info("No changes to save");
+      return;
+    }
+
+    setSaving(true);
+    try {
+      const partsToSave = parts.filter((p) => unsavedChanges.has(p.id));
+
+      await Promise.all(
+        partsToSave.map(async (part) => {
+          const payload = {
+            quantity: part.quantity,
+            lead_time_type: part.leadTimeType,
+            final_price: part.final_price,
+            lead_time: part.leadTime,
+          };
+
+          await apiClient.patch(`/rfq/${rfq.id}/parts/${part.id}`, payload);
+        }),
+      );
+
+      setUnsavedChanges(new Set());
+      notify.success("Draft saved successfully");
+    } catch (error) {
+      console.error("Error saving draft:", error);
+      notify.error("Failed to save draft");
+    } finally {
+      setSaving(false);
+    }
+  };
+
   const handleCheckout = async () => {
     try {
       setSaving(true);
+      // Ensure all changes are saved before checkout logic if needed
+      if (unsavedChanges.size > 0) {
+        await handleSaveDraft();
+      }
 
-      // Save configuration to database (use standardPrice as default total)
-      await saveQuoteConfig(quoteId, parts, standardPrice, baseLeadTime);
-
-      // Navigate to checkout
       router.push(`/checkout/${quoteId}`);
     } catch (error) {
       console.error("Error saving configuration:", error);
       alert("Failed to save configuration. Please try again.");
+    } finally {
       setSaving(false);
     }
   };
@@ -610,24 +822,7 @@ export default function QuoteConfigPage() {
   }
 
   return (
-    <div className="min-h-screen bg-[#F0F4F8] relative font-sans text-slate-900">
-      <style jsx global>{`
-        .custom-scrollbar::-webkit-scrollbar {
-          width: 6px;
-        }
-        .custom-scrollbar::-webkit-scrollbar-track {
-          background: rgba(0, 0, 0, 0.05);
-          border-radius: 10px;
-        }
-        .custom-scrollbar::-webkit-scrollbar-thumb {
-          background: rgba(0, 0, 0, 0.1);
-          border-radius: 10px;
-        }
-        .custom-scrollbar::-webkit-scrollbar-thumb:hover {
-          background: rgba(0, 0, 0, 0.2);
-        }
-      `}</style>
-
+    <div className="min-h-screen invisible-scrollbar bg-[#F0F4F8] relative font-sans text-slate-900">
       {/* Dynamic Background Elements */}
       <div className="fixed inset-0 z-0 pointer-events-none">
         <div className="absolute top-[-20%] right-[-10%] w-[800px] h-[800px] bg-blue-400/20 rounded-full blur-[100px] opacity-40"></div>
@@ -635,73 +830,130 @@ export default function QuoteConfigPage() {
       </div>
 
       {/* HEADER - Updated to be flat and at top */}
-      <header className="sticky top-0 z-50 backdrop-blur-md bg-white/80 border-b border-white/60 shadow-sm">
-        <div className="max-w-[1920px] mx-auto px-6 py-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+      <header className="sticky top-0 z-50 w-full border-b border-white/20 bg-white/80 backdrop-blur-xl shadow-sm supports-[backdrop-filter]:bg-white/60">
+        <div className="max-w-[1920px] mx-auto px-4 sm:px-6 h-20 flex items-center justify-between gap-4 py-3">
+          {/* Left: Logo & Breadcrumbs */}
           <div className="flex items-center gap-6">
-            {/* Logo Section */}
-            <div className="flex items-center h-16">
-              <img
-                src="https://frigate.ai/wp-content/uploads/2025/03/FastParts-logo-1024x351.png"
-                className="aspect-video w-full h-full object-contain"
-              />
+            <Link
+              href="/"
+              className="flex items-center gap-2 group transition-opacity hover:opacity-80"
+            >
+              <div className="h-12 w-auto relative">
+                <Logo classNames="h-full w-auto object-contain" />
+              </div>
+            </Link>
+
+            <div className="hidden md:block w-px h-8 bg-slate-200"></div>
+
+            <div className="hidden md:flex items-center gap-2 text-sm font-medium text-slate-500">
+              <Link
+                href="/instant-quote"
+                className="hover:text-blue-600 transition-colors"
+              >
+                Instant Quote
+              </Link>
+
+              <ChevronRight className="w-4 h-4 text-slate-400" />
+              <span className="px-2.5 py-1 bg-blue-50 text-blue-700 rounded-lg text-xs font-bold uppercase tracking-wider border border-blue-100">
+                Configuration
+              </span>
+
+              <ChevronRight className="w-4 h-4 text-slate-400" />
+              <span>Checkout</span>
             </div>
           </div>
-          <div className="flex items-center gap-3">
-            <div className="flex items-center justify-between gap-x-1 text-sm text-gray-700">
-              <span>Current Total: </span>
-              <span className="font-semibold text-lg text-gray-900">
+
+          {/* Right: Actions & Profile */}
+          <div className="flex items-center gap-3 sm:gap-4">
+            {/* Price Display (Desktop) */}
+            <div className="hidden lg:flex items-baseline gap-3 pl-4 pr-5 py-2 bg-slate-50 border border-slate-100 rounded-full shadow-sm">
+              <div className="flex items-center gap-2">
+                <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse"></div>
+                <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">
+                  Total
+                </span>
+              </div>
+              <span className="font-bold text-slate-900 text-lg tabular-nums">
                 {formatCurrencyFixed(standardPrice)}
               </span>
             </div>
 
-            <Button
-              onClick={() => setShowUploadModal(true)}
-              className="bg-blue-600"
-            >
-              New Quote
-            </Button>
+            <div className="w-px h-8 bg-slate-200 mx-1 hidden sm:block"></div>
 
+            {/* Action Buttons */}
+            <div className="flex items-center gap-2">
+              <Button
+                onClick={handleSaveDraft}
+                disabled={saving || unsavedChanges.size === 0}
+                className="text-blue-600 bg-blue-50 hover:text-blue-700 hover:bg-blue-50 font-medium shadow-lg shadow-blue-600/20 transition-all hover:scale-[1.02] active:scale-[0.98] rounded-lg"
+              >
+                <Save className="w-4 h-4" />
+                <span className="hidden lg:inline">
+                  {saving
+                    ? "Saving..."
+                    : unsavedChanges.size > 0
+                      ? "Save Changes"
+                      : "Save Quote"}
+                </span>
+              </Button>
+
+              <Button
+                onClick={() => setShowUploadModal(true)}
+                className="bg-blue-600 hover:bg-blue-700 text-white font-medium shadow-lg shadow-blue-600/20 transition-all hover:scale-[1.02] active:scale-[0.98] rounded-lg"
+              >
+                <Plus className="w-4 h-4 sm:mr-2" />
+                <span className="hidden sm:inline">New Quote</span>
+              </Button>
+            </div>
+
+            {/* User Profile */}
             {session.status === "authenticated" ? (
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
                   <Button
                     variant="ghost"
-                    className="font-medium text-sm transition-all duration-300 bg-slate-100"
+                    className="relative h-10 w-10 rounded-full bg-slate-100 p-0 hover:bg-blue-50 hover:text-blue-600 transition-all border border-slate-200 hover:border-blue-200"
                   >
-                    <User className="w-4 h-4 mr-2" />
-                    {session?.data?.user?.name}
-                    <ChevronDown className="w-4 h-4 ml-2" />
+                    <User className="w-5 h-5" />
+                    <span className="absolute -top-1 -right-1 flex h-3 w-3">
+                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
+                      <span className="relative inline-flex rounded-full h-3 w-3 bg-green-500 border border-white"></span>
+                    </span>
                   </Button>
                 </DropdownMenuTrigger>
-                <DropdownMenuContent align="end" className="w-56">
-                  <DropdownMenuLabel className="font-normal">
+                <DropdownMenuContent
+                  align="end"
+                  className="w-60 p-2 shadow-xl border-slate-100 rounded-xl"
+                >
+                  <DropdownMenuLabel className="font-normal p-2">
                     <div className="flex flex-col space-y-1">
-                      <p className="text-sm font-medium leading-none">
+                      <p className="text-sm font-bold text-slate-900 leading-none">
                         {session?.data?.user?.name}
                       </p>
-                      <p className="text-xs leading-none text-muted-foreground">
+                      <p className="text-xs leading-none text-slate-500 truncate">
                         {session?.data?.user?.email}
                       </p>
                     </div>
                   </DropdownMenuLabel>
-                  <DropdownMenuSeparator />
+                  <DropdownMenuSeparator className="bg-slate-100 my-1" />
                   <DropdownMenuItem
                     onClick={() => signOut()}
-                    className="text-black cursor-pointer"
+                    className="text-slate-700 cursor-pointer rounded-lg focus:bg-slate-50 focus:text-blue-600 p-2"
                   >
                     <LayoutDashboard className="w-4 h-4 mr-2" />
                     Dashboard
                   </DropdownMenuItem>
                   <DropdownMenuItem
                     onClick={() => signOut()}
-                    className="text-black cursor-pointer"
+                    className="text-slate-700 cursor-pointer rounded-lg focus:bg-slate-50 focus:text-blue-600 p-2"
                   >
                     <Package2 className="w-4 h-4 mr-2" />
                     Orders
                   </DropdownMenuItem>
+                  <DropdownMenuSeparator className="bg-slate-100 my-1" />
                   <DropdownMenuItem
                     onClick={() => signOut()}
-                    className="text-red-600 cursor-pointer"
+                    className="text-red-600 cursor-pointer rounded-lg focus:bg-red-50 focus:text-red-700 p-2"
                   >
                     <LogOut className="w-4 h-4 mr-2" />
                     Sign Out
@@ -709,11 +961,11 @@ export default function QuoteConfigPage() {
                 </DropdownMenuContent>
               </DropdownMenu>
             ) : (
-              <div className="flex items-center gap-4">
+              <div className="flex items-center gap-2 pl-2">
                 <Link href="/login">
                   <Button
                     variant="ghost"
-                    className="text-blue-600 hover:bg-blue-50"
+                    className="text-slate-600 hover:text-blue-600 font-medium"
                   >
                     Sign In
                   </Button>
@@ -737,7 +989,7 @@ export default function QuoteConfigPage() {
           <ChevronRight className="w-5 h-5 text-slate-400" />
 
           <span className="font-bold text-slate-900 tracking-wide">
-            {quoteId}
+            {rfq.rfq_code}
           </span>
         </div>
 
@@ -765,10 +1017,10 @@ export default function QuoteConfigPage() {
         </div>
 
         <Button
-          className="bg-gray-300 text-black relative"
+          className="bg-gray-300 hover:bg-gray-400 text-black hover:text-white transition-colors relative"
           onClick={() => setShowArchiveModal(true)}
         >
-          <Archive className="size-4 text-black mr-2" />
+          <Archive className="size-4 mr-2" />
           Archive
           {archivedParts.length > 0 && (
             <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs font-bold rounded-full h-5 w-5 flex items-center justify-center">
@@ -786,9 +1038,8 @@ export default function QuoteConfigPage() {
               key={index}
               part={part}
               index={index}
-              updatePart={(index, field: keyof PartConfig, value) => {
-                updatePart(index, field, value);
-              }}
+              updatePart={updatePart}
+              updatePartFields={updatePartFields}
               handleDeletePart={handleDeletePart}
               handleArchivePart={handleArchivePart}
               calculatePrice={calculatePrice}
@@ -797,7 +1048,6 @@ export default function QuoteConfigPage() {
               FINISHES_LIST={FINISHES_LIST}
               THREAD_OPTIONS={THREAD_OPTIONS}
               INSPECTIONS_OPTIONS={INSPECTION_OPTIONS}
-              isSelectionMode={isSelectionMode}
               isSelected={selectedParts.has(part.id)}
               onToggleSelection={() => togglePartSelection(part.id)}
             />
@@ -817,47 +1067,67 @@ export default function QuoteConfigPage() {
 
               {/* Upload Area */}
               <div className="p-8 lg:p-12 bg-white/50 flex flex-col items-center justify-center gap-4 text-center border-b border-slate-200">
-                <div
-                  className={`p-4 bg-gradient-to-br rounded-2xl transition-all shadow-sm ${
-                    isDragActive
-                      ? "from-blue-200 to-blue-100 scale-110"
-                      : "from-blue-50 to-slate-50"
-                  }`}
-                >
-                  <Upload
-                    className={`w-10 h-10 transition-colors ${
-                      isDragActive ? "text-blue-700" : "text-blue-600"
-                    }`}
-                  />
-                </div>
-                <div>
-                  <p
-                    className={`font-bold text-xl mb-2 transition-colors ${
-                      isDragActive ? "text-blue-700" : "text-slate-900"
-                    }`}
-                  >
-                    {isDragActive ? "Drop your files here" : "Add Another Part"}
-                  </p>
-                  <p className="text-sm text-slate-500 max-w-xs mx-auto">
-                    {isDragActive
-                      ? "Release to upload your CAD files"
-                      : "Click to upload or drag and drop your CAD files here"}
-                  </p>
-                </div>
-                <div className="flex flex-wrap gap-2 justify-center mt-2">
-                  {["STEP", "STL", "IGES", "OBJ", "and More"].map((fmt) => (
-                    <span
-                      key={fmt}
-                      className={`px-2.5 py-1 text-xs font-medium rounded-md transition-colors ${
+                {is3DFileUploading ? (
+                  <div className="flex flex-col items-center justify-center py-6">
+                    <div className="p-4 bg-blue-50 rounded-2xl mb-4 relative">
+                      <div className="absolute inset-0 bg-blue-400 opacity-20 blur-xl rounded-full animate-pulse"></div>
+                      <Loader2 className="w-10 h-10 text-blue-600 animate-spin relative z-10" />
+                    </div>
+                    <p className="font-bold text-xl mb-2 text-slate-900 animate-pulse">
+                      Analyzing Geometry...
+                    </p>
+                    <p className="text-sm text-slate-500 max-w-xs mx-auto">
+                      Please wait while we upload and process your CAD files for
+                      manufacturing analysis.
+                    </p>
+                  </div>
+                ) : (
+                  <>
+                    <div
+                      className={`p-4 bg-gradient-to-br rounded-2xl transition-all shadow-sm ${
                         isDragActive
-                          ? "bg-blue-200 text-blue-800"
-                          : "bg-slate-100 text-slate-600"
+                          ? "from-blue-200 to-blue-100 scale-110"
+                          : "from-blue-50 to-slate-50"
                       }`}
                     >
-                      {fmt}
-                    </span>
-                  ))}
-                </div>
+                      <Upload
+                        className={`w-10 h-10 transition-colors ${
+                          isDragActive ? "text-blue-700" : "text-blue-600"
+                        }`}
+                      />
+                    </div>
+                    <div>
+                      <p
+                        className={`font-bold text-xl mb-2 transition-colors ${
+                          isDragActive ? "text-blue-700" : "text-slate-900"
+                        }`}
+                      >
+                        {isDragActive
+                          ? "Drop your files here"
+                          : "Add Another Part"}
+                      </p>
+                      <p className="text-sm text-slate-500 max-w-xs mx-auto">
+                        {isDragActive
+                          ? "Release to upload your CAD files"
+                          : "Click to upload or drag and drop your CAD files here"}
+                      </p>
+                    </div>
+                    <div className="flex flex-wrap gap-2 justify-center mt-2">
+                      {["STEP", "STL", "IGES", "OBJ", "and More"].map((fmt) => (
+                        <span
+                          key={fmt}
+                          className={`px-2.5 py-1 text-xs font-medium rounded-md transition-colors ${
+                            isDragActive
+                              ? "bg-blue-200 text-blue-800"
+                              : "bg-slate-100 text-slate-600"
+                          }`}
+                        >
+                          {fmt}
+                        </span>
+                      ))}
+                    </div>
+                  </>
+                )}
               </div>
             </div>
           </div>
@@ -991,133 +1261,20 @@ export default function QuoteConfigPage() {
         open={showUploadModal}
         setOpen={setShowUploadModal}
         parts={parts}
+        saveAsDraft={handleSaveDraft}
         setParts={setParts}
       />
 
       {/* Archive Modal */}
-      <Dialog open={showArchiveModal} onOpenChange={setShowArchiveModal}>
-        <DialogContent
-          showClose={true}
-          className="sm:max-w-4xl max-h-[85vh] overflow-hidden flex flex-col"
-        >
-          <DialogHeader>
-            <DialogTitle className="text-2xl font-bold flex items-center gap-2">
-              <Archive className="w-6 h-6 text-slate-600" />
-              Archived Parts
-            </DialogTitle>
-            <DialogDescription>
-              View and restore archived parts. Archived parts are not included
-              in your quote.
-            </DialogDescription>
-          </DialogHeader>
-
-          <div className="flex-1 overflow-y-auto pr-2 -mr-2 custom-scrollbar">
-            {archivedParts.length === 0 ? (
-              <div className="flex flex-col items-center justify-center py-16 text-center">
-                <div className="w-20 h-20 rounded-full bg-slate-100 flex items-center justify-center mb-4">
-                  <Archive className="w-10 h-10 text-slate-400" />
-                </div>
-                <h3 className="text-lg font-semibold text-slate-900 mb-2">
-                  No Archived Parts
-                </h3>
-                <p className="text-sm text-slate-500 max-w-sm">
-                  Parts you archive will appear here. You can restore them at
-                  any time.
-                </p>
-              </div>
-            ) : (
-              <div className="space-y-4 w-full">
-                {archivedParts.map((part, index) => (
-                  <div
-                    key={part.id}
-                    className="border border-slate-200 rounded-lg p-4 bg-white hover:shadow-md transition-all"
-                  >
-                    <div className="flex items-start gap-4">
-                      {/* Part Info */}
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2 mb-2">
-                          <span className="flex items-center justify-center w-6 h-6 rounded-full bg-slate-100 text-slate-500 text-xs font-bold flex-shrink-0">
-                            {index + 1}
-                          </span>
-                          <h4 className="text-base font-bold text-slate-900 truncate">
-                            {part.fileName}
-                          </h4>
-                        </div>
-
-                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mt-3">
-                          <div>
-                            <p className="text-xs font-semibold text-slate-500 uppercase tracking-tight mb-1">
-                              Material
-                            </p>
-                            <p className="text-sm font-medium text-slate-900">
-                              {
-                                MATERIALS_LIST.find(
-                                  (m) => m.value === part.material,
-                                )?.label
-                              }
-                            </p>
-                          </div>
-                          <div>
-                            <p className="text-xs font-semibold text-slate-500 uppercase tracking-tight mb-1">
-                              Quantity
-                            </p>
-                            <p className="text-sm font-medium text-slate-900">
-                              {part.quantity} pcs
-                            </p>
-                          </div>
-                          <div>
-                            <p className="text-xs font-semibold text-slate-500 uppercase tracking-tight mb-1">
-                              Finish
-                            </p>
-                            <p className="text-sm font-medium text-slate-900">
-                              {
-                                FINISHES_LIST.find(
-                                  (f) => f.value === part.finish,
-                                )?.label
-                              }
-                            </p>
-                          </div>
-                          <div>
-                            <p className="text-xs font-semibold text-slate-500 uppercase tracking-tight mb-1">
-                              Lead Time
-                            </p>
-                            <p className="text-sm font-medium text-slate-900 capitalize">
-                              {part.leadTimeType}
-                            </p>
-                          </div>
-                        </div>
-                      </div>
-
-                      {/* Actions */}
-                      <div className="flex flex-col gap-2">
-                        <Button
-                          size="sm"
-                          onClick={() => handleUnarchivePart(part.id)}
-                          className="bg-blue-600 hover:bg-blue-700 text-white whitespace-nowrap"
-                        >
-                          <Package className="w-4 h-4 mr-2" />
-                          Restore
-                        </Button>
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-            <div className="flex justify-end mt-7">
-              {archivedParts.length > 0 && (
-                <Button
-                  onClick={handleUnarchiveAll}
-                  className="bg-blue-600 ml-auto w-full max-w-xs hover:bg-blue-700 text-white"
-                >
-                  <Package className="w-4 h-4 mr-2" />
-                  Restore All
-                </Button>
-              )}
-            </div>
-          </div>
-        </DialogContent>
-      </Dialog>
+      <ArchiveModal
+        showArchiveModal={showArchiveModal}
+        setShowArchiveModal={setShowArchiveModal}
+        archivedParts={archivedParts}
+        MATERIALS_LIST={MATERIALS_LIST}
+        FINISHES_LIST={FINISHES_LIST}
+        handleUnarchivePart={handleUnarchivePart}
+        handleUnarchiveAll={handleUnarchiveAll}
+      />
 
       {/* Floating Action Bar for Selection Mode */}
       {selectedParts.size > 0 && (

@@ -11,6 +11,7 @@ import { SupplierModule } from './supplier/supplier.module';
 import { ToleranceModule } from './tolerance/tolerance.module';
 import { MulterModule } from '@nestjs/platform-express';
 import { FilesModule } from './files/files.module';
+import { RfqModule } from './rfq/rfq.module';
 
 @Module({
   imports: [
@@ -30,6 +31,7 @@ import { FilesModule } from './files/files.module';
     SupplierModule,
     ToleranceModule,
     FilesModule,
+    RfqModule,
   ],
   controllers: [AppController],
   providers: [AppService],

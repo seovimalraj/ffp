@@ -1,49 +1,55 @@
--- Parent table for the overall quote request
-CREATE TABLE quotes (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    user_id UUID,
-    -- Link to your user table
-    status VARCHAR(20) DEFAULT 'draft',
-    -- draft, submitted, paid
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+CREATE TABLE rfq (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    rfq_code VARCHAR(20) UNIQUE,
+    -- FRI_RFQ_00000001
+    user_id UUID NOT NULL REFERENCES users(id),
+    final_price numeric(10, 2),
+    status VARCHAR(50) NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
--- Main table for storing part configurations
-CREATE TABLE parts (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    quote_id UUID REFERENCES quotes(id) ON DELETE CASCADE,
-    -- Core Identity
+CREATE TABLE rfq_parts (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    rfq_id UUID NOT NULL REFERENCES rfq(id) ON DELETE CASCADE,
+    status VARCHAR(50) NOT NULL,
     file_name VARCHAR(255) NOT NULL,
-    cad_file_url TEXT NOT NULL,
-    -- Path to S3 file
-    cad_file_type VARCHAR(10),
-    -- 'stl', 'step', etc.
-    -- Manufacturing Specs
+    cad_file_url VARCHAR(255) NOT NULL,
+    cad_file_type VARCHAR(50) NOT NULL,
     material VARCHAR(50) NOT NULL,
-    -- e.g., 'aluminum-6061'
+    quantity INT NOT NULL,
+    tolerance VARCHAR(50) NOT NULL,
     finish VARCHAR(50) NOT NULL,
-    -- e.g., 'as-machined'
-    tolerance VARCHAR(50) DEFAULT 'standard',
-    quantity INTEGER DEFAULT 1,
     threads VARCHAR(50),
     inspection VARCHAR(50),
-    lead_time_type VARCHAR(20) DEFAULT 'standard',
     notes TEXT,
-    -- Computed Geometry (Stored as JSON for flexibility)
-    -- Stores: { volume, surfaceArea, boundingBox: {x,y,z}, complexity, ... }
-    geometry_data JSONB,
-    -- Snapshot of pricing at time of configuration (Optional but recommended)
-    -- Stores: { unitPrice, materialCost, machiningCost, ... }
-    pricing_snapshot JSONB,
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+    lead_time_type VARCHAR(50) NOT NULL,
+    lead_time INT NOT NULL,
+    delivery_date TIMESTAMP,
+    geometry JSONB,
+    pricing JSONB,
+    is_archived BOOLEAN DEFAULT FALSE,
+    final_price numeric(10, 2),
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
--- Separate table for associated 2D drawings (1-to-Many relationship)
-CREATE TABLE part_drawings (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    part_id UUID REFERENCES parts(id) ON DELETE CASCADE,
-    file_url TEXT NOT NULL,
-    file_name VARCHAR(255),
-    mime_type VARCHAR(100),
-    -- 'application/pdf', 'image/png'
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+CREATE TABLE part_drawing_2d (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    rfq_id UUID NOT NULL REFERENCES rfq(id) ON DELETE CASCADE,
+    rfq_part_id UUID NOT NULL REFERENCES rfq_parts(id) ON DELETE CASCADE,
+    file_name VARCHAR(255) NOT NULL,
+    file_url VARCHAR(255) NOT NULL,
+    mime_type VARCHAR(50) NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
+CREATE SEQUENCE rfq_number_seq START 1 INCREMENT 1;
+CREATE OR REPLACE FUNCTION generate_rfq_code() RETURNS TRIGGER AS $$
+DECLARE seq_value BIGINT;
+BEGIN IF NEW.rfq_code IS NULL THEN seq_value := nextval('rfq_number_seq');
+NEW.rfq_code := 'FRI_RFQ_' || LPAD(seq_value::TEXT, 8, '0');
+END IF;
+RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+CREATE TRIGGER rfq_code_trigger BEFORE
+INSERT ON rfq FOR EACH ROW EXECUTE FUNCTION generate_rfq_code();
