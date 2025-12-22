@@ -1,0 +1,35 @@
+CREATE TABLE abandoned_rfq_parts (
+    id UUID PRIMARY KEY,
+    rfq_id UUID NOT NULL,
+    original_part_id UUID NOT NULL,
+    file_name VARCHAR(255) NOT NULL,
+    cad_file_url VARCHAR(255) NOT NULL,
+    cad_file_type VARCHAR(50) NOT NULL,
+    material VARCHAR(50) NOT NULL,
+    quantity INT NOT NULL,
+    tolerance VARCHAR(50) NOT NULL,
+    finish VARCHAR(50) NOT NULL,
+    threads VARCHAR(50),
+    inspection VARCHAR(50),
+    notes TEXT,
+    lead_time_type VARCHAR(50) NOT NULL,
+    lead_time INT NOT NULL,
+    delivery_date TIMESTAMP,
+    geometry JSONB,
+    pricing JSONB,
+    final_price NUMERIC(10, 2),
+    abandoned_reason TEXT,
+    abandoned_by UUID REFERENCES users(id),
+    abandoned_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+CREATE TABLE abandoned_part_drawing_2d (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    abandoned_part_id UUID NOT NULL REFERENCES abandoned_rfq_parts(id) ON DELETE CASCADE,
+    file_name VARCHAR(255) NOT NULL,
+    file_url VARCHAR(255) NOT NULL,
+    mime_type VARCHAR(50) NOT NULL,
+    created_at TIMESTAMP,
+    updated_at TIMESTAMP
+);

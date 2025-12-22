@@ -17,7 +17,7 @@ import {
   FinishItem,
   InspectionItem,
   ThreadItem,
-} from "./part-card-item";
+} from "@/types/part-config";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useDropzone } from "react-dropzone";
 import { Upload, BarChart4 } from "lucide-react";
@@ -35,7 +35,17 @@ interface EditPartModalProps {
   ) => number;
   part: PartConfig;
   index: number;
-  updatePart: (index: number, field: keyof PartConfig, value: any) => void;
+  updatePart: (
+    index: number,
+    field: keyof PartConfig,
+    value: any,
+    saveToDb?: boolean,
+  ) => void;
+  updatePartFields?: (
+    index: number,
+    updates: Partial<PartConfig>,
+    saveToDb?: boolean,
+  ) => void;
   MATERIALS_LIST: MaterialItem[];
   TOLERANCES_LIST: ToleranceItem[];
   FINISHES_LIST: FinishItem[];
@@ -114,6 +124,7 @@ export function EditPartModal({
   THREAD_OPTIONS,
   INSPECTIONS_OPTIONS,
   calculatePrice,
+  updatePartFields,
 }: EditPartModalProps) {
   const [activeTab, setActiveTab] = useState("config");
   const [localPart, setLocalPart] = useState<PartConfig>(part);
@@ -129,12 +140,26 @@ export function EditPartModal({
   };
 
   const handleSave = () => {
-    const keys = Object.keys(localPart) as (keyof PartConfig)[];
-    keys.forEach((key) => {
-      if (localPart[key] !== part[key]) {
-        updatePart(index, key, localPart[key]);
+    if (updatePartFields) {
+      const updates: Partial<PartConfig> = {};
+      const keys = Object.keys(localPart) as (keyof PartConfig)[];
+      keys.forEach((key) => {
+        if (localPart[key] !== part[key]) {
+          // @ts-ignore
+          updates[key] = localPart[key];
+        }
+      });
+      if (Object.keys(updates).length > 0) {
+        updatePartFields(index, updates);
       }
-    });
+    } else {
+      const keys = Object.keys(localPart) as (keyof PartConfig)[];
+      keys.forEach((key) => {
+        if (localPart[key] !== part[key]) {
+          updatePart(index, key, localPart[key]);
+        }
+      });
+    }
     onClose();
   };
 
@@ -238,7 +263,7 @@ export function EditPartModal({
                 <div className="px-8 py-8 max-w-4xl">
                   {/* Quantity & Pricing */}
                   <div className="space-y-10 mb-10">
-                    <div className="grid grid-cols-[240px_1fr] gap-8 items-start">
+                    <div className="grid lg:grid-cols-[240px_1fr] gap-8 items-start">
                       <div>
                         <Label className="text-base font-semibold text-gray-900">
                           Quantity Breakdown
@@ -361,7 +386,7 @@ export function EditPartModal({
                   {/* General Config Section */}
                   <div className="space-y-10">
                     {/* Material */}
-                    <div className="grid grid-cols-[240px_1fr] gap-8 items-start">
+                    <div className="grid lg:grid-cols-[240px_1fr] gap-8 items-start">
                       <div>
                         <Label className="text-base font-semibold text-gray-900">
                           Material
@@ -391,7 +416,7 @@ export function EditPartModal({
                     <div className="h-px bg-gray-100 w-full" />
 
                     {/* Finish */}
-                    <div className="grid grid-cols-[240px_1fr] gap-8 items-start">
+                    <div className="grid lg:grid-cols-[240px_1fr] gap-8 items-start">
                       <div>
                         <Label className="text-base font-semibold text-gray-900">
                           Surface Finish
@@ -427,7 +452,7 @@ export function EditPartModal({
                     <div className="h-px bg-gray-100 w-full" />
 
                     {/* Treads & Inserts */}
-                    <div className="grid grid-cols-[240px_1fr] gap-8 items-start">
+                    <div className="grid lg:grid-cols-[240px_1fr] gap-8 items-start">
                       <div>
                         <Label className="text-base font-semibold text-gray-900">
                           Threads & Inserts
@@ -457,7 +482,7 @@ export function EditPartModal({
                     <div className="h-px bg-gray-100 w-full" />
 
                     {/* Tolerances */}
-                    <div className="grid grid-cols-[240px_1fr] gap-8 items-start">
+                    <div className="grid lg:grid-cols-[240px_1fr] gap-8 items-start">
                       <div>
                         <Label className="text-base font-semibold text-gray-900">
                           Tolerance Standard
@@ -467,7 +492,7 @@ export function EditPartModal({
                           part.
                         </p>
                       </div>
-                      <div className="grid grid-cols-3 gap-3">
+                      <div className="grid lg:grid-cols-3 gap-3">
                         {TOLERANCES_LIST.map((t) => (
                           <div
                             key={t.value}
@@ -483,7 +508,7 @@ export function EditPartModal({
                               }
                             `}
                           >
-                            <span className="font-semibold text-sm">
+                            <span className="font-semibold last:col-span-2 lg:last:col-span-1 text-sm">
                               {t.label}
                             </span>
                           </div>
@@ -494,7 +519,7 @@ export function EditPartModal({
                     <div className="h-px bg-gray-100 w-full" />
 
                     {/* Inspection */}
-                    <div className="grid grid-cols-[240px_1fr] gap-8 items-start">
+                    <div className="grid lg:grid-cols-[240px_1fr] gap-8 items-start">
                       <div>
                         <Label className="text-base font-semibold text-gray-900">
                           Inspection Report
@@ -524,7 +549,7 @@ export function EditPartModal({
                     <div className="h-px bg-gray-100 w-full" />
 
                     {/* Notes */}
-                    <div className="grid grid-cols-[240px_1fr] gap-8 items-start">
+                    <div className="grid lg:grid-cols-[240px_1fr] gap-8 items-start">
                       <div>
                         <Label className="text-base font-semibold text-gray-900">
                           Engineering Notes
@@ -549,7 +574,7 @@ export function EditPartModal({
                     </div>
 
                     {/* Certification */}
-                    <div className="grid grid-cols-[260px_1fr] gap-10 items-start">
+                    <div className="grid lg:grid-cols-[260px_1fr] gap-10 items-start">
                       {/* Left description */}
                       <div className="space-y-2">
                         <Label className="text-base font-semibold text-gray-900">
@@ -561,7 +586,7 @@ export function EditPartModal({
                       </div>
 
                       {/* Right options */}
-                      <div className="grid grid-cols-2 gap-4">
+                      <div className="grid lg:grid-cols-2 gap-4">
                         {CERTIFICATES_LIST.map((c) => {
                           const isChecked = localPart?.certificates?.includes(
                             c.value,

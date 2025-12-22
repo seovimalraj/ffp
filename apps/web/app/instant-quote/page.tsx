@@ -26,7 +26,6 @@ import {
   Box,
   LogOut,
 } from "lucide-react";
-import { getFileDownloadUrl } from "../../lib/database";
 import { analyzeCADFile, GeometryData } from "../../lib/cad-analysis";
 import { PricingBreakdown } from "../../lib/pricing-engine";
 import {
@@ -45,21 +44,11 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { signIn, signOut, useSession } from "next-auth/react";
-import { setItem } from "@/lib/item-storage";
 import { notify } from "@/lib/toast";
-import { randomInt } from "crypto";
 import ExpandFileModal from "../quote-config/components/expand-file-modal";
 import { useFileUpload } from "@/lib/hooks/use-file-upload";
-
-// Dynamically import 3D viewer to avoid SSR issues
-const CadViewer3D = dynamic(() => import("@/components/viewer/CadViewer3D"), {
-  ssr: false,
-  loading: () => (
-    <div className="flex items-center justify-center h-full">
-      <Loader2 className="w-8 h-8 animate-spin text-blue-600" />
-    </div>
-  ),
-});
+import { apiClient } from "@/lib/api";
+import Logo from "@/components/ui/logo";
 
 interface UploadedFileData {
   file: File;
@@ -165,42 +154,49 @@ export default function InstantQuotePage() {
 
       const uploadResults = await Promise.all(uploadPromises);
 
-      // Generate temporary quote ID (no database call to avoid 502)
-      const tempQuoteId = `FRI_RFQ_${Math.floor(100000 + Math.random() * 900000)}`;
-
-      // Store files in sessionStorage for quote-config page
-      const filesData = uploadResults.map((r) => ({
-        name: r.name,
-        size: r.size,
-        type: r.mimeType,
-        geometry: r.geometry,
-        path: r.uploadedPath,
-      }));
-
-      // Store metadata
-      // Use IndexedDB instead of sessionStorage to handle larger files
-      await Promise.all([
-        setItem(`quote-${tempQuoteId}-files`, JSON.stringify(filesData)),
-        setItem(`quote-${tempQuoteId}-email`, `guest-${Date.now()}@temp.quote`),
-      ]);
-
-      // Store actual file data as File objects (IndexedDB supports File/Blob natively)
-      const filePromises = uploadResults.map((result, i) => {
-        return setItem(`quote-${tempQuoteId}-file-${i}`, result.file);
-      });
-
-      // Wait for all files to be stored
-      await Promise.all(filePromises);
-
-      console.log(
-        `Files stored in sessionStorage. Redirecting to quote config: ${tempQuoteId}`,
-      );
-
-      if (session.status === "authenticated" || session.status === "loading") {
-        router.push(`/quote-config/${tempQuoteId}`);
-      } else {
-        setRedirectUrl(`/quote-config/${tempQuoteId}`);
+      // Check authentication
+      if (session.status !== "authenticated") {
+        setAuthMode("signup");
         setShowAuthModal(true);
+        setIsUploading(false);
+        return;
+      }
+
+      // Create RFQ via API
+      const rfqPayload = {
+        user_id: session.data.user.id,
+        parts: uploadResults.map((r) => ({
+          file_name: r.name,
+          cad_file_url: r.uploadedPath,
+          cad_file_type: r.name.split(".").pop() || "unknown",
+          material: "aluminum-6061",
+          quantity: 1,
+          tolerance: "standard",
+          finish: "as-machined",
+          threads: "none",
+          inspection: "standard",
+          notes: "",
+          lead_time_type: "standard",
+          lead_time: 7,
+          geometry: r.geometry,
+          certificates: [],
+        })),
+      };
+
+      try {
+        const response = await apiClient.post("/rfq", rfqPayload);
+        console.log(response, "response");
+        if (response.data?.success && response.data?.rfq_id) {
+          console.log("RFQ Created:", response.data.rfq_id);
+          router.push(`/quote-config/${response.data.rfq_id}`);
+        } else {
+          throw new Error("Failed to create quote");
+        }
+      } catch (apiError) {
+        console.error("Failed to create RFQ via API:", apiError);
+        notify.error("Failed to create quote. Please try again.");
+      } finally {
+        setIsUploading(false);
       }
     } catch (error: any) {
       console.error("Upload error:", error);
@@ -243,10 +239,7 @@ export default function InstantQuotePage() {
           {/* Left: Back to Home */}
           <Link href="/" className="flex items-center space-x-2">
             <div className="h-16 px-3 rounded flex items-center justify-center">
-              <img
-                src="https://frigate.ai/wp-content/uploads/2025/03/FastParts-logo-1024x351.png"
-                className="aspect-video w-full h-full object-contain"
-              />
+              <Logo classNames="aspect-video w-full h-full object-contain" />
             </div>
           </Link>
 

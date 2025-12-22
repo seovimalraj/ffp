@@ -38,6 +38,14 @@ export enum Tables {
   MaterialTable = 'material',
 
   GeneralTolerancesTable = 'general_tolerances',
+
+  RFQTable = 'rfq',
+
+  RFQPartsTable = 'rfq_parts',
+
+  RFQPartDrawing2DTable = 'part_drawing_2d',
+  AbandonedRFQPartsTable = 'abandoned_rfq_parts',
+  AbandonedPartDrawing2DTable = 'abandoned_part_drawing_2d',
 }
 
 /**
@@ -60,6 +68,9 @@ export enum MaterializedViewNames {
 
 export enum SQLFunctions {
   userPermissionCodesMVRefresh = 'refresh_user_permission_codes_mv',
+  createInitialRFQ = 'create_initial_rfq',
+  abandonRFQPart = 'abandon_rfq_part',
+  abandonRFQParts = 'abandon_rfq_parts',
 }
 
 /**
