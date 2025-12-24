@@ -1,11 +1,9 @@
-'use client';
+"use client";
 
-import { usePathname } from 'next/navigation';
-import Link from 'next/link';
-import Image from 'next/image';
-import SidebarItem from './SidebarItem';
-import ClickOutside from '@/components/ClickOutside';
-import useLocalStorage from '@/hooks/useLocalStorage';
+import Image from "next/image";
+import SidebarItem from "./SidebarItem";
+import ClickOutside from "@/components/ClickOutside";
+import useLocalStorage from "@/hooks/useLocalStorage";
 
 interface SidebarProps {
   sidebarOpen: boolean;
@@ -14,7 +12,7 @@ interface SidebarProps {
 
 const menuGroups = [
   {
-    name: 'Menu',
+    name: "Menu",
     menuItems: [
       {
         icon: (
@@ -30,17 +28,22 @@ const menuGroups = [
             <path d="M15.4689 9.92822H11.8971C10.9408 9.92822 10.1533 10.7157 10.1533 11.672V15.2438C10.1533 16.2001 10.9408 16.9876 11.8971 16.9876H15.4689C16.4252 16.9876 17.2127 16.2001 17.2127 15.2438V11.672C17.2127 10.7157 16.4252 9.92822 15.4689 9.92822Z" />
           </svg>
         ),
-        label: 'Dashboard',
-        route: '/',
+        label: "Dashboard",
+        route: "/",
       },
       {
         icon: (
-          <svg className="fill-current" width="18" height="19" viewBox="0 0 18 19">
+          <svg
+            className="fill-current"
+            width="18"
+            height="19"
+            viewBox="0 0 18 19"
+          >
             <path d="M15.7501 0.55835H2.2501C1.29385 0.55835 0.506348 1.34585 0.506348 2.3021V15.8083C0.506348 16.7646 1.29385 17.5521 2.2501 17.5521H15.7501C16.7063 17.5521 17.4938 16.7646 17.4938 15.8083V2.3021C17.4938 1.34585 16.7063 0.55835 15.7501 0.55835Z" />
           </svg>
         ),
-        label: 'Tables',
-        route: '/tables',
+        label: "Tables",
+        route: "/tables",
       },
       {
         icon: (
@@ -48,26 +51,30 @@ const menuGroups = [
             <path d="M9.0002 7.79065C9.3022 7.79065 9.5492 8.03765 9.5492 8.33965V13.6693L13.6402 11.8773C13.8822 11.7653 14.1542 11.8963 14.2662 12.1383C14.3782 12.3803 14.2472 12.6523 14.0052 12.7643L9.7632 14.5833C9.6032 14.6543 9.4212 14.6543 9.2612 14.5833L4.9972 12.7643C4.7552 12.6523 4.6242 12.3803 4.7362 12.1383C4.8482 11.8963 5.1202 11.7653 5.3622 11.8773L9.0002 13.6693V8.33965C9.0002 8.03765 9.2472 7.79065 9.5492 7.79065H9.0002Z" />
           </svg>
         ),
-        label: 'Forms',
-        route: '/forms',
+        label: "Forms",
+        route: "/forms",
       },
     ],
   },
 ];
 
 const Sidebar = ({ sidebarOpen, setSidebarOpen }: SidebarProps) => {
-  const path = usePathname();
-  const [pageName, setPageName] = useLocalStorage('selectedMenu', 'dashboard');
+  const [pageName, setPageName] = useLocalStorage("selectedMenu", "dashboard");
 
   return (
     <ClickOutside onClick={() => setSidebarOpen(false)}>
       <aside
         className={`fixed left-0 top-0 z-[9999] flex h-screen w-64 flex-col bg-gray-900 text-gray-200 border-r border-gray-800 transition-all duration-300 
-          ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'} lg:translate-x-0`}
+          ${sidebarOpen ? "translate-x-0" : "-translate-x-full"} lg:translate-x-0`}
       >
         <div className="flex items-center justify-between px-6 py-4 border-b border-gray-800">
           <Link href="/">
-            <Image width={150} height={28} src="/images/logo/logo.svg" alt="Logo" />
+            <Image
+              width={150}
+              height={28}
+              src="/images/logo/logo.svg"
+              alt="Logo"
+            />
           </Link>
 
           <button onClick={() => setSidebarOpen(false)} className="lg:hidden">

@@ -23,22 +23,23 @@ export class AnalyticsTracker {
 
   async initialize() {
     if (this.isInitialized) return;
+    if (typeof window === "undefined") return;
 
     // Load any existing session data
-    const sessionData = localStorage.getItem('analytics_session');
+    const sessionData = window.localStorage.getItem("analytics_session");
     if (sessionData) {
       try {
         const parsed = JSON.parse(sessionData);
         this.events = parsed.events || [];
-      } catch (e) {
-        console.warn('Failed to parse analytics session data');
+      } catch {
+        console.warn("Failed to parse analytics session data");
       }
     }
 
     this.isInitialized = true;
   }
 
-  async trackEvent(event: Omit<AnalyticsEvent, 'created_at'>) {
+  async trackEvent(event: Omit<AnalyticsEvent, "created_at">) {
     const fullEvent: AnalyticsEvent = {
       ...event,
       created_at: new Date().toISOString(),
@@ -47,37 +48,49 @@ export class AnalyticsTracker {
     this.events.push(fullEvent);
 
     // Store in localStorage for persistence
-    localStorage.setItem('analytics_session', JSON.stringify({
-      events: this.events.slice(-50), // Keep last 50 events
-    }));
+    if (typeof window !== "undefined") {
+      window.localStorage.setItem(
+        "analytics_session",
+        JSON.stringify({
+          events: this.events.slice(-50), // Keep last 50 events
+        }),
+      );
+    }
 
     // Send to server
     try {
-      await fetch('/api/analytics/track', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+      await fetch("/api/analytics/track", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify(fullEvent),
       });
     } catch (error) {
-      console.warn('Failed to send analytics event:', error);
+      console.warn("Failed to send analytics event:", error);
     }
   }
 
   // Checkout funnel events
-  async trackCheckoutStarted(quoteId: string, properties?: Record<string, any>) {
+  async trackCheckoutStarted(
+    quoteId: string,
+    properties?: Record<string, any>,
+  ) {
     await this.trackEvent({
-      event_type: 'checkout_started',
+      event_type: "checkout_started",
       quote_id: quoteId,
       properties: {
         ...properties,
-        step: 'checkout_initiated',
+        step: "checkout_initiated",
       },
     });
   }
 
-  async trackCheckoutStep(quoteId: string, step: string, properties?: Record<string, any>) {
+  async trackCheckoutStep(
+    quoteId: string,
+    step: string,
+    properties?: Record<string, any>,
+  ) {
     await this.trackEvent({
-      event_type: 'checkout_step_completed',
+      event_type: "checkout_step_completed",
       quote_id: quoteId,
       properties: {
         ...properties,
@@ -86,9 +99,13 @@ export class AnalyticsTracker {
     });
   }
 
-  async trackPaymentSucceeded(quoteId: string, orderId: string, properties?: Record<string, any>) {
+  async trackPaymentSucceeded(
+    quoteId: string,
+    orderId: string,
+    properties?: Record<string, any>,
+  ) {
     await this.trackEvent({
-      event_type: 'payment_succeeded',
+      event_type: "payment_succeeded",
       quote_id: quoteId,
       properties: {
         ...properties,
@@ -97,9 +114,13 @@ export class AnalyticsTracker {
     });
   }
 
-  async trackOrderCreated(quoteId: string, orderId: string, properties?: Record<string, any>) {
+  async trackOrderCreated(
+    quoteId: string,
+    orderId: string,
+    properties?: Record<string, any>,
+  ) {
     await this.trackEvent({
-      event_type: 'order_created',
+      event_type: "order_created",
       quote_id: quoteId,
       properties: {
         ...properties,
@@ -108,9 +129,13 @@ export class AnalyticsTracker {
     });
   }
 
-  async trackCheckoutAbandoned(quoteId: string, step: string, properties?: Record<string, any>) {
+  async trackCheckoutAbandoned(
+    quoteId: string,
+    step: string,
+    properties?: Record<string, any>,
+  ) {
     await this.trackEvent({
-      event_type: 'checkout_abandoned',
+      event_type: "checkout_abandoned",
       quote_id: quoteId,
       properties: {
         ...properties,
@@ -128,7 +153,9 @@ export class AnalyticsTracker {
   // Clear events (for testing)
   clearEvents() {
     this.events = [];
-    localStorage.removeItem('analytics_session');
+    if (typeof window !== "undefined") {
+      window.localStorage.removeItem("analytics_session");
+    }
   }
 }
 

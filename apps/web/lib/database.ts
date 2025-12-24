@@ -467,14 +467,8 @@ export async function getAdminDashboardStats() {
   // Get all quotes
   const { data: quotes } = await supabase.from("quotes").select("*");
 
-  // Get all RFQs
-  const { data: rfqs } = await supabase.from("rfqs").select("*");
-
   const totalOrders = orders?.length || 0;
   const totalQuotes = quotes?.length || 0;
-  const activeOrders =
-    orders?.filter((o) => ["pending", "rfq", "production"].includes(o.status))
-      .length || 0;
   const monthlyRevenue =
     orders?.reduce((sum, order) => sum + Number(order.total_price), 0) || 0;
   const avgQuoteValue = totalOrders > 0 ? monthlyRevenue / totalOrders : 0;

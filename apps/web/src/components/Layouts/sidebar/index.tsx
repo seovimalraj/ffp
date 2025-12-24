@@ -1,9 +1,7 @@
 "use client";
 
-import { Logo } from "@/components/logo";
 import { cn } from "@/lib/utils";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
 import { NAV_DATA } from "./data";
 import { ArrowLeftIcon } from "./data/icons";
@@ -12,7 +10,6 @@ import { useSidebarContext } from "./sidebar-context";
 
 export function Sidebar() {
   const { isOpen, setIsOpen, toggleSidebar } = useSidebarContext();
-  const pathname = usePathname();
   const [isMobile, setIsMobile] = useState(false);
 
   useEffect(() => {
@@ -77,11 +74,7 @@ export function Sidebar() {
                 <nav role="navigation" aria-label={section.label}>
                   <ul className="space-y-2">
                     {section.items.map((item) => (
-                      <MenuItem
-                        key={item.title}
-                        item={item}
-                        icon={item.icon}
-                      />
+                      <MenuItem key={item.title} item={item} icon={item.icon} />
                     ))}
                   </ul>
                 </nav>

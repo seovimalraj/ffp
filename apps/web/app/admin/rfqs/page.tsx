@@ -1,11 +1,11 @@
-'use client';
+"use client";
 
-import { useState, useEffect } from 'react';
-import { useRouter } from 'next/navigation';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
-import { Input } from '@/components/ui/input';
+import { useState, useEffect } from "react";
+import { useRouter } from "next/navigation";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import { Input } from "@/components/ui/input";
 import {
   Table,
   TableBody,
@@ -13,13 +13,20 @@ import {
   TableHead,
   TableHeader,
   TableRow,
-} from '@/components/ui/table';
-import { 
-  Clipboard, Search, Eye, TrendingUp, DollarSign, 
-  Package, CheckCircle, XCircle, Clock, Loader2,
-  AlertTriangle, Filter, ArrowUpDown
-} from 'lucide-react';
-import { getRFQs, getBidsForRFQ } from '../../../lib/database';
+} from "@/components/ui/table";
+import {
+  Clipboard,
+  Search,
+  Eye,
+  TrendingUp,
+  DollarSign,
+  Package,
+  CheckCircle,
+  Clock,
+  Loader2,
+  AlertTriangle,
+} from "lucide-react";
+import { getRFQs, getBidsForRFQ } from "../../../lib/database";
 
 interface RFQ {
   id: string;
@@ -40,28 +47,30 @@ export default function AdminRFQsPage() {
   const router = useRouter();
   const [rfqs, setRfqs] = useState<RFQ[]>([]);
   const [loading, setLoading] = useState(true);
-  const [searchQuery, setSearchQuery] = useState('');
-  const [filterStatus, setFilterStatus] = useState('all');
-  const [sortBy, setSortBy] = useState<'date' | 'bids' | 'value'>('date');
+  const [searchQuery, setSearchQuery] = useState("");
+  const [filterStatus, setFilterStatus] = useState("all");
+  const [sortBy, setSortBy] = useState<"date" | "bids" | "value">("date");
 
   useEffect(() => {
     async function loadRFQsWithBids() {
       try {
         setLoading(true);
         const rfqsData = await getRFQs();
-        
+
         // Load bids for each RFQ
         const rfqsWithBids = await Promise.all(
           rfqsData.map(async (rfq) => {
             try {
               const bids = await getBidsForRFQ(rfq.id);
-              const bidPrices = bids.map(b => b.price);
-              
+              const bidPrices = bids.map((b) => b.price);
+
               return {
                 ...rfq,
                 bidCount: bids.length,
-                lowestBid: bidPrices.length > 0 ? Math.min(...bidPrices) : undefined,
-                highestBid: bidPrices.length > 0 ? Math.max(...bidPrices) : undefined,
+                lowestBid:
+                  bidPrices.length > 0 ? Math.min(...bidPrices) : undefined,
+                highestBid:
+                  bidPrices.length > 0 ? Math.max(...bidPrices) : undefined,
               };
             } catch (error) {
               console.error(`Error loading bids for RFQ ${rfq.id}:`, error);
@@ -72,124 +81,37 @@ export default function AdminRFQsPage() {
                 highestBid: undefined,
               };
             }
-          })
+          }),
         );
-        
+
         setRfqs(rfqsWithBids);
       } catch (error) {
-        console.error('Error loading RFQs:', error);
-        // Use mock data if API fails
-        const mockRFQs: RFQ[] = [
-          {
-            id: 'RFQ-2024-001',
-            order_id: 'ORD-2024-045',
-            display_value: 12750.00,
-            materials: ['Aluminum 6061', 'Stainless Steel 304'],
-            lead_time: 14,
-            parts: 5,
-            status: 'open',
-            created_at: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString(),
-            closes_at: new Date(Date.now() + 48 * 60 * 60 * 1000).toISOString(),
-            bidCount: 3,
-            lowestBid: 11200.00,
-            highestBid: 13500.00,
-          },
-          {
-            id: 'RFQ-2024-002',
-            order_id: 'ORD-2024-046',
-            display_value: 8500.00,
-            materials: ['Titanium Ti-6Al-4V'],
-            lead_time: 21,
-            parts: 3,
-            status: 'open',
-            created_at: new Date(Date.now() - 5 * 60 * 60 * 1000).toISOString(),
-            closes_at: new Date(Date.now() + 36 * 60 * 60 * 1000).toISOString(),
-            bidCount: 5,
-            lowestBid: 7800.00,
-            highestBid: 9200.00,
-          },
-          {
-            id: 'RFQ-2024-003',
-            order_id: 'ORD-2024-047',
-            display_value: 24500.00,
-            materials: ['Aluminum 7075', 'Stainless Steel 316'],
-            lead_time: 10,
-            parts: 8,
-            status: 'open',
-            created_at: new Date(Date.now() - 8 * 60 * 60 * 1000).toISOString(),
-            closes_at: new Date(Date.now() + 60 * 60 * 60 * 1000).toISOString(),
-            bidCount: 7,
-            lowestBid: 22100.00,
-            highestBid: 26000.00,
-          },
-          {
-            id: 'RFQ-2024-004',
-            order_id: 'ORD-2024-048',
-            display_value: 6750.00,
-            materials: ['Plastic ABS', 'Nylon PA6'],
-            lead_time: 7,
-            parts: 12,
-            status: 'awarded',
-            created_at: new Date(Date.now() - 48 * 60 * 60 * 1000).toISOString(),
-            closes_at: new Date(Date.now() - 12 * 60 * 60 * 1000).toISOString(),
-            bidCount: 4,
-            lowestBid: 5950.00,
-            highestBid: 7100.00,
-          },
-          {
-            id: 'RFQ-2024-005',
-            order_id: 'ORD-2024-049',
-            display_value: 15200.00,
-            materials: ['Brass C360', 'Copper C110'],
-            lead_time: 18,
-            parts: 6,
-            status: 'open',
-            created_at: new Date(Date.now() - 12 * 60 * 60 * 1000).toISOString(),
-            closes_at: new Date(Date.now() + 72 * 60 * 60 * 1000).toISOString(),
-            bidCount: 2,
-            lowestBid: 14500.00,
-            highestBid: 15800.00,
-          },
-          {
-            id: 'RFQ-2024-006',
-            order_id: 'ORD-2024-050',
-            display_value: 9850.00,
-            materials: ['Aluminum 6061'],
-            lead_time: 12,
-            parts: 4,
-            status: 'closed',
-            created_at: new Date(Date.now() - 72 * 60 * 60 * 1000).toISOString(),
-            closes_at: new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString(),
-            bidCount: 6,
-            lowestBid: 8900.00,
-            highestBid: 10500.00,
-          },
-        ];
-        setRfqs(mockRFQs);
+        console.error("Error loading RFQs:", error);
+        setRfqs([]);
       } finally {
         setLoading(false);
       }
     }
-    
+
     loadRFQsWithBids();
   }, []);
 
   const getStatusBadge = (status: string, bidCount: number = 0) => {
-    if (status === 'open') {
+    if (status === "open") {
       return (
         <Badge className="bg-green-100 text-green-700 border-0">
           <Clock className="w-3 h-3 mr-1" />
           Open ({bidCount} bids)
         </Badge>
       );
-    } else if (status === 'closed') {
+    } else if (status === "closed") {
       return (
         <Badge className="bg-gray-100 text-gray-700 border-0">
           <CheckCircle className="w-3 h-3 mr-1" />
           Closed
         </Badge>
       );
-    } else if (status === 'awarded') {
+    } else if (status === "awarded") {
       return (
         <Badge className="bg-blue-100 text-blue-700 border-0">
           <CheckCircle className="w-3 h-3 mr-1" />
@@ -201,28 +123,35 @@ export default function AdminRFQsPage() {
   };
 
   const filteredRfqs = rfqs
-    .filter(rfq => {
-      const matchesSearch = rfq.id.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                           rfq.order_id.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                           rfq.materials.some(m => m.toLowerCase().includes(searchQuery.toLowerCase()));
-      const matchesFilter = filterStatus === 'all' || rfq.status === filterStatus;
+    .filter((rfq) => {
+      const matchesSearch =
+        rfq.id.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        rfq.order_id.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        rfq.materials.some((m) =>
+          m.toLowerCase().includes(searchQuery.toLowerCase()),
+        );
+      const matchesFilter =
+        filterStatus === "all" || rfq.status === filterStatus;
       return matchesSearch && matchesFilter;
     })
     .sort((a, b) => {
-      if (sortBy === 'date') {
-        return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
-      } else if (sortBy === 'bids') {
+      if (sortBy === "date") {
+        return (
+          new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+        );
+      } else if (sortBy === "bids") {
         return (b.bidCount || 0) - (a.bidCount || 0);
-      } else if (sortBy === 'value') {
+      } else if (sortBy === "value") {
         return (b.lowestBid || 0) - (a.lowestBid || 0);
       }
       return 0;
     });
 
   const totalRFQs = rfqs.length;
-  const openRFQs = rfqs.filter(r => r.status === 'open').length;
+  const openRFQs = rfqs.filter((r) => r.status === "open").length;
   const totalBids = rfqs.reduce((sum, r) => sum + (r.bidCount || 0), 0);
-  const avgBidsPerRFQ = totalRFQs > 0 ? (totalBids / totalRFQs).toFixed(1) : '0';
+  const avgBidsPerRFQ =
+    totalRFQs > 0 ? (totalBids / totalRFQs).toFixed(1) : "0";
 
   if (loading) {
     return (
@@ -239,8 +168,12 @@ export default function AdminRFQsPage() {
     <div className="space-y-6">
       {/* Header */}
       <div>
-        <h1 className="text-3xl font-bold text-gray-900 mb-2">RFQ & Bid Management</h1>
-        <p className="text-gray-600">Review and manage supplier bids for customer orders</p>
+        <h1 className="text-3xl font-bold text-gray-900 mb-2">
+          RFQ & Bid Management
+        </h1>
+        <p className="text-gray-600">
+          Review and manage supplier bids for customer orders
+        </p>
       </div>
 
       {/* Stats Cards */}
@@ -280,7 +213,9 @@ export default function AdminRFQsPage() {
               <div>
                 <p className="text-sm text-gray-600 mb-1">Total Bids</p>
                 <p className="text-3xl font-bold text-gray-900">{totalBids}</p>
-                <p className="text-sm text-gray-600 mt-1">{avgBidsPerRFQ} avg per RFQ</p>
+                <p className="text-sm text-gray-600 mt-1">
+                  {avgBidsPerRFQ} avg per RFQ
+                </p>
               </div>
               <div className="w-12 h-12 rounded-lg bg-purple-50 flex items-center justify-center">
                 <TrendingUp className="w-6 h-6 text-purple-600" />
@@ -295,7 +230,10 @@ export default function AdminRFQsPage() {
               <div>
                 <p className="text-sm text-gray-600 mb-1">Pending Review</p>
                 <p className="text-3xl font-bold text-gray-900">
-                  {rfqs.filter(r => r.bidCount! > 0 && r.status === 'open').length}
+                  {
+                    rfqs.filter((r) => r.bidCount! > 0 && r.status === "open")
+                      .length
+                  }
                 </p>
                 <p className="text-sm text-orange-600 mt-1">
                   <AlertTriangle className="w-3 h-3 inline mr-1" />
@@ -323,27 +261,27 @@ export default function AdminRFQsPage() {
                 className="pl-10"
               />
             </div>
-            
+
             <div className="flex gap-2 items-center">
               <span className="text-sm text-gray-600 mr-2">Filter:</span>
               <Button
-                variant={filterStatus === 'all' ? 'default' : 'outline'}
+                variant={filterStatus === "all" ? "default" : "outline"}
                 size="sm"
-                onClick={() => setFilterStatus('all')}
+                onClick={() => setFilterStatus("all")}
               >
                 All
               </Button>
               <Button
-                variant={filterStatus === 'open' ? 'default' : 'outline'}
+                variant={filterStatus === "open" ? "default" : "outline"}
                 size="sm"
-                onClick={() => setFilterStatus('open')}
+                onClick={() => setFilterStatus("open")}
               >
                 Open
               </Button>
               <Button
-                variant={filterStatus === 'closed' ? 'default' : 'outline'}
+                variant={filterStatus === "closed" ? "default" : "outline"}
                 size="sm"
-                onClick={() => setFilterStatus('closed')}
+                onClick={() => setFilterStatus("closed")}
               >
                 Closed
               </Button>
@@ -352,25 +290,25 @@ export default function AdminRFQsPage() {
             <div className="flex gap-2 items-center">
               <span className="text-sm text-gray-600 mr-2">Sort:</span>
               <Button
-                variant={sortBy === 'date' ? 'default' : 'outline'}
+                variant={sortBy === "date" ? "default" : "outline"}
                 size="sm"
-                onClick={() => setSortBy('date')}
+                onClick={() => setSortBy("date")}
               >
                 <Clock className="w-4 h-4 mr-1" />
                 Date
               </Button>
               <Button
-                variant={sortBy === 'bids' ? 'default' : 'outline'}
+                variant={sortBy === "bids" ? "default" : "outline"}
                 size="sm"
-                onClick={() => setSortBy('bids')}
+                onClick={() => setSortBy("bids")}
               >
                 <TrendingUp className="w-4 h-4 mr-1" />
                 Bids
               </Button>
               <Button
-                variant={sortBy === 'value' ? 'default' : 'outline'}
+                variant={sortBy === "value" ? "default" : "outline"}
                 size="sm"
-                onClick={() => setSortBy('value')}
+                onClick={() => setSortBy("value")}
               >
                 <DollarSign className="w-4 h-4 mr-1" />
                 Value
@@ -389,9 +327,12 @@ export default function AdminRFQsPage() {
           {totalRFQs === 0 ? (
             <div className="text-center py-12">
               <Clipboard className="w-16 h-16 text-gray-300 mx-auto mb-4" />
-              <h3 className="text-xl font-semibold text-gray-900 mb-2">No RFQs Yet</h3>
+              <h3 className="text-xl font-semibold text-gray-900 mb-2">
+                No RFQs Yet
+              </h3>
               <p className="text-gray-600 mb-6">
-                RFQs will appear here when orders are sent out for supplier bidding.
+                RFQs will appear here when orders are sent out for supplier
+                bidding.
               </p>
               <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 max-w-md mx-auto">
                 <p className="text-sm text-blue-900 mb-2">
@@ -406,111 +347,122 @@ export default function AdminRFQsPage() {
               </div>
             </div>
           ) : (
-          <div className="overflow-x-auto">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>RFQ ID</TableHead>
-                  <TableHead>Order ID</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead>Materials</TableHead>
-                  <TableHead>Parts</TableHead>
-                  <TableHead>Bids</TableHead>
-                  <TableHead>Bid Range</TableHead>
-                  <TableHead>Lead Time</TableHead>
-                  <TableHead>Closes</TableHead>
-                  <TableHead>Action</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {filteredRfqs.length === 0 ? (
+            <div className="overflow-x-auto">
+              <Table>
+                <TableHeader>
                   <TableRow>
-                    <TableCell colSpan={10} className="text-center py-8 text-gray-500">
-                      No RFQs found matching your criteria
-                    </TableCell>
+                    <TableHead>RFQ ID</TableHead>
+                    <TableHead>Order ID</TableHead>
+                    <TableHead>Status</TableHead>
+                    <TableHead>Materials</TableHead>
+                    <TableHead>Parts</TableHead>
+                    <TableHead>Bids</TableHead>
+                    <TableHead>Bid Range</TableHead>
+                    <TableHead>Lead Time</TableHead>
+                    <TableHead>Closes</TableHead>
+                    <TableHead>Action</TableHead>
                   </TableRow>
-                ) : (
-                  filteredRfqs.map((rfq) => (
-                    <TableRow key={rfq.id} className="hover:bg-gray-50">
-                      <TableCell className="font-medium">{rfq.id}</TableCell>
-                      <TableCell>
-                        <Button
-                          variant="link"
-                          className="p-0 h-auto"
-                          onClick={() => router.push(`/admin/orders/${rfq.order_id}`)}
-                        >
-                          {rfq.order_id}
-                        </Button>
-                      </TableCell>
-                      <TableCell>
-                        {getStatusBadge(rfq.status, rfq.bidCount)}
-                      </TableCell>
-                      <TableCell>
-                        <div className="flex flex-wrap gap-1">
-                          {rfq.materials.slice(0, 2).map((material, idx) => (
-                            <Badge key={idx} variant="outline" className="text-xs">
-                              {material.split(' ')[0]}
-                            </Badge>
-                          ))}
-                          {rfq.materials.length > 2 && (
-                            <Badge variant="outline" className="text-xs">
-                              +{rfq.materials.length - 2}
-                            </Badge>
-                          )}
-                        </div>
-                      </TableCell>
-                      <TableCell>
-                        <div className="flex items-center gap-1">
-                          <Package className="w-4 h-4 text-gray-400" />
-                          <span>{rfq.parts?.length || 0}</span>
-                        </div>
-                      </TableCell>
-                      <TableCell>
-                        <div className="flex items-center gap-2">
-                          <span className="font-semibold">{rfq.bidCount || 0}</span>
-                          {rfq.bidCount! > 0 && (
-                            <Badge className="bg-blue-100 text-blue-700 border-0">
-                              New
-                            </Badge>
-                          )}
-                        </div>
-                      </TableCell>
-                      <TableCell>
-                        {rfq.lowestBid && rfq.highestBid ? (
-                          <div className="text-sm">
-                            <div className="font-semibold text-green-600">
-                              ${rfq.lowestBid.toLocaleString()}
-                            </div>
-                            <div className="text-gray-500 text-xs">
-                              to ${rfq.highestBid.toLocaleString()}
-                            </div>
-                          </div>
-                        ) : (
-                          <span className="text-gray-400">No bids</span>
-                        )}
-                      </TableCell>
-                      <TableCell>{rfq.lead_time}d</TableCell>
-                      <TableCell>
-                        <div className="text-sm">
-                          {new Date(rfq.closes_at).toLocaleDateString()}
-                        </div>
-                      </TableCell>
-                      <TableCell>
-                        <Button
-                          size="sm"
-                          onClick={() => router.push(`/admin/rfqs/${rfq.id}`)}
-                          className="bg-blue-600 hover:bg-blue-700"
-                        >
-                          <Eye className="w-4 h-4 mr-1" />
-                          Review
-                        </Button>
+                </TableHeader>
+                <TableBody>
+                  {filteredRfqs.length === 0 ? (
+                    <TableRow>
+                      <TableCell
+                        colSpan={10}
+                        className="text-center py-8 text-gray-500"
+                      >
+                        No RFQs found matching your criteria
                       </TableCell>
                     </TableRow>
-                  ))
-                )}
-              </TableBody>
-            </Table>
-          </div>
+                  ) : (
+                    filteredRfqs.map((rfq) => (
+                      <TableRow key={rfq.id} className="hover:bg-gray-50">
+                        <TableCell className="font-medium">{rfq.id}</TableCell>
+                        <TableCell>
+                          <Button
+                            variant="link"
+                            className="p-0 h-auto"
+                            onClick={() =>
+                              router.push(`/admin/orders/${rfq.order_id}`)
+                            }
+                          >
+                            {rfq.order_id}
+                          </Button>
+                        </TableCell>
+                        <TableCell>
+                          {getStatusBadge(rfq.status, rfq.bidCount)}
+                        </TableCell>
+                        <TableCell>
+                          <div className="flex flex-wrap gap-1">
+                            {rfq.materials.slice(0, 2).map((material, idx) => (
+                              <Badge
+                                key={idx}
+                                variant="outline"
+                                className="text-xs"
+                              >
+                                {material.split(" ")[0]}
+                              </Badge>
+                            ))}
+                            {rfq.materials.length > 2 && (
+                              <Badge variant="outline" className="text-xs">
+                                +{rfq.materials.length - 2}
+                              </Badge>
+                            )}
+                          </div>
+                        </TableCell>
+                        <TableCell>
+                          <div className="flex items-center gap-1">
+                            <Package className="w-4 h-4 text-gray-400" />
+                            <span>{rfq.parts?.length || 0}</span>
+                          </div>
+                        </TableCell>
+                        <TableCell>
+                          <div className="flex items-center gap-2">
+                            <span className="font-semibold">
+                              {rfq.bidCount || 0}
+                            </span>
+                            {rfq.bidCount! > 0 && (
+                              <Badge className="bg-blue-100 text-blue-700 border-0">
+                                New
+                              </Badge>
+                            )}
+                          </div>
+                        </TableCell>
+                        <TableCell>
+                          {rfq.lowestBid && rfq.highestBid ? (
+                            <div className="text-sm">
+                              <div className="font-semibold text-green-600">
+                                ${rfq.lowestBid.toLocaleString()}
+                              </div>
+                              <div className="text-gray-500 text-xs">
+                                to ${rfq.highestBid.toLocaleString()}
+                              </div>
+                            </div>
+                          ) : (
+                            <span className="text-gray-400">No bids</span>
+                          )}
+                        </TableCell>
+                        <TableCell>{rfq.lead_time}d</TableCell>
+                        <TableCell>
+                          <div className="text-sm">
+                            {new Date(rfq.closes_at).toLocaleDateString()}
+                          </div>
+                        </TableCell>
+                        <TableCell>
+                          <Button
+                            size="sm"
+                            onClick={() => router.push(`/admin/rfqs/${rfq.id}`)}
+                            className="bg-blue-600 hover:bg-blue-700"
+                          >
+                            <Eye className="w-4 h-4 mr-1" />
+                            Review
+                          </Button>
+                        </TableCell>
+                      </TableRow>
+                    ))
+                  )}
+                </TableBody>
+              </Table>
+            </div>
           )}
         </CardContent>
       </Card>

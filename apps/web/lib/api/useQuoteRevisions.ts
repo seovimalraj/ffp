@@ -3,21 +3,20 @@
  * Custom hooks for managing quote revisions and expiration
  */
 
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   quotesRevisionsApi,
-  type QuoteRevision,
   type ExtendExpirationResponse,
   type RepriceResponse,
   type RepriceRequest,
-} from './quotes-revisions';
+} from "./quotes-revisions";
 
 /**
  * Fetch all revisions for a quote
  */
 export function useRevisions(quoteId: string | undefined) {
   return useQuery({
-    queryKey: ['revisions', quoteId],
+    queryKey: ["revisions", quoteId],
     queryFn: () => quotesRevisionsApi.getRevisions(quoteId!),
     enabled: !!quoteId,
   });
@@ -28,7 +27,7 @@ export function useRevisions(quoteId: string | undefined) {
  */
 export function useRevision(revisionId: string | undefined) {
   return useQuery({
-    queryKey: ['revision', revisionId],
+    queryKey: ["revision", revisionId],
     queryFn: () => quotesRevisionsApi.getRevision(revisionId!),
     enabled: !!revisionId,
   });
@@ -45,11 +44,11 @@ export function useExtendExpiration(quoteId: string) {
       quotesRevisionsApi.extendExpiration(quoteId, days),
     onSuccess: (data: ExtendExpirationResponse) => {
       // Invalidate quote query to refetch updated expires_at
-      queryClient.invalidateQueries({ queryKey: ['quote', quoteId] });
-      queryClient.invalidateQueries({ queryKey: ['quotes'] });
+      queryClient.invalidateQueries({ queryKey: ["quote", quoteId] });
+      queryClient.invalidateQueries({ queryKey: ["quotes"] });
 
       // Optimistically update the cache if available
-      queryClient.setQueryData(['quote', quoteId], (old: any) => {
+      queryClient.setQueryData(["quote", quoteId], (old: any) => {
         if (!old) return old;
         return {
           ...old,
@@ -71,12 +70,12 @@ export function useReprice(quoteId: string) {
       quotesRevisionsApi.repriceQuote(quoteId, options),
     onSuccess: (data: RepriceResponse) => {
       // Invalidate related queries
-      queryClient.invalidateQueries({ queryKey: ['quote', quoteId] });
-      queryClient.invalidateQueries({ queryKey: ['quotes'] });
-      queryClient.invalidateQueries({ queryKey: ['revisions', quoteId] });
+      queryClient.invalidateQueries({ queryKey: ["quote", quoteId] });
+      queryClient.invalidateQueries({ queryKey: ["quotes"] });
+      queryClient.invalidateQueries({ queryKey: ["revisions", quoteId] });
 
       // Optimistically update quote status and version
-      queryClient.setQueryData(['quote', quoteId], (old: any) => {
+      queryClient.setQueryData(["quote", quoteId], (old: any) => {
         if (!old) return old;
         return {
           ...old,

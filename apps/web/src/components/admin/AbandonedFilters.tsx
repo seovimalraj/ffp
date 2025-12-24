@@ -1,45 +1,51 @@
-'use client'
+"use client";
 
-import { useState } from 'react'
-import { Card, CardContent } from '@/components/ui/card'
-import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { Badge } from '@/components/ui/badge'
-import { useAbandonedQuotes } from '@/components/providers/AbandonedQuotesProvider'
-import { ArrowDownTrayIcon } from '@heroicons/react/24/outline'
+import { useState } from "react";
+import { Card, CardContent } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Badge } from "@/components/ui/badge";
+import { useAbandonedQuotes } from "@/components/providers/AbandonedQuotesProvider";
+import { ArrowDownTrayIcon } from "@heroicons/react/24/outline";
 
 export function AbandonedFilters() {
-  const { filters, setFilters, quotes } = useAbandonedQuotes()
-  const [localFilters, setLocalFilters] = useState(filters)
+  const { filters, setFilters } = useAbandonedQuotes();
+  const [localFilters, setLocalFilters] = useState(filters);
 
   const handleApplyFilters = () => {
-    setFilters(localFilters)
-  }
+    setFilters(localFilters);
+  };
 
   const handleExport = async () => {
     try {
-      const response = await fetch('/api/admin/abandoned/export.csv')
+      const response = await fetch("/api/admin/abandoned/export.csv");
       if (!response.ok) {
-        throw new Error('Failed to export')
+        throw new Error("Failed to export");
       }
 
-      const blob = await response.blob()
-      const url = window.URL.createObjectURL(blob)
-      const a = document.createElement('a')
-      a.href = url
-      a.download = 'abandoned-quotes.csv'
-      document.body.appendChild(a)
-      a.click()
-      document.body.removeChild(a)
-      window.URL.revokeObjectURL(url)
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = "abandoned-quotes.csv";
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      window.URL.revokeObjectURL(url);
     } catch (error) {
-      console.error('Export failed:', error)
+      console.error("Export failed:", error);
     }
-  }
+  };
 
   // Calculate SLO badge (abandonment rate last 7 days)
-  const abandonmentRate = 23.5 // Mock data - would be calculated from actual data
+  const abandonmentRate = 23.5; // Mock data - would be calculated from actual data
 
   return (
     <Card>
@@ -50,8 +56,10 @@ export function AbandonedFilters() {
             {/* Age Filter */}
             <div className="min-w-[200px]">
               <Select
-                value={localFilters.age || ''}
-                onValueChange={(value) => setLocalFilters(prev => ({ ...prev, age: value }))}
+                value={localFilters.age || ""}
+                onValueChange={(value) =>
+                  setLocalFilters((prev) => ({ ...prev, age: value }))
+                }
               >
                 <SelectTrigger>
                   <SelectValue placeholder="Time Range" />
@@ -68,8 +76,10 @@ export function AbandonedFilters() {
             {/* Value Band Filter */}
             <div className="min-w-[200px]">
               <Select
-                value={localFilters.value_band || ''}
-                onValueChange={(value) => setLocalFilters(prev => ({ ...prev, value_band: value }))}
+                value={localFilters.value_band || ""}
+                onValueChange={(value) =>
+                  setLocalFilters((prev) => ({ ...prev, value_band: value }))
+                }
               >
                 <SelectTrigger>
                   <SelectValue placeholder="Quote Value" />
@@ -86,8 +96,10 @@ export function AbandonedFilters() {
             {/* Dropoff Stage Filter */}
             <div className="min-w-[200px]">
               <Select
-                value={localFilters.dropoff_stage || ''}
-                onValueChange={(value) => setLocalFilters(prev => ({ ...prev, dropoff_stage: value }))}
+                value={localFilters.dropoff_stage || ""}
+                onValueChange={(value) =>
+                  setLocalFilters((prev) => ({ ...prev, dropoff_stage: value }))
+                }
               >
                 <SelectTrigger>
                   <SelectValue placeholder="Dropoff Stage" />
@@ -96,9 +108,15 @@ export function AbandonedFilters() {
                   <SelectItem value="Before Upload">Before Upload</SelectItem>
                   <SelectItem value="After Upload">After Upload</SelectItem>
                   <SelectItem value="After CAD">After CAD Analysis</SelectItem>
-                  <SelectItem value="After First Price">After First Price</SelectItem>
-                  <SelectItem value="After Lead Select">After Lead Time Select</SelectItem>
-                  <SelectItem value="Checkout Abandon">Checkout Abandon</SelectItem>
+                  <SelectItem value="After First Price">
+                    After First Price
+                  </SelectItem>
+                  <SelectItem value="After Lead Select">
+                    After Lead Time Select
+                  </SelectItem>
+                  <SelectItem value="Checkout Abandon">
+                    Checkout Abandon
+                  </SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -107,8 +125,13 @@ export function AbandonedFilters() {
             <div className="min-w-[250px]">
               <Input
                 placeholder="Search buyer, quote ID, email..."
-                value={localFilters.search || ''}
-                onChange={(e) => setLocalFilters(prev => ({ ...prev, search: e.target.value }))}
+                value={localFilters.search || ""}
+                onChange={(e) =>
+                  setLocalFilters((prev) => ({
+                    ...prev,
+                    search: e.target.value,
+                  }))
+                }
               />
             </div>
 
@@ -121,12 +144,19 @@ export function AbandonedFilters() {
           {/* Actions */}
           <div className="flex items-center gap-4">
             {/* SLO Badge */}
-            <Badge variant={abandonmentRate > 20 ? 'destructive' : 'secondary'} className="px-3 py-1">
+            <Badge
+              variant={abandonmentRate > 20 ? "destructive" : "secondary"}
+              className="px-3 py-1"
+            >
               {abandonmentRate}% abandonment (7d)
             </Badge>
 
             {/* Export Button */}
-            <Button variant="outline" onClick={handleExport} className="whitespace-nowrap">
+            <Button
+              variant="outline"
+              onClick={handleExport}
+              className="whitespace-nowrap"
+            >
               <ArrowDownTrayIcon className="w-4 h-4 mr-2" />
               Export CSV
             </Button>
@@ -134,7 +164,10 @@ export function AbandonedFilters() {
         </div>
 
         {/* Active Filters Summary */}
-        {(localFilters.age || localFilters.value_band || localFilters.dropoff_stage || localFilters.search) && (
+        {(localFilters.age ||
+          localFilters.value_band ||
+          localFilters.dropoff_stage ||
+          localFilters.search) && (
           <div className="mt-4 pt-4 border-t">
             <div className="flex flex-wrap gap-2">
               {localFilters.age && (
@@ -162,5 +195,5 @@ export function AbandonedFilters() {
         )}
       </CardContent>
     </Card>
-  )
+  );
 }

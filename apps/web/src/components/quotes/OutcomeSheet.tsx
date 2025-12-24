@@ -3,10 +3,10 @@
  * Slide-over UI for marking quote outcomes
  */
 
-'use client';
+"use client";
 
-import { useState, useEffect } from 'react';
-import { X } from 'lucide-react';
+import React, { useState, useEffect } from "react";
+import { X } from "lucide-react";
 import {
   useOutcome,
   useSetOutcome,
@@ -14,7 +14,7 @@ import {
   useReasonCodes,
   type SetOutcomeRequest,
   type QuoteOutcomeStatus,
-} from '@/lib/api/useQuotes';
+} from "@/lib/api/useQuotes";
 
 interface OutcomeSheetProps {
   quoteId: string;
@@ -36,24 +36,24 @@ export function OutcomeSheet({
   const deleteOutcome = useDeleteOutcome(quoteId);
 
   // Form state
-  const [status, setStatus] = useState<QuoteOutcomeStatus>('accepted');
-  const [reasonCode, setReasonCode] = useState('');
-  const [reasonNotes, setReasonNotes] = useState('');
-  const [amount, setAmount] = useState('');
+  const [status, setStatus] = useState<QuoteOutcomeStatus>("accepted");
+  const [reasonCode, setReasonCode] = useState("");
+  const [reasonNotes, setReasonNotes] = useState("");
+  const [amount, setAmount] = useState("");
 
   // Sync form with existing outcome
   useEffect(() => {
     if (outcome) {
       setStatus(outcome.status);
-      setReasonCode(outcome.reason_code || '');
-      setReasonNotes(outcome.reason_notes || '');
-      setAmount(outcome.amount?.toString() || '');
+      setReasonCode(outcome.reason_code || "");
+      setReasonNotes(outcome.reason_notes || "");
+      setAmount(outcome.amount?.toString() || "");
     } else {
       // Reset to defaults
-      setStatus('accepted');
-      setReasonCode('');
-      setReasonNotes('');
-      setAmount('');
+      setStatus("accepted");
+      setReasonCode("");
+      setReasonNotes("");
+      setAmount("");
     }
   }, [outcome]);
 
@@ -73,20 +73,20 @@ export function OutcomeSheet({
       await setOutcome.mutateAsync(data);
       onClose();
     } catch (error) {
-      console.error('Failed to set outcome:', error);
+      console.error("Failed to set outcome:", error);
     }
   };
 
   const handleDelete = async () => {
     if (!canEdit || !outcome) return;
-    
-    if (!confirm('Are you sure you want to clear this outcome?')) return;
+
+    if (!confirm("Are you sure you want to clear this outcome?")) return;
 
     try {
       await deleteOutcome.mutateAsync();
       onClose();
     } catch (error) {
-      console.error('Failed to delete outcome:', error);
+      console.error("Failed to delete outcome:", error);
     }
   };
 
@@ -128,24 +128,24 @@ export function OutcomeSheet({
                   Status <span className="text-red-500">*</span>
                 </label>
                 <div className="space-y-2">
-                  {(['accepted', 'rejected', 'expired', 'rescinded'] as const).map(
-                    (s) => (
-                      <label key={s} className="flex items-center">
-                        <input
-                          type="radio"
-                          name="status"
-                          value={s}
-                          checked={status === s}
-                          onChange={(e) =>
-                            setStatus(e.target.value as QuoteOutcomeStatus)
-                          }
-                          disabled={!canEdit}
-                          className="h-4 w-4 text-blue-600 focus:ring-blue-500 disabled:opacity-50"
-                        />
-                        <span className="ml-2 text-sm capitalize">{s}</span>
-                      </label>
-                    ),
-                  )}
+                  {(
+                    ["accepted", "rejected", "expired", "rescinded"] as const
+                  ).map((s) => (
+                    <label key={s} className="flex items-center">
+                      <input
+                        type="radio"
+                        name="status"
+                        value={s}
+                        checked={status === s}
+                        onChange={(e) =>
+                          setStatus(e.target.value as QuoteOutcomeStatus)
+                        }
+                        disabled={!canEdit}
+                        className="h-4 w-4 text-blue-600 focus:ring-blue-500 disabled:opacity-50"
+                      />
+                      <span className="ml-2 text-sm capitalize">{s}</span>
+                    </label>
+                  ))}
                 </div>
               </div>
 
@@ -224,7 +224,8 @@ export function OutcomeSheet({
               {outcome?.decided_at && (
                 <div className="pt-4 border-t border-gray-200">
                   <p className="text-xs text-gray-500">
-                    Last updated: {new Date(outcome.decided_at).toLocaleString()}
+                    Last updated:{" "}
+                    {new Date(outcome.decided_at).toLocaleString()}
                   </p>
                 </div>
               )}
@@ -237,7 +238,7 @@ export function OutcomeSheet({
                     disabled={setOutcome.isPending}
                     className="flex-1 bg-blue-600 text-white px-4 py-2 rounded-md hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
                   >
-                    {setOutcome.isPending ? 'Saving...' : 'Save Outcome'}
+                    {setOutcome.isPending ? "Saving..." : "Save Outcome"}
                   </button>
                   {outcome && (
                     <button

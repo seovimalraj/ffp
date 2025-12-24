@@ -1,4 +1,4 @@
-import { z } from 'zod';
+import { z } from "zod";
 
 // Enhanced Pricing Types with Zod schemas
 
@@ -15,7 +15,7 @@ export const PriceRequestSchema = z.object({
 
 // CNC Price Request Schema
 export const CncPriceRequestSchema = PriceRequestSchema.extend({
-  process_type: z.enum(['milling', 'turning']),
+  process_type: z.enum(["milling", "turning"]),
   volume_cc: z.number().positive(),
   surface_area_cm2: z.number().positive(),
   removed_material_cc: z.number().positive(),
@@ -64,17 +64,21 @@ export const PriceResponseSchema = z.object({
     margin: z.number().nonnegative(),
     overhead: z.number().nonnegative(),
   }),
-  currency: z.string().default('USD'),
+  currency: z.string().default("USD"),
   lead_time_days: z.number().positive(),
   rush_surcharge: z.number().nonnegative().optional(),
-  status: z.enum(['quoted', 'tbd_pending']).default('quoted'),
+  status: z.enum(["quoted", "tbd_pending"]).default("quoted"),
   explanations: z.array(z.string()).optional(),
-  quantity_breaks: z.array(z.object({
-    min_qty: z.number().positive(),
-    max_qty: z.number().positive().optional(),
-    unit_price: z.number().positive(),
-    discount_percentage: z.number().nonnegative(),
-  })).optional(),
+  quantity_breaks: z
+    .array(
+      z.object({
+        min_qty: z.number().positive(),
+        max_qty: z.number().positive().optional(),
+        unit_price: z.number().positive(),
+        discount_percentage: z.number().nonnegative(),
+      })
+    )
+    .optional(),
 });
 
 // Pricing Profile Schema
@@ -105,10 +109,12 @@ export const PricingProfileSchema = z.object({
     slot: z.number().nonnegative(),
     face: z.number().nonnegative(),
   }),
-  quantity_breaks: z.array(z.object({
-    min_qty: z.number().positive(),
-    discount: z.number().min(0).max(1),
-  })),
+  quantity_breaks: z.array(
+    z.object({
+      min_qty: z.number().positive(),
+      discount: z.number().min(0).max(1),
+    })
+  ),
   created_at: z.string().datetime(),
   updated_at: z.string().datetime(),
 });
@@ -126,43 +132,43 @@ export const PriceBreakdownSchema = z.object({
 
 // Material Schema
 // export const MaterialSchema = z.object({
-const MaterialSchema = z.object({
-  id: z.string().uuid(),
-  organization_id: z.string().uuid(),
-  name: z.string(),
-  type: z.enum(['metal', 'plastic', 'composite']),
-  subtype: z.string(),
-  density: z.number().positive(), // kg/m³
-  cost_per_kg: z.number().positive(),
-  waste_factor: z.number().min(0).max(1),
-  min_thickness: z.number().positive().optional(),
-  max_thickness: z.number().positive().optional(),
-  available_forms: z.array(z.string()),
-  created_at: z.string().datetime(),
-  updated_at: z.string().datetime(),
-});
+// export const MaterialSchema = z.object({
+//   id: z.string().uuid(),
+//   organization_id: z.string().uuid(),
+//   name: z.string(),
+//   type: z.enum(["metal", "plastic", "composite"]),
+//   subtype: z.string(),
+//   density: z.number().positive(), // kg/m³
+//   cost_per_kg: z.number().positive(),
+//   waste_factor: z.number().min(0).max(1),
+//   min_thickness: z.number().positive().optional(),
+//   max_thickness: z.number().positive().optional(),
+//   available_forms: z.array(z.string()),
+//   created_at: z.string().datetime(),
+//   updated_at: z.string().datetime(),
+// });
 
 // Finish Schema
 // export const FinishSchema = z.object({
-const FinishSchema = z.object({
-  id: z.string().uuid(),
-  organization_id: z.string().uuid(),
-  name: z.string(),
-  type: z.enum(['surface', 'coating', 'treatment']),
-  cost_per_area: z.number().positive().optional(), // cost per cm²
-  cost_per_part: z.number().positive().optional(), // flat cost per part
-  setup_time: z.number().positive().optional(), // minutes
-  processing_time: z.number().positive().optional(), // minutes per cm²
-  created_at: z.string().datetime(),
-  updated_at: z.string().datetime(),
-});
+// export const FinishSchema = z.object({
+//   id: z.string().uuid(),
+//   organization_id: z.string().uuid(),
+//   name: z.string(),
+//   type: z.enum(["surface", "coating", "treatment"]),
+//   cost_per_area: z.number().positive().optional(), // cost per cm²
+//   cost_per_part: z.number().positive().optional(), // flat cost per part
+//   setup_time: z.number().positive().optional(), // minutes
+//   processing_time: z.number().positive().optional(), // minutes per cm²
+//   created_at: z.string().datetime(),
+//   updated_at: z.string().datetime(),
+// });
 
 // Tolerance Schema
 export const ToleranceSchema = z.object({
   id: z.string().uuid(),
   organization_id: z.string().uuid(),
   name: z.string(),
-  grade: z.enum(['coarse', 'standard', 'fine', 'precision']),
+  grade: z.enum(["coarse", "standard", "fine", "precision"]),
   linear_tolerance: z.number().positive(), // mm
   angular_tolerance: z.number().positive(), // degrees
   cost_multiplier: z.number().positive(),
@@ -185,8 +191,12 @@ export const LeadTimeSchema = z.object({
 // Type exports
 export type PriceRequest = z.infer<typeof PriceRequestSchema>;
 export type CncPriceRequest = z.infer<typeof CncPriceRequestSchema>;
-export type SheetMetalPriceRequest = z.infer<typeof SheetMetalPriceRequestSchema>;
-export type InjectionMoldingPriceRequest = z.infer<typeof InjectionMoldingPriceRequestSchema>;
+export type SheetMetalPriceRequest = z.infer<
+  typeof SheetMetalPriceRequestSchema
+>;
+export type InjectionMoldingPriceRequest = z.infer<
+  typeof InjectionMoldingPriceRequestSchema
+>;
 export type PriceResponse = z.infer<typeof PriceResponseSchema>;
 export type PricingProfile = z.infer<typeof PricingProfileSchema>;
 export type PriceBreakdown = z.infer<typeof PriceBreakdownSchema>;
@@ -273,7 +283,7 @@ export interface PriceResponseLegacy {
   currency: string;
   lead_time_days: number;
   rush_surcharge?: number;
-  status?: 'quoted' | 'tbd_pending';
+  status?: "quoted" | "tbd_pending";
 }
 
 /** Base price request interface */
@@ -287,7 +297,7 @@ export interface PriceRequestLegacy {
 
 /** CNC machining price request */
 export interface CncPriceRequestLegacy extends PriceRequestLegacy {
-  process_type: 'milling' | 'turning';
+  process_type: "milling" | "turning";
   volume_cc: number;
   surface_area_cm2: number;
   removed_material_cc: number;
@@ -302,7 +312,7 @@ export interface CncPriceRequestLegacy extends PriceRequestLegacy {
 
 /** Sheet metal price request (legacy) */
 export interface SheetMetalPriceRequestLegacy extends PriceRequest {
-  process_type: 'laser_cutting' | 'press_brake';
+  process_type: "laser_cutting" | "press_brake";
   thickness_mm: number;
   sheet_area_cm2: number;
   cut_length_mm: number;
@@ -319,7 +329,7 @@ export interface SheetMetalPriceRequestLegacy extends PriceRequest {
 
 /** Injection molding price request (legacy) */
 export interface InjectionMoldingPriceRequestLegacy extends PriceRequest {
-  process_type: 'injection';
+  process_type: "injection";
   volume_cc: number;
   part_volume_cc: number;
   shot_weight_g: number;
@@ -352,7 +362,7 @@ export interface QuoteResponse {
   id: string;
   customer_id: string;
   quote_number: string;
-  status: 'pending' | 'processing' | 'quoted' | 'approved' | 'rejected';
+  status: "pending" | "processing" | "quoted" | "approved" | "rejected";
   total_price: number;
   unit_price: number;
   quantity: number;
@@ -370,10 +380,10 @@ export interface OrderDetails {
   id: string;
   quote_id: string;
   customer_id: string;
-  status: 'pending' | 'processing' | 'shipped' | 'delivered';
+  status: "pending" | "processing" | "shipped" | "delivered";
   total_amount: number;
   currency: string;
-  payment_status: 'pending' | 'paid' | 'failed';
+  payment_status: "pending" | "paid" | "failed";
   shipping_address: {
     name: string;
     company?: string;

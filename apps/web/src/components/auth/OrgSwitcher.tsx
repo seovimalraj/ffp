@@ -1,13 +1,18 @@
-'use client';
+"use client";
 
-import React, { useState, useEffect } from 'react';
-import { useAuth } from '../../contexts/AuthContext';
-import { Button } from '../ui/button';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../ui/select';
+import React, { useState, useEffect } from "react";
+import { useAuth } from "../../contexts/AuthContext";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "../ui/select";
 
 interface OrgMember {
   id: string;
-  role: 'admin' | 'engineer' | 'buyer';
+  role: "admin" | "engineer" | "buyer";
   users: {
     id: string;
     email: string;
@@ -34,13 +39,13 @@ export function OrgSwitcher() {
 
   const fetchMemberships = async () => {
     try {
-      const response = await fetch('/api/orgs/members');
+      const response = await fetch("/api/orgs/members");
       if (response.ok) {
         const data = await response.json();
         setMemberships(data);
       }
     } catch (error) {
-      console.error('Failed to fetch memberships:', error);
+      console.error("Failed to fetch memberships:", error);
     } finally {
       setLoading(false);
     }
@@ -49,7 +54,7 @@ export function OrgSwitcher() {
   const switchOrg = async (orgId: string) => {
     // In a real implementation, you'd update the user's current org context
     // For now, just log it
-    console.log('Switching to org:', orgId);
+    console.log("Switching to org:", orgId);
   };
 
   if (loading) {

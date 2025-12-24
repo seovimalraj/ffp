@@ -1,7 +1,7 @@
-'use client';
+"use client";
 
-import { usePathname } from 'next/navigation';
-import Link from 'next/link';
+import { usePathname } from "next/navigation";
+import Link from "next/link";
 
 interface SidebarItemProps {
   item: {
@@ -13,12 +13,14 @@ interface SidebarItemProps {
   setPageName: (pageName: string) => void;
 }
 
-const SidebarItem = ({ item, pageName, setPageName }: SidebarItemProps) => {
+const SidebarItem = ({ item, setPageName }: SidebarItemProps) => {
   const pathname = usePathname();
 
   const handleClick = () => {
     const updatedPageName =
-      item.label.toLowerCase() === 'dashboard' ? 'dashboard' : item.label.toLowerCase();
+      item.label.toLowerCase() === "dashboard"
+        ? "dashboard"
+        : item.label.toLowerCase();
     setPageName(updatedPageName);
   };
 
@@ -29,7 +31,7 @@ const SidebarItem = ({ item, pageName, setPageName }: SidebarItemProps) => {
           href={item.route}
           onClick={handleClick}
           className={`group relative flex items-center gap-2.5 rounded-sm px-4 py-2 font-medium text-bodydark1 duration-300 ease-in-out hover:bg-graydark dark:hover:bg-meta-4 ${
-            pathname === item.route ? 'bg-graydark dark:bg-meta-4' : ''
+            pathname === item.route ? "bg-graydark dark:bg-meta-4" : ""
           }`}
         >
           {item.icon}

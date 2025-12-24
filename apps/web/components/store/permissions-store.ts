@@ -23,7 +23,6 @@ interface PermissionsState {
   hasAllPermissions: (permissionCodes: string[]) => boolean;
 }
 
-
 export const usePermissionsStore = create<PermissionsState>()(
   persist(
     (set, get) => ({

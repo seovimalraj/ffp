@@ -24,7 +24,6 @@ export async function withRetry<T>(fn: () => Promise<T>, opts: RetryOptions = {}
       lastError = err;
       if (attempt === retries || !shouldRetry(err, attempt)) break;
       const delay = base * Math.pow(factor, attempt);
-      // eslint-disable-next-line no-await-in-loop
       await sleep(delay);
       attempt += 1;
     }

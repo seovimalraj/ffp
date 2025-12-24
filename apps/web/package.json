@@ -3,10 +3,11 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "next dev",
-    "build": "next build",
+    "dev": "next dev --webpack",
+    "build": "next build --webpack",
     "start": "next start",
-    "lint": "next lint",
+    "lint": "eslint . --ext .js,.jsx,.ts,.tsx",
+    "lint:fix": "eslint . --fix",
     "test:e2e": "playwright test",
     "test:e2e:ui": "playwright test --ui",
     "test:e2e:debug": "playwright test --debug",
@@ -22,6 +23,7 @@
     "@headlessui/react": "^2.2.8",
     "@hello-pangea/dnd": "^18.0.1",
     "@heroicons/react": "^2.2.0",
+    "@heroui/accordion": "^2.2.25",
     "@hookform/resolvers": "^5.2.2",
     "@monaco-editor/react": "^4.7.0",
     "@paypal/react-paypal-js": "^8.9.1",
@@ -65,16 +67,15 @@
     "next-auth": "^4.24.11",
     "next-themes": "^0.4.6",
     "nextjs-toploader": "^3.9.17",
-    "opencascade.js": "1.1.1",
     "otplib": "^12.0.1",
     "pdfjs-dist": "^5.4.449",
     "pg": "^8.16.3",
     "playwright": "^1.55.0",
     "postcss": "^8.5.6",
     "posthog-js": "^1.279.3",
-    "react": "^19.2.1",
+    "react": "19.2.3",
     "react-apexcharts": "^1.7.0",
-    "react-dom": "^19.2.1",
+    "react-dom": "19.2.3",
     "react-dropzone": "^14.3.8",
     "react-hook-form": "^7.62.0",
     "react-hot-toast": "^2.6.0",
@@ -93,6 +94,8 @@
     "zustand": "^5.0.8"
   },
   "devDependencies": {
+    "@eslint/js": "^9.35.0",
+    "@next/eslint-plugin-next": "^16.1.1",
     "@playwright/test": "^1.55.0",
     "@tailwindcss/postcss": "^4.1.13",
     "@types/node": "24.5.2",
@@ -106,6 +109,7 @@
     "file-loader": "^6.2.0",
     "msw": "^2.6.0",
     "tsx": "^4.20.6",
-    "typescript": "5.9.2"
+    "typescript": "5.9.2",
+    "typescript-eslint": "^8.50.1"
   }
 }

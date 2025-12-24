@@ -1,31 +1,35 @@
-'use client';
+"use client";
 
-import React, { useState, useEffect } from 'react';
-import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Textarea } from '@/components/ui/textarea';
-import { Checkbox } from '@/components/ui/checkbox';
-import { Badge } from '@/components/ui/badge';
-import { Progress } from '@/components/ui/progress';
+import React, { useState, useEffect } from "react";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Textarea } from "@/components/ui/textarea";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   CheckIcon,
   ArrowPathIcon,
-  CheckCircleIcon
-} from '@heroicons/react/24/outline';
+  CheckCircleIcon,
+} from "@heroicons/react/24/outline";
 
 interface PartSpecs {
   quantity: number;
-  process: 'CNC' | 'SheetMetal' | 'InjectionMolding';
+  process: "CNC" | "SheetMetal" | "InjectionMolding";
   material: string;
   finish: string;
   threadsInserts: string;
-  tolerancePack: 'Std' | 'Tight' | 'Critical';
+  tolerancePack: "Std" | "Tight" | "Critical";
   surfaceRoughness: string;
   partMarking: string;
-  inspection: 'Std' | 'Formal' | 'CMM' | 'FAIR' | 'Source' | 'Custom';
+  inspection: "Std" | "Formal" | "CMM" | "FAIR" | "Source" | "Custom";
   certificates: string[];
   notes: string;
 }
@@ -54,43 +58,43 @@ interface InlinePartConfigurationProps {
 }
 
 const materials = [
-  'Aluminum 6061-T6',
-  'Aluminum 7075-T6',
-  'Steel 1018',
-  'Steel 4140',
-  'Stainless Steel 304',
-  'Stainless Steel 316',
-  'Brass 360',
-  'Copper 110',
-  'Titanium Grade 2',
-  'ABS',
-  'Nylon 6/6',
-  'PC (Polycarbonate)',
-  'PEEK',
-  'PTFE (Teflon)'
+  "Aluminum 6061-T6",
+  "Aluminum 7075-T6",
+  "Steel 1018",
+  "Steel 4140",
+  "Stainless Steel 304",
+  "Stainless Steel 316",
+  "Brass 360",
+  "Copper 110",
+  "Titanium Grade 2",
+  "ABS",
+  "Nylon 6/6",
+  "PC (Polycarbonate)",
+  "PEEK",
+  "PTFE (Teflon)",
 ];
 
 const finishes = [
-  'None',
-  'Anodized Clear',
-  'Anodized Black',
-  'Anodized Blue',
-  'Powder Coat',
-  'Plated Nickel',
-  'Plated Chrome',
-  'Plated Gold',
-  'Polished'
+  "None",
+  "Anodized Clear",
+  "Anodized Black",
+  "Anodized Blue",
+  "Powder Coat",
+  "Plated Nickel",
+  "Plated Chrome",
+  "Plated Gold",
+  "Polished",
 ];
 
 const certificates = [
-  'Material Test Report',
-  'Certificate of Conformance',
-  'First Article Inspection',
-  'PPAP Level 1',
-  'PPAP Level 2',
-  'PPAP Level 3',
-  'ISO 9001',
-  'AS9100'
+  "Material Test Report",
+  "Certificate of Conformance",
+  "First Article Inspection",
+  "PPAP Level 1",
+  "PPAP Level 2",
+  "PPAP Level 3",
+  "ISO 9001",
+  "AS9100",
 ];
 
 export default function InlinePartConfiguration({
@@ -98,26 +102,28 @@ export default function InlinePartConfiguration({
   lineId,
   initialSpecs,
   onSpecsChange,
-  onSave
+  onSave,
 }: InlinePartConfigurationProps) {
   const [specs, setSpecs] = useState<PartSpecs>({
     quantity: 1,
-    process: 'CNC',
-    material: '',
-    finish: 'None',
-    threadsInserts: '',
-    tolerancePack: 'Std',
-    surfaceRoughness: '125',
-    partMarking: '',
-    inspection: 'Std',
+    process: "CNC",
+    material: "",
+    finish: "None",
+    threadsInserts: "",
+    tolerancePack: "Std",
+    surfaceRoughness: "125",
+    partMarking: "",
+    inspection: "Std",
     certificates: [],
-    notes: '',
-    ...initialSpecs
+    notes: "",
+    ...initialSpecs,
   });
 
   const [isSaving, setIsSaving] = useState(false);
   const [lastSaved, setLastSaved] = useState<Date | null>(null);
-  const [pricePreview, setPricePreview] = useState<PricingBreakdown | null>(null);
+  const [pricePreview, setPricePreview] = useState<PricingBreakdown | null>(
+    null,
+  );
 
   useEffect(() => {
     // Autosave when specs change
@@ -134,20 +140,20 @@ export default function InlinePartConfiguration({
 
       // Update line specs
       await fetch(`/api/quotes/${quoteId}/lines/${lineId}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(specs)
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(specs),
       });
 
       // Trigger re-pricing
-      const priceResponse = await fetch('/api/price', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+      const priceResponse = await fetch("/api/price", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           quote_id: quoteId,
           line_id: lineId,
-          specs
-        })
+          specs,
+        }),
       });
 
       if (priceResponse.ok) {
@@ -158,22 +164,22 @@ export default function InlinePartConfiguration({
       setLastSaved(new Date());
       onSpecsChange?.(specs);
     } catch (error) {
-      console.error('Autosave failed:', error);
+      console.error("Autosave failed:", error);
     } finally {
       setIsSaving(false);
     }
   };
 
   const handleSpecChange = (field: keyof PartSpecs, value: any) => {
-    setSpecs(prev => ({ ...prev, [field]: value }));
+    setSpecs((prev) => ({ ...prev, [field]: value }));
   };
 
   const handleCertificateToggle = (certificate: string) => {
-    setSpecs(prev => ({
+    setSpecs((prev) => ({
       ...prev,
       certificates: prev.certificates.includes(certificate)
-        ? prev.certificates.filter(c => c !== certificate)
-        : [...prev.certificates, certificate]
+        ? prev.certificates.filter((c) => c !== certificate)
+        : [...prev.certificates, certificate],
     }));
   };
 
@@ -213,19 +219,26 @@ export default function InlinePartConfiguration({
               type="number"
               min="1"
               value={specs.quantity}
-              onChange={(e) => handleSpecChange('quantity', parseInt(e.target.value) || 1)}
+              onChange={(e) =>
+                handleSpecChange("quantity", parseInt(e.target.value) || 1)
+              }
             />
           </div>
           <div>
             <Label htmlFor="process">Process</Label>
-            <Select value={specs.process} onValueChange={(value) => handleSpecChange('process', value)}>
+            <Select
+              value={specs.process}
+              onValueChange={(value) => handleSpecChange("process", value)}
+            >
               <SelectTrigger>
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="CNC">CNC Machining</SelectItem>
                 <SelectItem value="SheetMetal">Sheet Metal</SelectItem>
-                <SelectItem value="InjectionMolding">Injection Molding</SelectItem>
+                <SelectItem value="InjectionMolding">
+                  Injection Molding
+                </SelectItem>
               </SelectContent>
             </Select>
           </div>
@@ -235,7 +248,10 @@ export default function InlinePartConfiguration({
         <div className="grid grid-cols-2 gap-4">
           <div>
             <Label htmlFor="material">Material</Label>
-            <Select value={specs.material} onValueChange={(value) => handleSpecChange('material', value)}>
+            <Select
+              value={specs.material}
+              onValueChange={(value) => handleSpecChange("material", value)}
+            >
               <SelectTrigger>
                 <SelectValue />
               </SelectTrigger>
@@ -250,7 +266,10 @@ export default function InlinePartConfiguration({
           </div>
           <div>
             <Label htmlFor="finish">Finish</Label>
-            <Select value={specs.finish} onValueChange={(value) => handleSpecChange('finish', value)}>
+            <Select
+              value={specs.finish}
+              onValueChange={(value) => handleSpecChange("finish", value)}
+            >
               <SelectTrigger>
                 <SelectValue />
               </SelectTrigger>
@@ -269,7 +288,12 @@ export default function InlinePartConfiguration({
         <div className="grid grid-cols-2 gap-4">
           <div>
             <Label htmlFor="tolerancePack">Tolerance Package</Label>
-            <Select value={specs.tolerancePack} onValueChange={(value) => handleSpecChange('tolerancePack', value as any)}>
+            <Select
+              value={specs.tolerancePack}
+              onValueChange={(value) =>
+                handleSpecChange("tolerancePack", value as any)
+              }
+            >
               <SelectTrigger>
                 <SelectValue />
               </SelectTrigger>
@@ -282,7 +306,12 @@ export default function InlinePartConfiguration({
           </div>
           <div>
             <Label htmlFor="surfaceRoughness">Surface Roughness (µin)</Label>
-            <Select value={specs.surfaceRoughness} onValueChange={(value) => handleSpecChange('surfaceRoughness', value)}>
+            <Select
+              value={specs.surfaceRoughness}
+              onValueChange={(value) =>
+                handleSpecChange("surfaceRoughness", value)
+              }
+            >
               <SelectTrigger>
                 <SelectValue />
               </SelectTrigger>
@@ -304,12 +333,17 @@ export default function InlinePartConfiguration({
               id="partMarking"
               placeholder="Serial numbers, logos, etc."
               value={specs.partMarking}
-              onChange={(e) => handleSpecChange('partMarking', e.target.value)}
+              onChange={(e) => handleSpecChange("partMarking", e.target.value)}
             />
           </div>
           <div>
             <Label htmlFor="inspection">Inspection Level</Label>
-            <Select value={specs.inspection} onValueChange={(value) => handleSpecChange('inspection', value as any)}>
+            <Select
+              value={specs.inspection}
+              onValueChange={(value) =>
+                handleSpecChange("inspection", value as any)
+              }
+            >
               <SelectTrigger>
                 <SelectValue />
               </SelectTrigger>
@@ -317,7 +351,9 @@ export default function InlinePartConfiguration({
                 <SelectItem value="Std">Standard</SelectItem>
                 <SelectItem value="Formal">Formal</SelectItem>
                 <SelectItem value="CMM">CMM Inspection</SelectItem>
-                <SelectItem value="FAIR">First Article Inspection Report</SelectItem>
+                <SelectItem value="FAIR">
+                  First Article Inspection Report
+                </SelectItem>
                 <SelectItem value="Source">Source Inspection</SelectItem>
                 <SelectItem value="Custom">Custom</SelectItem>
               </SelectContent>
@@ -332,7 +368,7 @@ export default function InlinePartConfiguration({
             id="threadsInserts"
             placeholder="Specify any threads, inserts, or special features..."
             value={specs.threadsInserts}
-            onChange={(e) => handleSpecChange('threadsInserts', e.target.value)}
+            onChange={(e) => handleSpecChange("threadsInserts", e.target.value)}
             rows={2}
           />
         </div>
@@ -363,7 +399,7 @@ export default function InlinePartConfiguration({
             id="notes"
             placeholder="Any special instructions or requirements..."
             value={specs.notes}
-            onChange={(e) => handleSpecChange('notes', e.target.value)}
+            onChange={(e) => handleSpecChange("notes", e.target.value)}
             rows={2}
           />
         </div>
@@ -375,15 +411,21 @@ export default function InlinePartConfiguration({
             <div className="grid grid-cols-3 gap-4">
               <div>
                 <p className="text-sm text-gray-600">Unit Price</p>
-                <p className="text-lg font-semibold text-green-600">${pricePreview.unit_price.toFixed(2)}</p>
+                <p className="text-lg font-semibold text-green-600">
+                  ${pricePreview.unit_price.toFixed(2)}
+                </p>
               </div>
               <div>
                 <p className="text-sm text-gray-600">Total Price</p>
-                <p className="text-lg font-semibold">${(pricePreview.unit_price * specs.quantity).toFixed(2)}</p>
+                <p className="text-lg font-semibold">
+                  ${(pricePreview.unit_price * specs.quantity).toFixed(2)}
+                </p>
               </div>
               <div>
                 <p className="text-sm text-gray-600">Cycle Time</p>
-                <p className="text-sm font-medium">{pricePreview.cycle_time_min} min</p>
+                <p className="text-sm font-medium">
+                  {pricePreview.cycle_time_min} min
+                </p>
               </div>
             </div>
           </div>
@@ -393,7 +435,7 @@ export default function InlinePartConfiguration({
         <div className="flex justify-end">
           <Button onClick={handleSave} disabled={isSaving}>
             <CheckIcon className="w-4 h-4 mr-2" />
-            {isSaving ? 'Saving...' : 'Save Configuration'}
+            {isSaving ? "Saving..." : "Save Configuration"}
           </Button>
         </div>
       </CardContent>

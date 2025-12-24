@@ -9,17 +9,14 @@ import {
   Edit,
   Trash2,
   Warehouse,
-  Clock,
   DollarSign,
   ShoppingCart,
   TrendingUp,
   AlertCircle,
   Box,
-  Eye,
   ChevronRight,
 } from "lucide-react";
 import CreateSupplierMaterialModal from "@/components/modals/create-supplier-material-modal";
-import { useRouter } from "next/navigation";
 import { notify } from "@/lib/toast";
 import { apiClient } from "@/lib/api";
 import Link from "next/link";
@@ -84,7 +81,6 @@ export default function SupplierInventoryPage() {
   >([]);
   const [isLoadingMaterials, setIsLoadingMaterials] = useState(true);
   const [refresh, setRefresh] = useState(false);
-  const router = useRouter();
 
   useEffect(() => {
     async function fetchSupplierMaterial() {

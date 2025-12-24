@@ -3,7 +3,6 @@
 import { useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import dynamic from "next/dynamic";
 import { useDropzone } from "react-dropzone";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -70,7 +69,7 @@ export default function InstantQuotePage() {
   );
   const [authMode, setAuthMode] = useState<"signin" | "signup">("signin");
   const [isAuthLoading, setIsAuthLoading] = useState(false);
-  const [redirectUrl, setRedirectUrl] = useState<string>("");
+  const [redirectUrl, _] = useState<string>("");
   const [authForm, setAuthForm] = useState({
     email: "",
     password: "",

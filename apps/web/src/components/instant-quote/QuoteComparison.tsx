@@ -1,18 +1,17 @@
 "use client";
 
-import React, { useMemo, useState } from 'react';
-import { 
+import React, { useMemo, useState } from "react";
+import {
   TrendingUp,
   TrendingDown,
   Minus,
   CheckCircle2,
   XCircle,
   Clock,
-  DollarSign,
   Package,
   Zap,
-  ArrowRight
-} from 'lucide-react';
+  ArrowRight,
+} from "lucide-react";
 
 interface QuoteOption {
   id: string;
@@ -40,26 +39,29 @@ interface QuoteComparisonProps {
   baselineId?: string;
 }
 
-export function QuoteComparison({ 
+export function QuoteComparison({
   options,
   onSelectOption,
-  baselineId
+  baselineId,
 }: Readonly<QuoteComparisonProps>) {
   const [selectedId, setSelectedId] = useState<string | null>(null);
 
   // Find baseline for comparison (either specified or cheapest)
   const baseline = useMemo(() => {
     if (baselineId) {
-      return options.find(o => o.id === baselineId);
+      return options.find((o) => o.id === baselineId);
     }
-    return options.reduce((min, opt) => 
-      opt.totalPrice < min.totalPrice ? opt : min
-    , options[0]);
+    return options.reduce(
+      (min, opt) => (opt.totalPrice < min.totalPrice ? opt : min),
+      options[0],
+    );
   }, [options, baselineId]);
 
   const getPriceDiff = (option: QuoteOption) => {
     if (!baseline || option.id === baseline.id) return 0;
-    return ((option.totalPrice - baseline.totalPrice) / baseline.totalPrice) * 100;
+    return (
+      ((option.totalPrice - baseline.totalPrice) / baseline.totalPrice) * 100
+    );
   };
 
   const getLeadTimeDiff = (option: QuoteOption) => {
@@ -110,10 +112,10 @@ export function QuoteComparison({
               key={option.id}
               className={`relative rounded-lg border-2 transition-all ${
                 isSelected
-                  ? 'border-blue-500 shadow-lg scale-[1.02]'
+                  ? "border-blue-500 shadow-lg scale-[1.02]"
                   : isRecommended
-                  ? 'border-green-400 shadow-md'
-                  : 'border-gray-200 dark:border-gray-700 hover:border-gray-300 dark:hover:border-gray-600'
+                    ? "border-green-400 shadow-md"
+                    : "border-gray-200 dark:border-gray-700 hover:border-gray-300 dark:hover:border-gray-600"
               } bg-white dark:bg-gray-800 overflow-hidden`}
             >
               {/* Badges */}
@@ -151,13 +153,18 @@ export function QuoteComparison({
                       ${option.totalPrice.toLocaleString()}
                     </div>
                     {!isBaseline && (
-                      <div className={`flex items-center gap-1 text-sm font-semibold ${
-                        priceDiff > 0 ? 'text-red-600 dark:text-red-400' : 
-                        priceDiff < 0 ? 'text-green-600 dark:text-green-400' : 
-                        'text-gray-600 dark:text-gray-400'
-                      }`}>
+                      <div
+                        className={`flex items-center gap-1 text-sm font-semibold ${
+                          priceDiff > 0
+                            ? "text-red-600 dark:text-red-400"
+                            : priceDiff < 0
+                              ? "text-green-600 dark:text-green-400"
+                              : "text-gray-600 dark:text-gray-400"
+                        }`}
+                      >
                         <ComparisonIcon value={priceDiff} />
-                        {priceDiff > 0 ? '+' : ''}{priceDiff.toFixed(0)}%
+                        {priceDiff > 0 ? "+" : ""}
+                        {priceDiff.toFixed(0)}%
                       </div>
                     )}
                   </div>
@@ -184,10 +191,15 @@ export function QuoteComparison({
                         {option.leadTimeDays} days
                       </span>
                       {!isBaseline && leadTimeDiff !== 0 && (
-                        <span className={`text-xs font-semibold ${
-                          leadTimeDiff > 0 ? 'text-red-600 dark:text-red-400' : 'text-green-600 dark:text-green-400'
-                        }`}>
-                          {leadTimeDiff > 0 ? '+' : ''}{leadTimeDiff}d
+                        <span
+                          className={`text-xs font-semibold ${
+                            leadTimeDiff > 0
+                              ? "text-red-600 dark:text-red-400"
+                              : "text-green-600 dark:text-green-400"
+                          }`}
+                        >
+                          {leadTimeDiff > 0 ? "+" : ""}
+                          {leadTimeDiff}d
                         </span>
                       )}
                     </div>
@@ -214,19 +226,25 @@ export function QuoteComparison({
                       <div className="font-bold text-gray-900 dark:text-gray-100">
                         {option.features.holes}
                       </div>
-                      <div className="text-gray-500 dark:text-gray-500">Holes</div>
+                      <div className="text-gray-500 dark:text-gray-500">
+                        Holes
+                      </div>
                     </div>
                     <div className="text-center">
                       <div className="font-bold text-gray-900 dark:text-gray-100">
                         {option.features.pockets}
                       </div>
-                      <div className="text-gray-500 dark:text-gray-500">Pockets</div>
+                      <div className="text-gray-500 dark:text-gray-500">
+                        Pockets
+                      </div>
                     </div>
                     <div className="text-center">
                       <div className="font-bold text-gray-900 dark:text-gray-100">
                         {option.features.threads}
                       </div>
-                      <div className="text-gray-500 dark:text-gray-500">Threads</div>
+                      <div className="text-gray-500 dark:text-gray-500">
+                        Threads
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -241,7 +259,10 @@ export function QuoteComparison({
                       </div>
                       <ul className="space-y-1">
                         {option.pros.map((pro, idx) => (
-                          <li key={idx} className="text-xs text-gray-600 dark:text-gray-400 flex items-start gap-1">
+                          <li
+                            key={idx}
+                            className="text-xs text-gray-600 dark:text-gray-400 flex items-start gap-1"
+                          >
                             <span className="text-green-500 mt-0.5">•</span>
                             <span>{pro}</span>
                           </li>
@@ -258,7 +279,10 @@ export function QuoteComparison({
                       </div>
                       <ul className="space-y-1">
                         {option.cons.map((con, idx) => (
-                          <li key={idx} className="text-xs text-gray-600 dark:text-gray-400 flex items-start gap-1">
+                          <li
+                            key={idx}
+                            className="text-xs text-gray-600 dark:text-gray-400 flex items-start gap-1"
+                          >
                             <span className="text-red-500 mt-0.5">•</span>
                             <span>{con}</span>
                           </li>
@@ -273,10 +297,10 @@ export function QuoteComparison({
                   onClick={() => handleSelect(option.id)}
                   className={`w-full py-2.5 rounded-lg font-semibold text-sm transition-all flex items-center justify-center gap-2 ${
                     isSelected
-                      ? 'bg-blue-600 text-white shadow-md'
+                      ? "bg-blue-600 text-white shadow-md"
                       : isRecommended
-                      ? 'bg-green-500 text-white hover:bg-green-600 shadow-md'
-                      : 'bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600'
+                        ? "bg-green-500 text-white hover:bg-green-600 shadow-md"
+                        : "bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600"
                   }`}
                 >
                   {isSelected ? (
@@ -306,10 +330,10 @@ export function QuoteComparison({
               Option selected:
             </span>
             <span className="text-blue-700 dark:text-blue-300">
-              {options.find(o => o.id === selectedId)?.name}
+              {options.find((o) => o.id === selectedId)?.name}
             </span>
             <button
-              onClick={() => console.log('Proceed with', selectedId)}
+              onClick={() => console.log("Proceed with", selectedId)}
               className="ml-auto px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm font-semibold"
             >
               Proceed to Checkout

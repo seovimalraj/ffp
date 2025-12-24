@@ -1,18 +1,16 @@
-import * as React from "react"
-import { CalendarIcon } from "@heroicons/react/24/outline"
-import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
-import { cn } from "@/lib/utils"
+import * as React from "react";
+import { Input } from "@/components/ui/input";
+import { cn } from "@/lib/utils";
 
 interface DateRange {
-  from: Date | undefined
-  to: Date | undefined
+  from: Date | undefined;
+  to: Date | undefined;
 }
 
 interface DatePickerWithRangeProps {
-  date: DateRange
-  onDateChange: (date: DateRange) => void
-  className?: string
+  date: DateRange;
+  onDateChange: (date: DateRange) => void;
+  className?: string;
 }
 
 export function DatePickerWithRange({
@@ -20,22 +18,26 @@ export function DatePickerWithRange({
   onDateChange,
   className,
 }: DatePickerWithRangeProps) {
-  const [fromDate, setFromDate] = React.useState(date.from?.toISOString().split('T')[0] || '')
-  const [toDate, setToDate] = React.useState(date.to?.toISOString().split('T')[0] || '')
+  const [fromDate, setFromDate] = React.useState(
+    date.from?.toISOString().split("T")[0] || "",
+  );
+  const [toDate, setToDate] = React.useState(
+    date.to?.toISOString().split("T")[0] || "",
+  );
 
   const handleFromChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const value = e.target.value
-    setFromDate(value)
-    const from = value ? new Date(value) : undefined
-    onDateChange({ from, to: date.to })
-  }
+    const value = e.target.value;
+    setFromDate(value);
+    const from = value ? new Date(value) : undefined;
+    onDateChange({ from, to: date.to });
+  };
 
   const handleToChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const value = e.target.value
-    setToDate(value)
-    const to = value ? new Date(value) : undefined
-    onDateChange({ from: date.from, to })
-  }
+    const value = e.target.value;
+    setToDate(value);
+    const to = value ? new Date(value) : undefined;
+    onDateChange({ from: date.from, to });
+  };
 
   return (
     <div className={cn("flex items-center space-x-2", className)}>
@@ -55,5 +57,5 @@ export function DatePickerWithRange({
         className="w-full"
       />
     </div>
-  )
+  );
 }

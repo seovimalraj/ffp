@@ -1,8 +1,0 @@
-process,feature_type,tol_from,tol_to,unit_type,applies_to,multiplier,affects,notes,catalog_version,active
-cnc_milling,hole,0.10,0.20,mm,diameter,1.05,"{machine_time}","mild tightening",1,true
-cnc_milling,hole,0.05,0.10,mm,diameter,1.12,"{machine_time,setup_time}","tight",1,true
-cnc_milling,hole,0.00,0.05,mm,diameter,1.30,"{machine_time,setup_time,risk}","very tight",1,true
-cnc_milling,slot,0.05,0.10,mm,width,1.10,"{machine_time}","finish pass",1,true
-turning,thread,0.00,0.05,mm,pitch,1.25,"{machine_time,setup_time}","thread gauge required",1,true
-sheet_metal,flatness,0.00,0.30,mm,flatness,1.20,"{setup_time}","extra fixturing",1,true
-cnc_milling,position,0.00,0.10,mm,true_position,1.35,"{machine_time,setup_time,risk}","CMM program + probe cycles",1,true

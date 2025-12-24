@@ -3,25 +3,33 @@
  * Custom hooks for revision timeline with SWR caching
  */
 
-import { useQuery, useMutation, useQueryClient, useInfiniteQuery } from '@tanstack/react-query';
+import {
+  useQuery,
+  useMutation,
+  useQueryClient,
+  useInfiniteQuery,
+} from "@tanstack/react-query";
 import {
   revisionsApi,
   type RevisionListItem,
   type QuoteRevision,
   type CompareRevisionsRequest,
-  type CompareRevisionsResponse,
-  type RestoreRevisionRequest,
-  type UpdateNoteRequest,
-} from './revisions';
+} from "./revisions";
 
 /**
  * List revisions with infinite scroll pagination
  */
-export function useRevisions(quoteId: string | undefined, pageSize: number = 50) {
+export function useRevisions(
+  quoteId: string | undefined,
+  pageSize: number = 50,
+) {
   return useInfiniteQuery({
-    queryKey: ['revisions', quoteId],
+    queryKey: ["revisions", quoteId],
     queryFn: ({ pageParam }: { pageParam?: string }) =>
-      revisionsApi.listRevisions(quoteId!, { cursor: pageParam, limit: pageSize }),
+      revisionsApi.listRevisions(quoteId!, {
+        cursor: pageParam,
+        limit: pageSize,
+      }),
     enabled: !!quoteId,
     getNextPageParam: (lastPage: any) => lastPage.next_cursor,
     initialPageParam: undefined as string | undefined,
@@ -31,9 +39,12 @@ export function useRevisions(quoteId: string | undefined, pageSize: number = 50)
 /**
  * Get a specific revision
  */
-export function useRevision(quoteId: string | undefined, revisionId: string | undefined) {
+export function useRevision(
+  quoteId: string | undefined,
+  revisionId: string | undefined,
+) {
   return useQuery({
-    queryKey: ['revision', quoteId, revisionId],
+    queryKey: ["revision", quoteId, revisionId],
     queryFn: () => revisionsApi.getRevision(quoteId!, revisionId!),
     enabled: !!quoteId && !!revisionId,
     staleTime: 60_000, // 1 minute
@@ -61,9 +72,9 @@ export function useRestoreRevision(quoteId: string) {
       revisionsApi.restoreRevision(quoteId, revisionId, { note }),
     onSuccess: () => {
       // Invalidate all revision and quote queries
-      queryClient.invalidateQueries({ queryKey: ['revisions', quoteId] });
-      queryClient.invalidateQueries({ queryKey: ['quote', quoteId] });
-      queryClient.invalidateQueries({ queryKey: ['quotes'] });
+      queryClient.invalidateQueries({ queryKey: ["revisions", quoteId] });
+      queryClient.invalidateQueries({ queryKey: ["quote", quoteId] });
+      queryClient.invalidateQueries({ queryKey: ["quotes"] });
     },
   });
 }
@@ -77,33 +88,41 @@ export function useUpdateRevisionNote(quoteId: string, revisionId: string) {
   return useMutation({
     mutationFn: (note: string) =>
       revisionsApi.updateNote(quoteId, revisionId, { note }),
-    
+
     // Optimistic update
     onMutate: async (note: string) => {
-      await queryClient.cancelQueries({ queryKey: ['revision', quoteId, revisionId] });
+      await queryClient.cancelQueries({
+        queryKey: ["revision", quoteId, revisionId],
+      });
 
       const previous = queryClient.getQueryData<QuoteRevision>([
-        'revision',
+        "revision",
         quoteId,
         revisionId,
       ]);
 
-      queryClient.setQueryData(['revision', quoteId, revisionId], (old: any) => {
-        if (!old) return old;
-        return { ...old, note };
-      });
+      queryClient.setQueryData(
+        ["revision", quoteId, revisionId],
+        (old: any) => {
+          if (!old) return old;
+          return { ...old, note };
+        },
+      );
 
       return { previous };
     },
 
     onError: (err: any, note: string, context: any) => {
       if (context?.previous) {
-        queryClient.setQueryData(['revision', quoteId, revisionId], context.previous);
+        queryClient.setQueryData(
+          ["revision", quoteId, revisionId],
+          context.previous,
+        );
       }
     },
 
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['revisions', quoteId] });
+      queryClient.invalidateQueries({ queryKey: ["revisions", quoteId] });
     },
   });
 }

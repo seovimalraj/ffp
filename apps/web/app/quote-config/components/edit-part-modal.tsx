@@ -20,7 +20,7 @@ import {
 } from "@/types/part-config";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useDropzone } from "react-dropzone";
-import { Upload, BarChart4 } from "lucide-react";
+import { Upload } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { formatCurrency } from "@/lib/format";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -145,7 +145,7 @@ export function EditPartModal({
       const keys = Object.keys(localPart) as (keyof PartConfig)[];
       keys.forEach((key) => {
         if (localPart[key] !== part[key]) {
-          // @ts-ignore
+          // @ts-expect-error dynamic key assignment not safely typed
           updates[key] = localPart[key];
         }
       });
@@ -173,7 +173,7 @@ export function EditPartModal({
     }
   }, []);
 
-  const { getRootProps, getInputProps, isDragActive } = useDropzone({
+  const { getRootProps, getInputProps } = useDropzone({
     onDrop,
     accept: {
       "model/stl": [".stl"],
@@ -593,8 +593,7 @@ export function EditPartModal({
                           );
 
                           return (
-                            <button
-                              type="button"
+                            <div
                               key={c.value}
                               onClick={() =>
                                 updateLocalPart(
@@ -646,7 +645,7 @@ export function EditPartModal({
                                   </p>
                                 )}
                               </div>
-                            </button>
+                            </div>
                           );
                         })}
                       </div>
@@ -660,9 +659,11 @@ export function EditPartModal({
               {/* Analysis Tab */}
               <TabsContent
                 value="analysis"
-                className="flex-1 flex items-center justify-center p-12 outline-none bg-gray-50/50"
+                className="flex-1 overflow-hidden outline-none bg-gray-50/50 h-full"
               >
-                <DFMAnalysis part={localPart} />
+                <div className="h-full w-full">
+                  <DFMAnalysis part={localPart} />
+                </div>
               </TabsContent>
             </Tabs>
           </div>

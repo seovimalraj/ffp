@@ -5,30 +5,24 @@ import { useRouter, useParams } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import {
   Package,
-  DollarSign,
   ArrowRight,
-  Zap,
-  TrendingUp,
   Loader2,
   Upload,
-  Clock,
-  CheckCircle,
   CheckSquare,
   Square,
   Trash2,
   ChevronRight,
   User,
   LogOut,
-  Truck,
   Package2,
   LayoutDashboard,
-  ChevronDown,
   Archive,
   ScrollText,
   Save,
   Plus,
+  Truck,
 } from "lucide-react";
-import { GeometryData, analyzeCADFile } from "../../../lib/cad-analysis";
+import { analyzeCADFile } from "../../../lib/cad-analysis";
 import {
   calculatePricing,
   getMaterial,
@@ -36,9 +30,7 @@ import {
   PROCESSES,
   MATERIALS,
   FINISHES,
-  PricingBreakdown,
 } from "../../../lib/pricing-engine";
-import { getItem } from "@/lib/item-storage";
 import { PartCardItem } from "../components/part-card-item";
 import { useDropzone } from "react-dropzone";
 import {
@@ -56,19 +48,12 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
 import { signOut, useSession } from "next-auth/react";
 import UploadFileModal from "../components/upload-file-modal";
 import { useFileUpload } from "@/lib/hooks/use-file-upload";
 import { apiClient } from "@/lib/api";
 
-import { PartConfig, File2D } from "@/types/part-config";
+import { PartConfig } from "@/types/part-config";
 import Logo from "@/components/ui/logo";
 import ArchiveModal from "../components/archive-modal";
 
@@ -114,20 +99,6 @@ const INSPECTION_OPTIONS = [
   { value: "material-cert", label: "Material Certification (+$25)" },
 ];
 
-function calcLeadTime(
-  leadTimeType: "economy" | "standard" | "expedited",
-  baseLeadTime: number,
-) {
-  return Math.round(
-    baseLeadTime *
-      (leadTimeType === "expedited"
-        ? 1
-        : leadTimeType === "standard"
-          ? 2.1
-          : 3),
-  );
-}
-
 type IRFQ = {
   id: string;
   rfq_code: string;
@@ -137,21 +108,37 @@ type IRFQ = {
 
 // --- Moved Helper Functions ---
 
-const calculateLeadTime = (part: PartConfig) => {
-  if (!part.pricing) return 7;
-  return Math.round(part.pricing.leadTimeDays);
+const calculateLeadTime = (
+  part: PartConfig,
+  tier?: "economy" | "standard" | "expedited",
+) => {
+  if (!part.geometry) return 7;
+
+  const material = getMaterial(part.material);
+  if (!material) return 7;
+
+  const process = PROCESSES["cnc-milling"];
+  const finish = getFinish(part.finish);
+
+  const pricing = calculatePricing({
+    geometry: part.geometry,
+    material,
+    process,
+    finish,
+    quantity: part.quantity,
+    tolerance: part.tolerance as "standard" | "precision" | "tight",
+    leadTimeType: tier || part.leadTimeType || "standard",
+  });
+
+  return Math.round(pricing.leadTimeDays);
 };
 
 const calculatePrice = (
   part: PartConfig,
   tier: "economy" | "standard" | "expedited" = "economy",
 ): number => {
-  // If no geometry data, return 0
-  if (!part.geometry) {
-    return 0;
-  }
+  if (!part.geometry) return 0;
 
-  // Calculate base pricing
   const material = getMaterial(part.material);
   if (!material) return 0;
 
@@ -165,17 +152,10 @@ const calculatePrice = (
     finish,
     quantity: part.quantity,
     tolerance: part.tolerance as "standard" | "precision" | "tight",
-    leadTimeType: "standard", // Always use standard as base
+    leadTimeType: tier,
   });
 
-  // Apply tier multipliers
-  const multipliers = {
-    economy: 1.0,
-    standard: 2.1,
-    expedited: 3.5,
-  };
-
-  return pricing.totalPrice * multipliers[tier];
+  return pricing.totalPrice;
 };
 
 export default function QuoteConfigPage() {
@@ -246,6 +226,7 @@ export default function QuoteConfigPage() {
             final_price: 0,
             certificates: [],
           };
+          newPart.final_price = calculatePrice(newPart);
 
           newParts.push(newPart);
         }
@@ -491,7 +472,7 @@ export default function QuoteConfigPage() {
             let currentRfq = response.data.rfq;
 
             // Map and Calculate
-            let partsToSync: {
+            const partsToSync: {
               id: string;
               final_price: number;
               lead_time: number;
@@ -554,7 +535,10 @@ export default function QuoteConfigPage() {
 
                 // Recalculate Final Price and Lead Time
                 const calculatedPrice = calculatePrice(part, part.leadTimeType);
-                const calculatedLeadTime = calculateLeadTime(part);
+                const calculatedLeadTime = calculateLeadTime(
+                  part,
+                  part.leadTimeType,
+                );
 
                 part.final_price = calculatedPrice;
                 part.leadTime = calculatedLeadTime;
@@ -675,7 +659,10 @@ export default function QuoteConfigPage() {
           updatedPart,
           updatedPart.leadTimeType,
         );
-        updatedPart.leadTime = calculateLeadTime(updatedPart);
+        updatedPart.leadTime = calculateLeadTime(
+          updatedPart,
+          updatedPart.leadTimeType,
+        );
       }
     }
 
@@ -743,13 +730,13 @@ export default function QuoteConfigPage() {
   };
 
   const standardPrice = parts.reduce(
-    (sum, part) => sum + calculatePrice(part, part.leadTimeType || "standard"),
+    (sum, part) => sum + (part.final_price || 0),
     0,
   );
 
-  const baseLeadTime = Math.max(...parts.map((p) => calculateLeadTime(p)));
-
-  const handleSaveDraft = async () => {
+  const handleSaveDraft = async (
+    message: string = "Draft saved successfully",
+  ) => {
     if (unsavedChanges.size === 0) {
       notify.info("No changes to save");
       return;
@@ -759,21 +746,21 @@ export default function QuoteConfigPage() {
     try {
       const partsToSave = parts.filter((p) => unsavedChanges.has(p.id));
 
-      await Promise.all(
-        partsToSave.map(async (part) => {
+      await Promise.all([
+        ...partsToSave.map(async (part) => {
           const payload = {
             quantity: part.quantity,
             lead_time_type: part.leadTimeType,
             final_price: part.final_price,
             lead_time: part.leadTime,
           };
-
           await apiClient.patch(`/rfq/${rfq.id}/parts/${part.id}`, payload);
         }),
-      );
+        apiClient.patch(`/rfq/${rfq.id}`, { final_price: standardPrice }),
+      ]);
 
       setUnsavedChanges(new Set());
-      notify.success("Draft saved successfully");
+      notify.success(message);
     } catch (error) {
       console.error("Error saving draft:", error);
       notify.error("Failed to save draft");
@@ -787,13 +774,20 @@ export default function QuoteConfigPage() {
       setSaving(true);
       // Ensure all changes are saved before checkout logic if needed
       if (unsavedChanges.size > 0) {
-        await handleSaveDraft();
+        await handleSaveDraft("Quote changes saved successfully");
+      }
+
+      if (standardPrice < 150) {
+        notify.error(
+          "Please revise the quote to a minimum value of $150 to proceed.",
+        );
+        return;
       }
 
       router.push(`/checkout/${quoteId}`);
     } catch (error) {
       console.error("Error saving configuration:", error);
-      alert("Failed to save configuration. Please try again.");
+      notify.error("Failed to save configuration. Please try again.");
     } finally {
       setSaving(false);
     }
@@ -883,7 +877,9 @@ export default function QuoteConfigPage() {
             {/* Action Buttons */}
             <div className="flex items-center gap-2">
               <Button
-                onClick={handleSaveDraft}
+                onClick={() =>
+                  handleSaveDraft("Quote changes saved successfully")
+                }
                 disabled={saving || unsavedChanges.size === 0}
                 className="text-blue-600 bg-blue-50 hover:text-blue-700 hover:bg-blue-50 font-medium shadow-lg shadow-blue-600/20 transition-all hover:scale-[1.02] active:scale-[0.98] rounded-lg"
               >
@@ -1149,11 +1145,9 @@ export default function QuoteConfigPage() {
               {/* Mini Breakdown */}
               <div className="space-y-3 max-h-[calc(100vh-85px)] overflow-y-auto custom-scrollbar pr-1">
                 {parts.map((p, i) => {
-                  const pPrice = calculatePrice(p, p.leadTimeType);
-                  const calculatedLeadTime = calcLeadTime(
-                    p.leadTimeType,
-                    baseLeadTime,
-                  );
+                  console.log(p, "p");
+                  const pPrice = p.final_price || 0;
+                  const calculatedLeadTime = p.leadTime || 0;
                   return (
                     <div
                       key={p.id}

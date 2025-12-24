@@ -1,4 +1,0 @@
-name,process,feature_type,applies_to,default_tol,unit_type
-ISO 2768-m,cnc_milling,slot,width,0.2,mm
-General Shop,turning,hole,diameter,0.1,mm
-Aerospace Tight,cnc_milling,position,true_position,0.05,mm

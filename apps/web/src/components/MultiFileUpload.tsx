@@ -167,13 +167,13 @@ export const MultiFileUpload: React.FC<MultiFileUploadProps> = ({ orgId, authTok
         createdQuoteId = result.createdQuoteId;
         quoteItemId = result.quoteItemId;
       } catch (quoteError) {
-        // eslint-disable-next-line no-console
+         
         console.warn('Quote linkage failed', quoteError);
       }
 
       onUploaded?.({ file_id: serverFileId, filename: file.name, quote_id: createdQuoteId, quote_item_id: quoteItemId });
     } catch (err: any) {
-      // eslint-disable-next-line no-console
+       
       console.warn('Upload error', err);
       updateFileState(localId, { status: 'error', error: err.message || 'Upload failed' });
     }

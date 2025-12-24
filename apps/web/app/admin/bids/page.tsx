@@ -1,50 +1,33 @@
-'use client';
+"use client";
 
-import { useState, useEffect } from 'react';
-import { useRouter } from 'next/navigation';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
-import { Input } from '@/components/ui/input';
-import { 
-  FileText, DollarSign, Clock, CheckCircle, X, 
-  Search, TrendingUp, AlertCircle, Award, Package, Loader2
-} from 'lucide-react';
-import { getOrdersWithBids, updateBidStatus, updateOrderStatus } from '../../../lib/database';
-
-interface Bid {
-  bidId: string;
-  rfqId: string;
-  orderId: string;
-  supplierId: string;
-  supplierName: string;
-  price: number;
-  leadTime: number;
-  notes: string;
-  status: string;
-  submittedAt: string;
-}
-
-interface OrderWithBids {
-  orderId: string;
-  rfqId: string;
-  customer: {
-    email: string;
-    companyName: string;
-    contactName: string;
-  };
-  totalPrice: number;
-  leadTime: number;
-  parts: any[];
-  bids: Bid[];
-  selectedBid?: string;
-}
+import { useState, useEffect } from "react";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import { Input } from "@/components/ui/input";
+import {
+  FileText,
+  DollarSign,
+  Clock,
+  CheckCircle,
+  X,
+  Search,
+  TrendingUp,
+  AlertCircle,
+  Award,
+  Package,
+  Loader2,
+} from "lucide-react";
+import {
+  getOrdersWithBids,
+  updateBidStatus,
+  updateOrderStatus,
+} from "../../../lib/database";
 
 export default function AdminBidsPage() {
-  const router = useRouter();
   const [orders, setOrders] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
-  const [searchQuery, setSearchQuery] = useState('');
+  const [searchQuery, setSearchQuery] = useState("");
   const [expandedOrder, setExpandedOrder] = useState<string | null>(null);
 
   useEffect(() => {
@@ -57,42 +40,52 @@ export default function AdminBidsPage() {
       const data = await getOrdersWithBids();
       setOrders(data);
     } catch (error) {
-      console.error('Error loading orders with bids:', error);
-      alert('Failed to load bids. Please try again.');
+      console.error("Error loading orders with bids:", error);
+      alert("Failed to load bids. Please try again.");
     } finally {
       setLoading(false);
     }
   };
 
-  const handleApproveBid = async (orderId: string, bidId: string, supplierName: string) => {
-    if (!confirm(`Approve bid from ${supplierName}? The supplier will be notified and production can begin.`)) {
+  const handleApproveBid = async (
+    orderId: string,
+    bidId: string,
+    supplierName: string,
+  ) => {
+    if (
+      !confirm(
+        `Approve bid from ${supplierName}? The supplier will be notified and production can begin.`,
+      )
+    ) {
       return;
     }
 
     try {
       // Update bid status to approved
-      await updateBidStatus(bidId, 'approved');
-      
+      await updateBidStatus(bidId, "approved");
+
       // Reject other bids for this order
-      const order = orders.find(o => o.id === orderId);
+      const order = orders.find((o) => o.id === orderId);
       if (order?.bids) {
         for (const bid of order.bids) {
-          if (bid.id !== bidId && bid.status === 'pending') {
-            await updateBidStatus(bid.id, 'rejected');
+          if (bid.id !== bidId && bid.status === "pending") {
+            await updateBidStatus(bid.id, "rejected");
           }
         }
       }
-      
-      // Update order status
-      await updateOrderStatus(orderId, 'in-production');
 
-      alert(`✅ Bid approved! ${supplierName} has been notified and can begin production.`);
-      
+      // Update order status
+      await updateOrderStatus(orderId, "in-production");
+
+      alert(
+        `✅ Bid approved! ${supplierName} has been notified and can begin production.`,
+      );
+
       // Reload data
       await loadOrdersWithBids();
     } catch (error) {
-      console.error('Error approving bid:', error);
-      alert('Failed to approve bid. Please try again.');
+      console.error("Error approving bid:", error);
+      alert("Failed to approve bid. Please try again.");
     }
   };
 
@@ -102,39 +95,54 @@ export default function AdminBidsPage() {
     }
 
     try {
-      await updateBidStatus(bidId, 'rejected');
+      await updateBidStatus(bidId, "rejected");
       await loadOrdersWithBids();
     } catch (error) {
-      console.error('Error rejecting bid:', error);
-      alert('Failed to reject bid. Please try again.');
+      console.error("Error rejecting bid:", error);
+      alert("Failed to reject bid. Please try again.");
     }
   };
 
   const getBestBid = (bids: any[]) => {
     if (bids.length === 0) return null;
-    
+
     // Calculate score: lower price and faster delivery = better
     const scoredBids = bids.map((bid: any) => ({
       ...bid,
-      score: (bid.price / Math.max(...bids.map((b: any) => b.price))) + 
-             (bid.lead_time / Math.max(...bids.map((b: any) => b.lead_time)))
+      score:
+        bid.price / Math.max(...bids.map((b: any) => b.price)) +
+        bid.lead_time / Math.max(...bids.map((b: any) => b.lead_time)),
     }));
-    
+
     return scoredBids.sort((a: any, b: any) => a.score - b.score)[0];
   };
 
-  const filteredOrders = orders.filter((order: any) => 
-    order.id?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    order.customer?.company_name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    order.bids?.some((bid: any) => bid.supplier_name?.toLowerCase().includes(searchQuery.toLowerCase()))
+  const filteredOrders = orders.filter(
+    (order: any) =>
+      order.id?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      order.customer?.company_name
+        ?.toLowerCase()
+        .includes(searchQuery.toLowerCase()) ||
+      order.bids?.some((bid: any) =>
+        bid.supplier_name?.toLowerCase().includes(searchQuery.toLowerCase()),
+      ),
   );
 
-  const totalBids = orders.reduce((sum: number, order: any) => sum + (order.bids?.length || 0), 0);
-  const pendingBids = orders.reduce((sum: number, order: any) => 
-    sum + (order.bids?.filter((b: any) => b.status === 'pending').length || 0), 0
+  const totalBids = orders.reduce(
+    (sum: number, order: any) => sum + (order.bids?.length || 0),
+    0,
   );
-  const approvedBids = orders.reduce((sum: number, order: any) => 
-    sum + (order.bids?.filter((b: any) => b.status === 'approved').length || 0), 0
+  const pendingBids = orders.reduce(
+    (sum: number, order: any) =>
+      sum +
+      (order.bids?.filter((b: any) => b.status === "pending").length || 0),
+    0,
+  );
+  const approvedBids = orders.reduce(
+    (sum: number, order: any) =>
+      sum +
+      (order.bids?.filter((b: any) => b.status === "approved").length || 0),
+    0,
   );
 
   if (loading) {
@@ -153,8 +161,12 @@ export default function AdminBidsPage() {
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         {/* Header */}
         <div className="mb-8">
-          <h1 className="text-3xl font-bold text-gray-900 mb-2">Bid Management</h1>
-          <p className="text-gray-600">Review and approve supplier bids for customer orders</p>
+          <h1 className="text-3xl font-bold text-gray-900 mb-2">
+            Bid Management
+          </h1>
+          <p className="text-gray-600">
+            Review and approve supplier bids for customer orders
+          </p>
         </div>
 
         {/* Stats */}
@@ -164,7 +176,9 @@ export default function AdminBidsPage() {
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-sm text-gray-600 mb-1">Total Bids</p>
-                  <p className="text-3xl font-bold text-gray-900">{totalBids}</p>
+                  <p className="text-3xl font-bold text-gray-900">
+                    {totalBids}
+                  </p>
                 </div>
                 <div className="w-12 h-12 rounded-lg bg-blue-50 flex items-center justify-center">
                   <FileText className="w-6 h-6 text-blue-600" />
@@ -178,7 +192,9 @@ export default function AdminBidsPage() {
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-sm text-gray-600 mb-1">Pending Review</p>
-                  <p className="text-3xl font-bold text-orange-600">{pendingBids}</p>
+                  <p className="text-3xl font-bold text-orange-600">
+                    {pendingBids}
+                  </p>
                 </div>
                 <div className="w-12 h-12 rounded-lg bg-orange-50 flex items-center justify-center">
                   <Clock className="w-6 h-6 text-orange-600" />
@@ -192,7 +208,9 @@ export default function AdminBidsPage() {
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-sm text-gray-600 mb-1">Approved</p>
-                  <p className="text-3xl font-bold text-green-600">{approvedBids}</p>
+                  <p className="text-3xl font-bold text-green-600">
+                    {approvedBids}
+                  </p>
                 </div>
                 <div className="w-12 h-12 rounded-lg bg-green-50 flex items-center justify-center">
                   <CheckCircle className="w-6 h-6 text-green-600" />
@@ -206,7 +224,9 @@ export default function AdminBidsPage() {
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-sm text-gray-600 mb-1">Active Orders</p>
-                  <p className="text-3xl font-bold text-gray-900">{orders.length}</p>
+                  <p className="text-3xl font-bold text-gray-900">
+                    {orders.length}
+                  </p>
                 </div>
                 <div className="w-12 h-12 rounded-lg bg-purple-50 flex items-center justify-center">
                   <Package className="w-6 h-6 text-purple-600" />
@@ -253,7 +273,8 @@ export default function AdminBidsPage() {
                         <div className="flex items-center gap-3 mb-2">
                           <CardTitle className="text-xl">{order.id}</CardTitle>
                           <Badge className="bg-blue-100 text-blue-700 border-0">
-                            {order.bids?.length || 0} {order.bids?.length === 1 ? 'Bid' : 'Bids'}
+                            {order.bids?.length || 0}{" "}
+                            {order.bids?.length === 1 ? "Bid" : "Bids"}
                           </Badge>
                           {order.selected_bid && (
                             <Badge className="bg-green-100 text-green-700 border-0">
@@ -265,27 +286,39 @@ export default function AdminBidsPage() {
                         <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
                           <div>
                             <span className="text-gray-600">Customer:</span>
-                            <p className="font-semibold text-gray-900">{order.customer?.company_name || 'N/A'}</p>
+                            <p className="font-semibold text-gray-900">
+                              {order.customer?.company_name || "N/A"}
+                            </p>
                           </div>
                           <div>
                             <span className="text-gray-600">Parts:</span>
-                            <p className="font-semibold text-gray-900">{order.parts?.length || 0}</p>
+                            <p className="font-semibold text-gray-900">
+                              {order.parts?.length || 0}
+                            </p>
                           </div>
                           <div>
                             <span className="text-gray-600">Order Value:</span>
-                            <p className="font-semibold text-gray-900">${order.total_price?.toLocaleString() || 'N/A'}</p>
+                            <p className="font-semibold text-gray-900">
+                              ${order.total_price?.toLocaleString() || "N/A"}
+                            </p>
                           </div>
                           <div>
-                            <span className="text-gray-600">Required Lead Time:</span>
-                            <p className="font-semibold text-gray-900">{order.lead_time || 'N/A'} days</p>
+                            <span className="text-gray-600">
+                              Required Lead Time:
+                            </span>
+                            <p className="font-semibold text-gray-900">
+                              {order.lead_time || "N/A"} days
+                            </p>
                           </div>
                         </div>
                       </div>
                       <Button
                         variant="outline"
-                        onClick={() => setExpandedOrder(isExpanded ? null : order.id)}
+                        onClick={() =>
+                          setExpandedOrder(isExpanded ? null : order.id)
+                        }
                       >
-                        {isExpanded ? 'Hide Bids' : 'View Bids'}
+                        {isExpanded ? "Hide Bids" : "View Bids"}
                       </Button>
                     </div>
                   </CardHeader>
@@ -293,19 +326,22 @@ export default function AdminBidsPage() {
                   {isExpanded && (
                     <CardContent className="p-6">
                       <div className="space-y-4">
-                        {order.bids?.map((bid: any, index: number) => {
+                        {order.bids?.map((bid: any) => {
                           const isBest = bestBid?.id === bid.id;
-                          const isApproved = bid.status === 'approved';
-                          const isRejected = bid.status === 'rejected';
+                          const isApproved = bid.status === "approved";
+                          const isRejected = bid.status === "rejected";
 
                           return (
-                            <div 
+                            <div
                               key={bid.id}
                               className={`border-2 rounded-lg p-4 transition-all ${
-                                isBest && !isApproved && !isRejected ? 'border-green-300 bg-green-50' : 
-                                isApproved ? 'border-blue-300 bg-blue-50' :
-                                isRejected ? 'border-gray-300 bg-gray-50 opacity-60' :
-                                'border-gray-200'
+                                isBest && !isApproved && !isRejected
+                                  ? "border-green-300 bg-green-50"
+                                  : isApproved
+                                    ? "border-blue-300 bg-blue-50"
+                                    : isRejected
+                                      ? "border-gray-300 bg-gray-50 opacity-60"
+                                      : "border-gray-200"
                               }`}
                             >
                               <div className="flex items-start justify-between mb-4">
@@ -334,7 +370,8 @@ export default function AdminBidsPage() {
                                     )}
                                   </div>
                                   <p className="text-sm text-gray-600">
-                                    Submitted {new Date(bid.submittedAt).toLocaleString()}
+                                    Submitted{" "}
+                                    {new Date(bid.submittedAt).toLocaleString()}
                                   </p>
                                 </div>
                               </div>
@@ -345,12 +382,20 @@ export default function AdminBidsPage() {
                                     <DollarSign className="w-5 h-5 text-blue-600" />
                                   </div>
                                   <div>
-                                    <p className="text-sm text-gray-600">Bid Price</p>
+                                    <p className="text-sm text-gray-600">
+                                      Bid Price
+                                    </p>
                                     <p className="text-xl font-bold text-gray-900">
-                                      ${bid.price?.toLocaleString() || 'N/A'}
+                                      ${bid.price?.toLocaleString() || "N/A"}
                                     </p>
                                     <p className="text-xs text-gray-500">
-                                      {order.total_price ? ((bid.price / order.total_price) * 100).toFixed(1) : '0'}% of order value
+                                      {order.total_price
+                                        ? (
+                                            (bid.price / order.total_price) *
+                                            100
+                                          ).toFixed(1)
+                                        : "0"}
+                                      % of order value
                                     </p>
                                   </div>
                                 </div>
@@ -360,12 +405,16 @@ export default function AdminBidsPage() {
                                     <Clock className="w-5 h-5 text-green-600" />
                                   </div>
                                   <div>
-                                    <p className="text-sm text-gray-600">Lead Time</p>
+                                    <p className="text-sm text-gray-600">
+                                      Lead Time
+                                    </p>
                                     <p className="text-xl font-bold text-gray-900">
-                                      {bid.lead_time || 'N/A'} days
+                                      {bid.lead_time || "N/A"} days
                                     </p>
                                     <p className="text-xs text-gray-500">
-                                      {bid.lead_time <= order.lead_time ? 'Meets requirement' : 'Exceeds requirement'}
+                                      {bid.lead_time <= order.lead_time
+                                        ? "Meets requirement"
+                                        : "Exceeds requirement"}
                                     </p>
                                   </div>
                                 </div>
@@ -375,9 +424,11 @@ export default function AdminBidsPage() {
                                     <TrendingUp className="w-5 h-5 text-purple-600" />
                                   </div>
                                   <div>
-                                    <p className="text-sm text-gray-600">Value Score</p>
+                                    <p className="text-sm text-gray-600">
+                                      Value Score
+                                    </p>
                                     <p className="text-xl font-bold text-gray-900">
-                                      {isBest ? 'Best' : 'Good'}
+                                      {isBest ? "Best" : "Good"}
                                     </p>
                                   </div>
                                 </div>
@@ -385,15 +436,25 @@ export default function AdminBidsPage() {
 
                               {bid.notes && (
                                 <div className="bg-white rounded-lg p-3 mb-4 border">
-                                  <p className="text-sm font-semibold text-gray-900 mb-1">Additional Notes:</p>
-                                  <p className="text-sm text-gray-700">{bid.notes}</p>
+                                  <p className="text-sm font-semibold text-gray-900 mb-1">
+                                    Additional Notes:
+                                  </p>
+                                  <p className="text-sm text-gray-700">
+                                    {bid.notes}
+                                  </p>
                                 </div>
                               )}
 
                               {!isApproved && !isRejected && (
                                 <div className="flex gap-3">
                                   <Button
-                                    onClick={() => handleApproveBid(order.id, bid.id, bid.supplier_name)}
+                                    onClick={() =>
+                                      handleApproveBid(
+                                        order.id,
+                                        bid.id,
+                                        bid.supplier_name,
+                                      )
+                                    }
                                     className="bg-green-600 hover:bg-green-700 flex-1"
                                   >
                                     <CheckCircle className="w-4 h-4 mr-2" />
@@ -401,7 +462,9 @@ export default function AdminBidsPage() {
                                   </Button>
                                   <Button
                                     variant="outline"
-                                    onClick={() => handleRejectBid(bid.id, bid.supplier_name)}
+                                    onClick={() =>
+                                      handleRejectBid(bid.id, bid.supplier_name)
+                                    }
                                     className="border-red-300 text-red-700 hover:bg-red-50"
                                   >
                                     <X className="w-4 h-4 mr-2" />
@@ -414,18 +477,24 @@ export default function AdminBidsPage() {
                         })}
                       </div>
 
-                      {bestBid && order.bids?.filter((b: any) => b.status === 'pending').length > 0 && (
-                        <div className="mt-4 bg-green-50 border border-green-200 rounded-lg p-4 flex items-start gap-3">
-                          <AlertCircle className="w-5 h-5 text-green-600 flex-shrink-0 mt-0.5" />
-                          <div>
-                            <p className="font-semibold text-green-900">Recommendation</p>
-                            <p className="text-sm text-green-800">
-                              {bestBid?.supplier_name} offers the best combination of price and lead time. 
-                              Consider approving this bid to ensure optimal customer satisfaction.
-                            </p>
+                      {bestBid &&
+                        order.bids?.filter((b: any) => b.status === "pending")
+                          .length > 0 && (
+                          <div className="mt-4 bg-green-50 border border-green-200 rounded-lg p-4 flex items-start gap-3">
+                            <AlertCircle className="w-5 h-5 text-green-600 flex-shrink-0 mt-0.5" />
+                            <div>
+                              <p className="font-semibold text-green-900">
+                                Recommendation
+                              </p>
+                              <p className="text-sm text-green-800">
+                                {bestBid?.supplier_name} offers the best
+                                combination of price and lead time. Consider
+                                approving this bid to ensure optimal customer
+                                satisfaction.
+                              </p>
+                            </div>
                           </div>
-                        </div>
-                      )}
+                        )}
                     </CardContent>
                   )}
                 </Card>

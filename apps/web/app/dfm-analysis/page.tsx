@@ -1,17 +1,26 @@
-'use client';
+"use client";
 
-import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { useRouter } from 'next/navigation';
-import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Label } from '@/components/ui/label';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Textarea } from '@/components/ui/textarea';
-import { Checkbox } from '@/components/ui/checkbox';
-import { Progress } from '@/components/ui/progress';
-import { Alert, AlertDescription } from '@/components/ui/alert';
-import { ContractsVNext } from '@cnc-quote/shared';
-import { UploadPresignSchema, type UploadPresign } from '@cnc-quote/shared/contracts/vnext';
+import React, { useState, useEffect, useCallback, useRef } from "react";
+import { useRouter } from "next/navigation";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Label } from "@/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Textarea } from "@/components/ui/textarea";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Progress } from "@/components/ui/progress";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import { ContractsVNext } from "@cnc-quote/shared";
+import {
+  UploadPresignSchema,
+  type UploadPresign,
+} from "@cnc-quote/shared/contracts/vnext";
 import {
   ArrowUpTrayIcon as UploadIcon,
   DocumentIcon as FileIcon,
@@ -20,11 +29,9 @@ import {
   InformationCircleIcon,
   ShieldCheckIcon,
   CogIcon,
-  ArrowRightIcon
-} from '@heroicons/react/24/outline';
-import PublicLayout from '@/components/PublicLayout';
-
-type MaterialOption = ContractsVNext.DfmMaterialOptionVNext;
+  ArrowRightIcon,
+} from "@heroicons/react/24/outline";
+import PublicLayout from "@/components/PublicLayout";
 
 type OptionList = ContractsVNext.DfmOptionListVNext;
 
@@ -49,27 +56,35 @@ interface FormData {
 }
 
 const ACCEPTED_FILE_TYPES = [
-  'application/step',
-  'application/x-step',
-  'application/iges',
-  'application/x-iges',
-  'application/sldprt',
-  'model/x-t',
-  'model/x-b',
-  'application/x-jt',
-  'model/3mf',
-  'image/vnd.dxf',
-  'application/vnd.ms-pki.stl',
-  'application/zip',
-  'application/x-zip-compressed'
+  "application/step",
+  "application/x-step",
+  "application/iges",
+  "application/x-iges",
+  "application/sldprt",
+  "model/x-t",
+  "model/x-b",
+  "application/x-jt",
+  "model/3mf",
+  "image/vnd.dxf",
+  "application/vnd.ms-pki.stl",
+  "application/zip",
+  "application/x-zip-compressed",
 ];
 
 const FILE_EXTENSIONS = [
-  '.step', '.stp', '.iges', '.igs', '.sldprt',
-  '.x_t', '.x_b', '.jt', '.3mf', '.dxf', '.stl', '.zip'
+  ".step",
+  ".stp",
+  ".iges",
+  ".igs",
+  ".sldprt",
+  ".x_t",
+  ".x_b",
+  ".jt",
+  ".3mf",
+  ".dxf",
+  ".stl",
+  ".zip",
 ];
-
-const MAX_FILE_SIZE = 200 * 1024 * 1024; // 200MB
 
 const EMPTY_OPTIONS: DFMOptions = {
   tolerances: [],
@@ -83,7 +98,7 @@ const EMPTY_OPTIONS: DFMOptions = {
 type Schema<T> = { parse: (input: unknown) => T };
 
 async function fetchWithSchema<T>(url: string, schema: Schema<T>): Promise<T> {
-  const response = await fetch(url, { cache: 'no-store' });
+  const response = await fetch(url, { cache: "no-store" });
   if (!response.ok) {
     throw new Error(`Request to ${url} failed with status ${response.status}`);
   }
@@ -91,11 +106,14 @@ async function fetchWithSchema<T>(url: string, schema: Schema<T>): Promise<T> {
   return schema.parse(payload);
 }
 
-function ensureSelection<T extends { id: string }>(current: string, list: T[]): string {
+function ensureSelection<T extends { id: string }>(
+  current: string,
+  list: T[],
+): string {
   if (current && list.some((item) => item.id === current)) {
     return current;
   }
-  return list[0]?.id ?? '';
+  return list[0]?.id ?? "";
 }
 
 export default function DFMAnalysisPage() {
@@ -103,13 +121,13 @@ export default function DFMAnalysisPage() {
   const [options, setOptions] = useState<DFMOptions>(EMPTY_OPTIONS);
   const [formData, setFormData] = useState<FormData>({
     cadFile: null,
-    materialId: '',
-    tolerancePack: '',
-    surfaceFinish: '',
-    industry: '',
+    materialId: "",
+    tolerancePack: "",
+    surfaceFinish: "",
+    industry: "",
     certifications: [],
-    criticality: '',
-    notes: ''
+    criticality: "",
+    notes: "",
   });
   const [isLoading, setIsLoading] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -129,13 +147,38 @@ export default function DFMAnalysisPage() {
   const loadOptions = useCallback(async () => {
     try {
       setIsLoading(true);
-      const [tolerances, finishes, materials, industries, certifications, criticality] = await Promise.all([
-        fetchWithSchema('/api/dfm/options/tolerances', ContractsVNext.ToleranceListSchema),
-        fetchWithSchema('/api/dfm/options/finishes', ContractsVNext.FinishListSchema),
-        fetchWithSchema('/api/dfm/options/materials', ContractsVNext.MaterialListSchema),
-        fetchWithSchema('/api/dfm/options/industries', ContractsVNext.IndustryListSchema),
-        fetchWithSchema('/api/dfm/options/certifications', ContractsVNext.CertificationListSchema),
-        fetchWithSchema('/api/dfm/options/criticality', ContractsVNext.CriticalityListSchema),
+      const [
+        tolerances,
+        finishes,
+        materials,
+        industries,
+        certifications,
+        criticality,
+      ] = await Promise.all([
+        fetchWithSchema(
+          "/api/dfm/options/tolerances",
+          ContractsVNext.ToleranceListSchema,
+        ),
+        fetchWithSchema(
+          "/api/dfm/options/finishes",
+          ContractsVNext.FinishListSchema,
+        ),
+        fetchWithSchema(
+          "/api/dfm/options/materials",
+          ContractsVNext.MaterialListSchema,
+        ),
+        fetchWithSchema(
+          "/api/dfm/options/industries",
+          ContractsVNext.IndustryListSchema,
+        ),
+        fetchWithSchema(
+          "/api/dfm/options/certifications",
+          ContractsVNext.CertificationListSchema,
+        ),
+        fetchWithSchema(
+          "/api/dfm/options/criticality",
+          ContractsVNext.CriticalityListSchema,
+        ),
       ]);
 
       setOptions({
@@ -147,7 +190,9 @@ export default function DFMAnalysisPage() {
         criticality,
       });
 
-      const validCertificationIds = new Set(certifications.map((cert) => cert.id));
+      const validCertificationIds = new Set(
+        certifications.map((cert) => cert.id),
+      );
 
       setFormData((prev) => {
         const nextCertifications: string[] = [];
@@ -170,8 +215,8 @@ export default function DFMAnalysisPage() {
 
       setError(null);
     } catch (err) {
-      console.error('Failed to load DFM options', err);
-      setError('Failed to load form options');
+      console.error("Failed to load DFM options", err);
+      setError("Failed to load form options");
       setOptions(EMPTY_OPTIONS);
     } finally {
       setIsLoading(false);
@@ -181,13 +226,15 @@ export default function DFMAnalysisPage() {
   const validateFile = (file: File): string | null => {
     // Check file size (200MB limit)
     if (file.size > 200 * 1024 * 1024) {
-      return 'File size must be less than 200MB';
+      return "File size must be less than 200MB";
     }
 
     // Check file type
-    if (!ACCEPTED_FILE_TYPES.includes(file.type) &&
-        !FILE_EXTENSIONS.some(ext => file.name.toLowerCase().endsWith(ext))) {
-      return 'Unsupported file format. Please upload a supported CAD file.';
+    if (
+      !ACCEPTED_FILE_TYPES.includes(file.type) &&
+      !FILE_EXTENSIONS.some((ext) => file.name.toLowerCase().endsWith(ext))
+    ) {
+      return "Unsupported file format. Please upload a supported CAD file.";
     }
 
     return null;
@@ -200,64 +247,76 @@ export default function DFMAnalysisPage() {
       return;
     }
 
-    setFormData(prev => ({ ...prev, cadFile: file }));
+    setFormData((prev) => ({ ...prev, cadFile: file }));
     setError(null);
   }, []);
 
-  const handleFileInput = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file) {
-      handleFileSelect(file);
-    }
-  }, [handleFileSelect]);
+  const handleFileInput = useCallback(
+    (e: React.ChangeEvent<HTMLInputElement>) => {
+      const file = e.target.files?.[0];
+      if (file) {
+        handleFileSelect(file);
+      }
+    },
+    [handleFileSelect],
+  );
 
   const handleDrag = useCallback((e: React.DragEvent) => {
     e.preventDefault();
     e.stopPropagation();
-    if (e.type === 'dragenter' || e.type === 'dragover') {
+    if (e.type === "dragenter" || e.type === "dragover") {
       setDragActive(true);
-    } else if (e.type === 'dragleave') {
+    } else if (e.type === "dragleave") {
       setDragActive(false);
     }
   }, []);
 
-  const handleDrop = useCallback((e: React.DragEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    setDragActive(false);
+  const handleDrop = useCallback(
+    (e: React.DragEvent) => {
+      e.preventDefault();
+      e.stopPropagation();
+      setDragActive(false);
 
-    const droppedFile = e.dataTransfer?.files?.[0];
-    if (droppedFile) {
-      handleFileSelect(droppedFile);
-    }
-  }, [handleFileSelect]);
+      const droppedFile = e.dataTransfer?.files?.[0];
+      if (droppedFile) {
+        handleFileSelect(droppedFile);
+      }
+    },
+    [handleFileSelect],
+  );
 
   const openFilePicker = useCallback(() => {
     fileInputRef.current?.click();
   }, []);
 
   const handleCertificationToggle = (certId: string, checked: boolean) => {
-    setFormData(prev => ({
+    setFormData((prev) => ({
       ...prev,
       certifications: checked
         ? [...prev.certifications, certId]
-        : prev.certifications.filter(id => id !== certId)
+        : prev.certifications.filter((id) => id !== certId),
     }));
   };
 
-  const uploadFileWithProgress = (file: File, presign: UploadPresign): Promise<void> => {
+  const uploadFileWithProgress = (
+    file: File,
+    presign: UploadPresign,
+  ): Promise<void> => {
     return new Promise((resolve, reject) => {
       const xhr = new XMLHttpRequest();
       xhr.withCredentials = false;
 
-      xhr.upload.addEventListener('progress', (event) => {
+      xhr.upload.addEventListener("progress", (event) => {
         if (event.lengthComputable && event.total > 0) {
-          const percentComplete = Math.min(100, (event.loaded / event.total) * 100);
+          const percentComplete = Math.min(
+            100,
+            (event.loaded / event.total) * 100,
+          );
           setUploadProgress(percentComplete);
         }
       });
 
-      xhr.addEventListener('load', () => {
+      xhr.addEventListener("load", () => {
         if (xhr.status >= 200 && xhr.status < 300) {
           setUploadProgress(100);
           resolve();
@@ -266,37 +325,39 @@ export default function DFMAnalysisPage() {
         }
       });
 
-      xhr.addEventListener('error', () => {
-        reject(new Error('Upload failed'));
+      xhr.addEventListener("error", () => {
+        reject(new Error("Upload failed"));
       });
 
-      const methodRaw = (presign.method ?? 'PUT').toUpperCase();
-      const method = methodRaw === 'POST' ? 'POST' : 'PUT';
+      const methodRaw = (presign.method ?? "PUT").toUpperCase();
+      const method = methodRaw === "POST" ? "POST" : "PUT";
       xhr.open(method, presign.url);
 
       const headers = presign.headers ?? {};
       const headerEntries = Object.entries(headers);
-      const hasContentTypeHeader = headerEntries.some(([key]) => key.toLowerCase() === 'content-type');
+      const hasContentTypeHeader = headerEntries.some(
+        ([key]) => key.toLowerCase() === "content-type",
+      );
 
       headerEntries.forEach(([key, value]) => {
-        if (method === 'POST' && key.toLowerCase() === 'content-type') {
+        if (method === "POST" && key.toLowerCase() === "content-type") {
           return;
         }
         xhr.setRequestHeader(key, value);
       });
 
-      if (method === 'POST') {
+      if (method === "POST") {
         const formData = new FormData();
         if (presign.fields) {
           Object.entries(presign.fields).forEach(([key, value]) => {
             formData.append(key, value);
           });
         }
-        formData.append('file', file);
+        formData.append("file", file);
         xhr.send(formData);
       } else {
         if (!hasContentTypeHeader && file.type) {
-          xhr.setRequestHeader('Content-Type', file.type);
+          xhr.setRequestHeader("Content-Type", file.type);
         }
         xhr.send(file);
       }
@@ -307,12 +368,18 @@ export default function DFMAnalysisPage() {
     e.preventDefault();
 
     if (!formData.cadFile) {
-      setError('Please select a CAD file to upload');
+      setError("Please select a CAD file to upload");
       return;
     }
 
-    if (!formData.materialId || !formData.tolerancePack || !formData.surfaceFinish || !formData.industry || !formData.criticality) {
-      setError('Please fill in all required fields');
+    if (
+      !formData.materialId ||
+      !formData.tolerancePack ||
+      !formData.surfaceFinish ||
+      !formData.industry ||
+      !formData.criticality
+    ) {
+      setError("Please fill in all required fields");
       return;
     }
 
@@ -322,35 +389,37 @@ export default function DFMAnalysisPage() {
       setUploadProgress(0);
 
       // Request an upload presign payload
-      const uploadResponse = await fetch('/api/dfm/presign', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+      const uploadResponse = await fetch("/api/dfm/presign", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           fileName: formData.cadFile.name,
           contentType: formData.cadFile.type,
           size: formData.cadFile.size,
-          byteLength: formData.cadFile.size
-        })
+          byteLength: formData.cadFile.size,
+        }),
       });
 
       if (!uploadResponse.ok) {
-        throw new Error('Failed to prepare file upload');
+        throw new Error("Failed to prepare file upload");
       }
 
       const uploadPayload = await uploadResponse.json();
       const presign = UploadPresignSchema.parse(uploadPayload);
       const fileId = presign.fileId ?? presign.uploadId;
       if (!fileId) {
-        throw new Error('Upload presign response did not include file identifier');
+        throw new Error(
+          "Upload presign response did not include file identifier",
+        );
       }
 
       // Upload file with progress tracking
       await uploadFileWithProgress(formData.cadFile, presign);
 
       // Create DFM request
-      const dfmResponse = await fetch('/api/dfm/requests', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+      const dfmResponse = await fetch("/api/dfm/requests", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           fileId,
           materialId: formData.materialId,
@@ -359,21 +428,20 @@ export default function DFMAnalysisPage() {
           industry: formData.industry,
           certifications: formData.certifications,
           criticality: formData.criticality,
-          notes: formData.notes
-        })
+          notes: formData.notes,
+        }),
       });
 
       if (!dfmResponse.ok) {
-        throw new Error('DFM request creation failed');
+        throw new Error("DFM request creation failed");
       }
 
       const { requestId } = await dfmResponse.json();
 
       // Redirect to results page
       router.push(`/dfm-analysis/${requestId}`);
-
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Analysis request failed');
+      setError(err instanceof Error ? err.message : "Analysis request failed");
     } finally {
       setIsSubmitting(false);
       setUploadProgress(0);
@@ -401,7 +469,8 @@ export default function DFMAnalysisPage() {
               Design for Manufacturability (DFM) Analysis
             </h1>
             <p className="text-xl text-blue-100 max-w-3xl mx-auto">
-              Upload your CAD file and select specifications to receive a comprehensive 20-point DFM report.
+              Upload your CAD file and select specifications to receive a
+              comprehensive 20-point DFM report.
             </p>
           </div>
         </div>
@@ -430,8 +499,8 @@ export default function DFMAnalysisPage() {
                       type="button"
                       className={`mt-2 border-2 border-dashed rounded-lg p-6 text-center transition-colors ${
                         dragActive
-                          ? 'border-blue-400 bg-blue-50'
-                          : 'border-gray-300 hover:border-gray-400'
+                          ? "border-blue-400 bg-blue-50"
+                          : "border-gray-300 hover:border-gray-400"
                       }`}
                       onDragEnter={handleDrag}
                       onDragLeave={handleDrag}
@@ -444,16 +513,24 @@ export default function DFMAnalysisPage() {
                         <div className="flex items-center justify-center space-x-3">
                           <FileIcon className="h-8 w-8 text-green-600" />
                           <div className="text-left">
-                            <p className="font-medium text-green-600">{formData.cadFile.name}</p>
+                            <p className="font-medium text-green-600">
+                              {formData.cadFile.name}
+                            </p>
                             <p className="text-sm text-gray-600">
-                              {(formData.cadFile.size / 1024 / 1024).toFixed(1)} MB
+                              {(formData.cadFile.size / 1024 / 1024).toFixed(1)}{" "}
+                              MB
                             </p>
                           </div>
                           <Button
                             type="button"
                             variant="outline"
                             size="sm"
-                            onClick={() => setFormData(prev => ({ ...prev, cadFile: null }))}
+                            onClick={() =>
+                              setFormData((prev) => ({
+                                ...prev,
+                                cadFile: null,
+                              }))
+                            }
                           >
                             Remove
                           </Button>
@@ -463,20 +540,23 @@ export default function DFMAnalysisPage() {
                           <UploadIcon className="mx-auto h-12 w-12 text-gray-400" />
                           <div className="mt-4">
                             <span className="mt-2 block text-sm font-medium text-gray-900">
-                              Drop your CAD file here, or{' '}
-                              <span className="text-blue-600 hover:text-blue-500">browse</span>
+                              Drop your CAD file here, or{" "}
+                              <span className="text-blue-600 hover:text-blue-500">
+                                browse
+                              </span>
                             </span>
                             <input
                               id="cadFile"
                               name="cadFile"
                               type="file"
                               className="sr-only"
-                              accept={ACCEPTED_FILE_TYPES.join(',')}
+                              accept={ACCEPTED_FILE_TYPES.join(",")}
                               onChange={handleFileInput}
                               ref={fileInputRef}
                             />
                             <p className="mt-1 text-xs text-gray-500">
-                              Supported: STEP, IGES, Parasolid, SLDPRT, JT, 3MF, DXF, STL, ZIP (max 200MB)
+                              Supported: STEP, IGES, Parasolid, SLDPRT, JT, 3MF,
+                              DXF, STL, ZIP (max 200MB)
                             </p>
                           </div>
                         </div>
@@ -489,7 +569,9 @@ export default function DFMAnalysisPage() {
                     <Label htmlFor="materialId">Material *</Label>
                     <Select
                       value={formData.materialId}
-                      onValueChange={(value) => setFormData(prev => ({ ...prev, materialId: value }))}
+                      onValueChange={(value) =>
+                        setFormData((prev) => ({ ...prev, materialId: value }))
+                      }
                     >
                       <SelectTrigger>
                         <SelectValue placeholder="Select material" />
@@ -497,7 +579,8 @@ export default function DFMAnalysisPage() {
                       <SelectContent>
                         {(options?.materials || []).map((material) => (
                           <SelectItem key={material.id} value={material.id}>
-                            {material.name}{material.category ? ` — ${material.category}` : ''}
+                            {material.name}
+                            {material.category ? ` — ${material.category}` : ""}
                           </SelectItem>
                         ))}
                       </SelectContent>
@@ -505,24 +588,41 @@ export default function DFMAnalysisPage() {
                     {selectedMaterial && (
                       <div className="rounded-md border border-gray-200 bg-gray-50 p-3 text-xs text-gray-600 space-y-1">
                         {selectedMaterial.description && (
-                          <p className="font-medium text-gray-700">{selectedMaterial.description}</p>
+                          <p className="font-medium text-gray-700">
+                            {selectedMaterial.description}
+                          </p>
                         )}
                         <div className="grid grid-cols-2 gap-x-4 gap-y-1">
                           {selectedMaterial.density_g_cm3 ? (
-                            <p>Density: {selectedMaterial.density_g_cm3.toFixed(2)} g/cm³</p>
+                            <p>
+                              Density:{" "}
+                              {selectedMaterial.density_g_cm3.toFixed(2)} g/cm³
+                            </p>
                           ) : null}
-                          {typeof selectedMaterial.machinability_rating === 'number' ? (
-                            <p>Machinability: {selectedMaterial.machinability_rating}/100</p>
+                          {typeof selectedMaterial.machinability_rating ===
+                          "number" ? (
+                            <p>
+                              Machinability:{" "}
+                              {selectedMaterial.machinability_rating}/100
+                            </p>
                           ) : null}
                           {selectedMaterial.max_operating_temp_c ? (
-                            <p>Max Temp: {selectedMaterial.max_operating_temp_c}°C</p>
+                            <p>
+                              Max Temp: {selectedMaterial.max_operating_temp_c}
+                              °C
+                            </p>
                           ) : null}
                           {selectedMaterial.elastic_modulus_gpa ? (
-                            <p>Elastic Modulus: {selectedMaterial.elastic_modulus_gpa} GPa</p>
+                            <p>
+                              Elastic Modulus:{" "}
+                              {selectedMaterial.elastic_modulus_gpa} GPa
+                            </p>
                           ) : null}
                         </div>
                         {selectedMaterial.notes && (
-                          <p className="text-gray-500">Notes: {selectedMaterial.notes}</p>
+                          <p className="text-gray-500">
+                            Notes: {selectedMaterial.notes}
+                          </p>
                         )}
                       </div>
                     )}
@@ -530,8 +630,18 @@ export default function DFMAnalysisPage() {
 
                   {/* Tolerance Specification */}
                   <div className="space-y-2">
-                    <Label htmlFor="tolerancePack">Tolerance Specification *</Label>
-                    <Select value={formData.tolerancePack} onValueChange={(value) => setFormData(prev => ({ ...prev, tolerancePack: value }))}>
+                    <Label htmlFor="tolerancePack">
+                      Tolerance Specification *
+                    </Label>
+                    <Select
+                      value={formData.tolerancePack}
+                      onValueChange={(value) =>
+                        setFormData((prev) => ({
+                          ...prev,
+                          tolerancePack: value,
+                        }))
+                      }
+                    >
                       <SelectTrigger>
                         <SelectValue placeholder="Select tolerance specification" />
                       </SelectTrigger>
@@ -548,7 +658,15 @@ export default function DFMAnalysisPage() {
                   {/* Surface Finish */}
                   <div className="space-y-2">
                     <Label htmlFor="surfaceFinish">Surface Finish *</Label>
-                    <Select value={formData.surfaceFinish} onValueChange={(value) => setFormData(prev => ({ ...prev, surfaceFinish: value }))}>
+                    <Select
+                      value={formData.surfaceFinish}
+                      onValueChange={(value) =>
+                        setFormData((prev) => ({
+                          ...prev,
+                          surfaceFinish: value,
+                        }))
+                      }
+                    >
                       <SelectTrigger>
                         <SelectValue placeholder="Select surface finish" />
                       </SelectTrigger>
@@ -567,7 +685,9 @@ export default function DFMAnalysisPage() {
                     <Label htmlFor="industry">Industry *</Label>
                     <Select
                       value={formData.industry}
-                      onValueChange={(value) => setFormData(prev => ({ ...prev, industry: value }))}
+                      onValueChange={(value) =>
+                        setFormData((prev) => ({ ...prev, industry: value }))
+                      }
                     >
                       <SelectTrigger>
                         <SelectValue placeholder="Select industry" />
@@ -587,12 +707,18 @@ export default function DFMAnalysisPage() {
                     <Label>Required Certifications</Label>
                     <div className="mt-2 space-y-2">
                       {(options?.certifications || []).map((cert) => (
-                        <div key={cert.id} className="flex items-center space-x-2">
+                        <div
+                          key={cert.id}
+                          className="flex items-center space-x-2"
+                        >
                           <Checkbox
                             id={cert.id}
                             checked={formData.certifications.includes(cert.id)}
                             onCheckedChange={(checked) =>
-                              handleCertificationToggle(cert.id, checked as boolean)
+                              handleCertificationToggle(
+                                cert.id,
+                                checked as boolean,
+                              )
                             }
                           />
                           <Label htmlFor={cert.id} className="text-sm">
@@ -608,7 +734,9 @@ export default function DFMAnalysisPage() {
                     <Label htmlFor="criticality">Part Criticality *</Label>
                     <Select
                       value={formData.criticality}
-                      onValueChange={(value) => setFormData(prev => ({ ...prev, criticality: value }))}
+                      onValueChange={(value) =>
+                        setFormData((prev) => ({ ...prev, criticality: value }))
+                      }
                     >
                       <SelectTrigger>
                         <SelectValue placeholder="Select criticality" />
@@ -629,7 +757,12 @@ export default function DFMAnalysisPage() {
                     <Textarea
                       id="notes"
                       value={formData.notes}
-                      onChange={(e) => setFormData(prev => ({ ...prev, notes: e.target.value }))}
+                      onChange={(e) =>
+                        setFormData((prev) => ({
+                          ...prev,
+                          notes: e.target.value,
+                        }))
+                      }
                       placeholder="Any special requirements or notes..."
                       maxLength={2000}
                       rows={4}
@@ -657,7 +790,9 @@ export default function DFMAnalysisPage() {
                     {isSubmitting ? (
                       <div className="flex items-center">
                         <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
-                        {uploadProgress > 0 ? 'Uploading...' : 'Creating Analysis...'}
+                        {uploadProgress > 0
+                          ? "Uploading..."
+                          : "Creating Analysis..."}
                       </div>
                     ) : (
                       <div className="flex items-center">
@@ -721,7 +856,9 @@ export default function DFMAnalysisPage() {
               </CardHeader>
               <CardContent>
                 <p className="text-sm text-gray-600">
-                  Your files are private and encrypted at rest. We use signed URLs and organization scoping to ensure your data remains secure.
+                  Your files are private and encrypted at rest. We use signed
+                  URLs and organization scoping to ensure your data remains
+                  secure.
                 </p>
               </CardContent>
             </Card>

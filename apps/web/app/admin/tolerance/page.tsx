@@ -9,8 +9,6 @@ import React, { useEffect, useState } from "react";
 const Page = () => {
   const [tolerances, setTolerances] = useState([]);
   const [isToleranceLoading, setIsToleranceLoading] = useState(true);
-  const [refresh, setRefresh] = useState(false);
-  const [isEditToleranceModalOpen, setIsEditToleranceModalOpen] = useState(false);
 
   useEffect(() => {
     async function fetchTolerances() {

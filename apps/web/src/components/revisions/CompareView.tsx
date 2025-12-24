@@ -1,15 +1,10 @@
-/**
- * Step 16: Revision Comparison View
- * Side-by-side comparison of two revisions with factor deltas
- */
+"use client";
 
-'use client';
-
-import { useState } from 'react';
-import { X, Download, Eye, EyeOff } from 'lucide-react';
-import { RevisionChip } from './RevisionChip';
-import { FactorDeltaBadge } from './FactorDeltaBadge';
-import type { CompareRevisionsResponse, FieldChange } from '@/lib/api/revisions';
+import { useState } from "react";
+import { X, Download, Eye, EyeOff } from "lucide-react";
+import { RevisionChip } from "./RevisionChip";
+import { FactorDeltaBadge } from "./FactorDeltaBadge";
+import type { CompareRevisionsResponse } from "@/lib/api/revisions";
 
 interface CompareViewProps {
   isOpen: boolean;
@@ -25,38 +20,38 @@ export function CompareView({ isOpen, onClose, comparison }: CompareViewProps) {
   const { a, b, diff_json } = comparison;
 
   const formatFieldPath = (path: string) => {
-    return path.split('/').filter(Boolean).join(' → ');
+    return path.split("/").filter(Boolean).join(" → ");
   };
 
   const formatValue = (value: any) => {
-    if (value === null || value === undefined) return 'null';
-    if (typeof value === 'object') return JSON.stringify(value, null, 2);
+    if (value === null || value === undefined) return "null";
+    if (typeof value === "object") return JSON.stringify(value, null, 2);
     return String(value);
   };
 
   const exportToCsv = () => {
     const rows = [
-      ['Field', 'From', 'To', 'Delta'],
+      ["Field", "From", "To", "Delta"],
       ...diff_json.fields.map((field) => [
         formatFieldPath(field.path),
         formatValue(field.from),
         formatValue(field.to),
-        '',
+        "",
       ]),
       [],
-      ['Factor', 'Delta ($)', 'Delta (%)', ''],
+      ["Factor", "Delta ($)", "Delta (%)", ""],
       ...diff_json.by_factor.map((factor) => [
         factor.factor,
         factor.delta.toFixed(2),
-        (factor.pct * 100).toFixed(2) + '%',
-        '',
+        (factor.pct * 100).toFixed(2) + "%",
+        "",
       ]),
     ];
 
-    const csv = rows.map((row) => row.join(',')).join('\n');
-    const blob = new Blob([csv], { type: 'text/csv' });
+    const csv = rows.map((row) => row.join(",")).join("\n");
+    const blob = new Blob([csv], { type: "text/csv" });
     const url = window.URL.createObjectURL(blob);
-    const a = document.createElement('a');
+    const a = document.createElement("a");
     a.href = url;
     a.download = `revision-comparison-${Date.now()}.csv`;
     document.body.appendChild(a);
@@ -219,12 +214,13 @@ export function CompareView({ isOpen, onClose, comparison }: CompareViewProps) {
                               {line.line_id}
                             </span>
                             <div className="flex items-center gap-2">
-                              {line.price_from !== null && line.price_to !== null && (
-                                <span className="text-sm text-gray-600">
-                                  ${line.price_from.toFixed(2)} →{' '}
-                                  <strong>${line.price_to.toFixed(2)}</strong>
-                                </span>
-                              )}
+                              {line.price_from !== null &&
+                                line.price_to !== null && (
+                                  <span className="text-sm text-gray-600">
+                                    ${line.price_from.toFixed(2)} →{" "}
+                                    <strong>${line.price_to.toFixed(2)}</strong>
+                                  </span>
+                                )}
                             </div>
                           </div>
                           {line.factor_deltas.length > 0 && (

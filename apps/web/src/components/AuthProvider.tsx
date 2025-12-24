@@ -1,7 +1,19 @@
-'use client';
+"use client";
 
-import { createContext, useContext, useEffect, useState, ReactNode } from 'react';
-import { getKeycloakInstance, initKeycloak, login, logout, isAuthenticated, getToken, updateToken } from '@/lib/keycloak';
+import {
+  createContext,
+  useContext,
+  useEffect,
+  useState,
+  ReactNode,
+} from "react";
+import {
+  initKeycloak,
+  login,
+  logout,
+  getToken,
+  updateToken,
+} from "@/lib/keycloak";
 
 interface AuthContextType {
   authenticated: boolean;
@@ -17,7 +29,7 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 export const useAuth = () => {
   const context = useContext(AuthContext);
   if (context === undefined) {
-    throw new Error('useAuth must be used within an AuthProvider');
+    throw new Error("useAuth must be used within an AuthProvider");
   }
   return context;
 };
@@ -43,14 +55,14 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
             try {
               await updateToken();
             } catch (error) {
-              console.error('Token refresh failed:', error);
+              console.error("Token refresh failed:", error);
               // If token refresh fails, logout
               logout();
             }
           }, 60000); // Refresh every minute
         }
       } catch (error) {
-        console.error('Keycloak initialization failed:', error);
+        console.error("Keycloak initialization failed:", error);
       }
     };
 

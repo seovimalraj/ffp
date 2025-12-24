@@ -1,67 +1,86 @@
-'use client';
+"use client";
 
-import { useState, useEffect, useCallback, type ChangeEvent } from 'react';
-import { useParams } from 'next/navigation';
-import { zodResolver } from '@hookform/resolvers/zod';
-import { useForm } from 'react-hook-form';
-import { DragDropContext, Droppable, Draggable, type DroppableProvided, type DraggableProvided, type DropResult } from '@hello-pangea/dnd';
-import { Trash2, GripVertical } from 'lucide-react';
-import * as z from 'zod';
+import { useState, useEffect, useCallback, type ChangeEvent } from "react";
+import { useParams } from "next/navigation";
+import { zodResolver } from "@hookform/resolvers/zod";
+import { useForm } from "react-hook-form";
+import {
+  DragDropContext,
+  Droppable,
+  Draggable,
+  type DroppableProvided,
+  type DraggableProvided,
+  type DropResult,
+} from "@hello-pangea/dnd";
+import { Trash2, GripVertical } from "lucide-react";
+import * as z from "zod";
 
-import { createClient } from '@/lib/supabase/client';
-import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Separator } from '@/components/ui/separator';
-import { toast } from '@/components/ui/use-toast';
+import { createClient } from "@/lib/supabase/client";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Separator } from "@/components/ui/separator";
+import { toast } from "@/components/ui/use-toast";
 
 const supabase = createClient();
 
 const settingsSchema = z.object({
-  formula: z.enum(['surface_area_to_volume', 'features_count', 'custom']),
+  formula: z.enum(["surface_area_to_volume", "features_count", "custom"]),
   k_factor: z.coerce.number().min(0.1).max(10),
   min_volume: z.coerce.number().min(0).optional(),
   min_surface_area: z.coerce.number().min(0).optional(),
   features_weight: z.coerce.number().min(0).max(1).optional(),
-  custom_formula: z.string().optional()
+  custom_formula: z.string().optional(),
 });
 
-const bracketSchema = z.object({
-  id: z.string().uuid().optional(),
-  name: z.string().min(1),
-  description: z.string().optional(),
-  min_value: z.coerce.number().min(0),
-  max_value: z.coerce.number().nullable(),
-  multiplier: z.coerce.number().min(1),
-  sort_order: z.number()
-});
+// const bracketSchema = z.object({
+//   id: z.string().uuid().optional(),
+//   name: z.string().min(1),
+//   description: z.string().optional(),
+//   min_value: z.coerce.number().min(0),
+//   max_value: z.coerce.number().nullable(),
+//   multiplier: z.coerce.number().min(1),
+//   sort_order: z.number()
+// });
 
 export default function ComplexityPage() {
   const params = useParams();
   const machineId = params?.id as string;
-  const [settings, setSettings] = useState<z.infer<typeof settingsSchema> | null>(null);
+  const [settings, setSettings] = useState<z.infer<
+    typeof settingsSchema
+  > | null>(null);
   const [brackets, setBrackets] = useState<z.infer<typeof bracketSchema>[]>([]);
-  
+
   // Simulator state
   const [volume, setVolume] = useState(100);
   const [surfaceArea, setSurfaceArea] = useState(200);
   const [features, setFeatures] = useState(5);
   const [simulatedMultiplier, setSimulatedMultiplier] = useState(1);
 
-  const { register, handleSubmit, formState: { errors } } = useForm({
+  const {
+    register,
+    handleSubmit,
+    formState: { errors },
+  } = useForm({
     resolver: zodResolver(settingsSchema),
-    defaultValues: settings || undefined
+    defaultValues: settings || undefined,
   });
 
   const loadData = useCallback(async () => {
     if (!machineId) return;
 
     const { data: settingsData } = await supabase
-      .from('complexity_settings')
-      .select('*')
-      .eq('machine_id', machineId)
+      .from("complexity_settings")
+      .select("*")
+      .eq("machine_id", machineId)
       .single();
 
     if (settingsData) {
@@ -69,10 +88,10 @@ export default function ComplexityPage() {
     }
 
     const { data: bracketsData } = await supabase
-      .from('complexity_brackets')
-      .select('*')
-      .eq('machine_id', machineId)
-      .order('sort_order');
+      .from("complexity_brackets")
+      .select("*")
+      .eq("machine_id", machineId)
+      .order("sort_order");
 
     if (bracketsData) {
       setBrackets(bracketsData);
@@ -84,21 +103,19 @@ export default function ComplexityPage() {
   }, [loadData]);
 
   const onSaveSettings = async (data: any) => {
-    const { error } = await supabase
-      .from('complexity_settings')
-      .upsert({
-        ...data,
-        machine_id: machineId
-      });
+    const { error } = await supabase.from("complexity_settings").upsert({
+      ...data,
+      machine_id: machineId,
+    });
 
     if (error) {
       toast({
-        title: 'Error saving settings',
-        description: error.message
+        title: "Error saving settings",
+        description: error.message,
       });
     } else {
       toast({
-        title: 'Settings saved successfully'
+        title: "Settings saved successfully",
       });
       loadData();
     }
@@ -114,24 +131,24 @@ export default function ComplexityPage() {
     // Update sort order
     const updatedBrackets = items.map((item, index) => ({
       ...item,
-      sort_order: index
+      sort_order: index,
     }));
 
     setBrackets(updatedBrackets);
 
     // Save new order to database
-    const { error } = await supabase.from('complexity_brackets').upsert(
+    const { error } = await supabase.from("complexity_brackets").upsert(
       updatedBrackets.map(({ id, sort_order }) => ({
         id,
         machine_id: machineId,
-        sort_order
-      }))
+        sort_order,
+      })),
     );
 
     if (error) {
       toast({
-        title: 'Error updating order',
-        description: error.message
+        title: "Error updating order",
+        description: error.message,
       });
     }
   };
@@ -139,37 +156,40 @@ export default function ComplexityPage() {
   const addBracket = async () => {
     const newBracket = {
       machine_id: machineId,
-      name: 'New Bracket',
+      name: "New Bracket",
       min_value: 0,
       max_value: null,
       multiplier: 1,
-      sort_order: brackets.length
+      sort_order: brackets.length,
     };
 
     const { error } = await supabase
-      .from('complexity_brackets')
+      .from("complexity_brackets")
       .insert(newBracket);
 
     if (error) {
       toast({
-        title: 'Error adding bracket',
-        description: error.message
+        title: "Error adding bracket",
+        description: error.message,
       });
     } else {
       loadData();
     }
   };
 
-  const updateBracket = async (id: string, data: Partial<z.infer<typeof bracketSchema>>) => {
+  const updateBracket = async (
+    id: string,
+    data: Partial<z.infer<typeof bracketSchema>>,
+  ) => {
     const { error } = await supabase
-      .from('complexity_brackets')
+      .from("complexity_brackets")
       .update(data)
-      .eq('id', id);
+      .eq("id", id);
 
     if (error) {
       toast({
-        title: 'Error updating bracket',
-        description: error.message
+        title: "Error updating bracket",
+        description: error.message,
       });
     } else {
       loadData();
@@ -178,14 +198,14 @@ export default function ComplexityPage() {
 
   const deleteBracket = async (id: string) => {
     const { error } = await supabase
-      .from('complexity_brackets')
+      .from("complexity_brackets")
       .delete()
-      .eq('id', id);
+      .eq("id", id);
 
     if (error) {
       toast({
-        title: 'Error deleting bracket',
-        description: error.message
+        title: "Error deleting bracket",
+        description: error.message,
       });
     } else {
       loadData();
@@ -197,15 +217,16 @@ export default function ComplexityPage() {
     if (!settings || !brackets.length) return;
 
     let complexity: number;
-    
+
     switch (settings.formula) {
-      case 'surface_area_to_volume':
-        complexity = (surfaceArea / Math.pow(volume, 2/3)) * settings.k_factor;
+      case "surface_area_to_volume":
+        complexity =
+          (surfaceArea / Math.pow(volume, 2 / 3)) * settings.k_factor;
         break;
-      case 'features_count':
+      case "features_count":
         complexity = features * settings.k_factor;
         break;
-      case 'custom':
+      case "custom":
         // Evaluate custom formula if needed
         complexity = surfaceArea / volume;
         break;
@@ -214,9 +235,10 @@ export default function ComplexityPage() {
     }
 
     // Find matching bracket
-    const bracket = brackets.find(b => 
-      complexity >= (b.min_value || 0) && 
-      (b.max_value === null || complexity <= b.max_value)
+    const bracket = brackets.find(
+      (b) =>
+        complexity >= (b.min_value || 0) &&
+        (b.max_value === null || complexity <= b.max_value),
     );
 
     setSimulatedMultiplier(bracket?.multiplier || 1);
@@ -234,17 +256,23 @@ export default function ComplexityPage() {
             <form onSubmit={handleSubmit(onSaveSettings)} className="space-y-4">
               <div className="space-y-2">
                 <Label>Formula Type</Label>
-                <Select 
-                  {...register('formula')}
+                <Select
+                  {...register("formula")}
                   value={settings?.formula}
-                  onValueChange={(value: any) => setSettings(s => ({...s!, formula: value}))}
+                  onValueChange={(value: any) =>
+                    setSettings((s) => ({ ...s!, formula: value }))
+                  }
                 >
                   <SelectTrigger>
                     <SelectValue placeholder="Select formula type" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="surface_area_to_volume">Surface Area to Volume</SelectItem>
-                    <SelectItem value="features_count">Features Count</SelectItem>
+                    <SelectItem value="surface_area_to_volume">
+                      Surface Area to Volume
+                    </SelectItem>
+                    <SelectItem value="features_count">
+                      Features Count
+                    </SelectItem>
                     <SelectItem value="custom">Custom Formula</SelectItem>
                   </SelectContent>
                 </Select>
@@ -252,13 +280,11 @@ export default function ComplexityPage() {
 
               <div className="space-y-2">
                 <Label>K-Factor</Label>
-                <Input
-                  type="number"
-                  step="0.1"
-                  {...register('k_factor')}
-                />
+                <Input type="number" step="0.1" {...register("k_factor")} />
                 {errors.k_factor && (
-                  <p className="text-sm text-red-500">{errors.k_factor.message}</p>
+                  <p className="text-sm text-red-500">
+                    {errors.k_factor.message}
+                  </p>
                 )}
               </div>
 
@@ -279,7 +305,9 @@ export default function ComplexityPage() {
                 <Input
                   type="number"
                   value={volume}
-                  onChange={(e: ChangeEvent<HTMLInputElement>) => setVolume(parseFloat(e.target.value) || 0)}
+                  onChange={(e: ChangeEvent<HTMLInputElement>) =>
+                    setVolume(parseFloat(e.target.value) || 0)
+                  }
                 />
               </div>
 
@@ -288,7 +316,9 @@ export default function ComplexityPage() {
                 <Input
                   type="number"
                   value={surfaceArea}
-                  onChange={(e: ChangeEvent<HTMLInputElement>) => setSurfaceArea(parseFloat(e.target.value) || 0)}
+                  onChange={(e: ChangeEvent<HTMLInputElement>) =>
+                    setSurfaceArea(parseFloat(e.target.value) || 0)
+                  }
                 />
               </div>
 
@@ -297,7 +327,9 @@ export default function ComplexityPage() {
                 <Input
                   type="number"
                   value={features}
-                  onChange={(e: ChangeEvent<HTMLInputElement>) => setFeatures(parseInt(e.target.value) || 0)}
+                  onChange={(e: ChangeEvent<HTMLInputElement>) =>
+                    setFeatures(parseInt(e.target.value) || 0)
+                  }
                 />
               </div>
 
@@ -323,11 +355,14 @@ export default function ComplexityPage() {
           <DragDropContext onDragEnd={onDragEnd}>
             <Droppable droppableId="brackets">
               {(droppableProvided: DroppableProvided) => (
-                <div {...droppableProvided.droppableProps} ref={droppableProvided.innerRef}>
+                <div
+                  {...droppableProvided.droppableProps}
+                  ref={droppableProvided.innerRef}
+                >
                   {brackets.map((bracket, index) => (
-                    <Draggable 
-                      key={bracket.id} 
-                      draggableId={bracket.id!} 
+                    <Draggable
+                      key={bracket.id}
+                      draggableId={bracket.id!}
                       index={index}
                     >
                       {(draggableProvided: DraggableProvided) => (
@@ -339,12 +374,16 @@ export default function ComplexityPage() {
                           <div {...draggableProvided.dragHandleProps}>
                             <GripVertical className="h-5 w-5 text-muted-foreground" />
                           </div>
-                          
+
                           <div className="flex-1 grid grid-cols-6 gap-4">
                             <Input
                               placeholder="Name"
                               value={bracket.name}
-                              onChange={(e: ChangeEvent<HTMLInputElement>) => updateBracket(bracket.id!, { name: e.target.value })}
+                              onChange={(e: ChangeEvent<HTMLInputElement>) =>
+                                updateBracket(bracket.id!, {
+                                  name: e.target.value,
+                                })
+                              }
                               className="col-span-2"
                             />
                             <Input
@@ -352,21 +391,35 @@ export default function ComplexityPage() {
                               step="0.1"
                               placeholder="Min Value"
                               value={bracket.min_value}
-                              onChange={(e: ChangeEvent<HTMLInputElement>) => updateBracket(bracket.id!, { min_value: parseFloat(e.target.value) })}
+                              onChange={(e: ChangeEvent<HTMLInputElement>) =>
+                                updateBracket(bracket.id!, {
+                                  min_value: parseFloat(e.target.value),
+                                })
+                              }
                             />
                             <Input
                               type="number"
                               step="0.1"
                               placeholder="Max Value"
-                              value={bracket.max_value || ''}
-                              onChange={(e: ChangeEvent<HTMLInputElement>) => updateBracket(bracket.id!, { max_value: e.target.value ? parseFloat(e.target.value) : null })}
+                              value={bracket.max_value || ""}
+                              onChange={(e: ChangeEvent<HTMLInputElement>) =>
+                                updateBracket(bracket.id!, {
+                                  max_value: e.target.value
+                                    ? parseFloat(e.target.value)
+                                    : null,
+                                })
+                              }
                             />
                             <Input
                               type="number"
                               step="0.1"
                               placeholder="Multiplier"
                               value={bracket.multiplier}
-                              onChange={(e: ChangeEvent<HTMLInputElement>) => updateBracket(bracket.id!, { multiplier: parseFloat(e.target.value) })}
+                              onChange={(e: ChangeEvent<HTMLInputElement>) =>
+                                updateBracket(bracket.id!, {
+                                  multiplier: parseFloat(e.target.value),
+                                })
+                              }
                             />
                             <Button
                               variant="destructive"

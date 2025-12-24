@@ -3,12 +3,12 @@
  * Vertical timeline with time-grouped revisions
  */
 
-'use client';
+"use client";
 
-import { useState } from 'react';
-import { ChevronRight, MessageSquare, MoreVertical } from 'lucide-react';
-import { RevisionChip } from './RevisionChip';
-import type { RevisionListItem } from '@/lib/api/revisions';
+import { useState } from "react";
+import { ChevronRight, MessageSquare, MoreVertical } from "lucide-react";
+import { RevisionChip } from "./RevisionChip";
+import type { RevisionListItem } from "@/lib/api/revisions";
 
 interface TimelineProps {
   revisions: RevisionListItem[];
@@ -64,12 +64,11 @@ export function RevisionTimeline({
             {/* Vertical line */}
             <div className="absolute left-4 top-0 bottom-0 w-0.5 bg-gray-200" />
 
-            {items.map((item, idx) => (
+            {items.map((item) => (
               <TimelineItem
                 key={item.id}
                 item={item}
                 isSelected={item.id === selectedId}
-                isLast={idx === items.length - 1}
                 onClick={() => onSelect(item.id)}
               />
             ))}
@@ -83,19 +82,18 @@ export function RevisionTimeline({
 interface TimelineItemProps {
   item: RevisionListItem;
   isSelected: boolean;
-  isLast: boolean;
   onClick: () => void;
 }
 
-function TimelineItem({ item, isSelected, isLast, onClick }: TimelineItemProps) {
+function TimelineItem({ item, isSelected, onClick }: TimelineItemProps) {
   const [showMenu, setShowMenu] = useState(false);
 
   return (
     <div
       className={`relative pl-10 pr-4 py-3 rounded-lg border-2 transition-all cursor-pointer ${
         isSelected
-          ? 'border-blue-500 bg-blue-50'
-          : 'border-transparent hover:border-gray-200 hover:bg-gray-50'
+          ? "border-blue-500 bg-blue-50"
+          : "border-transparent hover:border-gray-200 hover:bg-gray-50"
       }`}
       onClick={onClick}
     >
@@ -103,8 +101,8 @@ function TimelineItem({ item, isSelected, isLast, onClick }: TimelineItemProps) 
       <div
         className={`absolute left-2.5 top-1/2 -translate-y-1/2 w-3 h-3 rounded-full border-2 ${
           isSelected
-            ? 'bg-blue-600 border-blue-600'
-            : 'bg-white border-gray-300'
+            ? "bg-blue-600 border-blue-600"
+            : "bg-white border-gray-300"
         }`}
       />
 
@@ -113,7 +111,9 @@ function TimelineItem({ item, isSelected, isLast, onClick }: TimelineItemProps) 
           {/* Actor & Time */}
           <div className="flex items-baseline gap-2 mb-2">
             {item.actor ? (
-              <span className="font-medium text-gray-900">{item.actor.name}</span>
+              <span className="font-medium text-gray-900">
+                {item.actor.name}
+              </span>
             ) : (
               <span className="font-medium text-gray-500">System</span>
             )}
@@ -165,16 +165,20 @@ function TimelineItem({ item, isSelected, isLast, onClick }: TimelineItemProps) 
 function calculateTimeGroup(dateStr: string): string {
   const date = new Date(dateStr);
   const now = new Date();
-  const diffDays = Math.floor((now.getTime() - date.getTime()) / (1000 * 60 * 60 * 24));
+  const diffDays = Math.floor(
+    (now.getTime() - date.getTime()) / (1000 * 60 * 60 * 24),
+  );
 
-  if (diffDays === 0) return 'today';
-  if (diffDays === 1) return 'yesterday';
-  if (diffDays <= 7) return 'last_7_days';
-  if (diffDays <= 30) return 'last_30_days';
-  return 'older';
+  if (diffDays === 0) return "today";
+  if (diffDays === 1) return "yesterday";
+  if (diffDays <= 7) return "last_7_days";
+  if (diffDays <= 30) return "last_30_days";
+  return "older";
 }
 
-function groupByTime(revisions: RevisionListItem[]): Record<string, RevisionListItem[]> {
+function groupByTime(
+  revisions: RevisionListItem[],
+): Record<string, RevisionListItem[]> {
   const grouped: Record<string, RevisionListItem[]> = {
     today: [],
     yesterday: [],
@@ -184,7 +188,8 @@ function groupByTime(revisions: RevisionListItem[]): Record<string, RevisionList
   };
 
   for (const revision of revisions) {
-    const group = revision.time_group || calculateTimeGroup(revision.created_at);
+    const group =
+      revision.time_group || calculateTimeGroup(revision.created_at);
     if (group in grouped) {
       grouped[group].push(revision);
     }
@@ -192,17 +197,17 @@ function groupByTime(revisions: RevisionListItem[]): Record<string, RevisionList
 
   // Remove empty groups
   return Object.fromEntries(
-    Object.entries(grouped).filter(([_, items]) => items.length > 0)
+    Object.entries(grouped).filter(([_, items]) => items.length > 0),
   );
 }
 
 function formatTimeGroup(group: string): string {
   const labels: Record<string, string> = {
-    today: 'Today',
-    yesterday: 'Yesterday',
-    last_7_days: 'Last 7 Days',
-    last_30_days: 'Last 30 Days',
-    older: 'Older',
+    today: "Today",
+    yesterday: "Yesterday",
+    last_7_days: "Last 7 Days",
+    last_30_days: "Last 30 Days",
+    older: "Older",
   };
   return labels[group] || group;
 }
@@ -213,7 +218,7 @@ function formatRelativeTime(dateStr: string): string {
   const diffMs = now.getTime() - date.getTime();
   const diffMins = Math.floor(diffMs / (1000 * 60));
 
-  if (diffMins < 1) return 'just now';
+  if (diffMins < 1) return "just now";
   if (diffMins < 60) return `${diffMins}m ago`;
 
   const diffHours = Math.floor(diffMins / 60);

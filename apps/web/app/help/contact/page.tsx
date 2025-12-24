@@ -1,95 +1,122 @@
-'use client';
+"use client";
 
-import { useState, useCallback } from 'react';
-import { useRouter } from 'next/navigation';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Input } from '@/components/ui/input';
-import { Button } from '@/components/ui/button';
-import { Textarea } from '@/components/ui/textarea';
-import { Label } from '@/components/ui/label';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Alert, AlertDescription } from '@/components/ui/alert';
-import { Badge } from '@/components/ui/badge';
+import { useState, useCallback } from "react";
+import { useRouter } from "next/navigation";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
+import { Textarea } from "@/components/ui/textarea";
+import { Label } from "@/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Badge } from "@/components/ui/badge";
 import {
   ArrowLeftIcon,
   PaperClipIcon,
   XMarkIcon,
   CheckCircleIcon,
-  ExclamationTriangleIcon
-} from '@heroicons/react/24/outline';
-import type { SupportTicket } from '@/types/order';
-import { trackEvent } from '@/lib/analytics/posthog';
+  ExclamationTriangleIcon,
+} from "@heroicons/react/24/outline";
+import { trackEvent } from "@/lib/analytics/posthog";
 
 const SUPPORT_CATEGORIES = [
-  'Technical Issue',
-  'Billing Question',
-  'Order Support',
-  'File Upload Problem',
-  'Quote Question',
-  'DFM Feedback',
-  'Account Issue',
-  'Other'
+  "Technical Issue",
+  "Billing Question",
+  "Order Support",
+  "File Upload Problem",
+  "Quote Question",
+  "DFM Feedback",
+  "Account Issue",
+  "Other",
 ] as const;
 
 const PRIORITY_LEVELS = [
-  { value: 'low', label: 'Low - General question', color: 'bg-gray-100 text-gray-800' },
-  { value: 'medium', label: 'Medium - Issue affecting work', color: 'bg-yellow-100 text-yellow-800' },
-  { value: 'high', label: 'High - Urgent business impact', color: 'bg-red-100 text-red-800' }
+  {
+    value: "low",
+    label: "Low - General question",
+    color: "bg-gray-100 text-gray-800",
+  },
+  {
+    value: "medium",
+    label: "Medium - Issue affecting work",
+    color: "bg-yellow-100 text-yellow-800",
+  },
+  {
+    value: "high",
+    label: "High - Urgent business impact",
+    color: "bg-red-100 text-red-800",
+  },
 ] as const;
 
 export default function ContactSupportPage() {
   const router = useRouter();
   const [formData, setFormData] = useState({
-    name: '',
-    email: '',
-    category: '',
-    priority: 'medium' as const,
-    subject: '',
-    description: '',
-    attachments: [] as File[]
+    name: "",
+    email: "",
+    category: "",
+    priority: "medium" as const,
+    subject: "",
+    description: "",
+    attachments: [] as File[],
   });
   const [submitting, setSubmitting] = useState(false);
   const [submitted, setSubmitted] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const handleInputChange = (field: string, value: string) => {
-    setFormData(prev => ({ ...prev, [field]: value }));
+    setFormData((prev) => ({ ...prev, [field]: value }));
   };
 
-  const handleFileSelect = useCallback((event: React.ChangeEvent<HTMLInputElement>) => {
-    const files = Array.from(event.target.files || []);
-    const validFiles = files.filter(file => {
-      const maxSize = 10 * 1024 * 1024; // 10MB
-      const allowedTypes = [
-        'image/jpeg', 'image/png', 'image/gif',
-        'application/pdf',
-        'application/zip', 'application/x-zip-compressed',
-        'model/step', 'model/iges', 'application/sla' // CAD files
-      ];
+  const handleFileSelect = useCallback(
+    (event: React.ChangeEvent<HTMLInputElement>) => {
+      const files = Array.from(event.target.files || []);
+      const validFiles = files.filter((file) => {
+        const maxSize = 10 * 1024 * 1024; // 10MB
+        const allowedTypes = [
+          "image/jpeg",
+          "image/png",
+          "image/gif",
+          "application/pdf",
+          "application/zip",
+          "application/x-zip-compressed",
+          "model/step",
+          "model/iges",
+          "application/sla", // CAD files
+        ];
 
-      if (file.size > maxSize) {
-        alert(`${file.name} is too large. Maximum file size is 10MB.`);
-        return false;
-      }
+        if (file.size > maxSize) {
+          alert(`${file.name} is too large. Maximum file size is 10MB.`);
+          return false;
+        }
 
-      if (!allowedTypes.some(type => file.type.includes(type.split('/')[1]))) {
-        alert(`${file.name} has an unsupported file type.`);
-        return false;
-      }
+        if (
+          !allowedTypes.some((type) => file.type.includes(type.split("/")[1]))
+        ) {
+          alert(`${file.name} has an unsupported file type.`);
+          return false;
+        }
 
-      return true;
-    });
+        return true;
+      });
 
-    setFormData(prev => ({
-      ...prev,
-      attachments: [...prev.attachments, ...validFiles].slice(0, 5) // Max 5 files
-    }));
-  }, []);
+      setFormData((prev) => ({
+        ...prev,
+        attachments: [...prev.attachments, ...validFiles].slice(0, 5), // Max 5 files
+      }));
+    },
+    [],
+  );
 
   const removeAttachment = (index: number) => {
-    setFormData(prev => ({
+    setFormData((prev) => ({
       ...prev,
-      attachments: prev.attachments.filter((_, i) => i !== index)
+      attachments: prev.attachments.filter((_, i) => i !== index),
     }));
   };
 
@@ -100,39 +127,48 @@ export default function ContactSupportPage() {
 
     try {
       // Validate form
-      if (!formData.name || !formData.email || !formData.category || !formData.subject || !formData.description) {
-        throw new Error('Please fill in all required fields.');
+      if (
+        !formData.name ||
+        !formData.email ||
+        !formData.category ||
+        !formData.subject ||
+        !formData.description
+      ) {
+        throw new Error("Please fill in all required fields.");
       }
 
       if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.email)) {
-        throw new Error('Please enter a valid email address.');
+        throw new Error("Please enter a valid email address.");
       }
 
       // Track support ticket creation
-      trackEvent('support_ticket_created', {
+      trackEvent("support_ticket_created", {
         category: formData.category,
         priority: formData.priority,
-        has_attachments: formData.attachments.length > 0
+        has_attachments: formData.attachments.length > 0,
       });
 
       // Mock API call
-      await new Promise(resolve => setTimeout(resolve, 2000));
+      await new Promise((resolve) => setTimeout(resolve, 2000));
 
       setSubmitted(true);
 
       // Reset form
       setFormData({
-        name: '',
-        email: '',
-        category: '',
-        priority: 'medium',
-        subject: '',
-        description: '',
-        attachments: []
+        name: "",
+        email: "",
+        category: "",
+        priority: "medium",
+        subject: "",
+        description: "",
+        attachments: [],
       });
-
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'An error occurred while submitting your ticket.');
+      setError(
+        err instanceof Error
+          ? err.message
+          : "An error occurred while submitting your ticket.",
+      );
     } finally {
       setSubmitting(false);
     }
@@ -148,11 +184,11 @@ export default function ContactSupportPage() {
               Support Ticket Created
             </h3>
             <p className="text-gray-600 mb-6">
-              We've received your support request and will get back to you within 24 hours.
-              You'll receive a confirmation email shortly.
+              We've received your support request and will get back to you
+              within 24 hours. You'll receive a confirmation email shortly.
             </p>
             <div className="space-y-3">
-              <Button onClick={() => router.push('/help')} className="w-full">
+              <Button onClick={() => router.push("/help")} className="w-full">
                 Back to Help Center
               </Button>
               <Button
@@ -178,7 +214,7 @@ export default function ContactSupportPage() {
             <Button
               variant="ghost"
               size="sm"
-              onClick={() => router.push('/help')}
+              onClick={() => router.push("/help")}
               className="flex items-center space-x-2"
             >
               <ArrowLeftIcon className="w-4 h-4" />
@@ -191,7 +227,9 @@ export default function ContactSupportPage() {
       <div className="max-w-2xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         <div className="space-y-6">
           <div className="text-center">
-            <h1 className="text-3xl font-bold text-gray-900">Contact Support</h1>
+            <h1 className="text-3xl font-bold text-gray-900">
+              Contact Support
+            </h1>
             <p className="text-gray-600 mt-2">
               Need help? We're here to assist you with any questions or issues.
             </p>
@@ -216,7 +254,9 @@ export default function ContactSupportPage() {
                     <Input
                       id="name"
                       value={formData.name}
-                      onChange={(e) => handleInputChange('name', e.target.value)}
+                      onChange={(e) =>
+                        handleInputChange("name", e.target.value)
+                      }
                       placeholder="Enter your full name"
                       required
                     />
@@ -227,7 +267,9 @@ export default function ContactSupportPage() {
                       id="email"
                       type="email"
                       value={formData.email}
-                      onChange={(e) => handleInputChange('email', e.target.value)}
+                      onChange={(e) =>
+                        handleInputChange("email", e.target.value)
+                      }
                       placeholder="Enter your email address"
                       required
                     />
@@ -237,7 +279,12 @@ export default function ContactSupportPage() {
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div>
                     <Label htmlFor="category">Category *</Label>
-                    <Select value={formData.category} onValueChange={(value) => handleInputChange('category', value)}>
+                    <Select
+                      value={formData.category}
+                      onValueChange={(value) =>
+                        handleInputChange("category", value)
+                      }
+                    >
                       <SelectTrigger>
                         <SelectValue placeholder="Select a category" />
                       </SelectTrigger>
@@ -252,13 +299,21 @@ export default function ContactSupportPage() {
                   </div>
                   <div>
                     <Label htmlFor="priority">Priority</Label>
-                    <Select value={formData.priority} onValueChange={(value) => handleInputChange('priority', value)}>
+                    <Select
+                      value={formData.priority}
+                      onValueChange={(value) =>
+                        handleInputChange("priority", value)
+                      }
+                    >
                       <SelectTrigger>
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
                         {PRIORITY_LEVELS.map((priority) => (
-                          <SelectItem key={priority.value} value={priority.value}>
+                          <SelectItem
+                            key={priority.value}
+                            value={priority.value}
+                          >
                             <div className="flex items-center space-x-2">
                               <Badge className={priority.color}>
                                 {priority.value}
@@ -277,7 +332,9 @@ export default function ContactSupportPage() {
                   <Input
                     id="subject"
                     value={formData.subject}
-                    onChange={(e) => handleInputChange('subject', e.target.value)}
+                    onChange={(e) =>
+                      handleInputChange("subject", e.target.value)
+                    }
                     placeholder="Brief description of your issue"
                     required
                   />
@@ -288,7 +345,9 @@ export default function ContactSupportPage() {
                   <Textarea
                     id="description"
                     value={formData.description}
-                    onChange={(e) => handleInputChange('description', e.target.value)}
+                    onChange={(e) =>
+                      handleInputChange("description", e.target.value)
+                    }
                     placeholder="Please provide detailed information about your issue or question..."
                     rows={6}
                     required
@@ -316,7 +375,8 @@ export default function ContactSupportPage() {
                           Click to upload files or drag and drop
                         </p>
                         <p className="text-xs text-gray-500 mt-1">
-                          Max 5 files, 10MB each. Supports images, PDFs, CAD files
+                          Max 5 files, 10MB each. Supports images, PDFs, CAD
+                          files
                         </p>
                       </div>
                     </label>
@@ -325,10 +385,15 @@ export default function ContactSupportPage() {
                   {formData.attachments.length > 0 && (
                     <div className="mt-4 space-y-2">
                       {formData.attachments.map((file, index) => (
-                        <div key={index} className="flex items-center justify-between p-2 bg-gray-50 rounded">
+                        <div
+                          key={index}
+                          className="flex items-center justify-between p-2 bg-gray-50 rounded"
+                        >
                           <div className="flex items-center space-x-2">
                             <PaperClipIcon className="w-4 h-4 text-gray-400" />
-                            <span className="text-sm text-gray-700">{file.name}</span>
+                            <span className="text-sm text-gray-700">
+                              {file.name}
+                            </span>
                             <span className="text-xs text-gray-500">
                               ({(file.size / 1024 / 1024).toFixed(1)}MB)
                             </span>
@@ -351,12 +416,14 @@ export default function ContactSupportPage() {
                   <Button
                     type="button"
                     variant="outline"
-                    onClick={() => router.push('/help')}
+                    onClick={() => router.push("/help")}
                   >
                     Cancel
                   </Button>
                   <Button type="submit" disabled={submitting}>
-                    {submitting ? 'Creating Ticket...' : 'Create Support Ticket'}
+                    {submitting
+                      ? "Creating Ticket..."
+                      : "Create Support Ticket"}
                   </Button>
                 </div>
               </form>
@@ -371,15 +438,21 @@ export default function ContactSupportPage() {
               <div className="space-y-3">
                 <div className="flex items-center justify-between">
                   <span className="text-sm">High Priority</span>
-                  <Badge className="bg-red-100 text-red-800">Within 4 hours</Badge>
+                  <Badge className="bg-red-100 text-red-800">
+                    Within 4 hours
+                  </Badge>
                 </div>
                 <div className="flex items-center justify-between">
                   <span className="text-sm">Medium Priority</span>
-                  <Badge className="bg-yellow-100 text-yellow-800">Within 24 hours</Badge>
+                  <Badge className="bg-yellow-100 text-yellow-800">
+                    Within 24 hours
+                  </Badge>
                 </div>
                 <div className="flex items-center justify-between">
                   <span className="text-sm">Low Priority</span>
-                  <Badge className="bg-gray-100 text-gray-800">Within 48 hours</Badge>
+                  <Badge className="bg-gray-100 text-gray-800">
+                    Within 48 hours
+                  </Badge>
                 </div>
               </div>
             </CardContent>

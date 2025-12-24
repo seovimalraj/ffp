@@ -1,13 +1,25 @@
-'use client';
+"use client";
 
-import React, { useState, useEffect } from 'react';
-import { useParams, useRouter, useSearchParams } from 'next/navigation';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Badge } from '@/components/ui/badge';
+import React, { useState, useEffect } from "react";
+import { useParams, useRouter, useSearchParams } from "next/navigation";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import { Badge } from "@/components/ui/badge";
 import {
   ChevronLeftIcon,
   CloudArrowUpIcon,
@@ -17,8 +29,8 @@ import {
   TrashIcon,
   PaperClipIcon,
   PhotoIcon,
-} from '@heroicons/react/24/outline';
-import { posthog } from 'posthog-js';
+} from "@heroicons/react/24/outline";
+import { posthog } from "posthog-js";
 
 // Types based on specification
 interface Attachment {
@@ -26,7 +38,7 @@ interface Attachment {
   quote_id: string;
   line_id: string | null;
   name: string;
-  type: 'PDF' | 'DXF' | 'TIFF' | 'PNG' | 'JPG' | 'OTHER';
+  type: "PDF" | "DXF" | "TIFF" | "PNG" | "JPG" | "OTHER";
   size_bytes: number;
   url: string;
   uploaded_at: string;
@@ -41,8 +53,8 @@ export default function AttachmentsManagerPage() {
   const params = useParams();
   const router = useRouter();
   const searchParams = useSearchParams();
-  const quoteId = params.id as string;
-  const lineId = searchParams.get('line');
+  const quoteId = (params?.id as string) || "";
+  const lineId = searchParams?.get("line") || "";
 
   const [attachments, setAttachments] = useState<Attachment[]>([]);
   const [quoteLines, setQuoteLines] = useState<QuoteLine[]>([]);
@@ -52,50 +64,50 @@ export default function AttachmentsManagerPage() {
   // Mock data
   const mockAttachments: Attachment[] = [
     {
-      id: 'att-1',
+      id: "att-1",
       quote_id: quoteId,
-      line_id: 'line-1',
-      name: 'bracket-drawing.pdf',
-      type: 'PDF',
+      line_id: "line-1",
+      name: "bracket-drawing.pdf",
+      type: "PDF",
       size_bytes: 512000,
-      url: '/api/attachments/att-1',
-      uploaded_at: '2024-09-12T10:30:00Z',
+      url: "/api/attachments/att-1",
+      uploaded_at: "2024-09-12T10:30:00Z",
     },
     {
-      id: 'att-2',
+      id: "att-2",
       quote_id: quoteId,
-      line_id: 'line-1',
-      name: 'bracket-dimensions.dxf',
-      type: 'DXF',
+      line_id: "line-1",
+      name: "bracket-dimensions.dxf",
+      type: "DXF",
       size_bytes: 245760,
-      url: '/api/attachments/att-2',
-      uploaded_at: '2024-09-12T10:35:00Z',
+      url: "/api/attachments/att-2",
+      uploaded_at: "2024-09-12T10:35:00Z",
     },
     {
-      id: 'att-3',
+      id: "att-3",
       quote_id: quoteId,
       line_id: null,
-      name: 'assembly-notes.pdf',
-      type: 'PDF',
+      name: "assembly-notes.pdf",
+      type: "PDF",
       size_bytes: 128000,
-      url: '/api/attachments/att-3',
-      uploaded_at: '2024-09-12T11:00:00Z',
+      url: "/api/attachments/att-3",
+      uploaded_at: "2024-09-12T11:00:00Z",
     },
   ];
 
   const mockQuoteLines: QuoteLine[] = [
-    { id: 'line-1', file_name: 'bracket.step' },
-    { id: 'line-2', file_name: 'housing.iges' },
+    { id: "line-1", file_name: "bracket.step" },
+    { id: "line-2", file_name: "housing.iges" },
   ];
 
   useEffect(() => {
     // Track page view
-    posthog.capture('attachments_view', { quote_id: quoteId, line_id: lineId });
+    posthog.capture("attachments_view", { quote_id: quoteId, line_id: lineId });
 
     // Simulate API call
     const fetchData = async () => {
       setLoading(true);
-      await new Promise(resolve => setTimeout(resolve, 1000));
+      await new Promise((resolve) => setTimeout(resolve, 1000));
       setAttachments(mockAttachments);
       setQuoteLines(mockQuoteLines);
       setLoading(false);
@@ -113,8 +125,17 @@ export default function AttachmentsManagerPage() {
         const file = files[i];
 
         // Validate file type
-        const allowedTypes = ['application/pdf', 'image/jpeg', 'image/png', 'image/tiff', 'application/dxf'];
-        if (!allowedTypes.includes(file.type) && !file.name.toLowerCase().endsWith('.dxf')) {
+        const allowedTypes = [
+          "application/pdf",
+          "image/jpeg",
+          "image/png",
+          "image/tiff",
+          "application/dxf",
+        ];
+        if (
+          !allowedTypes.includes(file.type) &&
+          !file.name.toLowerCase().endsWith(".dxf")
+        ) {
           alert(`File type not allowed: ${file.name}`);
           continue;
         }
@@ -137,9 +158,9 @@ export default function AttachmentsManagerPage() {
           uploaded_at: new Date().toISOString(),
         };
 
-        setAttachments(prev => [...prev, newAttachment]);
+        setAttachments((prev) => [...prev, newAttachment]);
 
-        posthog.capture('attachment_uploaded', {
+        posthog.capture("attachment_uploaded", {
           quote_id: quoteId,
           line_id: lineId,
           file_type: newAttachment.type,
@@ -147,7 +168,7 @@ export default function AttachmentsManagerPage() {
         });
       }
     } catch (error) {
-      console.error('Upload failed:', error);
+      console.error("Upload failed:", error);
     } finally {
       setUploading(false);
     }
@@ -156,20 +177,20 @@ export default function AttachmentsManagerPage() {
   const handleLinkToPart = async (attachmentId: string, newLineId: string) => {
     try {
       // In real implementation: PUT /api/attachments/:id { line_id: newLineId }
-      setAttachments(prev => prev.map(att =>
-        att.id === attachmentId
-          ? { ...att, line_id: newLineId }
-          : att
-      ));
+      setAttachments((prev) =>
+        prev.map((att) =>
+          att.id === attachmentId ? { ...att, line_id: newLineId } : att,
+        ),
+      );
     } catch (error) {
-      console.error('Failed to link attachment:', error);
+      console.error("Failed to link attachment:", error);
     }
   };
 
   const handlePreview = (attachment: Attachment) => {
     // In real implementation: open viewer modal or new window
-    if (attachment.type === 'PDF') {
-      window.open(attachment.url, '_blank');
+    if (attachment.type === "PDF") {
+      window.open(attachment.url, "_blank");
     } else {
       // Open image viewer modal
     }
@@ -177,7 +198,7 @@ export default function AttachmentsManagerPage() {
 
   const handleDownload = (attachment: Attachment) => {
     // In real implementation: trigger download with signed URL
-    const link = document.createElement('a');
+    const link = document.createElement("a");
     link.href = attachment.url;
     link.download = attachment.name;
     document.body.appendChild(link);
@@ -186,41 +207,50 @@ export default function AttachmentsManagerPage() {
   };
 
   const handleDelete = async (attachmentId: string) => {
-    if (!confirm('Are you sure you want to delete this attachment?')) return;
+    if (!confirm("Are you sure you want to delete this attachment?")) return;
 
     try {
       // In real implementation: DELETE /api/attachments/:id
-      setAttachments(prev => prev.filter(att => att.id !== attachmentId));
+      setAttachments((prev) => prev.filter((att) => att.id !== attachmentId));
 
-      posthog.capture('attachment_deleted', { quote_id: quoteId, attachment_id: attachmentId });
+      posthog.capture("attachment_deleted", {
+        quote_id: quoteId,
+        attachment_id: attachmentId,
+      });
     } catch (error) {
-      console.error('Failed to delete attachment:', error);
+      console.error("Failed to delete attachment:", error);
     }
   };
 
-  const getFileType = (file: File): Attachment['type'] => {
-    const ext = file.name.split('.').pop()?.toLowerCase();
+  const getFileType = (file: File): Attachment["type"] => {
+    const ext = file.name.split(".").pop()?.toLowerCase();
     switch (ext) {
-      case 'pdf': return 'PDF';
-      case 'dxf': return 'DXF';
-      case 'tiff':
-      case 'tif': return 'TIFF';
-      case 'png': return 'PNG';
-      case 'jpg':
-      case 'jpeg': return 'JPG';
-      default: return 'OTHER';
+      case "pdf":
+        return "PDF";
+      case "dxf":
+        return "DXF";
+      case "tiff":
+      case "tif":
+        return "TIFF";
+      case "png":
+        return "PNG";
+      case "jpg":
+      case "jpeg":
+        return "JPG";
+      default:
+        return "OTHER";
     }
   };
 
   const getFileTypeIcon = (type: string) => {
     switch (type) {
-      case 'PDF':
+      case "PDF":
         return <DocumentTextIcon className="h-5 w-5 text-red-500" />;
-      case 'PNG':
-      case 'JPG':
-      case 'TIFF':
+      case "PNG":
+      case "JPG":
+      case "TIFF":
         return <PhotoIcon className="h-5 w-5 text-blue-500" />;
-      case 'DXF':
+      case "DXF":
         return <DocumentTextIcon className="h-5 w-5 text-green-500" />;
       default:
         return <PaperClipIcon className="h-5 w-5 text-gray-500" />;
@@ -228,27 +258,21 @@ export default function AttachmentsManagerPage() {
   };
 
   const formatFileSize = (bytes: number) => {
-    if (bytes === 0) return '0 Bytes';
+    if (bytes === 0) return "0 Bytes";
     const k = 1024;
-    const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+    const sizes = ["Bytes", "KB", "MB", "GB"];
     const i = Math.floor(Math.log(bytes) / Math.log(k));
-    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + " " + sizes[i];
   };
 
   const formatDate = (dateString: string) => {
-    return new Date(dateString).toLocaleDateString('en-US', {
-      year: 'numeric',
-      month: 'short',
-      day: 'numeric',
-      hour: 'numeric',
-      minute: '2-digit',
+    return new Date(dateString).toLocaleDateString("en-US", {
+      year: "numeric",
+      month: "short",
+      day: "numeric",
+      hour: "numeric",
+      minute: "2-digit",
     });
-  };
-
-  const getLinkedPartName = (lineId: string | null) => {
-    if (!lineId) return 'Quote Level';
-    const line = quoteLines.find(l => l.id === lineId);
-    return line ? line.file_name : 'Unknown Part';
   };
 
   if (loading) {
@@ -274,14 +298,14 @@ export default function AttachmentsManagerPage() {
             {/* Breadcrumb */}
             <div className="flex items-center space-x-2 text-sm text-gray-600">
               <button
-                onClick={() => router.push('/portal/dashboard')}
+                onClick={() => router.push("/portal/dashboard")}
                 className="hover:text-gray-900"
               >
                 Dashboard
               </button>
               <ChevronLeftIcon className="h-4 w-4" />
               <button
-                onClick={() => router.push('/portal/quotes')}
+                onClick={() => router.push("/portal/quotes")}
                 className="hover:text-gray-900"
               >
                 Quotes
@@ -294,7 +318,9 @@ export default function AttachmentsManagerPage() {
                 {quoteId}
               </button>
               <ChevronLeftIcon className="h-4 w-4" />
-              <span className="font-medium text-gray-900">Upload Drawings & Attachments</span>
+              <span className="font-medium text-gray-900">
+                Upload Drawings & Attachments
+              </span>
             </div>
 
             {/* Actions */}
@@ -347,9 +373,7 @@ export default function AttachmentsManagerPage() {
                     disabled={uploading}
                     asChild
                   >
-                    <span>
-                      {uploading ? 'Uploading...' : 'Browse Files'}
-                    </span>
+                    <span>{uploading ? "Uploading..." : "Browse Files"}</span>
                   </Button>
                 </label>
               </div>
@@ -365,9 +389,12 @@ export default function AttachmentsManagerPage() {
               {attachments.length === 0 ? (
                 <div className="text-center py-12">
                   <PaperClipIcon className="h-12 w-12 text-gray-400 mx-auto mb-4" />
-                  <h3 className="text-lg font-medium text-gray-900 mb-2">No files uploaded yet</h3>
+                  <h3 className="text-lg font-medium text-gray-900 mb-2">
+                    No files uploaded yet
+                  </h3>
                   <p className="text-gray-500">
-                    Upload drawings, specifications, or other documents related to your quote.
+                    Upload drawings, specifications, or other documents related
+                    to your quote.
                   </p>
                 </div>
               ) : (
@@ -388,17 +415,23 @@ export default function AttachmentsManagerPage() {
                         <TableCell>
                           <div className="flex items-center space-x-3">
                             {getFileTypeIcon(attachment.type)}
-                            <span className="font-medium">{attachment.name}</span>
+                            <span className="font-medium">
+                              {attachment.name}
+                            </span>
                           </div>
                         </TableCell>
                         <TableCell>
                           <Badge variant="secondary">{attachment.type}</Badge>
                         </TableCell>
-                        <TableCell>{formatFileSize(attachment.size_bytes)}</TableCell>
+                        <TableCell>
+                          {formatFileSize(attachment.size_bytes)}
+                        </TableCell>
                         <TableCell>
                           <Select
-                            value={attachment.line_id || ''}
-                            onValueChange={(value) => handleLinkToPart(attachment.id, value || null)}
+                            value={attachment.line_id || ""}
+                            onValueChange={(value) =>
+                              handleLinkToPart(attachment.id, value || "")
+                            }
                           >
                             <SelectTrigger className="w-48">
                               <SelectValue placeholder="Select part" />
@@ -413,7 +446,9 @@ export default function AttachmentsManagerPage() {
                             </SelectContent>
                           </Select>
                         </TableCell>
-                        <TableCell>{formatDate(attachment.uploaded_at)}</TableCell>
+                        <TableCell>
+                          {formatDate(attachment.uploaded_at)}
+                        </TableCell>
                         <TableCell>
                           <div className="flex items-center space-x-2">
                             <Button

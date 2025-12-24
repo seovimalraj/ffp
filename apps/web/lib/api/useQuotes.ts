@@ -3,16 +3,14 @@
  * Type-safe hooks with optimistic updates
  */
 
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   quotesApi,
   type SetOutcomeRequest,
   type OutcomeResponse,
-  type QuoteMargins,
-  type ReasonCode,
   type OutcomesListFilters,
   type QuoteOutcomeStatus,
-} from '../api/quotes';
+} from "../api/quotes";
 
 // Re-export types for convenience
 export type { SetOutcomeRequest, QuoteOutcomeStatus };
@@ -22,21 +20,22 @@ export type { SetOutcomeRequest, QuoteOutcomeStatus };
 // ============================================
 
 export const outcomesKeys = {
-  all: ['outcomes'] as const,
-  lists: () => [...outcomesKeys.all, 'list'] as const,
-  list: (filters?: OutcomesListFilters) => [...outcomesKeys.lists(), filters] as const,
-  details: () => [...outcomesKeys.all, 'detail'] as const,
+  all: ["outcomes"] as const,
+  lists: () => [...outcomesKeys.all, "list"] as const,
+  list: (filters?: OutcomesListFilters) =>
+    [...outcomesKeys.lists(), filters] as const,
+  details: () => [...outcomesKeys.all, "detail"] as const,
   detail: (quoteId: string) => [...outcomesKeys.details(), quoteId] as const,
 };
 
 export const marginsKeys = {
-  all: ['margins'] as const,
-  details: () => [...marginsKeys.all, 'detail'] as const,
+  all: ["margins"] as const,
+  details: () => [...marginsKeys.all, "detail"] as const,
   detail: (quoteId: string) => [...marginsKeys.details(), quoteId] as const,
 };
 
 export const lookupsKeys = {
-  reasonCodes: ['lookups', 'reason-codes'] as const,
+  reasonCodes: ["lookups", "reason-codes"] as const,
 };
 
 // ============================================
@@ -74,11 +73,13 @@ export function useSetOutcome(quoteId: string) {
   return useMutation({
     mutationFn: (data: SetOutcomeRequest) =>
       quotesApi.setOutcome(quoteId, data),
-    
+
     // Optimistic update
     onMutate: async (newData) => {
       // Cancel outgoing queries
-      await queryClient.cancelQueries({ queryKey: outcomesKeys.detail(quoteId) });
+      await queryClient.cancelQueries({
+        queryKey: outcomesKeys.detail(quoteId),
+      });
 
       // Snapshot previous value
       const previous = queryClient.getQueryData<OutcomeResponse>(
@@ -92,12 +93,12 @@ export function useSetOutcome(quoteId: string) {
           if (!old) {
             return {
               quote_id: quoteId,
-              org_id: '',
+              org_id: "",
               status: newData.status,
               reason_code: newData.reason_code || null,
               reason_notes: newData.reason_notes || null,
               amount: newData.amount || null,
-              decided_by: '',
+              decided_by: "",
               decided_at: new Date().toISOString(),
               meta: newData.meta || {},
             };
@@ -143,20 +144,25 @@ export function useDeleteOutcome(quoteId: string) {
 
   return useMutation({
     mutationFn: () => quotesApi.deleteOutcome(quoteId),
-    
+
     onMutate: async () => {
-      await queryClient.cancelQueries({ queryKey: outcomesKeys.detail(quoteId) });
+      await queryClient.cancelQueries({
+        queryKey: outcomesKeys.detail(quoteId),
+      });
       const previous = queryClient.getQueryData(outcomesKeys.detail(quoteId));
-      
+
       // Optimistically clear
       queryClient.setQueryData(outcomesKeys.detail(quoteId), null);
-      
+
       return { previous };
     },
 
     onError: (err, variables, context) => {
       if (context?.previous) {
-        queryClient.setQueryData(outcomesKeys.detail(quoteId), context.previous);
+        queryClient.setQueryData(
+          outcomesKeys.detail(quoteId),
+          context.previous,
+        );
       }
     },
 
@@ -194,13 +200,13 @@ export function useExportMarginsCsv() {
       status?: string;
       customer_id?: string;
     }) => quotesApi.exportMarginsCsv(filters),
-    
+
     onSuccess: (blob) => {
       // Trigger download
       const url = window.URL.createObjectURL(blob);
-      const a = document.createElement('a');
+      const a = document.createElement("a");
       a.href = url;
-      a.download = `quote-margins-${new Date().toISOString().split('T')[0]}.csv`;
+      a.download = `quote-margins-${new Date().toISOString().split("T")[0]}.csv`;
       document.body.appendChild(a);
       a.click();
       window.URL.revokeObjectURL(url);

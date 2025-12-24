@@ -1,6 +1,7 @@
 /// <reference lib="webworker" />
 
-type TessReq = {
+/* eslint-disable */
+type _TessReq = {
   id: string;
   type: "tessellate";
   payload: {
@@ -18,30 +19,68 @@ type TessOk = {
 };
 type TessErr = { id: string; ok: false; error: string };
 
-const ctx: DedicatedWorkerGlobalScope = self as any;
+const ctx: any = self as any;
 let occt: any | null = null;
+let appOrigin: string | null = null;
 
 async function init() {
   if (occt) return occt;
-  // Load the JS glue from /public/occ/
-  ctx.importScripts("/occ/occt-import-js.js");
+
+  // Ensure we have a valid base URL for absolute resolution
+  // If appOrigin wasn't passed, fallback to self.location.origin
+  let origin = appOrigin || self.location.origin;
+  if (!origin || origin === "null") {
+    // In some sandboxed/blob environments, origin is "null"
+    // We should log this as it's a common cause of invalid URL errors
+    console.warn(
+      "OCC Worker: Base origin is null, falling back to relative paths.",
+    );
+  }
+
+  // Construct absolute URL for the JS glue code
+  let scriptUrl: string;
+  try {
+    scriptUrl =
+      origin && origin !== "null"
+        ? new URL("/occ/occt-import-js.js", origin).href
+        : "/occ/occt-import-js.js";
+  } catch (_e) {
+    scriptUrl = "/occ/occt-import-js.js";
+  }
+
+  try {
+    // Load the JS glue from /public/occ/
+    ctx.importScripts(scriptUrl);
+  } catch (e: any) {
+    throw new Error(
+      `Failed to load OpenCascade script at ${scriptUrl}. Error: ${e.message}`,
+    );
+  }
 
   const factory = (ctx as any).occtimportjs;
   if (!factory)
     throw new Error(
-      "occtimportjs not found. Is /occ/occt-import-js.js uploaded?"
+      "occtimportjs not found on global scope. Check if /public/occ/occt-import-js.js exists.",
     );
 
-  // ⬇️ The key line: force the wasm path to /occ/
+  // Initialize the factory with robust file location for the .wasm asset
   occt = await factory({
-    locateFile: (f: string) => `/occ/${f}`, // returns /occ/occt-import-js.wasm
+    locateFile: (f: string) => {
+      try {
+        return origin && origin !== "null"
+          ? new URL(`/occ/${f}`, origin).href
+          : `/occ/${f}`;
+      } catch (_e) {
+        return `/occ/${f}`;
+      }
+    },
   });
   return occt;
 }
 
 function buildOcctParams(
   linearDeflection?: number,
-  angularDeflection?: number
+  angularDeflection?: number,
 ) {
   return {
     linearUnit: "millimeter",
@@ -51,8 +90,15 @@ function buildOcctParams(
   };
 }
 
-ctx.onmessage = async (e: MessageEvent<TessReq>) => {
+ctx.onmessage = async (e: MessageEvent<any>) => {
   const { id, type, payload } = e.data;
+
+  // Handle initialization message
+  if (type === "init") {
+    appOrigin = payload.origin;
+    return;
+  }
+
   if (type !== "tessellate") return;
   try {
     const { buffer, ext, linearDeflection, angularDeflection } = payload;
@@ -68,15 +114,8 @@ ctx.onmessage = async (e: MessageEvent<TessReq>) => {
     else if (ext === "brep") res = mod.ReadBrepFile(u8, params);
     else throw new Error("Unsupported extension");
 
-    if (ext === "brep") {
-      console.log(
-        "BREP tessellation success:",
-        res?.success,
-        "meshes:",
-        res?.meshes?.length ?? 0
-      );
-    }
-
+    // Flatten meshes
+    // Flatten meshes
     if (!res || !res.success) {
       const errMsg = res?.error
         ? `Import failed: ${res.error}`
@@ -85,8 +124,6 @@ ctx.onmessage = async (e: MessageEvent<TessReq>) => {
       return;
     }
 
-    // Flatten meshes
-    // Flatten meshes
     let totalPos = 0;
     let totalIdx = 0;
     for (const m of res.meshes as any[]) {
@@ -120,15 +157,6 @@ ctx.onmessage = async (e: MessageEvent<TessReq>) => {
       posOffset += p.length;
       idxOffset += i.length;
       indexOffsetBonus += p.length / 3;
-    }
-
-    if (ext === "brep") {
-      console.log(
-        "BREP final vertex count:",
-        pos.length / 3,
-        "triangle count:",
-        idx.length / 3
-      );
     }
 
     ctx.postMessage({ id, ok: true, positions: pos, indices: idx } as TessOk, [

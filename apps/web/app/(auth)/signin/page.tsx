@@ -1,8 +1,6 @@
 import GridBackground from "@/components/animate-grid-bg";
 import { SignInForm } from "@/components/auth/SignInForm";
 import ImageCarousel from "@/components/image-carousel";
-import { cn } from "@/lib/utils";
-
 
 export default function SignupPage() {
   return (
@@ -16,5 +14,5 @@ export default function SignupPage() {
         <SignInForm />
       </div>
     </div>
-  )
+  );
 }

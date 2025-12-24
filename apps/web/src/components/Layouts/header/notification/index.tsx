@@ -6,7 +6,6 @@ import {
   DropdownTrigger,
 } from "@/components/ui/dropdown";
 import { useIsMobile } from "@/hooks/use-mobile";
-import { cn } from "@/lib/utils";
 import Image from "next/image";
 import Link from "next/link";
 import { useState } from "react";
@@ -61,10 +60,7 @@ export function Notification() {
         )}
       </DropdownTrigger>
 
-      <DropdownContent
-        align={isMobile ? "start" : "end"}
-        className="w-80 p-0"
-      >
+      <DropdownContent align={isMobile ? "start" : "end"} className="w-80 p-0">
         <div className="border-b border-gray-200 px-4 py-3 dark:border-gray-700">
           <h3 className="text-lg font-semibold text-dark dark:text-white">
             Notifications

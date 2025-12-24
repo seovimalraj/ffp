@@ -1,20 +1,37 @@
-'use client';
+"use client";
 
-import { useState, useEffect, useCallback, useRef } from 'react';
-import { useRouter } from 'next/navigation';
-import { api } from '@/lib/api';
-import { toast } from 'react-hot-toast';
-import { formatDate } from '@/lib/format';
-import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Input } from '@/components/ui/input';
-import { Badge } from '@/components/ui/badge';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
-import { Progress } from '@/components/ui/progress';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { DatePickerWithRange } from '@/components/ui/date-range-picker';
+import { useState, useEffect, useCallback, useRef } from "react";
+import { useRouter } from "next/navigation";
+import { api } from "@/lib/api";
+import { toast } from "react-hot-toast";
+import { formatDate } from "@/lib/format";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Badge } from "@/components/ui/badge";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import {
+  Sheet,
+  SheetContent,
+  SheetHeader,
+  SheetTitle,
+} from "@/components/ui/sheet";
+import { Progress } from "@/components/ui/progress";
+import { DatePickerWithRange } from "@/components/ui/date-range-picker";
 import {
   CloudArrowUpIcon,
   EyeIcon,
@@ -25,35 +42,35 @@ import {
   PhotoIcon,
   ViewfinderCircleIcon,
   Bars3Icon,
-  Squares2X2Icon
-} from '@heroicons/react/24/outline';
-import { PDFPreview, CADPreview, ImagePreview, FilePreview } from '@/components/ui/file-preview';
-import type { File } from '@/types/order';
-import { trackEvent } from '@/lib/analytics/posthog';
+  Squares2X2Icon,
+} from "@heroicons/react/24/outline";
+import { CADPreview, FilePreview } from "@/components/ui/file-preview";
+import type { File } from "@/types/order";
+import { trackEvent } from "@/lib/analytics/posthog";
 
 const ITEMS_PER_PAGE = 20;
 
 const KIND_OPTIONS = [
-  { value: 'all', label: 'All' },
-  { value: 'CAD', label: 'CAD' },
-  { value: 'Drawing', label: 'Drawing' },
-  { value: 'PDF', label: 'PDF' },
-  { value: 'Image', label: 'Image' },
-  { value: 'Zip', label: 'Zip' },
+  { value: "all", label: "All" },
+  { value: "CAD", label: "CAD" },
+  { value: "Drawing", label: "Drawing" },
+  { value: "PDF", label: "PDF" },
+  { value: "Image", label: "Image" },
+  { value: "Zip", label: "Zip" },
 ];
 
 const LINKED_TYPE_OPTIONS = [
-  { value: 'any', label: 'Any' },
-  { value: 'Quote', label: 'Quote' },
-  { value: 'Order', label: 'Order' },
-  { value: 'Unlinked', label: 'Unlinked' },
+  { value: "any", label: "Any" },
+  { value: "Quote", label: "Quote" },
+  { value: "Order", label: "Order" },
+  { value: "Unlinked", label: "Unlinked" },
 ];
 
 interface FileUpload {
   id: string;
   file: File;
   progress: number;
-  status: 'uploading' | 'completed' | 'error';
+  status: "uploading" | "completed" | "error";
   error?: string;
 }
 
@@ -64,21 +81,21 @@ export default function FilesPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
-  const [searchQuery, setSearchQuery] = useState('');
-  const [debouncedSearchQuery, setDebouncedSearchQuery] = useState('');
+  const [searchQuery, setSearchQuery] = useState("");
+  const [debouncedSearchQuery, setDebouncedSearchQuery] = useState("");
   const [filters, setFilters] = useState({
-    kind: 'all',
-    linked_type: 'any',
-    date_from: '',
-    date_to: '',
+    kind: "all",
+    linked_type: "any",
+    date_from: "",
+    date_to: "",
   });
-  const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
+  const [viewMode, setViewMode] = useState<"grid" | "list">("grid");
   const [uploads, setUploads] = useState<FileUpload[]>([]);
   const [isDragOver, setIsDragOver] = useState(false);
   const [previewFile, setPreviewFile] = useState<File | null>(null);
   const [isPreviewLoading, setIsPreviewLoading] = useState(false);
-  const [signedUrl, setSignedUrl] = useState<string>('');
-  const [cadPreviewUrl, setCadPreviewUrl] = useState<string>('');
+  const [signedUrl, setSignedUrl] = useState<string>("");
+  const [cadPreviewUrl, setCadPreviewUrl] = useState<string>("");
 
   // Debounce search query
   useEffect(() => {
@@ -96,8 +113,10 @@ export default function FilesPage() {
         page: page.toString(),
         page_size: ITEMS_PER_PAGE.toString(),
         q: debouncedSearchQuery,
-        ...(filters.kind !== 'all' && { kind: filters.kind }),
-        ...(filters.linked_type !== 'any' && { linked_type: filters.linked_type }),
+        ...(filters.kind !== "all" && { kind: filters.kind }),
+        ...(filters.linked_type !== "any" && {
+          linked_type: filters.linked_type,
+        }),
         ...(filters.date_from && { date_from: filters.date_from }),
         ...(filters.date_to && { date_to: filters.date_to }),
       });
@@ -112,14 +131,16 @@ export default function FilesPage() {
       setFiles(response.data.files);
       setTotal(response.data.total);
 
-      trackEvent('files_list_view', {
+      trackEvent("files_list_view", {
         view_mode: viewMode,
-        filters: Object.values(filters).filter(v => v !== 'all' && v !== 'any' && v !== '').length,
+        filters: Object.values(filters).filter(
+          (v) => v !== "all" && v !== "any" && v !== "",
+        ).length,
         search_query: debouncedSearchQuery || undefined,
       });
     } catch (error: any) {
-      toast.error('Failed to load files');
-      console.error('Error loading files:', error);
+      toast.error("Failed to load files");
+      console.error("Error loading files:", error);
     } finally {
       setIsLoading(false);
     }
@@ -131,7 +152,7 @@ export default function FilesPage() {
 
   // Handle filter changes
   const handleFilterChange = (key: string, value: string) => {
-    setFilters(prev => ({ ...prev, [key]: value }));
+    setFilters((prev) => ({ ...prev, [key]: value }));
     setPage(1);
   };
 
@@ -145,77 +166,79 @@ export default function FilesPage() {
   const handleFileSelect = (selectedFiles: FileList | null) => {
     if (!selectedFiles) return;
 
-    const newUploads: FileUpload[] = Array.from(selectedFiles).map(file => ({
+    const newUploads: FileUpload[] = Array.from(selectedFiles).map((file) => ({
       id: Math.random().toString(36).substring(2),
       file,
       progress: 0,
-      status: 'uploading' as const,
+      status: "uploading" as const,
     }));
 
-    setUploads(prev => [...prev, ...newUploads]);
+    setUploads((prev) => [...prev, ...newUploads]);
 
     // Start uploading each file
-    newUploads.forEach(upload => {
+    newUploads.forEach((upload) => {
       uploadFile(upload);
     });
 
-    trackEvent('file_upload_started', { count: newUploads.length });
+    trackEvent("file_upload_started", { count: newUploads.length });
   };
 
   const uploadFile = async (upload: FileUpload) => {
     try {
       const formData = new FormData();
-      formData.append('file', upload.file);
+      formData.append("file", upload.file);
 
       // Simulate progress updates
       const progressInterval = setInterval(() => {
-        setUploads(prev => prev.map(u =>
-          u.id === upload.id && u.progress < 90
-            ? { ...u, progress: u.progress + 10 }
-            : u
-        ));
+        setUploads((prev) =>
+          prev.map((u) =>
+            u.id === upload.id && u.progress < 90
+              ? { ...u, progress: u.progress + 10 }
+              : u,
+          ),
+        );
       }, 200);
 
-      const response = await fetch('/api/files/upload', {
-        method: 'POST',
+      const response = await fetch("/api/files/upload", {
+        method: "POST",
         body: formData,
       });
 
       clearInterval(progressInterval);
 
       if (!response.ok) {
-        throw new Error('Upload failed');
+        throw new Error("Upload failed");
       }
 
-      const result = await response.json();
-
-      setUploads(prev => prev.map(u =>
-        u.id === upload.id
-          ? { ...u, progress: 100, status: 'completed' }
-          : u
-      ));
+      setUploads((prev) =>
+        prev.map((u) =>
+          u.id === upload.id ? { ...u, progress: 100, status: "completed" } : u,
+        ),
+      );
 
       // Remove completed upload after a delay
       setTimeout(() => {
-        setUploads(prev => prev.filter(u => u.id !== upload.id));
+        setUploads((prev) => prev.filter((u) => u.id !== upload.id));
       }, 2000);
 
       // Refresh the file list
       loadFiles();
 
-      trackEvent('file_upload_succeeded', {
+      trackEvent("file_upload_succeeded", {
         file_name: upload.file.name,
         file_size: upload.file.size,
         mime_type: upload.file.type,
       });
     } catch (error: any) {
-      setUploads(prev => prev.map(u =>
-        u.id === upload.id
-          ? { ...u, status: 'error', error: error.message }
-          : u
-      ));
+      setUploads((prev) =>
+        prev.map((u) =>
+          u.id === upload.id
+            ? { ...u, status: "error", error: error.message }
+            : u,
+        ),
+      );
 
-      console.error('Error uploading file:', error);
+      console.error("Error uploading file:", error);
     }
   };
 
@@ -241,17 +264,21 @@ export default function FilesPage() {
     setPreviewFile(file);
     setIsPreviewLoading(true);
     try {
-      if (file.kind === 'CAD' && file.preview_ready) {
-        const response = await api.get<{ preview_url: string }>(`/cad/preview/${file.id}`);
+      if (file.kind === "CAD" && file.preview_ready) {
+        const response = await api.get<{ preview_url: string }>(
+          `/cad/preview/${file.id}`,
+        );
         setCadPreviewUrl(response.data.preview_url);
       } else {
-        const response = await api.get<{ signed_url: string }>(`/files/${file.id}/signed-url`);
+        const response = await api.get<{ signed_url: string }>(
+          `/files/${file.id}/signed-url`,
+        );
         setSignedUrl(response.data.signed_url);
       }
-      trackEvent('file_preview_open', { file_id: file.id, kind: file.kind });
+      trackEvent("file_preview_open", { file_id: file.id, kind: file.kind });
     } catch (error: any) {
-      toast.error('Failed to load preview');
-      console.error('Error loading preview:', error);
+      toast.error("Failed to load preview");
+      console.error("Error loading preview:", error);
     } finally {
       setIsPreviewLoading(false);
     }
@@ -260,63 +287,70 @@ export default function FilesPage() {
   // Handle download
   const handleDownload = async (file: File) => {
     try {
-      const response = await api.get<{ signed_url: string }>(`/files/${file.id}/signed-url`);
-      window.open(response.data.signed_url, '_blank');
-      trackEvent('file_download', { file_id: file.id, kind: file.kind });
+      const response = await api.get<{ signed_url: string }>(
+        `/files/${file.id}/signed-url`,
+      );
+      window.open(response.data.signed_url, "_blank");
+      trackEvent("file_download", { file_id: file.id, kind: file.kind });
     } catch (error: any) {
-      toast.error('Failed to download file');
-      console.error('Error downloading file:', error);
+      toast.error("Failed to download file");
+      console.error("Error downloading file:", error);
     }
   };
 
   // Handle delete
   const handleDelete = async (file: File) => {
-    if (!confirm(`Are you sure you want to delete "${file.name}"? This cannot be undone.`)) return;
+    if (
+      !confirm(
+        `Are you sure you want to delete "${file.name}"? This cannot be undone.`,
+      )
+    )
+      return;
     try {
       await api.delete(`/files/${file.id}`);
-      toast.success('File deleted');
-      trackEvent('file_delete', { file_id: file.id, kind: file.kind });
+      toast.success("File deleted");
+      trackEvent("file_delete", { file_id: file.id, kind: file.kind });
       // Refresh the file list
       loadFiles();
     } catch (error: any) {
-      toast.error('Failed to delete file');
-      console.error('Error deleting file:', error);
+      toast.error("Failed to delete file");
+      console.error("Error deleting file:", error);
     }
   };
 
   // Handle navigation to linked entity
   const handleNavigateToLinked = (file: File) => {
-    if (file.linked_type === 'Order') {
+    if (file.linked_type === "Order") {
       router.push(`/portal/orders/${file.linked_id}`);
-    } else if (file.linked_type === 'Quote') {
+    } else if (file.linked_type === "Quote") {
       router.push(`/portal/quotes/${file.linked_id}`);
     }
   };
 
   // Helper functions
   const formatFileSize = (bytes: number) => {
-    if (bytes === 0) return '0 Bytes';
+    if (bytes === 0) return "0 Bytes";
     const k = 1024;
-    const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+    const sizes = ["Bytes", "KB", "MB", "GB"];
     const i = Math.floor(Math.log(bytes) / Math.log(k));
-    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + " " + sizes[i];
   };
 
   const getFileIcon = (kind: string, mime: string) => {
-    if (kind === 'CAD') return ViewfinderCircleIcon;
-    if (kind === 'Image' || mime.startsWith('image/')) return PhotoIcon;
-    if (kind === 'PDF' || mime === 'application/pdf') return DocumentIcon;
+    if (kind === "CAD") return ViewfinderCircleIcon;
+    if (kind === "Image" || mime.startsWith("image/")) return PhotoIcon;
+    if (kind === "PDF" || mime === "application/pdf") return DocumentIcon;
     return FolderIcon;
   };
 
   const getFileTypeColor = (kind: string) => {
     const colors: Record<string, string> = {
-      CAD: 'bg-blue-100 text-blue-800',
-      Drawing: 'bg-green-100 text-green-800',
-      PDF: 'bg-red-100 text-red-800',
-      Image: 'bg-purple-100 text-purple-800',
-      Zip: 'bg-yellow-100 text-yellow-800',
-      Other: 'bg-gray-100 text-gray-800',
+      CAD: "bg-blue-100 text-blue-800",
+      Drawing: "bg-green-100 text-green-800",
+      PDF: "bg-red-100 text-red-800",
+      Image: "bg-purple-100 text-purple-800",
+      Zip: "bg-yellow-100 text-yellow-800",
+      Other: "bg-gray-100 text-gray-800",
     };
     return colors[kind] || colors.Other;
   };
@@ -333,16 +367,16 @@ export default function FilesPage() {
         <div className="flex items-center space-x-4">
           <div className="flex items-center space-x-2">
             <Button
-              variant={viewMode === 'grid' ? 'default' : 'outline'}
+              variant={viewMode === "grid" ? "default" : "outline"}
               size="sm"
-              onClick={() => setViewMode('grid')}
+              onClick={() => setViewMode("grid")}
             >
               <Squares2X2Icon className="w-4 h-4" />
             </Button>
             <Button
-              variant={viewMode === 'list' ? 'default' : 'outline'}
+              variant={viewMode === "list" ? "default" : "outline"}
               size="sm"
-              onClick={() => setViewMode('list')}
+              onClick={() => setViewMode("list")}
             >
               <Bars3Icon className="w-4 h-4" />
             </Button>
@@ -371,10 +405,15 @@ export default function FilesPage() {
               <div key={upload.id} className="flex items-center space-x-3">
                 <div className="flex-1">
                   <div className="flex items-center justify-between mb-1">
-                    <span className="text-sm font-medium">{upload.file.name}</span>
+                    <span className="text-sm font-medium">
+                      {upload.file.name}
+                    </span>
                     <span className="text-sm text-gray-500">
-                      {upload.status === 'completed' ? 'Complete' :
-                       upload.status === 'error' ? 'Failed' : `${upload.progress}%`}
+                      {upload.status === "completed"
+                        ? "Complete"
+                        : upload.status === "error"
+                          ? "Failed"
+                          : `${upload.progress}%`}
                     </span>
                   </div>
                   <Progress value={upload.progress} className="h-2" />
@@ -405,7 +444,7 @@ export default function FilesPage() {
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <Select
               value={filters.kind}
-              onValueChange={(value) => handleFilterChange('kind', value)}
+              onValueChange={(value) => handleFilterChange("kind", value)}
             >
               <SelectTrigger>
                 <SelectValue placeholder="All Types" />
@@ -421,7 +460,9 @@ export default function FilesPage() {
 
             <Select
               value={filters.linked_type}
-              onValueChange={(value) => handleFilterChange('linked_type', value)}
+              onValueChange={(value) =>
+                handleFilterChange("linked_type", value)
+              }
             >
               <SelectTrigger>
                 <SelectValue placeholder="Any Linked" />
@@ -437,12 +478,20 @@ export default function FilesPage() {
 
             <DatePickerWithRange
               date={{
-                from: filters.date_from ? new Date(filters.date_from) : undefined,
+                from: filters.date_from
+                  ? new Date(filters.date_from)
+                  : undefined,
                 to: filters.date_to ? new Date(filters.date_to) : undefined,
               }}
               onDateChange={(range) => {
-                handleFilterChange('date_from', range.from?.toISOString().split('T')[0] || '');
-                handleFilterChange('date_to', range.to?.toISOString().split('T')[0] || '');
+                handleFilterChange(
+                  "date_from",
+                  range.from?.toISOString().split("T")[0] || "",
+                );
+                handleFilterChange(
+                  "date_to",
+                  range.to?.toISOString().split("T")[0] || "",
+                );
               }}
               className="w-full"
             />
@@ -453,7 +502,7 @@ export default function FilesPage() {
       {/* Drop Zone */}
       <Card
         className={`p-8 mb-6 border-2 border-dashed transition-colors ${
-          isDragOver ? 'border-blue-500 bg-blue-50' : 'border-gray-300'
+          isDragOver ? "border-blue-500 bg-blue-50" : "border-gray-300"
         }`}
         onDragOver={handleDragOver}
         onDragLeave={handleDragLeave}
@@ -461,16 +510,19 @@ export default function FilesPage() {
       >
         <div className="text-center">
           <CloudArrowUpIcon className="w-12 h-12 text-gray-400 mx-auto mb-4" />
-          <h3 className="text-lg font-medium mb-2">Drop files here to upload</h3>
+          <h3 className="text-lg font-medium mb-2">
+            Drop files here to upload
+          </h3>
           <p className="text-gray-500 mb-4">
-            Supports CAD files (.STEP, .STP, .IGES, .SLDPRT, .STL, .JT, .3MF, .DXF), PDFs, images, and archives
+            Supports CAD files (.STEP, .STP, .IGES, .SLDPRT, .STL, .JT, .3MF,
+            .DXF), PDFs, images, and archives
           </p>
           <p className="text-sm text-gray-400">Maximum file size: 200MB</p>
         </div>
       </Card>
 
       {/* Files Display */}
-      {viewMode === 'grid' ? (
+      {viewMode === "grid" ? (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
           {isLoading ? (
             Array.from({ length: 8 }).map((_, i) => (
@@ -486,13 +538,18 @@ export default function FilesPage() {
             <div className="col-span-full text-center py-12">
               <FolderIcon className="w-12 h-12 text-gray-400 mx-auto mb-4" />
               <h3 className="text-lg font-medium mb-2">No files yet</h3>
-              <p className="text-gray-500">Upload your first file to get started</p>
+              <p className="text-gray-500">
+                Upload your first file to get started
+              </p>
             </div>
           ) : (
             files.map((file) => {
               const IconComponent = getFileIcon(file.kind, file.mime);
               return (
-                <Card key={file.id} className="hover:shadow-md transition-shadow">
+                <Card
+                  key={file.id}
+                  className="hover:shadow-md transition-shadow"
+                >
                   <CardContent className="p-4">
                     <div className="flex items-center justify-between mb-3">
                       <IconComponent className="w-8 h-8 text-gray-400" />
@@ -501,7 +558,10 @@ export default function FilesPage() {
                       </Badge>
                     </div>
 
-                    <h3 className="font-medium text-sm mb-1 truncate" title={file.name}>
+                    <h3
+                      className="font-medium text-sm mb-1 truncate"
+                      title={file.name}
+                    >
                       {file.name}
                     </h3>
 
@@ -509,7 +569,9 @@ export default function FilesPage() {
                       <p>{formatFileSize(file.size_bytes)}</p>
                       <p>{formatDate(file.created_at)}</p>
                       {file.linked_type && (
-                        <p>{file.linked_type} #{file.linked_id?.slice(0, 8)}</p>
+                        <p>
+                          {file.linked_type} #{file.linked_id?.slice(0, 8)}
+                        </p>
                       )}
                     </div>
 
@@ -584,7 +646,9 @@ export default function FilesPage() {
                     <div className="flex flex-col items-center space-y-2">
                       <FolderIcon className="w-8 h-8 text-gray-400 mb-2" />
                       <p className="text-gray-500">No files yet</p>
-                      <p className="text-sm text-gray-400">Upload your first file to get started</p>
+                      <p className="text-sm text-gray-400">
+                        Upload your first file to get started
+                      </p>
                     </div>
                   </TableCell>
                 </TableRow>
@@ -598,7 +662,9 @@ export default function FilesPage() {
                           <IconComponent className="w-5 h-5 text-gray-400" />
                           <div>
                             <p className="font-medium">{file.name}</p>
-                            <p className="text-sm text-gray-500">{file.id.slice(0, 8)}</p>
+                            <p className="text-sm text-gray-500">
+                              {file.id.slice(0, 8)}
+                            </p>
                           </div>
                         </div>
                       </TableCell>
@@ -613,7 +679,9 @@ export default function FilesPage() {
                             {file.linked_type} #{file.linked_id?.slice(0, 8)}
                           </span>
                         ) : (
-                          <span className="text-sm text-gray-500">Unlinked</span>
+                          <span className="text-sm text-gray-500">
+                            Unlinked
+                          </span>
                         )}
                       </TableCell>
                       <TableCell className="text-sm text-gray-500">
@@ -674,7 +742,8 @@ export default function FilesPage() {
       {totalPages > 1 && (
         <div className="flex items-center justify-between mt-6">
           <div className="text-sm text-gray-500">
-            Showing {((page - 1) * ITEMS_PER_PAGE) + 1} to {Math.min(page * ITEMS_PER_PAGE, total)} of {total} files
+            Showing {(page - 1) * ITEMS_PER_PAGE + 1} to{" "}
+            {Math.min(page * ITEMS_PER_PAGE, total)} of {total} files
           </div>
           <div className="flex items-center space-x-2">
             <Button
@@ -701,11 +770,14 @@ export default function FilesPage() {
       )}
 
       {/* Preview Sheet */}
-      <Sheet open={!!previewFile} onOpenChange={() => {
-        setPreviewFile(null);
-        setSignedUrl('');
-        setCadPreviewUrl('');
-      }}>
+      <Sheet
+        open={!!previewFile}
+        onOpenChange={() => {
+          setPreviewFile(null);
+          setSignedUrl("");
+          setCadPreviewUrl("");
+        }}
+      >
         <SheetContent side="right" className="w-[600px] sm:w-[800px]">
           <SheetHeader>
             <SheetTitle>{previewFile?.name}</SheetTitle>
@@ -724,7 +796,7 @@ export default function FilesPage() {
               file={{
                 name: previewFile.name,
                 mime: previewFile.type,
-                size: previewFile.size
+                size: previewFile.size,
               }}
               signedUrl={signedUrl}
               className="h-[60vh]"
@@ -740,14 +812,14 @@ export default function FilesPage() {
               variant="outline"
               onClick={() => {
                 setPreviewFile(null);
-                setSignedUrl('');
-                setCadPreviewUrl('');
+                setSignedUrl("");
+                setCadPreviewUrl("");
               }}
             >
               Close
             </Button>
             {signedUrl && (
-              <Button onClick={() => window.open(signedUrl, '_blank')}>
+              <Button onClick={() => window.open(signedUrl, "_blank")}>
                 <CloudArrowDownIcon className="w-4 h-4 mr-2" />
                 Download
               </Button>

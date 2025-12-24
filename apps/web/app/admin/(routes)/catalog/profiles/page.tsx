@@ -1,21 +1,25 @@
-
-import { createClient } from '@/lib/supabase/server';
-import { cookies } from 'next/headers';
-import { PlusIcon, CheckCircleIcon, ClockIcon } from '@heroicons/react/20/solid';
+import { createClient } from "@/lib/supabase/server";
+import {
+  PlusIcon,
+  CheckCircleIcon,
+  ClockIcon,
+} from "@heroicons/react/20/solid";
 
 export default async function ProfilesPage() {
-  const supabase = await createClient()
+  const supabase = await createClient();
   const { data: profiles } = await supabase
-    .from('pricing_profiles')
-    .select(`
+    .from("pricing_profiles")
+    .select(
+      `
       *,
       machine_profile_links(
         machine:machines(
           name
         )
       )
-    `)
-    .order('created_at', { ascending: false })
+    `,
+    )
+    .order("created_at", { ascending: false });
 
   return (
     <div className="p-6">
@@ -31,7 +35,10 @@ export default async function ProfilesPage() {
             type="button"
             className="block rounded-md bg-primary px-3 py-2 text-center text-sm font-semibold text-white shadow-sm hover:bg-primary/90"
           >
-            <PlusIcon className="-ml-0.5 mr-1.5 h-5 w-5 inline-block" aria-hidden="true" />
+            <PlusIcon
+              className="-ml-0.5 mr-1.5 h-5 w-5 inline-block"
+              aria-hidden="true"
+            />
             New Profile
           </button>
         </div>
@@ -44,19 +51,34 @@ export default async function ProfilesPage() {
               <table className="min-w-full divide-y divide-gray-300">
                 <thead className="bg-gray-50">
                   <tr>
-                    <th scope="col" className="py-3.5 pl-4 pr-3 text-left text-sm font-semibold text-gray-900 sm:pl-6">
+                    <th
+                      scope="col"
+                      className="py-3.5 pl-4 pr-3 text-left text-sm font-semibold text-gray-900 sm:pl-6"
+                    >
                       Name
                     </th>
-                    <th scope="col" className="px-3 py-3.5 text-left text-sm font-semibold text-gray-900">
+                    <th
+                      scope="col"
+                      className="px-3 py-3.5 text-left text-sm font-semibold text-gray-900"
+                    >
                       Status
                     </th>
-                    <th scope="col" className="px-3 py-3.5 text-left text-sm font-semibold text-gray-900">
+                    <th
+                      scope="col"
+                      className="px-3 py-3.5 text-left text-sm font-semibold text-gray-900"
+                    >
                       Machines
                     </th>
-                    <th scope="col" className="px-3 py-3.5 text-left text-sm font-semibold text-gray-900">
+                    <th
+                      scope="col"
+                      className="px-3 py-3.5 text-left text-sm font-semibold text-gray-900"
+                    >
                       Effective Range
                     </th>
-                    <th scope="col" className="relative py-3.5 pl-3 pr-4 sm:pr-6">
+                    <th
+                      scope="col"
+                      className="relative py-3.5 pl-3 pr-4 sm:pr-6"
+                    >
                       <span className="sr-only">Actions</span>
                     </th>
                   </tr>
@@ -68,15 +90,23 @@ export default async function ProfilesPage() {
                         {profile.name}
                       </td>
                       <td className="whitespace-nowrap px-3 py-4 text-sm">
-                        <span className={`inline-flex items-center rounded-md px-2 py-1 text-xs font-medium ${
-                          profile.status === 'published'
-                            ? 'bg-green-50 text-green-700 ring-1 ring-inset ring-green-600/20'
-                            : 'bg-yellow-50 text-yellow-700 ring-1 ring-inset ring-yellow-600/20'
-                        }`}>
-                          {profile.status === 'published' ? (
-                            <CheckCircleIcon className="-ml-0.5 mr-1.5 h-4 w-4" aria-hidden="true" />
+                        <span
+                          className={`inline-flex items-center rounded-md px-2 py-1 text-xs font-medium ${
+                            profile.status === "published"
+                              ? "bg-green-50 text-green-700 ring-1 ring-inset ring-green-600/20"
+                              : "bg-yellow-50 text-yellow-700 ring-1 ring-inset ring-yellow-600/20"
+                          }`}
+                        >
+                          {profile.status === "published" ? (
+                            <CheckCircleIcon
+                              className="-ml-0.5 mr-1.5 h-4 w-4"
+                              aria-hidden="true"
+                            />
                           ) : (
-                            <ClockIcon className="-ml-0.5 mr-1.5 h-4 w-4" aria-hidden="true" />
+                            <ClockIcon
+                              className="-ml-0.5 mr-1.5 h-4 w-4"
+                              aria-hidden="true"
+                            />
                           )}
                           {profile.status}
                         </span>
@@ -87,11 +117,16 @@ export default async function ProfilesPage() {
                       <td className="whitespace-nowrap px-3 py-4 text-sm text-gray-500">
                         {profile.effective_from && profile.effective_to ? (
                           <>
-                            {new Date(profile.effective_from).toLocaleDateString()} -
-                            {new Date(profile.effective_to).toLocaleDateString()}
+                            {new Date(
+                              profile.effective_from,
+                            ).toLocaleDateString()}{" "}
+                            -
+                            {new Date(
+                              profile.effective_to,
+                            ).toLocaleDateString()}
                           </>
                         ) : (
-                          'Not set'
+                          "Not set"
                         )}
                       </td>
                       <td className="relative whitespace-nowrap py-4 pl-3 pr-4 text-right text-sm font-medium sm:pr-6">
@@ -102,7 +137,7 @@ export default async function ProfilesPage() {
                           >
                             Edit
                           </button>
-                          {profile.status === 'draft' && (
+                          {profile.status === "draft" && (
                             <button
                               type="button"
                               className="text-green-600 hover:text-green-700"
@@ -121,5 +156,5 @@ export default async function ProfilesPage() {
         </div>
       </div>
     </div>
-  )
+  );
 }

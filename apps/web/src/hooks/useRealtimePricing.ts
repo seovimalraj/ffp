@@ -239,7 +239,7 @@ export function useRealtimePricing(options: UseRealtimePricingOptions = {}): Use
         return next;
       });
     } catch (err) {
-      // eslint-disable-next-line no-console
+       
       console.warn('auto reconcile error', err);
     } finally {
       isReconcilingRef.current = false;
@@ -258,12 +258,12 @@ export function useRealtimePricing(options: UseRealtimePricingOptions = {}): Use
     sock.on('connect', () => setConnected(true));
     sock.on('disconnect', () => setConnected(false));
     sock.on('error', (err: any) => {
-      // eslint-disable-next-line no-console
+       
       console.warn('pricing socket error', err);
     });
     sock.on('connect_error', (err: any) => {
       // Best-effort reconnect on transient failures
-      // eslint-disable-next-line no-console
+       
       console.warn('pricing socket connect_error', err?.message || err);
       setTimeout(() => {
         if (socketRef.current && !socketRef.current.connected) {
@@ -361,7 +361,7 @@ export function useRealtimePricing(options: UseRealtimePricingOptions = {}): Use
       try {
         s.emit('recalculate_pricing', { quote_id: qid, quote_item_id: quoteItemId, config, correlation_id: correlationId });
       } catch (e) {
-        // eslint-disable-next-line no-console
+         
         console.warn('emit recalc failed', e);
       }
     }, 250);

@@ -1,19 +1,25 @@
-'use client';
+"use client";
 
-import React, { useState, useEffect } from 'react';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Textarea } from '@/components/ui/textarea';
-import { Badge } from '@/components/ui/badge';
-import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
+import React, { useState, useEffect } from "react";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Textarea } from "@/components/ui/textarea";
+import { Badge } from "@/components/ui/badge";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import {
   TruckIcon,
   ClockIcon,
   CurrencyDollarIcon,
-} from '@heroicons/react/24/outline';
+} from "@heroicons/react/24/outline";
 
 interface ShippingStepProps {
   readonly quote: any;
@@ -42,56 +48,60 @@ interface ShippingRate {
   readonly business_days: number;
 }
 
-export function ShippingStep({ quote, onSave, saving }: ShippingStepProps) {
+export function ShippingStep({ onSave, saving }: ShippingStepProps) {
   const [shippingAddress, setShippingAddress] = useState<Address>({
-    company: '',
-    attention: '',
-    street1: '',
-    street2: '',
-    city: '',
-    state_province: '',
-    postal_code: '',
-    country: 'US',
-    phone: '',
+    company: "",
+    attention: "",
+    street1: "",
+    street2: "",
+    city: "",
+    state_province: "",
+    postal_code: "",
+    country: "US",
+    phone: "",
   });
 
-  const [incoterm, setIncoterm] = useState('DAP');
-  const [selectedShippingRate, setSelectedShippingRate] = useState<string>('');
-  const [deliveryNotes, setDeliveryNotes] = useState('');
+  const [incoterm, setIncoterm] = useState("DAP");
+  const [selectedShippingRate, setSelectedShippingRate] = useState<string>("");
+  const [deliveryNotes, setDeliveryNotes] = useState("");
   const [shippingRates, setShippingRates] = useState<ShippingRate[]>([]);
   const [loadingRates, setLoadingRates] = useState(false);
 
   // Mock shipping rates
   const mockShippingRates: ShippingRate[] = [
     {
-      id: 'rate-1',
-      carrier: 'FedEx',
-      service: 'Ground',
-      eta: '3-5 business days',
-      cost_estimate: 45.00,
+      id: "rate-1",
+      carrier: "FedEx",
+      service: "Ground",
+      eta: "3-5 business days",
+      cost_estimate: 45.0,
       business_days: 5,
     },
     {
-      id: 'rate-2',
-      carrier: 'UPS',
-      service: 'Ground',
-      eta: '2-3 business days',
-      cost_estimate: 65.00,
+      id: "rate-2",
+      carrier: "UPS",
+      service: "Ground",
+      eta: "2-3 business days",
+      cost_estimate: 65.0,
       business_days: 3,
     },
     {
-      id: 'rate-3',
-      carrier: 'FedEx',
-      service: 'Express',
-      eta: '1-2 business days',
-      cost_estimate: 125.00,
+      id: "rate-3",
+      carrier: "FedEx",
+      service: "Express",
+      eta: "1-2 business days",
+      cost_estimate: 125.0,
       business_days: 2,
     },
   ];
 
   useEffect(() => {
     // Load shipping rates when address is filled
-    if (shippingAddress.street1 && shippingAddress.city && shippingAddress.postal_code) {
+    if (
+      shippingAddress.street1 &&
+      shippingAddress.city &&
+      shippingAddress.postal_code
+    ) {
       loadShippingRates();
     }
   }, [shippingAddress]);
@@ -99,49 +109,54 @@ export function ShippingStep({ quote, onSave, saving }: ShippingStepProps) {
   const loadShippingRates = async () => {
     setLoadingRates(true);
     // Simulate API call
-    await new Promise(resolve => setTimeout(resolve, 1500));
+    await new Promise((resolve) => setTimeout(resolve, 1500));
     setShippingRates(mockShippingRates);
     setLoadingRates(false);
   };
 
   const handleAddressChange = (field: keyof Address, value: string) => {
-    setShippingAddress(prev => ({ ...prev, [field]: value }));
+    setShippingAddress((prev) => ({ ...prev, [field]: value }));
   };
 
   const handleUseBillingAddress = () => {
     // In real implementation: copy from billing address
     setShippingAddress({
-      company: 'Acme Manufacturing Corp',
-      attention: 'John Doe',
-      street1: '123 Industrial Blvd',
-      street2: 'Suite 100',
-      city: 'Springfield',
-      state_province: 'IL',
-      postal_code: '62701',
-      country: 'US',
-      phone: '+1-555-0123',
+      company: "Acme Manufacturing Corp",
+      attention: "John Doe",
+      street1: "123 Industrial Blvd",
+      street2: "Suite 100",
+      city: "Springfield",
+      state_province: "IL",
+      postal_code: "62701",
+      country: "US",
+      phone: "+1-555-0123",
     });
   };
 
   const handleSaveAddress = () => {
     // In real implementation: POST to save address
-    alert('Address saved to address book');
+    alert("Address saved to address book");
   };
 
   const handleSave = () => {
     // Basic validation
-    if (!shippingAddress.street1 || !shippingAddress.city || !shippingAddress.postal_code || !shippingAddress.country) {
-      alert('Please fill in all required shipping address fields.');
+    if (
+      !shippingAddress.street1 ||
+      !shippingAddress.city ||
+      !shippingAddress.postal_code ||
+      !shippingAddress.country
+    ) {
+      alert("Please fill in all required shipping address fields.");
       return;
     }
 
-    if (shippingAddress.country === 'US' && !shippingAddress.state_province) {
-      alert('State is required for US addresses.');
+    if (shippingAddress.country === "US" && !shippingAddress.state_province) {
+      alert("State is required for US addresses.");
       return;
     }
 
     if (!selectedShippingRate) {
-      alert('Please select a shipping method.');
+      alert("Please select a shipping method.");
       return;
     }
 
@@ -157,12 +172,12 @@ export function ShippingStep({ quote, onSave, saving }: ShippingStepProps) {
 
   const getIncotermDescription = (term: string) => {
     const descriptions: Record<string, string> = {
-      EXW: 'Ex Works - Seller makes goods available at their location',
-      FOB: 'Free on Board - Seller delivers to port of shipment',
-      DAP: 'Delivered at Place - Seller delivers to buyer\'s location (no import duties)',
-      DDP: 'Delivered Duty Paid - Seller handles everything including import duties',
+      EXW: "Ex Works - Seller makes goods available at their location",
+      FOB: "Free on Board - Seller delivers to port of shipment",
+      DAP: "Delivered at Place - Seller delivers to buyer's location (no import duties)",
+      DDP: "Delivered Duty Paid - Seller handles everything including import duties",
     };
-    return descriptions[term] || '';
+    return descriptions[term] || "";
   };
 
   const renderShippingRates = () => {
@@ -177,15 +192,18 @@ export function ShippingStep({ quote, onSave, saving }: ShippingStepProps) {
 
     if (shippingRates.length > 0) {
       return (
-        <RadioGroup value={selectedShippingRate} onValueChange={setSelectedShippingRate}>
+        <RadioGroup
+          value={selectedShippingRate}
+          onValueChange={setSelectedShippingRate}
+        >
           <div className="space-y-3">
             {shippingRates.map((rate) => (
               <div
                 key={rate.id}
                 className={`border rounded-lg p-4 cursor-pointer transition-colors ${
                   selectedShippingRate === rate.id
-                    ? 'border-blue-500 bg-blue-50'
-                    : 'border-gray-200 hover:border-gray-300'
+                    ? "border-blue-500 bg-blue-50"
+                    : "border-gray-200 hover:border-gray-300"
                 }`}
               >
                 <div className="flex items-start space-x-3">
@@ -193,11 +211,17 @@ export function ShippingStep({ quote, onSave, saving }: ShippingStepProps) {
                   <div className="flex-1">
                     <div className="flex items-center justify-between mb-2">
                       <div className="flex items-center space-x-2">
-                        <span className="font-medium">{rate.carrier} {rate.service}</span>
-                        <Badge variant="secondary">{rate.business_days} days</Badge>
+                        <span className="font-medium">
+                          {rate.carrier} {rate.service}
+                        </span>
+                        <Badge variant="secondary">
+                          {rate.business_days} days
+                        </Badge>
                       </div>
                       <div className="text-right">
-                        <div className="font-semibold">${rate.cost_estimate.toFixed(2)}</div>
+                        <div className="font-semibold">
+                          ${rate.cost_estimate.toFixed(2)}
+                        </div>
                       </div>
                     </div>
                     <div className="flex items-center space-x-4 text-sm text-gray-600">
@@ -241,7 +265,11 @@ export function ShippingStep({ quote, onSave, saving }: ShippingStepProps) {
           <div className="flex items-center justify-between">
             <h3 className="text-lg font-medium">Shipping Address</h3>
             <div className="flex space-x-2">
-              <Button variant="outline" size="sm" onClick={handleUseBillingAddress}>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleUseBillingAddress}
+              >
                 Use Billing Address
               </Button>
               <Button variant="outline" size="sm" onClick={handleSaveAddress}>
@@ -256,7 +284,7 @@ export function ShippingStep({ quote, onSave, saving }: ShippingStepProps) {
               <Input
                 id="ship-company"
                 value={shippingAddress.company}
-                onChange={(e) => handleAddressChange('company', e.target.value)}
+                onChange={(e) => handleAddressChange("company", e.target.value)}
                 placeholder="Company name"
               />
             </div>
@@ -266,7 +294,9 @@ export function ShippingStep({ quote, onSave, saving }: ShippingStepProps) {
               <Input
                 id="ship-attention"
                 value={shippingAddress.attention}
-                onChange={(e) => handleAddressChange('attention', e.target.value)}
+                onChange={(e) =>
+                  handleAddressChange("attention", e.target.value)
+                }
                 placeholder="Contact person"
               />
             </div>
@@ -276,7 +306,7 @@ export function ShippingStep({ quote, onSave, saving }: ShippingStepProps) {
               <Input
                 id="ship-street1"
                 value={shippingAddress.street1}
-                onChange={(e) => handleAddressChange('street1', e.target.value)}
+                onChange={(e) => handleAddressChange("street1", e.target.value)}
                 placeholder="Street address"
                 required
               />
@@ -287,7 +317,7 @@ export function ShippingStep({ quote, onSave, saving }: ShippingStepProps) {
               <Input
                 id="ship-street2"
                 value={shippingAddress.street2}
-                onChange={(e) => handleAddressChange('street2', e.target.value)}
+                onChange={(e) => handleAddressChange("street2", e.target.value)}
                 placeholder="Apartment, suite, etc."
               />
             </div>
@@ -297,7 +327,7 @@ export function ShippingStep({ quote, onSave, saving }: ShippingStepProps) {
               <Input
                 id="ship-city"
                 value={shippingAddress.city}
-                onChange={(e) => handleAddressChange('city', e.target.value)}
+                onChange={(e) => handleAddressChange("city", e.target.value)}
                 placeholder="City"
                 required
               />
@@ -308,7 +338,9 @@ export function ShippingStep({ quote, onSave, saving }: ShippingStepProps) {
               <Input
                 id="ship-state"
                 value={shippingAddress.state_province}
-                onChange={(e) => handleAddressChange('state_province', e.target.value)}
+                onChange={(e) =>
+                  handleAddressChange("state_province", e.target.value)
+                }
                 placeholder="State or Province"
               />
             </div>
@@ -318,7 +350,9 @@ export function ShippingStep({ quote, onSave, saving }: ShippingStepProps) {
               <Input
                 id="ship-postal"
                 value={shippingAddress.postal_code}
-                onChange={(e) => handleAddressChange('postal_code', e.target.value)}
+                onChange={(e) =>
+                  handleAddressChange("postal_code", e.target.value)
+                }
                 placeholder="Postal code"
                 required
               />
@@ -328,7 +362,7 @@ export function ShippingStep({ quote, onSave, saving }: ShippingStepProps) {
               <Label htmlFor="ship-country">Country *</Label>
               <Select
                 value={shippingAddress.country}
-                onValueChange={(value) => handleAddressChange('country', value)}
+                onValueChange={(value) => handleAddressChange("country", value)}
               >
                 <SelectTrigger>
                   <SelectValue placeholder="Select country" />
@@ -350,7 +384,7 @@ export function ShippingStep({ quote, onSave, saving }: ShippingStepProps) {
               <Input
                 id="ship-phone"
                 value={shippingAddress.phone}
-                onChange={(e) => handleAddressChange('phone', e.target.value)}
+                onChange={(e) => handleAddressChange("phone", e.target.value)}
                 placeholder="Phone number"
                 type="tel"
               />
@@ -379,10 +413,11 @@ export function ShippingStep({ quote, onSave, saving }: ShippingStepProps) {
               {getIncotermDescription(incoterm)}
             </p>
 
-            {incoterm === 'DDP' && shippingAddress.country !== 'US' && (
+            {incoterm === "DDP" && shippingAddress.country !== "US" && (
               <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
                 <p className="text-sm text-blue-800">
-                  <strong>Note:</strong> DDP includes import duties and brokerage fees that will be added to your invoice.
+                  <strong>Note:</strong> DDP includes import duties and
+                  brokerage fees that will be added to your invoice.
                 </p>
               </div>
             )}
@@ -416,11 +451,12 @@ export function ShippingStep({ quote, onSave, saving }: ShippingStepProps) {
 
         {/* Footer */}
         <div className="flex justify-between pt-6 border-t">
-          <Button variant="outline">
-            Back
-          </Button>
-          <Button onClick={handleSave} disabled={saving || !selectedShippingRate}>
-            {saving ? 'Saving...' : 'Save & Continue'}
+          <Button variant="outline">Back</Button>
+          <Button
+            onClick={handleSave}
+            disabled={saving || !selectedShippingRate}
+          >
+            {saving ? "Saving..." : "Save & Continue"}
           </Button>
         </div>
       </CardContent>

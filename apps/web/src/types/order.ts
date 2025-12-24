@@ -1,8 +1,18 @@
 export interface Order {
   id: string;
   quote_id: string;
-  status: 'Pending' | 'In_Production' | 'QA_Incoming' | 'QA_Final' | 'Ready_To_Ship' | 'Shipped' | 'Completed' | 'On_Hold' | 'Cancelled' | 'Refunded';
-  source: 'web' | 'widget' | 'large_order';
+  status:
+    | "Pending"
+    | "In_Production"
+    | "QA_Incoming"
+    | "QA_Final"
+    | "Ready_To_Ship"
+    | "Shipped"
+    | "Completed"
+    | "On_Hold"
+    | "Cancelled"
+    | "Refunded";
+  source: "web" | "widget" | "large_order";
   created_at: string;
   updated_at: string;
   eta_date?: string;
@@ -31,7 +41,7 @@ export interface Order {
     };
   };
   shipping_method?: string;
-  incoterms?: 'EXW' | 'FOB' | 'DDP';
+  incoterms?: "EXW" | "FOB" | "DDP";
   shipments: Shipment[];
   documents: Document[];
   invoices: Invoice[];
@@ -40,10 +50,15 @@ export interface Order {
 
 export interface Shipment {
   id: string;
-  carrier: 'UPS' | 'FedEx' | 'DHL' | 'USPS' | 'Other';
-  service: 'Ground' | '2Day' | 'Overnight' | 'Freight' | 'Int\'l';
+  carrier: "UPS" | "FedEx" | "DHL" | "USPS" | "Other";
+  service: "Ground" | "2Day" | "Overnight" | "Freight" | "Int'l";
   tracking_numbers: string[];
-  status: 'Label_Created' | 'In_Transit' | 'Out_For_Delivery' | 'Delivered' | 'Exception';
+  status:
+    | "Label_Created"
+    | "In_Transit"
+    | "Out_For_Delivery"
+    | "Delivered"
+    | "Exception";
   packages: Array<{
     weight_kg: number;
     dimensions_cm: [number, number, number];
@@ -63,12 +78,21 @@ export interface TrackingEvent {
 
 export interface Document {
   id: string;
-  type: 'QAP' | 'Certificate' | 'FAIR' | 'Measurement' | 'Invoice' | 'Receipt' | 'CoC' | 'MaterialCert';
+  type:
+    | "QAP"
+    | "Certificate"
+    | "FAIR"
+    | "Measurement"
+    | "Invoice"
+    | "Receipt"
+    | "CoC"
+    | "MaterialCert"
+    | "PDF";
   title: string;
-  status: 'Draft' | 'Generating' | 'Ready' | 'Failed' | 'Revoked';
+  status: "Draft" | "Generating" | "Ready" | "Failed" | "Revoked";
   version: number;
   file_id: string;
-  linked_type: 'Quote' | 'Order' | 'Part' | 'Organization';
+  linked_type: "Quote" | "Order" | "Part" | "Organization";
   linked_id: string;
   created_by: string;
   created_at: string;
@@ -86,9 +110,9 @@ export interface File {
   name: string;
   mime: string;
   size_bytes: number;
-  kind: 'CAD' | 'Drawing' | 'PDF' | 'Image' | 'Zip' | 'Other';
+  kind: "CAD" | "Drawing" | "PDF" | "Image" | "Zip" | "Other";
   owner_org_id: string;
-  linked_type?: 'Quote' | 'Order' | 'Part';
+  linked_type?: "Quote" | "Order" | "Part";
   linked_id?: string;
   preview_ready: boolean;
   created_at: string;
@@ -97,14 +121,14 @@ export interface File {
 export interface QAPTemplate {
   id: string;
   name: string;
-  process: 'CNC' | 'Sheet' | 'Molding';
+  process: "CNC" | "Sheet" | "Molding";
   revision: string;
 }
 
 export interface Invoice {
   id: string;
   order_id: string;
-  status: 'Open' | 'Paid' | 'Refunded';
+  status: "Open" | "Paid" | "Refunded";
   amount: number;
   currency: string;
   created_at: string;
@@ -113,7 +137,7 @@ export interface Invoice {
 export interface Message {
   id: string;
   author: string;
-  role: 'buyer' | 'support';
+  role: "buyer" | "support";
   body: string;
   attachments: Document[];
   created_at: string;
@@ -150,7 +174,7 @@ export interface UserProfile {
   name: string;
   email: string;
   avatar_url?: string;
-  sso_providers: ('google' | 'github' | 'azuread')[];
+  sso_providers: ("google" | "github" | "azuread")[];
   phone?: string;
   mfa_enabled: boolean;
   created_at: string;
@@ -161,8 +185,8 @@ export interface Organization {
   id: string;
   name: string;
   legal_name?: string;
-  default_currency: 'USD' | 'EUR' | 'GBP' | 'JPY' | 'CAD' | 'AUD';
-  default_units: 'mm' | 'in';
+  default_currency: "USD" | "EUR" | "GBP" | "JPY" | "CAD" | "AUD";
+  default_units: "mm" | "in";
   itar_mode: boolean;
   onshore_only: boolean;
   tax_ids: TaxId[];
@@ -173,7 +197,7 @@ export interface Organization {
 
 export interface Address {
   id: string;
-  type: 'billing' | 'shipping';
+  type: "billing" | "shipping";
   line1: string;
   line2?: string;
   city: string;
@@ -189,7 +213,7 @@ export interface Address {
 
 export interface TaxId {
   id: string;
-  type: 'VAT' | 'EIN' | 'GST' | 'Other';
+  type: "VAT" | "EIN" | "GST" | "Other";
   value: string;
   country: string;
   verified: boolean;
@@ -201,8 +225,8 @@ export interface TaxId {
 export interface Member {
   user_id: string;
   org_id: string;
-  role: 'buyer' | 'org_admin' | 'reviewer' | 'operator' | 'finance';
-  status: 'active' | 'invited' | 'disabled';
+  role: "buyer" | "org_admin" | "reviewer" | "operator" | "finance";
+  status: "active" | "invited" | "disabled";
   invited_at?: string;
   joined_at?: string;
   last_active_at?: string;
@@ -241,7 +265,7 @@ export interface EmailPref {
 export interface SavedTemplate {
   id: string;
   org_id: string;
-  type: 'material' | 'finish' | 'inspection';
+  type: "material" | "finish" | "inspection";
   label: string;
   payload: any; // JSON payload based on template type
   created_by: string;
@@ -252,23 +276,32 @@ export interface SavedTemplate {
 
 // RBAC Types
 export type Permission =
-  | 'profile:read_write'
-  | 'addresses:read_write'
-  | 'email_prefs:read_write'
-  | 'templates:read_write'
-  | 'addresses:read'
-  | 'templates:read'
-  | 'tax:read_write'
-  | '*';
+  | "profile:read_write"
+  | "addresses:read_write"
+  | "email_prefs:read_write"
+  | "templates:read_write"
+  | "addresses:read"
+  | "templates:read"
+  | "tax:read_write"
+  | "*";
 
-export type Role = 'buyer' | 'org_admin' | 'reviewer' | 'operator' | 'finance';
+export type Role = "buyer" | "org_admin" | "reviewer" | "operator" | "finance";
 
 export const ROLE_PERMISSIONS: Record<Role, Permission[]> = {
-  buyer: ['profile:read_write', 'addresses:read_write', 'email_prefs:read_write', 'templates:read_write'],
-  org_admin: ['*'],
-  reviewer: ['templates:read_write', 'addresses:read', 'email_prefs:read_write'],
-  operator: ['addresses:read', 'templates:read'],
-  finance: ['addresses:read_write', 'tax:read_write', 'email_prefs:read_write']
+  buyer: [
+    "profile:read_write",
+    "addresses:read_write",
+    "email_prefs:read_write",
+    "templates:read_write",
+  ],
+  org_admin: ["*"],
+  reviewer: [
+    "templates:read_write",
+    "addresses:read",
+    "email_prefs:read_write",
+  ],
+  operator: ["addresses:read", "templates:read"],
+  finance: ["addresses:read_write", "tax:read_write", "email_prefs:read_write"],
 };
 
 // Form Types
@@ -280,14 +313,14 @@ export interface ProfileFormData {
 export interface OrganizationFormData {
   name: string;
   legal_name?: string;
-  default_currency: Organization['default_currency'];
-  default_units: Organization['default_units'];
+  default_currency: Organization["default_currency"];
+  default_units: Organization["default_units"];
   itar_mode: boolean;
   onshore_only: boolean;
 }
 
 export interface AddressFormData {
-  type: Address['type'];
+  type: Address["type"];
   line1: string;
   line2?: string;
   city: string;
@@ -297,14 +330,14 @@ export interface AddressFormData {
 }
 
 export interface TaxIdFormData {
-  type: TaxId['type'];
+  type: TaxId["type"];
   value: string;
   country: string;
 }
 
 export interface InviteFormData {
   email: string;
-  role: Member['role'];
+  role: Member["role"];
 }
 
 export interface ApiTokenFormData {
@@ -313,7 +346,7 @@ export interface ApiTokenFormData {
 }
 
 export interface TemplateFormData {
-  type: SavedTemplate['type'];
+  type: SavedTemplate["type"];
   label: string;
   payload: any;
 }
@@ -345,7 +378,14 @@ export interface HelpArticle {
   id: string;
   slug: string;
   title: string;
-  category: 'Getting Started' | 'File Formats' | 'Pricing Rules' | 'DFM Guide' | 'Payments' | 'Orders' | 'Privacy & Security';
+  category:
+    | "Getting Started"
+    | "File Formats"
+    | "Pricing Rules"
+    | "DFM Guide"
+    | "Payments"
+    | "Orders"
+    | "Privacy & Security";
   body_md: string;
   last_updated: string;
   related_ids: string[];
@@ -356,11 +396,18 @@ export interface SupportTicket {
   org_id: string | null;
   submitter_email: string;
   subject: string;
-  severity: 'Low' | 'Normal' | 'High' | 'Critical';
-  product_area: 'Instant Quote' | 'CAD/DFM' | 'Pricing' | 'Checkout' | 'Orders' | 'Documents' | 'Other';
+  severity: "Low" | "Normal" | "High" | "Critical";
+  product_area:
+    | "Instant Quote"
+    | "CAD/DFM"
+    | "Pricing"
+    | "Checkout"
+    | "Orders"
+    | "Documents"
+    | "Other";
   description_md: string;
   attachments: string[];
-  status: 'Open' | 'Assigned' | 'Awaiting Customer' | 'Resolved' | 'Closed';
+  status: "Open" | "Assigned" | "Awaiting Customer" | "Resolved" | "Closed";
   assignee_user_id: string | null;
   created_at: string;
 }
@@ -368,7 +415,7 @@ export interface SupportTicket {
 export interface LeadCapture {
   id: string;
   email: string;
-  source: 'embed' | 'web';
+  source: "embed" | "web";
   utm: Record<string, any>;
   quote_id: string | null;
   verified: boolean;

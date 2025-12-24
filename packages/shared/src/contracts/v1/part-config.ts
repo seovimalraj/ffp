@@ -1,17 +1,17 @@
 // Versioned contract: PartConfig (v1)
 // This file defines the canonical shape for a configurable quote part used in instant quoting.
-import type { QuoteComplianceSnapshotV1 } from './pricing-compliance';
+import type { QuoteComplianceSnapshotV1 } from "./pricing-compliance";
 
 export type ProcessType =
-  | 'cnc_milling'
-  | 'cnc_turning'
-  | 'sheet_metal' // consolidated generic sheet metal process used by UI & pricing engine
-  | 'sheet_metal_laser'
-  | 'sheet_metal_brake';
+  | "cnc_milling"
+  | "cnc_turning"
+  | "sheet_metal" // consolidated generic sheet metal process used by UI & pricing engine
+  | "sheet_metal_laser"
+  | "sheet_metal_brake";
 
-export type LeadTimeOption = 'standard' | 'expedited';
-export type ToleranceClass = 'standard' | 'precision' | 'high' | 'custom';
-export type InspectionLevel = 'basic' | 'enhanced' | 'full';
+export type LeadTimeOption = "standard" | "expedited";
+export type ToleranceClass = "standard" | "precision" | "high" | "custom";
+export type InspectionLevel = "basic" | "enhanced" | "full";
 
 export interface GeometryMetricsV1 {
   volume_cc?: number;
@@ -59,7 +59,7 @@ export interface PricingBreakdownV1 {
   tolerance?: {
     band: string;
     category: string;
-    source: 'id' | 'class' | 'default';
+    source: "id" | "class" | "default";
     multipliers: {
       machining: number;
       setup: number;
@@ -74,23 +74,23 @@ export interface QuantityPricePointV1 {
   total_price: number;
   lead_time_days: number;
   breakdown: PricingBreakdownV1;
-  status?: 'ready' | 'pending' | 'review_required';
+  status?: "ready" | "pending" | "review_required";
   compliance?: QuoteComplianceSnapshotV1;
 }
 
 export interface DfmIssueV1 {
   id: string;
-  severity: 'info' | 'warn' | 'critical';
+  severity: "info" | "warn" | "critical";
   category:
-    | 'undercut'
-    | 'thin_wall'
-    | 'deep_hole'
-    | 'bend_radius'
-    | 'tolerance_risk'
-    | 'material_flag'
-    | 'feature_density'
-    | 'surface_finish_risk'
-    | 'geometry_complexity';
+    | "undercut"
+    | "thin_wall"
+    | "deep_hole"
+    | "bend_radius"
+    | "tolerance_risk"
+    | "material_flag"
+    | "feature_density"
+    | "surface_finish_risk"
+    | "geometry_complexity";
   message: string;
   recommendation?: string;
   refs?: {
@@ -118,9 +118,9 @@ export interface PartConfigV1 {
   secondary_operations: string[]; // e.g. ['anodizing','powder_coat','tapping']
   inspection_level: InspectionLevel;
   /** CNC specific: requested surface finish quality */
-  surface_finish?: 'standard' | 'improved' | 'fine';
+  surface_finish?: "standard" | "improved" | "fine";
   /** CNC specific: machining complexity factor */
-  machining_complexity?: 'low' | 'medium' | 'high';
+  machining_complexity?: "low" | "medium" | "high";
   /** Sheet metal: material thickness in mm */
   sheet_thickness_mm?: number;
   /** Sheet metal: number of bends (can override geometry derived) */
@@ -131,11 +131,11 @@ export interface PartConfigV1 {
     metrics: GeometryMetricsV1;
   };
   dfm: {
-    status: 'pending' | 'complete' | 'failed';
+    status: "pending" | "complete" | "failed";
     issues: DfmIssueV1[];
   };
   pricing: {
-    status: 'pending' | 'ready' | 'review_required';
+    status: "pending" | "ready" | "review_required";
     matrix: QuantityPricePointV1[]; // Each quantity point result
     currency: string;
   };
@@ -152,7 +152,16 @@ export interface PartConfigV1 {
 
 export interface QuoteSummaryV1 {
   id: string;
-  status: 'draft' | 'processing' | 'ready' | 'sent' | 'accepted' | 'rejected' | 'expired' | 'cancelled' | 'converted';
+  status:
+    | "draft"
+    | "processing"
+    | "ready"
+    | "sent"
+    | "accepted"
+    | "rejected"
+    | "expired"
+    | "cancelled"
+    | "converted";
   currency: string;
   parts: PartConfigV1[];
   subtotal: number; // sum of selected quantity totals

@@ -3,10 +3,10 @@
  * Interactive controls for quantity, material, process, and lead time
  */
 
-'use client';
+"use client";
 
-import React from 'react';
-import { PricingRequest, LeadClass } from '@/lib/pricing/types';
+import React from "react";
+import { PricingRequest } from "@/lib/pricing/types";
 
 export interface ConfigTogglesProps {
   value: PricingRequest;
@@ -23,7 +23,7 @@ export function ConfigToggles({
   value,
   onChange,
   disabled = false,
-  className = '',
+  className = "",
 }: ConfigTogglesProps) {
   return (
     <div className={`grid grid-cols-1 md:grid-cols-2 gap-4 ${className}`}>
@@ -62,7 +62,9 @@ export function ConfigToggles({
         <select
           id="material-select"
           value={value.material_code}
-          onChange={(e) => onChange({ ...value, material_code: e.target.value })}
+          onChange={(e) =>
+            onChange({ ...value, material_code: e.target.value })
+          }
           disabled={disabled}
           aria-label="Material"
           className="px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
@@ -112,7 +114,7 @@ export function ConfigToggles({
           aria-label="Lead time selection"
           className="flex gap-2"
         >
-          {(['econ', 'std', 'express'] as const).map((leadClass) => (
+          {(["econ", "std", "express"] as const).map((leadClass) => (
             <button
               key={leadClass}
               type="button"
@@ -123,16 +125,16 @@ export function ConfigToggles({
                 flex-1 px-4 py-2 rounded-md text-sm font-medium transition-all
                 ${
                   value.lead_class === leadClass
-                    ? 'bg-blue-600 text-white shadow-md'
-                    : 'bg-gray-100 text-gray-700 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700'
+                    ? "bg-blue-600 text-white shadow-md"
+                    : "bg-gray-100 text-gray-700 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700"
                 }
                 disabled:opacity-50 disabled:cursor-not-allowed
                 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2
               `}
             >
-              {leadClass === 'econ' && '10 days'}
-              {leadClass === 'std' && '7 days'}
-              {leadClass === 'express' && '3 days'}
+              {leadClass === "econ" && "10 days"}
+              {leadClass === "std" && "7 days"}
+              {leadClass === "express" && "3 days"}
             </button>
           ))}
         </div>

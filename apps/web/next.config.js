@@ -3,15 +3,24 @@
  * @raci docs/governance/raci-matrix.yaml
  */
 
+const path = require("path");
+
 const nextConfig = {
   reactStrictMode: true,
-  output: "standalone",
+  output:
+    process.env.NEXT_OUTPUT === "standalone"
+      ? "standalone"
+      : process.platform === "win32"
+        ? undefined
+        : "standalone",
   transpilePackages: ["three"],
+  turbopack: {},
   experimental: {
     serverActions: {
       allowedOrigins: ["localhost:3000", "app.frigate.ai"],
     },
     forceSwcTransforms: true,
+    outputFileTracingRoot: path.join(__dirname, "../../"),
   },
   webpack: (config, { isServer }) => {
     // Enable WebAssembly support for OpenCascade.js

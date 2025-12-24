@@ -19,7 +19,6 @@ export default function QapTemplateEditor() {
   const params = useParams() as { id: string };
   const router = useRouter();
 
-
   const [template, setTemplate] = useState<QapTemplate | null>(null);
   const [isSaving, setIsSaving] = useState(false);
   const [isPreviewMode, setIsPreviewMode] = useState(false);

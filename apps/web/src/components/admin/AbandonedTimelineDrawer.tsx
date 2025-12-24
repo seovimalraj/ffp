@@ -1,68 +1,56 @@
-'use client'
+"use client";
 
-import { useState } from 'react'
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import { Button } from '@/components/ui/button'
-import { Badge } from '@/components/ui/badge'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { useAbandonedQuotes } from '@/components/providers/AbandonedQuotesProvider'
-import { PhoneIcon, EnvelopeIcon, ArrowPathIcon, PaperAirplaneIcon } from '@heroicons/react/24/outline'
-
-interface ActivityEvent {
-  id: string
-  quote_id: string
-  user_id: string
-  actor_role: 'buyer' | 'org_admin' | 'guest'
-  name: string
-  ts: string
-  props: Record<string, any>
-}
+import { useState } from "react";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { useAbandonedQuotes } from "@/components/providers/AbandonedQuotesProvider";
+import {
+  PhoneIcon,
+  EnvelopeIcon,
+  ArrowPathIcon,
+} from "@heroicons/react/24/outline";
 
 export function AbandonedTimelineDrawer() {
-  const { selectedQuoteId, timeline, selectQuote } = useAbandonedQuotes()
-  const [activeTab, setActiveTab] = useState('timeline')
-
-  const selectedQuote = selectedQuoteId ? {
-    id: selectedQuoteId,
-    buyer_name: 'John Doe',
-    buyer_email: 'john@example.com',
-    subtotal: 125.50,
-    files_count: 1,
-    selected_lead_option: null,
-    // Mock data for the drawer
-  } : null
-
+  const { selectedQuoteId, timeline, selectQuote } = useAbandonedQuotes();
+  const [activeTab, setActiveTab] = useState("timeline");
   const handleClose = () => {
-    selectQuote(null)
-  }
+    selectQuote(null);
+  };
 
   const handleCallBuyer = () => {
     // In a real implementation, this would initiate a phone call
-  }
+  };
 
   const handleEmailQuote = () => {
     // In a real implementation, this would send an email
-  }
+  };
 
   const handleDuplicateQuote = () => {
     // In a real implementation, this would duplicate the quote
-  }
+  };
 
   const formatEventName = (name: string) => {
-    return name.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())
-  }
+    return name.replace(/_/g, " ").replace(/\b\w/g, (l) => l.toUpperCase());
+  };
 
   const getEventIcon = (name: string) => {
-    if (name.includes('view')) return '👁️'
-    if (name.includes('upload')) return '📁'
-    if (name.includes('cad')) return '⚙️'
-    if (name.includes('price')) return '💰'
-    if (name.includes('lead')) return '⏱️'
-    if (name.includes('checkout')) return '🛒'
-    if (name.includes('promo')) return '🎫'
-    return '📝'
-  }
+    if (name.includes("view")) return "👁️";
+    if (name.includes("upload")) return "📁";
+    if (name.includes("cad")) return "⚙️";
+    if (name.includes("price")) return "💰";
+    if (name.includes("lead")) return "⏱️";
+    if (name.includes("checkout")) return "🛒";
+    if (name.includes("promo")) return "🎫";
+    return "📝";
+  };
 
   return (
     <Dialog open={!!selectedQuoteId} onOpenChange={handleClose}>
@@ -88,7 +76,10 @@ export function AbandonedTimelineDrawer() {
                 </div>
               ) : (
                 timeline.map((event) => (
-                  <div key={event.id} className="flex items-start space-x-3 p-4 border rounded-lg">
+                  <div
+                    key={event.id}
+                    className="flex items-start space-x-3 p-4 border rounded-lg"
+                  >
                     <div className="text-2xl">{getEventIcon(event.name)}</div>
                     <div className="flex-1">
                       <div className="flex items-center justify-between">
@@ -105,7 +96,9 @@ export function AbandonedTimelineDrawer() {
                       {Object.keys(event.props).length > 0 && (
                         <div className="mt-2 text-xs text-gray-500">
                           <details>
-                            <summary className="cursor-pointer">Details</summary>
+                            <summary className="cursor-pointer">
+                              Details
+                            </summary>
                             <pre className="mt-1 whitespace-pre-wrap">
                               {JSON.stringify(event.props, null, 2)}
                             </pre>
@@ -181,15 +174,21 @@ export function AbandonedTimelineDrawer() {
                   <div className="space-y-3">
                     <div className="flex items-center space-x-2">
                       <Badge variant="destructive">DFM Blocker</Badge>
-                      <span className="text-sm">Wall thickness issues detected</span>
+                      <span className="text-sm">
+                        Wall thickness issues detected
+                      </span>
                     </div>
                     <div className="flex items-center space-x-2">
                       <Badge variant="secondary">High Price</Badge>
-                      <span className="text-sm">Quote value may be too high for initial inquiry</span>
+                      <span className="text-sm">
+                        Quote value may be too high for initial inquiry
+                      </span>
                     </div>
                     <div className="flex items-center space-x-2">
                       <Badge variant="outline">No Account</Badge>
-                      <span className="text-sm">Customer hasn't created an account yet</span>
+                      <span className="text-sm">
+                        Customer hasn't created an account yet
+                      </span>
                     </div>
                   </div>
                 </CardContent>
@@ -201,9 +200,15 @@ export function AbandonedTimelineDrawer() {
                 </CardHeader>
                 <CardContent>
                   <ul className="list-disc list-inside space-y-1 text-sm">
-                    <li>Send personalized follow-up email with design suggestions</li>
-                    <li>Offer to review design for manufacturability improvements</li>
-                    <li>Provide volume discount preview for larger quantities</li>
+                    <li>
+                      Send personalized follow-up email with design suggestions
+                    </li>
+                    <li>
+                      Offer to review design for manufacturability improvements
+                    </li>
+                    <li>
+                      Provide volume discount preview for larger quantities
+                    </li>
                     <li>Schedule a call to discuss specific requirements</li>
                   </ul>
                 </CardContent>
@@ -229,5 +234,5 @@ export function AbandonedTimelineDrawer() {
         </div>
       </DialogContent>
     </Dialog>
-  )
+  );
 }

@@ -1,33 +1,34 @@
-import { createClient } from '@/lib/supabase/server'
-import { cookies } from 'next/headers'
-import { notFound } from 'next/navigation'
+import { createClient } from "@/lib/supabase/server";
+import { notFound } from "next/navigation";
 
 export default async function AssignMaterialsPage({
-  params: { machineId }
+  params: { machineId },
 }: {
-  params: { machineId: string }
+  params: { machineId: string };
 }) {
-  const supabase = await createClient()
-  
+  const supabase = await createClient();
+
   // Get machine details
   const { data: machine } = await supabase
-    .from('machines')
-    .select('*')
-    .eq('id', machineId)
-    .single()
+    .from("machines")
+    .select("*")
+    .eq("id", machineId)
+    .single();
 
   if (!machine) {
-    notFound()
+    notFound();
   }
 
   // Get all materials and their mapping status for this machine
   const { data: materials } = await supabase
-    .from('materials')
-    .select(`
+    .from("materials")
+    .select(
+      `
       *,
       machine_materials!inner(*)
-    `)
-    .order('name')
+    `,
+    )
+    .order("name");
 
   return (
     <div className="p-6 space-y-6">
@@ -42,20 +43,32 @@ export default async function AssignMaterialsPage({
 
       <div className="bg-white shadow sm:rounded-lg">
         <div className="px-4 py-5 sm:p-6">
-          <form action="/api/machine-materials" method="POST" className="space-y-8">
+          <form
+            action="/api/machine-materials"
+            method="POST"
+            className="space-y-8"
+          >
             <input type="hidden" name="machine_id" value={machineId} />
 
             <div>
-              <h3 className="text-base font-semibold leading-7 text-gray-900">Material Selection</h3>
+              <h3 className="text-base font-semibold leading-7 text-gray-900">
+                Material Selection
+              </h3>
               <p className="mt-1 text-sm leading-6 text-gray-600">
-                Choose materials that can be processed on this machine and set their parameters.
+                Choose materials that can be processed on this machine and set
+                their parameters.
               </p>
 
               <div className="mt-6 space-y-8">
                 {materials?.map((material) => {
-                  const mapping = material.machine_materials?.find((m: { machine_id: string }) => m.machine_id === machineId)
+                  const mapping = material.machine_materials?.find(
+                    (m: { machine_id: string }) => m.machine_id === machineId,
+                  );
                   return (
-                    <div key={material.id} className="border-b border-gray-200 pb-6">
+                    <div
+                      key={material.id}
+                      className="border-b border-gray-200 pb-6"
+                    >
                       <div className="flex items-start">
                         <div className="flex h-6 items-center">
                           <input
@@ -114,7 +127,7 @@ export default async function AssignMaterialsPage({
                         </div>
                       </div>
                     </div>
-                  )
+                  );
                 })}
               </div>
             </div>
@@ -139,5 +152,5 @@ export default async function AssignMaterialsPage({
         </div>
       </div>
     </div>
-  )
+  );
 }

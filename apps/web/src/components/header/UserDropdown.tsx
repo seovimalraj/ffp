@@ -1,25 +1,22 @@
-'use client';
+"use client";
 
-import { useState } from 'react';
-import Link from 'next/link';
-import Image from 'next/image';
-import { RequireAnyRole } from '@/components/auth/RequireAnyRole';
-import { useSession, signOut } from 'next-auth/react';
-import { useRouter } from 'next/navigation';
+import { useState } from "react";
+import Link from "next/link";
+import { RequireAnyRole } from "@/components/auth/RequireAnyRole";
+import { useSession, signOut } from "next-auth/react";
+import { useRouter } from "next/navigation";
 // import { Button } from '../ui/button';
 // import { notify } from '@/lib/toast';
-import { usePermissions } from "@/components/hooks/use-permissions"
-import { User, User2Icon, UserRound } from 'lucide-react';
+import { UserRound } from "lucide-react";
 
 const UserDropdown = () => {
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const { data: session, status } = useSession();
   const router = useRouter();
-  const loading = status === 'loading';
-  const { permissions } = usePermissions();
+  const loading = status === "loading";
 
-  if (status === 'unauthenticated') {
-    router.push('/login');
+  if (status === "unauthenticated") {
+    router.push("/login");
     return null;
   }
 
@@ -38,7 +35,6 @@ const UserDropdown = () => {
           alt={'User'}
         /> */}
         <UserRound className="hidden h-7 w-7 text-gray-500 dark:text-gray-400 sm:block" />
-
       </button>
 
       {dropdownOpen && (
@@ -54,8 +50,12 @@ const UserDropdown = () => {
               /> */}
               <UserRound className="hidden h-7 w-7 text-gray-500 dark:text-gray-400 sm:block" />
               <div>
-                <p className="text-sm font-medium text-gray-900 dark:text-white truncate max-w-[140px]">{session?.user?.email || (loading ? 'Loading…' : 'Guest')}</p>
-                <p className="text-xs text-gray-500 dark:text-gray-400">{(session?.user as any)?.role || 'anon'}</p>
+                <p className="text-sm font-medium text-gray-900 dark:text-white truncate max-w-[140px]">
+                  {session?.user?.email || (loading ? "Loading…" : "Guest")}
+                </p>
+                <p className="text-xs text-gray-500 dark:text-gray-400">
+                  {(session?.user as any)?.role || "anon"}
+                </p>
               </div>
             </div>
           </div>
@@ -66,7 +66,9 @@ const UserDropdown = () => {
             >
               Profile
             </Link>
-            <RequireAnyRole roles={['admin', 'org_admin', 'reviewer', 'finance', 'auditor']}>
+            <RequireAnyRole
+              roles={["admin", "org_admin", "reviewer", "finance", "auditor"]}
+            >
               <Link
                 href="/admin/dashboard"
                 className="block px-4 py-2 text-sm text-indigo-600 hover:bg-indigo-50 dark:text-indigo-300 dark:hover:bg-indigo-900/30"

@@ -1,12 +1,13 @@
-'use client'
+"use client";
 
-import Link from 'next/link'
-import { Button } from '@/components/ui/button'
-import { UserCircleIcon, ArrowRightOnRectangleIcon } from '@heroicons/react/24/outline'
+import Link from "next/link";
+import { Button } from "@/components/ui/button";
+import {
+  UserCircleIcon,
+  ArrowRightOnRectangleIcon,
+} from "@heroicons/react/24/outline";
 
-interface HeaderProps {}
-
-export function Header({}: HeaderProps) {
+export function Header() {
   return (
     <header className="bg-white border-b border-gray-200">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -51,5 +52,5 @@ export function Header({}: HeaderProps) {
         </div>
       </div>
     </header>
-  )
+  );
 }

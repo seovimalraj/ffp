@@ -3,22 +3,25 @@
  * React Query hook for optimistic pricing with reconciliation
  */
 
-'use client';
+"use client";
 
-import { useQuery, useQueryClient, QueryClient } from '@tanstack/react-query';
-import { useRef, useCallback } from 'react';
-import { PricingRequest, PricingResponse, AnnotatedPricingResponse } from './types';
-import { fetchPrice } from './client';
-import { toStableKey, PRICING_QUERY_KEY } from './queryKeys';
+import { useQuery, useQueryClient, QueryClient } from "@tanstack/react-query";
+import { useRef, useCallback } from "react";
+import {
+  PricingRequest,
+  PricingResponse,
+  AnnotatedPricingResponse,
+} from "./types";
+import { fetchPrice } from "./client";
+import { toStableKey, PRICING_QUERY_KEY } from "./queryKeys";
 import {
   optimisticEstimate,
-  annotate,
   shouldRollback,
   mergeServerResponse,
   estimateConfidence,
-} from './optimistic';
-import { telemetry } from '../telemetry';
-import { pricingToasts } from '../ui/toast';
+} from "./optimistic";
+import { telemetry } from "../telemetry";
+import { pricingToasts } from "../ui/toast";
 
 /**
  * In-flight request tracking to prevent duplicate fetches
@@ -46,7 +49,7 @@ export function usePrice(req: PricingRequest) {
     queryKey: key,
     queryFn: async () => {
       const t0 = performance.now();
-      
+
       // Show slow toast if takes too long
       const slowTimer = setTimeout(() => {
         pricingToasts.pricingSlow();
@@ -56,14 +59,14 @@ export function usePrice(req: PricingRequest) {
       try {
         const response = await fetchPrice(req);
         const dt = performance.now() - t0;
-        
+
         clearTimeout(slowTimer);
 
         // Log telemetry
         if (response.from_cache) {
-          telemetry.price_cache_hit({ dt, key, source: 'network' });
+          telemetry.price_cache_hit({ dt, key, source: "network" });
         } else {
-          telemetry.price_cache_miss({ dt, key, reason: 'cold' });
+          telemetry.price_cache_miss({ dt, key, reason: "cold" });
         }
 
         // Annotate with request parameters for future optimistic calculations
@@ -71,7 +74,7 @@ export function usePrice(req: PricingRequest) {
       } catch (error: any) {
         clearTimeout(slowTimer);
         telemetry.price_error({
-          message: error?.message || 'Unknown error',
+          message: error?.message || "Unknown error",
           key,
         });
         throw error;
@@ -98,13 +101,13 @@ export function usePrice(req: PricingRequest) {
       }
 
       const estimate = optimisticEstimate(prevData, nextReq);
-      
+
       if (estimate) {
         const confidence = estimateConfidence(prevData, nextReq);
-        
+
         // Set optimistic data
         queryClient.setQueryData<AnnotatedPricingResponse>(nextKey, estimate);
-        
+
         telemetry.price_optimistic_apply({
           confidence,
           key: nextKey,
@@ -112,7 +115,7 @@ export function usePrice(req: PricingRequest) {
         });
       }
     },
-    [key, queryClient]
+    [key, queryClient],
   );
 
   /**
@@ -139,11 +142,12 @@ export function usePrice(req: PricingRequest) {
           });
 
           // Check if we need to rollback optimistic value
-          const currentData = queryClient.getQueryData<AnnotatedPricingResponse>(nextKey);
-          
+          const currentData =
+            queryClient.getQueryData<AnnotatedPricingResponse>(nextKey);
+
           if (
             currentData &&
-            currentData.pricing_hash === 'optimistic' &&
+            currentData.pricing_hash === "optimistic" &&
             shouldRollback(serverResponse, currentData)
           ) {
             // Rollback - server disagrees significantly
@@ -151,30 +155,38 @@ export function usePrice(req: PricingRequest) {
               key: nextKey,
               optimisticTotal: currentData.total,
               serverTotal: serverResponse.total,
-              deviation: Math.abs(serverResponse.total - currentData.total) / serverResponse.total,
+              deviation:
+                Math.abs(serverResponse.total - currentData.total) /
+                serverResponse.total,
             });
 
             // Update with server value
             const annotated = mergeServerResponse(serverResponse, nextReq);
-            queryClient.setQueryData<AnnotatedPricingResponse>(nextKey, annotated);
-            
+            queryClient.setQueryData<AnnotatedPricingResponse>(
+              nextKey,
+              annotated,
+            );
+
             // Optionally notify user
             pricingToasts.pricingRollback();
-          } else if (currentData?.pricing_hash === 'optimistic') {
+          } else if (currentData?.pricing_hash === "optimistic") {
             // Optimistic was close enough - just update annotations
             const annotated = mergeServerResponse(serverResponse, nextReq);
-            queryClient.setQueryData<AnnotatedPricingResponse>(nextKey, annotated);
+            queryClient.setQueryData<AnnotatedPricingResponse>(
+              nextKey,
+              annotated,
+            );
           }
 
           return serverResponse;
         } catch (error: any) {
           telemetry.price_error({
-            message: error?.message || 'Reconciliation failed',
+            message: error?.message || "Reconciliation failed",
             key: nextKey,
           });
-          
+
           pricingToasts.pricingFailed(error?.message);
-          
+
           throw error;
         } finally {
           inFlightRequests.delete(serialized);
@@ -184,7 +196,7 @@ export function usePrice(req: PricingRequest) {
       inFlightRequests.set(serialized, promise);
       return promise;
     },
-    [queryClient]
+    [queryClient],
   );
 
   /**
@@ -196,7 +208,7 @@ export function usePrice(req: PricingRequest) {
       applyOptimistic(nextReq);
       return reconcile(nextReq);
     },
-    [applyOptimistic, reconcile]
+    [applyOptimistic, reconcile],
   );
 
   return {
@@ -212,7 +224,7 @@ export function usePrice(req: PricingRequest) {
  */
 export function invalidateOnVersionChange(
   queryClient: QueryClient,
-  newVersion: string
+  newVersion: string,
 ) {
   queryClient.invalidateQueries({
     queryKey: [PRICING_QUERY_KEY],
@@ -237,6 +249,6 @@ export function usePrefetchPrice(queryClient: QueryClient) {
         staleTime: 60_000,
       });
     },
-    [queryClient]
+    [queryClient],
   );
 }

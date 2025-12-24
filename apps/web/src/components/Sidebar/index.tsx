@@ -1,23 +1,21 @@
-'use client';
+"use client";
 
-import React, { useState } from 'react';
-import Link from 'next/link';
-import { usePathname } from 'next/navigation';
-import { useAuth } from '@/contexts/AuthContext';
+import React from "react";
+import Link from "next/link";
+import { usePathname } from "next/navigation";
+import { useAuth } from "@/contexts/AuthContext";
 import {
   HomeIcon,
   CubeIcon,
   ChartBarIcon,
   UserGroupIcon,
   CogIcon,
-  DocumentTextIcon,
   ClipboardDocumentListIcon,
   BuildingOffice2Icon,
   ArrowLeftOnRectangleIcon,
-  Bars3Icon,
   XMarkIcon,
   UserIcon,
-} from '@heroicons/react/24/outline';
+} from "@heroicons/react/24/outline";
 
 interface SidebarLinkProps {
   href: string;
@@ -27,12 +25,18 @@ interface SidebarLinkProps {
   onClick?: () => void;
 }
 
-const SidebarLink: React.FC<SidebarLinkProps> = ({ href, icon: Icon, label, isActive, onClick }) => (
+const SidebarLink: React.FC<SidebarLinkProps> = ({
+  href,
+  icon: Icon,
+  label,
+  isActive,
+  onClick,
+}) => (
   <Link
     href={href}
     onClick={onClick}
     className={`relative flex items-center gap-2.5 rounded-sm py-2 px-4 font-medium text-bodydark1 duration-300 ease-in-out hover:bg-graydark dark:hover:bg-meta-4 ${
-      isActive && '!bg-graydark dark:!bg-meta-4'
+      isActive && "!bg-graydark dark:!bg-meta-4"
     }`}
   >
     <Icon className="w-5 h-5" />
@@ -53,22 +57,30 @@ const Sidebar: React.FC<SidebarProps> = ({ sidebarOpen, setSidebarOpen }) => {
   const getMenuItems = () => {
     if (!user) return [];
 
-    const commonItems = [
-      { href: '/dashboard', icon: HomeIcon, label: 'Dashboard' },
-    ];
+    // const commonItems = [
+    //   { href: '/dashboard', icon: HomeIcon, label: 'Dashboard' },
+    // ];
 
-    if (user.role === 'admin') {
+    if (user.role === "admin") {
       return [
-        { href: '/admin', icon: BuildingOffice2Icon, label: 'Admin Dashboard' },
-        { href: '/admin/customers', icon: UserGroupIcon, label: 'Customer Management' },
-        { href: '/admin/analytics', icon: ChartBarIcon, label: 'Analytics' },
-        { href: '/admin/settings', icon: CogIcon, label: 'Settings' },
+        { href: "/admin", icon: BuildingOffice2Icon, label: "Admin Dashboard" },
+        {
+          href: "/admin/customers",
+          icon: UserGroupIcon,
+          label: "Customer Management",
+        },
+        { href: "/admin/analytics", icon: ChartBarIcon, label: "Analytics" },
+        { href: "/admin/settings", icon: CogIcon, label: "Settings" },
       ];
     } else {
       return [
-        { href: '/dashboard', icon: HomeIcon, label: 'Dashboard' },
-        { href: '/orders', icon: ClipboardDocumentListIcon, label: 'My Orders' },
-        { href: '/settings', icon: CogIcon, label: 'Settings' },
+        { href: "/dashboard", icon: HomeIcon, label: "Dashboard" },
+        {
+          href: "/orders",
+          icon: ClipboardDocumentListIcon,
+          label: "My Orders",
+        },
+        { href: "/settings", icon: CogIcon, label: "Settings" },
       ];
     }
   };
@@ -93,7 +105,7 @@ const Sidebar: React.FC<SidebarProps> = ({ sidebarOpen, setSidebarOpen }) => {
       {/* Sidebar */}
       <aside
         className={`absolute left-0 top-0 z-30 flex h-screen w-72.5 flex-col overflow-y-hidden bg-black duration-300 ease-linear dark:bg-boxdark lg:static lg:translate-x-0 ${
-          sidebarOpen ? 'translate-x-0' : '-translate-x-full'
+          sidebarOpen ? "translate-x-0" : "-translate-x-full"
         }`}
       >
         {/* Sidebar Header */}
@@ -129,14 +141,16 @@ const Sidebar: React.FC<SidebarProps> = ({ sidebarOpen, setSidebarOpen }) => {
                     {user.name}
                   </p>
                   <p className="text-xs text-gray-500 dark:text-gray-400 truncate">
-                    {user.company || user.email}
+                    {user?.company?.name || user.email}
                   </p>
-                  <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${
-                    user.role === 'admin' 
-                      ? 'bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-200' 
-                      : 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200'
-                  }`}>
-                    {user.role === 'admin' ? 'Administrator' : 'Customer'}
+                  <span
+                    className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${
+                      user.role === "admin"
+                        ? "bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-200"
+                        : "bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200"
+                    }`}
+                  >
+                    {user.role === "admin" ? "Administrator" : "Customer"}
                   </span>
                 </div>
               </div>
@@ -145,7 +159,9 @@ const Sidebar: React.FC<SidebarProps> = ({ sidebarOpen, setSidebarOpen }) => {
 
           <nav className="mt-5 py-4 px-4 lg:mt-9 lg:px-6">
             <div>
-              <h3 className="mb-4 ml-4 text-sm font-semibold text-bodydark2">MENU</h3>
+              <h3 className="mb-4 ml-4 text-sm font-semibold text-bodydark2">
+                MENU
+              </h3>
               <ul className="mb-6 flex flex-col gap-1.5">
                 {menuItems.map((item) => (
                   <li key={item.href}>
@@ -153,7 +169,10 @@ const Sidebar: React.FC<SidebarProps> = ({ sidebarOpen, setSidebarOpen }) => {
                       href={item.href}
                       icon={item.icon}
                       label={item.label}
-                      isActive={pathname === item.href || pathname.startsWith(item.href + '/')}
+                      isActive={
+                        pathname === item.href ||
+                        pathname?.startsWith(item.href + "/")
+                      }
                       onClick={() => setSidebarOpen(false)}
                     />
                   </li>
@@ -163,7 +182,9 @@ const Sidebar: React.FC<SidebarProps> = ({ sidebarOpen, setSidebarOpen }) => {
 
             {user && (
               <div>
-                <h3 className="mb-4 ml-4 text-sm font-semibold text-bodydark2">ACCOUNT</h3>
+                <h3 className="mb-4 ml-4 text-sm font-semibold text-bodydark2">
+                  ACCOUNT
+                </h3>
                 <ul className="mb-6 flex flex-col gap-1.5">
                   <li>
                     <button

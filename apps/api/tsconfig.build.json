@@ -1,17 +1,4 @@
 {
   "extends": "./tsconfig.json",
-  "compilerOptions": {
-    // Exclude jest typings during build-time type-checks
-    "types": ["node"]
-  },
-  "exclude": [
-    "node_modules",
-    "test",
-    "dist",
-    "**/*spec.ts",
-    "__tests__",
-    "src/marketplace/**",
-    "src/queues/jobs/cad.ts",
-    "src/queues/jobs/dfm-analysis.processor.ts"
-  ]
+  "exclude": ["node_modules", "test", "dist", "**/*spec.ts"]
 }

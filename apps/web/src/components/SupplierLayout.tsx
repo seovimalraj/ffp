@@ -5,25 +5,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import AppHeader from "@/layout/AppHeader";
 import { cn } from "@/lib/utils";
-import {
-  LayoutDashboard,
-  Package,
-  Factory,
-  TrendingUp,
-  Settings,
-  FileText,
-  Users,
-  Calendar,
-  Clipboard,
-  MessageSquare,
-  Award,
-  Palette,
-  Key,
-  ChevronLeft,
-  ChevronRight,
-  X,
-} from "lucide-react";
-import { KeyIcon } from "@heroicons/react/24/outline";
+import { Factory, ChevronLeft, ChevronRight, X } from "lucide-react";
 import { usePermissions } from "@/components/hooks/use-permissions";
 import { PermissionsNames } from "@cnc-quote/shared";
 import MegaMenu from "@/components/ui/mega-menu";
@@ -34,19 +16,19 @@ interface SupplierLayoutProps {
   readonly children: React.ReactNode;
 }
 
-const BASE_PRIMARY_NAV = [
-  { label: "Dashboard", route: "/supplier/dashboard", icon: LayoutDashboard },
-  { label: "RFQs", route: "/supplier/rfqs", icon: Clipboard },
-  { label: "Orders", route: "/supplier/orders", icon: Package },
-  { label: "Messages", route: "/supplier/messages", icon: MessageSquare },
-  { label: "Capacity", route: "/supplier/capacity", icon: Factory },
-  { label: "Certifications", route: "/supplier/certifications", icon: Award },
-  { label: "Finishes", route: "/supplier/finishes", icon: Palette },
-  { label: "Warehouse", route: "/supplier/warehouse", icon: FileText },
-  { label: "Analytics", route: "/supplier/analytics", icon: TrendingUp },
-  { label: "Schedule", route: "/supplier/schedule", icon: Calendar },
-  { label: "Settings", route: "/supplier/settings", icon: Settings },
-];
+// const BASE_PRIMARY_NAV = [
+//   { label: "Dashboard", route: "/supplier/dashboard", icon: LayoutDashboard },
+//   { label: "RFQs", route: "/supplier/rfqs", icon: Clipboard },
+//   { label: "Orders", route: "/supplier/orders", icon: Package },
+//   { label: "Messages", route: "/supplier/messages", icon: MessageSquare },
+//   { label: "Capacity", route: "/supplier/capacity", icon: Factory },
+//   { label: "Certifications", route: "/supplier/certifications", icon: Award },
+//   { label: "Finishes", route: "/supplier/finishes", icon: Palette },
+//   { label: "Warehouse", route: "/supplier/warehouse", icon: FileText },
+//   { label: "Analytics", route: "/supplier/analytics", icon: TrendingUp },
+//   { label: "Schedule", route: "/supplier/schedule", icon: Calendar },
+//   { label: "Settings", route: "/supplier/settings", icon: Settings },
+// ];
 
 export default function SupplierLayout({
   children,

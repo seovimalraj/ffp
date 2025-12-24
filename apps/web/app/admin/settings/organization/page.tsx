@@ -1,17 +1,21 @@
-'use client';
+"use client";
 
-import { Card, CardContent } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import { Building2, Save } from 'lucide-react';
+import { Card, CardContent } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Save } from "lucide-react";
 
 export default function AdminOrganizationSettingsPage() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-3xl font-bold text-gray-900 dark:text-white">Organization Settings</h1>
-        <p className="text-gray-600 dark:text-gray-400 mt-1">Manage your organization details and preferences</p>
+        <h1 className="text-3xl font-bold text-gray-900 dark:text-white">
+          Organization Settings
+        </h1>
+        <p className="text-gray-600 dark:text-gray-400 mt-1">
+          Manage your organization details and preferences
+        </p>
       </div>
 
       <Card className="hover:shadow-md transition-shadow">
@@ -27,7 +31,11 @@ export default function AdminOrganizationSettingsPage() {
             </div>
             <div>
               <Label htmlFor="orgEmail">Contact Email</Label>
-              <Input id="orgEmail" type="email" defaultValue="admin@frigate.ai" />
+              <Input
+                id="orgEmail"
+                type="email"
+                defaultValue="admin@frigate.ai"
+              />
             </div>
             <div>
               <Label htmlFor="orgPhone">Phone Number</Label>
@@ -35,10 +43,13 @@ export default function AdminOrganizationSettingsPage() {
             </div>
             <div className="md:col-span-2">
               <Label htmlFor="orgAddress">Address</Label>
-              <Input id="orgAddress" defaultValue="123 Manufacturing St, Industrial Park" />
+              <Input
+                id="orgAddress"
+                defaultValue="123 Manufacturing St, Industrial Park"
+              />
             </div>
           </div>
-          
+
           <div className="flex justify-end">
             <Button className="bg-blue-600 hover:bg-blue-700">
               <Save className="w-4 h-4 mr-2" />

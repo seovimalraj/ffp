@@ -1,17 +1,18 @@
-import { createClient } from '@/lib/supabase/server'
-import { cookies } from 'next/headers'
-import type { Machine as _Machine } from '@cnc-quote/shared';
+import { createClient } from "@/lib/supabase/server";
+import type { Machine as _Machine } from "@cnc-quote/shared";
 
 export default async function MachinesPage() {
-  const supabase = await createClient()
+  const supabase = await createClient();
   const { data: machines } = await supabase
-    .from('machines')
-    .select(`
+    .from("machines")
+    .select(
+      `
       *,
       machine_specs(*),
       machine_limits(*)
-    `)
-    .order('created_at', { ascending: false })
+    `,
+    )
+    .order("created_at", { ascending: false });
 
   return (
     <div className="p-6">
@@ -26,19 +27,34 @@ export default async function MachinesPage() {
         <table className="min-w-full divide-y divide-gray-300">
           <thead className="bg-gray-50">
             <tr>
-              <th scope="col" className="py-3.5 pl-4 pr-3 text-left text-sm font-semibold text-gray-900">
+              <th
+                scope="col"
+                className="py-3.5 pl-4 pr-3 text-left text-sm font-semibold text-gray-900"
+              >
                 Name
               </th>
-              <th scope="col" className="px-3 py-3.5 text-left text-sm font-semibold text-gray-900">
+              <th
+                scope="col"
+                className="px-3 py-3.5 text-left text-sm font-semibold text-gray-900"
+              >
                 Technology
               </th>
-              <th scope="col" className="px-3 py-3.5 text-left text-sm font-semibold text-gray-900">
+              <th
+                scope="col"
+                className="px-3 py-3.5 text-left text-sm font-semibold text-gray-900"
+              >
                 Process
               </th>
-              <th scope="col" className="px-3 py-3.5 text-left text-sm font-semibold text-gray-900">
+              <th
+                scope="col"
+                className="px-3 py-3.5 text-left text-sm font-semibold text-gray-900"
+              >
                 Model
               </th>
-              <th scope="col" className="px-3 py-3.5 text-left text-sm font-semibold text-gray-900">
+              <th
+                scope="col"
+                className="px-3 py-3.5 text-left text-sm font-semibold text-gray-900"
+              >
                 Status
               </th>
             </tr>
@@ -59,13 +75,15 @@ export default async function MachinesPage() {
                   {machine.model}
                 </td>
                 <td className="whitespace-nowrap px-3 py-4 text-sm">
-                  <span className={`inline-flex rounded-full px-2 text-xs font-semibold leading-5 ${
-                    machine.status === 'active'
-                      ? 'bg-green-100 text-green-800'
-                      : machine.status === 'maintenance'
-                      ? 'bg-yellow-100 text-yellow-800'
-                      : 'bg-red-100 text-red-800'
-                  }`}>
+                  <span
+                    className={`inline-flex rounded-full px-2 text-xs font-semibold leading-5 ${
+                      machine.status === "active"
+                        ? "bg-green-100 text-green-800"
+                        : machine.status === "maintenance"
+                          ? "bg-yellow-100 text-yellow-800"
+                          : "bg-red-100 text-red-800"
+                    }`}
+                  >
                     {machine.status}
                   </span>
                 </td>
@@ -75,5 +93,5 @@ export default async function MachinesPage() {
         </table>
       </div>
     </div>
-  )
+  );
 }

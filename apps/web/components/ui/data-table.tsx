@@ -1,51 +1,56 @@
-"use client"
-import type { ReactNode } from "react"
-import { useState, useEffect } from "react"
+"use client";
+import type { ReactNode } from "react";
+import { useState, useEffect } from "react";
 import {
   EllipsisVerticalIcon,
   ArrowUpIcon,
   ArrowDownIcon,
   ChevronLeftIcon,
   ChevronRightIcon,
-} from "@heroicons/react/20/solid"
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
+} from "@heroicons/react/20/solid";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 
 export type Column<T> = {
-  key: string
-  header: string
-  headerClassName?: string
-  cellClassName?: string
-  render: (row: T, index: number) => ReactNode
-  sortable?: boolean
-  hidden?: boolean
-}
+  key: string;
+  header: string;
+  headerClassName?: string;
+  cellClassName?: string;
+  render: (row: T, index: number) => ReactNode;
+  sortable?: boolean;
+  hidden?: boolean;
+};
 
 export type Action<T> = {
-  label: string | ((row: T) => string)
-  onClick: (row: T) => void
-  icon?: ReactNode | ((row: T) => ReactNode)
-  className?: string
-  disabled?: boolean | ((row: T) => boolean)
-}
+  label: string | ((row: T) => string);
+  onClick: (row: T) => void;
+  icon?: ReactNode | ((row: T) => ReactNode);
+  className?: string;
+  disabled?: boolean | ((row: T) => boolean);
+};
 
-type SortComparator<T> = (a: T, b: T, column: Column<T>) => number
+type SortComparator<T> = (a: T, b: T, column: Column<T>) => number;
 
 type DataTableProps<T> = {
-  columns: Column<T>[]
-  data: T[]
-  actions?: Action<T>[]
-  keyExtractor: (row: T) => string | number
-  emptyMessage?: string
-  isLoading?: boolean
-  loadingMessage?: string
-  sortComparator?: SortComparator<T>
-  searchableColumns?: string[]
-  onFilterChange?: (filtered: T[]) => void
-  pageSize?: number
-  selectable?: boolean // added selectable flag
-  onSelectionChange?: (selected: T[]) => void // callback for selection changes
-  numbering?: boolean // show row numbers
-}
+  columns: Column<T>[];
+  data: T[];
+  actions?: Action<T>[];
+  keyExtractor: (row: T) => string | number;
+  emptyMessage?: string;
+  isLoading?: boolean;
+  loadingMessage?: string;
+  sortComparator?: SortComparator<T>;
+  searchableColumns?: string[];
+  onFilterChange?: (filtered: T[]) => void;
+  pageSize?: number;
+  selectable?: boolean; // added selectable flag
+  onSelectionChange?: (selected: T[]) => void; // callback for selection changes
+  numbering?: boolean; // show row numbers
+};
 
 export function DataTable<T>({
   columns,
@@ -64,95 +69,112 @@ export function DataTable<T>({
   numbering = false, // default to false
 }: DataTableProps<T>) {
   // Filter out hidden columns
-  const visibleColumns = columns.filter((col) => !col.hidden)
-  const [sortConfig, setSortConfig] = useState<{ key: string; direction: "asc" | "desc" } | null>(null)
-  const [searchQuery, setSearchQuery] = useState("")
-  const [currentPage, setCurrentPage] = useState(1)
-  const [selectedRows, setSelectedRows] = useState<Set<string | number>>(new Set()) // added selection state
+  const visibleColumns = columns.filter((col) => !col.hidden);
+  const [sortConfig, setSortConfig] = useState<{
+    key: string;
+    direction: "asc" | "desc";
+  } | null>(null);
+  const [searchQuery, _setSearchQuery] = useState("");
+  const [currentPage, setCurrentPage] = useState(1);
+  const [selectedRows, setSelectedRows] = useState<Set<string | number>>(
+    new Set(),
+  ); // added selection state
 
   const sortedData = [...data].sort((a, b) => {
-    if (!sortConfig) return 0
+    if (!sortConfig) return 0;
 
-    const column = columns.find((col) => col.key === sortConfig.key)
-    if (!column || !column.sortable) return 0
+    const column = columns.find((col) => col.key === sortConfig.key);
+    if (!column || !column.sortable) return 0;
 
-    let result = 0
+    let result = 0;
     if (sortComparator) {
-      result = sortComparator(a, b, column)
+      result = sortComparator(a, b, column);
     } else {
-      const aValue = (a as Record<string, unknown>)[column.key]
-      const bValue = (b as Record<string, unknown>)[column.key]
+      const aValue = (a as Record<string, unknown>)[column.key];
+      const bValue = (b as Record<string, unknown>)[column.key];
 
       if (typeof aValue === "string" && typeof bValue === "string") {
-        result = aValue.localeCompare(bValue)
+        result = aValue.localeCompare(bValue);
       } else if (typeof aValue === "number" && typeof bValue === "number") {
-        result = aValue - bValue
+        result = aValue - bValue;
       } else {
-        result = String(aValue).localeCompare(String(bValue))
+        result = String(aValue).localeCompare(String(bValue));
       }
     }
 
-    return sortConfig.direction === "asc" ? result : -result
-  })
+    return sortConfig.direction === "asc" ? result : -result;
+  });
 
   const handleSort = (columnKey: string) => {
     setSortConfig((prev) => {
       if (prev?.key === columnKey) {
-        return prev.direction === "asc" ? { key: columnKey, direction: "desc" } : null
+        return prev.direction === "asc"
+          ? { key: columnKey, direction: "desc" }
+          : null;
       }
-      return { key: columnKey, direction: "asc" }
-    })
-  }
+      return { key: columnKey, direction: "asc" };
+    });
+  };
 
   const filteredData = searchQuery
     ? sortedData.filter((row) => {
-        if (!searchableColumns || searchableColumns.length === 0) return true
+        if (!searchableColumns || searchableColumns.length === 0) return true;
 
         return searchableColumns.some((columnKey) => {
-          const value = (row as Record<string, unknown>)[columnKey]
-          return String(value).toLowerCase().includes(searchQuery.toLowerCase())
-        })
+          const value = (row as Record<string, unknown>)[columnKey];
+          return String(value)
+            .toLowerCase()
+            .includes(searchQuery.toLowerCase());
+        });
       })
-    : sortedData
+    : sortedData;
 
   useEffect(() => {
-    onFilterChange?.(filteredData)
-    setCurrentPage(1)
-  }, [filteredData, onFilterChange])
+    onFilterChange?.(filteredData);
+    setCurrentPage(1);
+  }, [filteredData, onFilterChange]);
 
-  const totalPages = Math.ceil(filteredData.length / pageSize)
-  const startIndex = (currentPage - 1) * pageSize
-  const endIndex = startIndex + pageSize
-  const paginatedData = filteredData.slice(startIndex, endIndex)
+  const totalPages = Math.ceil(filteredData.length / pageSize);
+  const startIndex = (currentPage - 1) * pageSize;
+  const endIndex = startIndex + pageSize;
+  const paginatedData = filteredData.slice(startIndex, endIndex);
 
   const handleSelectRow = (rowKey: string | number) => {
-    const newSelected = new Set(selectedRows)
+    const newSelected = new Set(selectedRows);
     if (newSelected.has(rowKey)) {
-      newSelected.delete(rowKey)
+      newSelected.delete(rowKey);
     } else {
-      newSelected.add(rowKey)
+      newSelected.add(rowKey);
     }
-    setSelectedRows(newSelected)
-    const selectedData = data.filter((row) => newSelected.has(keyExtractor(row)))
-    onSelectionChange?.(selectedData)
-  }
+    setSelectedRows(newSelected);
+    const selectedData = data.filter((row) =>
+      newSelected.has(keyExtractor(row)),
+    );
+    onSelectionChange?.(selectedData);
+  };
 
   const handleSelectAll = () => {
     if (selectedRows.size === paginatedData.length) {
-      setSelectedRows(new Set())
-      onSelectionChange?.([])
+      setSelectedRows(new Set());
+      onSelectionChange?.([]);
     } else {
-      const newSelected = new Set(selectedRows)
+      const newSelected = new Set(selectedRows);
       paginatedData.forEach((row) => {
-        newSelected.add(keyExtractor(row))
-      })
-      setSelectedRows(newSelected)
-      const selectedData = data.filter((row) => newSelected.has(keyExtractor(row)))
-      onSelectionChange?.(selectedData)
+        newSelected.add(keyExtractor(row));
+      });
+      setSelectedRows(newSelected);
+      const selectedData = data.filter((row) =>
+        newSelected.has(keyExtractor(row)),
+      );
+      onSelectionChange?.(selectedData);
     }
-  }
+  };
 
-  const totalColumns = visibleColumns.length + (actions?.length ? 1 : 0) + (selectable ? 1 : 0) + (numbering ? 1 : 0)
+  const totalColumns =
+    visibleColumns.length +
+    (actions?.length ? 1 : 0) +
+    (selectable ? 1 : 0) +
+    (numbering ? 1 : 0);
 
   if (isLoading) {
     return (
@@ -162,7 +184,7 @@ export function DataTable<T>({
           <p className="text-sm text-muted-foreground">{loadingMessage}</p>
         </div>
       </div>
-    )
+    );
   }
 
   return (
@@ -171,7 +193,10 @@ export function DataTable<T>({
         <thead className="bg-muted border-b border-border">
           <tr>
             {numbering && (
-              <th scope="col" className="px-4 py-3 w-12 text-left text-xs font-semibold text-foreground tracking-wide">
+              <th
+                scope="col"
+                className="px-4 py-3 w-12 text-left text-xs font-semibold text-foreground tracking-wide"
+              >
                 #
               </th>
             )}
@@ -179,7 +204,10 @@ export function DataTable<T>({
               <th scope="col" className="px-4 py-3 w-12">
                 <input
                   type="checkbox"
-                  checked={selectedRows.size === paginatedData.length && paginatedData.length > 0}
+                  checked={
+                    selectedRows.size === paginatedData.length &&
+                    paginatedData.length > 0
+                  }
                   onChange={handleSelectAll}
                   className="w-4 h-4 rounded border-border"
                   aria-label="Select all rows"
@@ -193,7 +221,9 @@ export function DataTable<T>({
                 className={
                   col.headerClassName ??
                   `px-4 py-3 text-left text-xs font-semibold text-foreground tracking-wide ${idx === 0 ? "pl-6" : ""} ${
-                    col.sortable ? "cursor-pointer hover:bg-muted/50 select-none" : ""
+                    col.sortable
+                      ? "cursor-pointer hover:bg-muted/50 select-none"
+                      : ""
                   }`
                 }
                 onClick={() => col.sortable && handleSort(col.key)}
@@ -229,20 +259,25 @@ export function DataTable<T>({
         <tbody className="divide-y divide-border">
           {paginatedData.length === 0 ? (
             <tr>
-              <td colSpan={totalColumns} className="py-8 text-center text-sm text-muted-foreground">
+              <td
+                colSpan={totalColumns}
+                className="py-8 text-center text-sm text-muted-foreground"
+              >
                 {emptyMessage}
               </td>
             </tr>
           ) : (
             paginatedData.map((row, rowIndex) => {
-              const rowKey = keyExtractor(row)
-              const isSelected = selectedRows.has(rowKey)
+              const rowKey = keyExtractor(row);
+              const isSelected = selectedRows.has(rowKey);
 
               return (
                 <tr
                   key={rowKey}
                   className={`border-border transition-colors ${
-                    isSelected ? "bg-accent/20 hover:bg-accent/30" : "hover:bg-muted/50"
+                    isSelected
+                      ? "bg-accent/20 hover:bg-accent/30"
+                      : "hover:bg-muted/50"
                   }`}
                 >
                   {numbering && (
@@ -286,9 +321,17 @@ export function DataTable<T>({
                         <DropdownMenuContent align="end" className="w-48">
                           {actions.map((action, actionIndex) => {
                             const isDisabled =
-                              typeof action.disabled === "function" ? action.disabled(row) : action.disabled
-                            const label = typeof action.label === "function" ? action.label(row) : action.label
-                            const icon = typeof action.icon === "function" ? action.icon(row) : action.icon
+                              typeof action.disabled === "function"
+                                ? action.disabled(row)
+                                : action.disabled;
+                            const label =
+                              typeof action.label === "function"
+                                ? action.label(row)
+                                : action.label;
+                            const icon =
+                              typeof action.icon === "function"
+                                ? action.icon(row)
+                                : action.icon;
 
                             return (
                               <DropdownMenuItem
@@ -297,17 +340,21 @@ export function DataTable<T>({
                                 disabled={isDisabled}
                                 className={action.className}
                               >
-                                {icon && <span className="mr-2 inline-flex">{icon}</span>}
+                                {icon && (
+                                  <span className="mr-2 inline-flex">
+                                    {icon}
+                                  </span>
+                                )}
                                 {label}
                               </DropdownMenuItem>
-                            )
+                            );
                           })}
                         </DropdownMenuContent>
                       </DropdownMenu>
                     </td>
                   )}
                 </tr>
-              )
+              );
             })
           )}
         </tbody>
@@ -325,20 +372,26 @@ export function DataTable<T>({
               <ChevronLeftIcon className="w-4 h-4" />
             </button>
             <div className="flex items-center gap-1">
-              {Array.from({ length: totalPages }, (_, i) => i + 1).map((page) => (
-                <button
-                  key={page}
-                  onClick={() => setCurrentPage(page)}
-                  className={`w-8 h-8 rounded-md text-sm font-medium transition-colors ${
-                    currentPage === page ? "bg-foreground text-background" : "text-foreground hover:bg-muted"
-                  }`}
-                >
-                  {page}
-                </button>
-              ))}
+              {Array.from({ length: totalPages }, (_, i) => i + 1).map(
+                (page) => (
+                  <button
+                    key={page}
+                    onClick={() => setCurrentPage(page)}
+                    className={`w-8 h-8 rounded-md text-sm font-medium transition-colors ${
+                      currentPage === page
+                        ? "bg-foreground text-background"
+                        : "text-foreground hover:bg-muted"
+                    }`}
+                  >
+                    {page}
+                  </button>
+                ),
+              )}
             </div>
             <button
-              onClick={() => setCurrentPage((prev) => Math.min(totalPages, prev + 1))}
+              onClick={() =>
+                setCurrentPage((prev) => Math.min(totalPages, prev + 1))
+              }
               disabled={currentPage === totalPages}
               className="inline-flex items-center justify-center w-8 h-8 rounded-md text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
               aria-label="Next page"
@@ -349,5 +402,5 @@ export function DataTable<T>({
         </div>
       )}
     </div>
-  )
+  );
 }

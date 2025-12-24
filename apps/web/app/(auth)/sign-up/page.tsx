@@ -1,5 +1,4 @@
 import { redirect } from "next/navigation";
-import { Suspense } from "react";
 import { SignUpForm } from "@/components/auth/SignUpForm";
 import ImageCarousel from "@/components/image-carousel";
 import { createClient } from "@/lib/supabase/server";

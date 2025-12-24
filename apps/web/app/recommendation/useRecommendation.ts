@@ -1,12 +1,11 @@
 /**
- * useRecommendation Hook (Step 10)
- * Fetches and caches process recommendations
+ * useRecommendation Hook (Step 10) - DUMMY VERSION
+ * Returns hardcoded process recommendations for UI testing/development.
  */
 
-'use client';
+"use client";
 
-import { useState, useEffect, useMemo } from 'react';
-import { useSession } from 'next-auth/react';
+import { useState, useEffect } from "react";
 
 export interface ProcessRecommendation {
   process: string;
@@ -44,84 +43,85 @@ interface UseRecommendationResult {
   refetch: () => Promise<void>;
 }
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
+const DUMMY_DATA: ProcessRecommendationResponse = {
+  recommendations: [
+    {
+      process: "CNC Machining",
+      confidence: 0.92,
+      reasons: [
+        "Optimal for Aluminum 6061-T6",
+        "Meets tight tolerance requirements (+/- 0.05mm)",
+        "Solid geometry detected",
+      ],
+      decision_vector: {
+        rules_fired: [
+          "rule_precision_v1",
+          "rule_material_match_03",
+          "rule_volume_threshold",
+        ],
+        scores: {
+          geometry_fit: 0.95,
+          feature_match: 0.9,
+          constraint_penalty: 0,
+          user_intent_bonus: 0.05,
+        },
+      },
+      blocking_constraints: [],
+      metadata: { machine_class: "3-axis" },
+    },
+    {
+      process: "3D Printing (SLA)",
+      confidence: 0.65,
+      reasons: [
+        "Good for rapid prototyping",
+        "Complex internal channels supported",
+      ],
+      decision_vector: {
+        rules_fired: ["rule_internal_voids", "rule_proto_speed"],
+        scores: {
+          geometry_fit: 0.85,
+          feature_match: 0.5,
+          constraint_penalty: 0.1,
+          user_intent_bonus: 0,
+        },
+      },
+      blocking_constraints: [
+        "Material property mismatch (Standard Resin vs Aluminum)",
+      ],
+      metadata: { printer_type: "Formlabs 3L" },
+    },
+  ],
+  version: "1.0.0-dummy",
+  generated_at: new Date().toISOString(),
+};
 
-export function useRecommendation(options: UseRecommendationOptions): UseRecommendationResult {
-  const { data: session } = useSession();
+export function useRecommendation(
+  options: UseRecommendationOptions,
+): UseRecommendationResult {
   const [data, setData] = useState<ProcessRecommendationResponse | null>(null);
   const [isLoading, setIsLoading] = useState(false);
-  const [error, setError] = useState<Error | null>(null);
 
-  const cacheKey = useMemo(
-    () => `recommendation:${options.quoteId}:${options.partId}`,
-    [options.quoteId, options.partId]
-  );
-
-  const fetchRecommendation = async () => {
-    if (!session?.accessToken) {
-      setError(new Error('Not authenticated'));
-      return;
-    }
-
+  const fetchDummy = async () => {
     setIsLoading(true);
-    setError(null);
-
-    try {
-      // Check cache first
-      const cached = sessionStorage.getItem(cacheKey);
-      if (cached) {
-        const parsed = JSON.parse(cached);
-        const age = Date.now() - new Date(parsed.cached_at).getTime();
-        if (age < 15 * 60 * 1000) {
-          // 15 min cache
-          setData(parsed.data);
-          setIsLoading(false);
-          return;
-        }
-      }
-
-      const response = await fetch(`${API_BASE}/routing/recommend`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${session.accessToken}`,
-        },
-        body: JSON.stringify({
-          quote_id: options.quoteId,
-          part_id: options.partId,
-        }),
-      });
-
-      if (!response.ok) {
-        throw new Error(`Failed to fetch recommendations: ${response.statusText}`);
-      }
-
-      const result: ProcessRecommendationResponse = await response.json();
-      setData(result);
-
-      // Cache result
-      sessionStorage.setItem(
-        cacheKey,
-        JSON.stringify({ data: result, cached_at: new Date().toISOString() })
-      );
-    } catch (err) {
-      setError(err as Error);
-    } finally {
-      setIsLoading(false);
-    }
+    // Simulate network delay
+    await new Promise((resolve) => setTimeout(resolve, 800));
+    setData({
+      ...DUMMY_DATA,
+      generated_at: new Date().toISOString(),
+    });
+    setIsLoading(false);
   };
 
   useEffect(() => {
     if (options.enabled !== false && options.quoteId && options.partId) {
-      fetchRecommendation();
+      fetchDummy();
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [options.quoteId, options.partId, options.enabled, session?.accessToken]);
+  }, [options.quoteId, options.partId, options.enabled]);
 
   return {
     data,
     isLoading,
-    error,
-    refetch: fetchRecommendation,
+    error: null,
+    refetch: fetchDummy,
   };
 }

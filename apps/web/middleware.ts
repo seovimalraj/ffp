@@ -13,7 +13,7 @@ export async function middleware(request: NextRequest) {
   }
 
   // Prepare a response object we can mutate (cookies/headers)
-  let response = NextResponse.next({ request });
+  const response = NextResponse.next({ request });
 
   // Parse session from NextAuth JWT token
   const token = await getToken({ 

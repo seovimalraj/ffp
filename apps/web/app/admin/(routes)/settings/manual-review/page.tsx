@@ -1,24 +1,26 @@
-import { createClient } from '@/lib/supabase/server'
-import { cookies } from 'next/headers'
-
+import { createClient } from "@/lib/supabase/server";
 
 export default async function ManualReviewPage() {
-  const supabase = await createClient()
-  
+  const supabase = await createClient();
+
   // Get all machines with their TBD triggers
   const { data: machines } = await supabase
-    .from('machines')
-    .select(`
+    .from("machines")
+    .select(
+      `
       *,
       tbd_triggers(*)
-    `)
-    .order('name')
+    `,
+    )
+    .order("name");
 
   return (
     <div className="p-6">
       <div className="sm:flex sm:items-center">
         <div className="sm:flex-auto">
-          <h1 className="text-2xl font-bold text-gray-900">Manual Review Rules</h1>
+          <h1 className="text-2xl font-bold text-gray-900">
+            Manual Review Rules
+          </h1>
           <p className="mt-2 text-sm text-gray-700">
             Configure when quotes should be flagged for manual review
           </p>
@@ -27,7 +29,7 @@ export default async function ManualReviewPage() {
 
       <div className="mt-8 space-y-8">
         {machines?.map((machine) => {
-          const trigger = machine.tbd_triggers?.[0]
+          const trigger = machine.tbd_triggers?.[0];
           return (
             <div
               key={machine.id}
@@ -43,7 +45,11 @@ export default async function ManualReviewPage() {
               </div>
 
               <div className="p-6">
-                <form action="/api/tbd-triggers" method="POST" className="space-y-8">
+                <form
+                  action="/api/tbd-triggers"
+                  method="POST"
+                  className="space-y-8"
+                >
                   <input type="hidden" name="machine_id" value={machine.id} />
                   <input type="hidden" name="trigger_id" value={trigger?.id} />
 
@@ -54,7 +60,9 @@ export default async function ManualReviewPage() {
                           <input
                             type="checkbox"
                             name="manual_review_on_unlisted_feature"
-                            defaultChecked={trigger?.manual_review_on_unlisted_feature}
+                            defaultChecked={
+                              trigger?.manual_review_on_unlisted_feature
+                            }
                             className="h-4 w-4 rounded border-gray-300 text-primary focus:ring-primary"
                           />
                           <span className="ml-2 text-sm text-gray-900">
@@ -70,7 +78,9 @@ export default async function ManualReviewPage() {
                           </label>
                           <div className="mt-2 grid grid-cols-2 gap-4">
                             <div>
-                              <label className="block text-xs text-gray-500">Min</label>
+                              <label className="block text-xs text-gray-500">
+                                Min
+                              </label>
                               <input
                                 type="number"
                                 name="min_qty"
@@ -79,7 +89,9 @@ export default async function ManualReviewPage() {
                               />
                             </div>
                             <div>
-                              <label className="block text-xs text-gray-500">Max</label>
+                              <label className="block text-xs text-gray-500">
+                                Max
+                              </label>
                               <input
                                 type="number"
                                 name="max_qty"
@@ -96,7 +108,9 @@ export default async function ManualReviewPage() {
                           </label>
                           <div className="mt-2 grid grid-cols-2 gap-4">
                             <div>
-                              <label className="block text-xs text-gray-500">Min</label>
+                              <label className="block text-xs text-gray-500">
+                                Min
+                              </label>
                               <input
                                 type="number"
                                 step="0.01"
@@ -106,7 +120,9 @@ export default async function ManualReviewPage() {
                               />
                             </div>
                             <div>
-                              <label className="block text-xs text-gray-500">Max</label>
+                              <label className="block text-xs text-gray-500">
+                                Max
+                              </label>
                               <input
                                 type="number"
                                 step="0.01"
@@ -124,7 +140,9 @@ export default async function ManualReviewPage() {
                           </label>
                           <div className="mt-2 grid grid-cols-2 gap-4">
                             <div>
-                              <label className="block text-xs text-gray-500">Min</label>
+                              <label className="block text-xs text-gray-500">
+                                Min
+                              </label>
                               <input
                                 type="number"
                                 step="0.1"
@@ -134,7 +152,9 @@ export default async function ManualReviewPage() {
                               />
                             </div>
                             <div>
-                              <label className="block text-xs text-gray-500">Max</label>
+                              <label className="block text-xs text-gray-500">
+                                Max
+                              </label>
                               <input
                                 type="number"
                                 step="0.1"
@@ -160,9 +180,9 @@ export default async function ManualReviewPage() {
                 </form>
               </div>
             </div>
-          )
+          );
         })}
       </div>
     </div>
-  )
+  );
 }

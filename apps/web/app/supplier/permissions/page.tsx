@@ -1,11 +1,11 @@
 "use client";
 
-import { useState, useMemo, useEffect } from "react";
+import { useState, useEffect } from "react";
 import { Shield, Trash2, Zap } from "lucide-react";
 import { notify } from "@/lib/toast";
 import { DataTable, Column, Action } from "@/components/ui/data-table";
 import { Member } from "./types";
-import { SAMPLE_MEMBERS, SAMPLE_SERVICES } from "./data";
+import { SAMPLE_SERVICES } from "./data";
 import { QuickPermissionsModal } from "./components/quick-permissions-modal";
 import { apiClient } from "@/lib/api";
 import { PermissionsModal } from "./components";
@@ -49,7 +49,7 @@ export default function PermissionsPage() {
     }
   };
 
-  const handleSavePermissions = (updatedMember: Member) => {
+  const handleSavePermissions = () => {
     setIsQuickModalOpen(false);
     setSelectedMember(null);
     setRefresh((o) => !o);

@@ -7,8 +7,6 @@ import { notify } from "@/lib/toast";
 import { motion, AnimatePresence } from "framer-motion";
 import { Member, DbPermission } from "../types";
 import { apiClient } from "@/lib/api";
-import { usePermissions } from "@/components/hooks/use-permissions";
-import { PermissionsNames } from "@cnc-quote/shared";
 
 interface QuickPermissionsModalProps {
   member: Member;
@@ -31,11 +29,8 @@ export function QuickPermissionsModal({
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [deletingPermissions, setDeletingPermissions] = useState<Set<string>>(
-    new Set()
+    new Set(),
   );
-  const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
-  const { fetchPermissions } = usePermissions();
-
   useEffect(() => {
     async function fetchPermissions() {
       try {
@@ -87,19 +82,18 @@ export function QuickPermissionsModal({
       (prev) => new Set([...Array.from(prev), selectedToAdd]),
     );
     setSelectedToAdd("");
-    setHasUnsavedChanges(true);
   };
 
   const handleRemovePermission = async (code: string) => {
     const permissionId = codeToPermissionIdMap.get(code);
-    
+
     if (!permissionId) {
       notify.error("Error", "Permission not found");
       return;
     }
 
     // Add to deleting state
-    setDeletingPermissions((prev) => new Set([...prev, code]));
+    setDeletingPermissions((prev) => new Set([...Array.from(prev), code]));
 
     try {
       // Call delete API
@@ -118,7 +112,6 @@ export function QuickPermissionsModal({
       });
 
       notify.success("Success", "Permission removed successfully");
-      
     } catch (error) {
       console.error(error);
       notify.error("Error", "Failed to remove permission");
@@ -161,8 +154,7 @@ export function QuickPermissionsModal({
 
       notify.success("Success", "Permissions updated successfully");
       onSave({ ...member, permissions: Array.from(selectedPermissions) });
-      setHasUnsavedChanges(false);
-      
+
       // Close modal after save
       handleClose();
     } catch (error) {
@@ -194,7 +186,7 @@ export function QuickPermissionsModal({
     // }
 
     onClose();
-    
+
     // Execute any cleanup or post-close actions
     if (onAfterClose) {
       // Small delay to ensure modal animation completes
@@ -306,7 +298,7 @@ export function QuickPermissionsModal({
                               "p-1.5 rounded-lg transition-colors",
                               deletingPermissions.has(permission.code)
                                 ? "text-slate-400 cursor-not-allowed"
-                                : "text-red-500 hover:bg-red-100 dark:hover:bg-red-900/30"
+                                : "text-red-500 hover:bg-red-100 dark:hover:bg-red-900/30",
                             )}
                             title="Remove permission"
                           >

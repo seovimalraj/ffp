@@ -1,9 +1,8 @@
-'use client';
+"use client";
 
-import { useState } from 'react';
-import Link from 'next/link';
-import Image from 'next/image';
-import { User, UserRound } from 'lucide-react';
+import { useState } from "react";
+import Link from "next/link";
+import { UserRound } from "lucide-react";
 
 const DropdownUser = () => {
   const [dropdownOpen, setDropdownOpen] = useState(false);

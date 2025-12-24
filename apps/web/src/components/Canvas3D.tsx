@@ -1,15 +1,12 @@
-'use client';
+"use client";
 
-/* eslint-disable react/no-unknown-property */
+import React, { useEffect, useMemo, useState } from "react";
+import { Canvas, useThree } from "@react-three/fiber";
+import { OrbitControls, Environment, Html } from "@react-three/drei";
+import * as THREE from "three";
 
-import React, { useEffect, useMemo, useState } from 'react';
-import { Canvas, useThree } from '@react-three/fiber';
-import { OrbitControls, Environment, Html } from '@react-three/drei';
-import * as THREE from 'three';
-// eslint-disable-next-line @typescript-eslint/ban-ts-comment
-// @ts-ignore - three examples typings are provided by three
-import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader';
-import type { DfmSelectionHint } from '@cnc-quote/shared';
+import type { DfmSelectionHint } from "@cnc-quote/shared";
+import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 
 interface SelectedIssue {
   id: string;
@@ -52,18 +49,25 @@ function cloneScene(scene: THREE.Group | null) {
 async function parseGlb(arrayBuffer: ArrayBuffer): Promise<GLTFLike> {
   const loader = new GLTFLoader();
   return new Promise((resolve, reject) => {
-    loader.parse(arrayBuffer, '', resolve, reject);
+    loader.parse(arrayBuffer, "", resolve, reject);
   });
 }
 
-function buildHighlightGeometry(source: THREE.BufferGeometry, triangles: readonly number[]): THREE.BufferGeometry | null {
-  const positionAttr = source.getAttribute('position');
+function buildHighlightGeometry(
+  source: THREE.BufferGeometry,
+  triangles: readonly number[],
+): THREE.BufferGeometry | null {
+  const positionAttr = source.getAttribute("position");
   if (!positionAttr) return null;
   const indexAttr = source.getIndex();
-  const totalTriangles = indexAttr ? indexAttr.count / 3 : positionAttr.count / 3;
+  const totalTriangles = indexAttr
+    ? indexAttr.count / 3
+    : positionAttr.count / 3;
   if (!Number.isFinite(totalTriangles) || totalTriangles <= 0) return null;
 
-  const validTriangles = triangles.filter((tri) => tri >= 0 && tri < totalTriangles);
+  const validTriangles = triangles.filter(
+    (tri) => tri >= 0 && tri < totalTriangles,
+  );
   if (!validTriangles.length) return null;
 
   const highlight = new THREE.BufferGeometry();
@@ -73,24 +77,52 @@ function buildHighlightGeometry(source: THREE.BufferGeometry, triangles: readonl
   for (const tri of validTriangles) {
     const baseIndex = tri * 3;
     const i0 = indexAttr ? (indexAttr.array as any)[baseIndex] : baseIndex;
-    const i1 = indexAttr ? (indexAttr.array as any)[baseIndex + 1] : baseIndex + 1;
-    const i2 = indexAttr ? (indexAttr.array as any)[baseIndex + 2] : baseIndex + 2;
-    const v0 = [positionAttr.getX(i0), positionAttr.getY(i0), positionAttr.getZ(i0)];
-    const v1 = [positionAttr.getX(i1), positionAttr.getY(i1), positionAttr.getZ(i1)];
-    const v2 = [positionAttr.getX(i2), positionAttr.getY(i2), positionAttr.getZ(i2)];
+    const i1 = indexAttr
+      ? (indexAttr.array as any)[baseIndex + 1]
+      : baseIndex + 1;
+    const i2 = indexAttr
+      ? (indexAttr.array as any)[baseIndex + 2]
+      : baseIndex + 2;
+    const v0 = [
+      positionAttr.getX(i0),
+      positionAttr.getY(i0),
+      positionAttr.getZ(i0),
+    ];
+    const v1 = [
+      positionAttr.getX(i1),
+      positionAttr.getY(i1),
+      positionAttr.getZ(i1),
+    ];
+    const v2 = [
+      positionAttr.getX(i2),
+      positionAttr.getY(i2),
+      positionAttr.getZ(i2),
+    ];
     vertices.set([...v0, ...v1, ...v2], offset);
     offset += 9;
   }
 
-  highlight.setAttribute('position', new THREE.BufferAttribute(vertices, 3));
+  highlight.setAttribute("position", new THREE.BufferAttribute(vertices, 3));
   highlight.computeVertexNormals();
   highlight.computeBoundingBox();
   highlight.computeBoundingSphere();
   return highlight;
 }
 
-const HighlightMesh: React.FC<{ geometry: THREE.BufferGeometry | null; color: string }> = ({ geometry, color }) => {
-  const material = useMemo(() => new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.45, side: THREE.DoubleSide }), [color]);
+const HighlightMesh: React.FC<{
+  geometry: THREE.BufferGeometry | null;
+  color: string;
+}> = ({ geometry, color }) => {
+  const material = useMemo(
+    () =>
+      new THREE.MeshBasicMaterial({
+        color,
+        transparent: true,
+        opacity: 0.45,
+        side: THREE.DoubleSide,
+      }),
+    [color],
+  );
 
   useEffect(() => () => material.dispose(), [material]);
 
@@ -98,8 +130,13 @@ const HighlightMesh: React.FC<{ geometry: THREE.BufferGeometry | null; color: st
   return <mesh geometry={geometry} material={material} />;
 };
 
-const CameraFocus: React.FC<{ geometry: THREE.BufferGeometry | null }> = ({ geometry }) => {
-  const { camera, controls } = useThree((state) => ({ camera: state.camera, controls: state.controls as any }));
+const CameraFocus: React.FC<{ geometry: THREE.BufferGeometry | null }> = ({
+  geometry,
+}) => {
+  const { camera, controls } = useThree((state) => ({
+    camera: state.camera,
+    controls: state.controls as any,
+  }));
 
   useEffect(() => {
     if (!geometry || !controls) return;
@@ -120,7 +157,13 @@ const CameraFocus: React.FC<{ geometry: THREE.BufferGeometry | null }> = ({ geom
   return null;
 };
 
-export const Canvas3D: React.FC<Canvas3DProps> = ({ meshUrl, meshVersion, selectedIssue, highlightColor = '#f97316', className }) => {
+export const Canvas3D: React.FC<Canvas3DProps> = ({
+  meshUrl,
+  meshVersion,
+  selectedIssue,
+  highlightColor = "#f97316",
+  className,
+}) => {
   const [loaded, setLoaded] = useState<LoadedMesh | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -137,11 +180,11 @@ export const Canvas3D: React.FC<Canvas3DProps> = ({ meshUrl, meshVersion, select
       setError(null);
       try {
         const response = await fetch(meshUrl, {
-          method: 'GET',
-          credentials: 'include',
-          cache: 'no-store',
+          method: "GET",
+          credentials: "include",
+          cache: "no-store",
           headers: {
-            Accept: 'model/gltf-binary',
+            Accept: "model/gltf-binary",
           },
         });
         if (!response.ok) {
@@ -173,36 +216,46 @@ export const Canvas3D: React.FC<Canvas3DProps> = ({ meshUrl, meshVersion, select
   }, [meshUrl, meshVersion]);
 
   const highlightGeometry = useMemo(() => {
-    if (!loaded?.primaryMesh || !selectedIssue?.selection_hint?.triangle_indices?.length) {
+    if (
+      !loaded?.primaryMesh ||
+      !selectedIssue?.selection_hint?.triangle_indices?.length
+    ) {
       return null;
     }
     const geometry = loaded.primaryMesh.geometry;
     try {
-      return buildHighlightGeometry(geometry, selectedIssue.selection_hint.triangle_indices);
+      return buildHighlightGeometry(
+        geometry,
+        selectedIssue.selection_hint.triangle_indices,
+      );
     } catch (err) {
-      // eslint-disable-next-line no-console
-      console.warn('Failed to build highlight geometry', err);
+      console.warn("Failed to build highlight geometry", err);
       return null;
     }
   }, [loaded, selectedIssue]);
 
-  useEffect(() => () => {
-    highlightGeometry?.dispose();
-  }, [highlightGeometry]);
+  useEffect(
+    () => () => {
+      highlightGeometry?.dispose();
+    },
+    [highlightGeometry],
+  );
 
   const sceneClone = useMemo(() => cloneScene(loaded?.scene ?? null), [loaded]);
 
   return (
-    <div className={`relative h-full w-full ${className ?? ''}`}>
+    <div className={`relative h-full w-full ${className ?? ""}`}>
       <Canvas camera={{ position: [120, 90, 120], fov: 45 }} dpr={[1, 2]}>
-        <color attach="background" args={['#f8f9fb']} />
+        <color attach="background" args={["#f8f9fb"]} />
         <ambientLight intensity={0.6} />
         <directionalLight intensity={0.9} position={[80, 120, 60]} />
         {sceneClone ? (
           <primitive object={sceneClone} />
         ) : (
           <Html center>
-            <div className="text-xs text-gray-500">{loading ? 'Loading mesh…' : 'Mesh unavailable'}</div>
+            <div className="text-xs text-gray-500">
+              {loading ? "Loading mesh…" : "Mesh unavailable"}
+            </div>
           </Html>
         )}
         <HighlightMesh geometry={highlightGeometry} color={highlightColor} />

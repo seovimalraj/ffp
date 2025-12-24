@@ -1,15 +1,9 @@
-/**
- * Step 16: Revision Timeline Component
- * Vertical timeline with time-grouped revisions
- */
+"use client";
 
-'use client';
-
-import { useState } from 'react';
-import { User, Bot, RefreshCw, FileText, StickyNote } from 'lucide-react';
-import { RevisionChip } from './RevisionChip';
-import type { RevisionListItem } from '@/lib/api/revisions';
-import { groupRevisionsByTime } from '@/lib/api/useRevisions';
+import { User, Bot, RefreshCw, FileText, StickyNote } from "lucide-react";
+import { RevisionChip } from "./RevisionChip";
+import type { RevisionListItem } from "@/lib/api/revisions";
+import { groupRevisionsByTime } from "@/lib/api/useRevisions";
 
 interface RevisionTimelineProps {
   revisions: RevisionListItem[];
@@ -26,13 +20,13 @@ export function RevisionTimeline({
 
   const getEventIcon = (eventType: string) => {
     switch (eventType) {
-      case 'user_update':
+      case "user_update":
         return <User className="h-4 w-4" />;
-      case 'system_reprice':
+      case "system_reprice":
         return <Bot className="h-4 w-4" />;
-      case 'restore':
+      case "restore":
         return <RefreshCw className="h-4 w-4" />;
-      case 'tax_update':
+      case "tax_update":
         return <FileText className="h-4 w-4" />;
       default:
         return <User className="h-4 w-4" />;
@@ -41,14 +35,14 @@ export function RevisionTimeline({
 
   const getEventLabel = (eventType: string) => {
     switch (eventType) {
-      case 'user_update':
-        return 'Manual Update';
-      case 'system_reprice':
-        return 'System Reprice';
-      case 'restore':
-        return 'Restored';
-      case 'tax_update':
-        return 'Tax Update';
+      case "user_update":
+        return "Manual Update";
+      case "system_reprice":
+        return "System Reprice";
+      case "restore":
+        return "Restored";
+      case "tax_update":
+        return "Tax Update";
       default:
         return eventType;
     }
@@ -56,19 +50,10 @@ export function RevisionTimeline({
 
   const formatTime = (dateString: string) => {
     const date = new Date(dateString);
-    return date.toLocaleTimeString('en-US', {
-      hour: 'numeric',
-      minute: '2-digit',
+    return date.toLocaleTimeString("en-US", {
+      hour: "numeric",
+      minute: "2-digit",
       hour12: true,
-    });
-  };
-
-  const formatDate = (dateString: string) => {
-    const date = new Date(dateString);
-    return date.toLocaleDateString('en-US', {
-      month: 'short',
-      day: 'numeric',
-      year: 'numeric',
     });
   };
 
@@ -77,9 +62,11 @@ export function RevisionTimeline({
 
     return (
       <div className="mb-8">
-        <h3 className="text-sm font-semibold text-gray-500 mb-4 px-4">{title}</h3>
+        <h3 className="text-sm font-semibold text-gray-500 mb-4 px-4">
+          {title}
+        </h3>
         <div className="space-y-2">
-          {items.map((revision, idx) => {
+          {items.map((revision) => {
             const isSelected = selectedRevisionId === revision.id;
             return (
               <button
@@ -87,19 +74,19 @@ export function RevisionTimeline({
                 onClick={() => onRevisionClick?.(revision.id)}
                 className={`w-full text-left p-4 rounded-lg border transition-all ${
                   isSelected
-                    ? 'border-blue-500 bg-blue-50'
-                    : 'border-gray-200 hover:border-gray-300 hover:bg-gray-50'
+                    ? "border-blue-500 bg-blue-50"
+                    : "border-gray-200 hover:border-gray-300 hover:bg-gray-50"
                 }`}
               >
                 <div className="flex items-start gap-3">
                   {/* Icon */}
                   <div
                     className={`flex-shrink-0 w-10 h-10 rounded-full flex items-center justify-center ${
-                      revision.event_type === 'system_reprice'
-                        ? 'bg-purple-100 text-purple-600'
-                        : revision.event_type === 'restore'
-                        ? 'bg-blue-100 text-blue-600'
-                        : 'bg-gray-100 text-gray-600'
+                      revision.event_type === "system_reprice"
+                        ? "bg-purple-100 text-purple-600"
+                        : revision.event_type === "restore"
+                          ? "bg-blue-100 text-blue-600"
+                          : "bg-gray-100 text-gray-600"
                     }`}
                   >
                     {getEventIcon(revision.event_type)}
@@ -163,10 +150,10 @@ export function RevisionTimeline({
 
   return (
     <div className="py-4">
-      {renderGroup('Today', grouped.today)}
-      {renderGroup('Yesterday', grouped.yesterday)}
-      {renderGroup('Last 7 Days', grouped.lastWeek)}
-      {renderGroup('Older', grouped.older)}
+      {renderGroup("Today", grouped.today)}
+      {renderGroup("Yesterday", grouped.yesterday)}
+      {renderGroup("Last 7 Days", grouped.lastWeek)}
+      {renderGroup("Older", grouped.older)}
     </div>
   );
 }

@@ -1,24 +1,34 @@
-'use client';
+"use client";
 
-import { useState, useEffect } from 'react';
-import { useRouter, useParams } from 'next/navigation';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
-import { Textarea } from '@/components/ui/textarea';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import { 
-  ArrowLeft, Package, Clock, AlertCircle, CheckCircle,
-  FileText, Upload, MessageSquare, Loader2
-} from 'lucide-react';
-import { getOrder, getKanbanState, updateKanbanStatus, createKanbanState } from '../../../../lib/database';
+import { useState, useEffect } from "react";
+import { useRouter, useParams } from "next/navigation";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import { Textarea } from "@/components/ui/textarea";
+import { Label } from "@/components/ui/label";
+import {
+  ArrowLeft,
+  Package,
+  Clock,
+  AlertCircle,
+  CheckCircle,
+  FileText,
+  MessageSquare,
+  Loader2,
+} from "lucide-react";
+import {
+  getOrder,
+  getKanbanState,
+  updateKanbanStatus,
+  createKanbanState,
+} from "../../../../lib/database";
 
 interface PartCard {
   id: string;
   part_id: string;
   part_name: string;
-  status: 'setup' | 'cutting' | 'finishing' | 'inspection' | 'done';
+  status: "setup" | "cutting" | "finishing" | "inspection" | "done";
   notes: string;
   updated_at: string;
 }
@@ -33,7 +43,7 @@ export default function SupplierKanbanPage() {
   const [loading, setLoading] = useState(true);
   const [draggedPart, setDraggedPart] = useState<string | null>(null);
   const [selectedPart, setSelectedPart] = useState<PartCard | null>(null);
-  const [newNote, setNewNote] = useState('');
+  const [newNote, setNewNote] = useState("");
   const [showNoteDialog, setShowNoteDialog] = useState(false);
 
   useEffect(() => {
@@ -42,22 +52,22 @@ export default function SupplierKanbanPage() {
 
   const loadProductionData = async () => {
     if (!orderId) return;
-    
+
     try {
       setLoading(true);
-      
+
       // Load order data
       const order = await getOrder(orderId);
       if (!order) {
-        alert('Order not found');
-        router.push('/supplier/rfqs');
+        alert("Order not found");
+        router.push("/supplier/rfqs");
         return;
       }
       setOrderData(order);
-      
+
       // Load kanban state
       const kanbanData = await getKanbanState(orderId);
-      
+
       // If no kanban state exists, initialize from order parts
       if (kanbanData.length === 0 && order.parts) {
         const initialStates = [];
@@ -65,7 +75,7 @@ export default function SupplierKanbanPage() {
           const newState = await createKanbanState(
             orderId,
             part.id || `part-${Math.random().toString(36).substr(2, 9)}`,
-            part.file_name || 'Unnamed Part'
+            part.file_name || "Unnamed Part",
           );
           initialStates.push(newState);
         }
@@ -74,20 +84,24 @@ export default function SupplierKanbanPage() {
         setParts(kanbanData);
       }
     } catch (error) {
-      console.error('Error loading production data:', error);
-      alert('Failed to load production data. Please try again.');
+      console.error("Error loading production data:", error);
+      alert("Failed to load production data. Please try again.");
     } finally {
       setLoading(false);
     }
   };
 
-  const saveKanbanState = async (partId: string, status: string, notes?: string) => {
+  const saveKanbanState = async (
+    partId: string,
+    status: string,
+    notes?: string,
+  ) => {
     try {
       await updateKanbanStatus(partId, orderId, status, notes);
       await loadProductionData(); // Reload to get latest state
     } catch (error) {
-      console.error('Error updating kanban state:', error);
-      alert('Failed to update status. Please try again.');
+      console.error("Error updating kanban state:", error);
+      alert("Failed to update status. Please try again.");
     }
   };
 
@@ -99,7 +113,7 @@ export default function SupplierKanbanPage() {
     e.preventDefault();
   };
 
-  const handleDrop = async (status: PartCard['status']) => {
+  const handleDrop = async (status: PartCard["status"]) => {
     if (!draggedPart) return;
 
     await saveKanbanState(draggedPart, status);
@@ -108,34 +122,43 @@ export default function SupplierKanbanPage() {
 
   const handleAddNote = async () => {
     if (!selectedPart || !newNote.trim()) return;
-    
-    const currentNotes = selectedPart.notes || '';
+
+    const currentNotes = selectedPart.notes || "";
     const timestamp = new Date().toLocaleString();
-    const updatedNotes = currentNotes 
+    const updatedNotes = currentNotes
       ? `${currentNotes}\n${timestamp}: ${newNote}`
       : `${timestamp}: ${newNote}`;
-    
-    await saveKanbanState(selectedPart.part_id, selectedPart.status, updatedNotes);
-    setNewNote('');
+
+    await saveKanbanState(
+      selectedPart.part_id,
+      selectedPart.status,
+      updatedNotes,
+    );
+    setNewNote("");
     setShowNoteDialog(false);
     setSelectedPart(null);
   };
 
   const columns = [
-    { id: 'setup', title: 'Setup', icon: Package, color: 'gray' },
-    { id: 'cutting', title: 'Cutting', icon: Clock, color: 'blue' },
-    { id: 'finishing', title: 'Finishing', icon: FileText, color: 'purple' },
-    { id: 'inspection', title: 'Inspection', icon: AlertCircle, color: 'orange' },
-    { id: 'done', title: 'Done', icon: CheckCircle, color: 'green' }
+    { id: "setup", title: "Setup", icon: Package, color: "gray" },
+    { id: "cutting", title: "Cutting", icon: Clock, color: "blue" },
+    { id: "finishing", title: "Finishing", icon: FileText, color: "purple" },
+    {
+      id: "inspection",
+      title: "Inspection",
+      icon: AlertCircle,
+      color: "orange",
+    },
+    { id: "done", title: "Done", icon: CheckCircle, color: "green" },
   ] as const;
 
-  const getPartsByStatus = (status: PartCard['status']) => {
-    return parts.filter(part => part.status === status);
+  const getPartsByStatus = (status: PartCard["status"]) => {
+    return parts.filter((part) => part.status === status);
   };
 
   const getProgress = () => {
     if (parts.length === 0) return 0;
-    const completed = parts.filter(p => p.status === 'done').length;
+    const completed = parts.filter((p) => p.status === "done").length;
     return Math.round((completed / parts.length) * 100);
   };
 
@@ -159,14 +182,16 @@ export default function SupplierKanbanPage() {
         <div className="mb-8 flex items-center gap-4">
           <Button
             variant="outline"
-            onClick={() => router.push('/supplier/orders')}
+            onClick={() => router.push("/supplier/orders")}
             className="flex items-center gap-2"
           >
             <ArrowLeft className="w-4 h-4" />
             Back
           </Button>
           <div className="flex-1">
-            <h1 className="text-3xl font-bold text-gray-900">Production Board</h1>
+            <h1 className="text-3xl font-bold text-gray-900">
+              Production Board
+            </h1>
             <p className="text-gray-600">Order #{orderData.id}</p>
           </div>
           <Badge className="bg-blue-100 text-blue-700 border-0 text-lg px-4 py-2">
@@ -178,9 +203,12 @@ export default function SupplierKanbanPage() {
         <div className="mb-6 bg-yellow-50 border border-yellow-200 rounded-lg p-4 flex items-start gap-3">
           <AlertCircle className="w-5 h-5 text-yellow-600 flex-shrink-0 mt-0.5" />
           <div>
-            <p className="font-semibold text-yellow-900">Customer Information Protected</p>
+            <p className="font-semibold text-yellow-900">
+              Customer Information Protected
+            </p>
             <p className="text-sm text-yellow-800">
-              Customer identity is masked for privacy. Focus on production and quality - all communication is handled through the platform.
+              Customer identity is masked for privacy. Focus on production and
+              quality - all communication is handled through the platform.
             </p>
           </div>
         </div>
@@ -191,23 +219,34 @@ export default function SupplierKanbanPage() {
             <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
               <div>
                 <p className="text-sm text-gray-600 mb-1">Total Parts</p>
-                <p className="text-2xl font-bold text-gray-900">{parts.length}</p>
+                <p className="text-2xl font-bold text-gray-900">
+                  {parts.length}
+                </p>
               </div>
               <div>
                 <p className="text-sm text-gray-600 mb-1">Completed</p>
                 <p className="text-2xl font-bold text-green-600">
-                  {parts.filter(p => p.status === 'done').length}
+                  {parts.filter((p) => p.status === "done").length}
                 </p>
               </div>
               <div>
                 <p className="text-sm text-gray-600 mb-1">In Progress</p>
                 <p className="text-2xl font-bold text-blue-600">
-                  {parts.filter(p => p.status === 'cutting' || p.status === 'finishing' || p.status === 'inspection').length}
+                  {
+                    parts.filter(
+                      (p) =>
+                        p.status === "cutting" ||
+                        p.status === "finishing" ||
+                        p.status === "inspection",
+                    ).length
+                  }
                 </p>
               </div>
               <div>
                 <p className="text-sm text-gray-600 mb-1">Lead Time</p>
-                <p className="text-2xl font-bold text-gray-900">{orderData.lead_time} days</p>
+                <p className="text-2xl font-bold text-gray-900">
+                  {orderData.lead_time} days
+                </p>
               </div>
             </div>
           </CardContent>
@@ -215,20 +254,24 @@ export default function SupplierKanbanPage() {
 
         {/* Kanban Board */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-6">
-          {columns.map(column => {
+          {columns.map((column) => {
             const columnParts = getPartsByStatus(column.id);
             const Icon = column.icon;
-            
+
             return (
               <div key={column.id}>
                 <Card className="mb-4">
-                  <CardHeader className={`bg-${column.color}-50 border-b-2 border-${column.color}-200`}>
+                  <CardHeader
+                    className={`bg-${column.color}-50 border-b-2 border-${column.color}-200`}
+                  >
                     <CardTitle className="flex items-center justify-between">
                       <div className="flex items-center gap-2">
                         <Icon className={`w-5 h-5 text-${column.color}-600`} />
                         <span>{column.title}</span>
                       </div>
-                      <Badge className={`bg-${column.color}-100 text-${column.color}-700 border-0`}>
+                      <Badge
+                        className={`bg-${column.color}-100 text-${column.color}-700 border-0`}
+                      >
                         {columnParts.length}
                       </Badge>
                     </CardTitle>
@@ -240,7 +283,7 @@ export default function SupplierKanbanPage() {
                   onDragOver={handleDragOver}
                   onDrop={() => handleDrop(column.id)}
                 >
-                  {columnParts.map(part => (
+                  {columnParts.map((part) => (
                     <Card
                       key={part.id}
                       draggable
@@ -258,9 +301,11 @@ export default function SupplierKanbanPage() {
 
                         {part.notes && (
                           <div className="mt-3 pt-3 border-t">
-                            <p className="text-xs font-semibold text-gray-700 mb-2">Notes:</p>
+                            <p className="text-xs font-semibold text-gray-700 mb-2">
+                              Notes:
+                            </p>
                             <p className="text-xs text-gray-600 whitespace-pre-wrap">
-                              {part.notes.split('\n').slice(-2).join('\n')}
+                              {part.notes.split("\n").slice(-2).join("\n")}
                             </p>
                           </div>
                         )}
@@ -279,7 +324,8 @@ export default function SupplierKanbanPage() {
                         </Button>
 
                         <p className="text-xs text-gray-400 mt-2">
-                          Last updated: {new Date(part.updated_at).toLocaleString()}
+                          Last updated:{" "}
+                          {new Date(part.updated_at).toLocaleString()}
                         </p>
                       </CardContent>
                     </Card>
@@ -300,19 +346,25 @@ export default function SupplierKanbanPage() {
         {/* Instructions */}
         <Card className="mt-6">
           <CardContent className="p-6">
-            <h3 className="font-semibold text-gray-900 mb-3">📝 How to Use the Production Board</h3>
+            <h3 className="font-semibold text-gray-900 mb-3">
+              📝 How to Use the Production Board
+            </h3>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm text-gray-600">
               <div>
-                <strong className="text-gray-900">1. Drag & Drop:</strong> Move part cards between columns as production progresses
+                <strong className="text-gray-900">1. Drag & Drop:</strong> Move
+                part cards between columns as production progresses
               </div>
               <div>
-                <strong className="text-gray-900">2. Add Updates:</strong> Click "Add Update" to log notes and progress
+                <strong className="text-gray-900">2. Add Updates:</strong> Click
+                "Add Update" to log notes and progress
               </div>
               <div>
-                <strong className="text-gray-900">3. Track Progress:</strong> Monitor the completion percentage at the top
+                <strong className="text-gray-900">3. Track Progress:</strong>{" "}
+                Monitor the completion percentage at the top
               </div>
               <div>
-                <strong className="text-gray-900">4. Quality Check:</strong> Move to QA Check before marking complete
+                <strong className="text-gray-900">4. Quality Check:</strong>{" "}
+                Move to QA Check before marking complete
               </div>
             </div>
           </CardContent>
@@ -339,7 +391,9 @@ export default function SupplierKanbanPage() {
 
                 {selectedPart.notes && (
                   <div>
-                    <p className="text-sm font-semibold text-gray-700 mb-2">Previous Updates:</p>
+                    <p className="text-sm font-semibold text-gray-700 mb-2">
+                      Previous Updates:
+                    </p>
                     <div className="space-y-2 max-h-40 overflow-y-auto">
                       <div className="text-xs text-gray-600 bg-gray-50 p-2 rounded whitespace-pre-wrap">
                         {selectedPart.notes}
@@ -360,7 +414,7 @@ export default function SupplierKanbanPage() {
                     onClick={() => {
                       setShowNoteDialog(false);
                       setSelectedPart(null);
-                      setNewNote('');
+                      setNewNote("");
                     }}
                   >
                     Cancel

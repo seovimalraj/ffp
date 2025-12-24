@@ -3,10 +3,15 @@
  * Searchable list with drag-drop reordering and compatibility guardrails
  */
 
-import React, { useState, useMemo } from 'react';
-import { DragDropContext, Droppable, Draggable, DropResult } from '@hello-pangea/dnd';
-import { useFinishChain } from '../hooks/useFinishChain';
-import { ChainStep, FinishOperation } from '../types/finish-chain';
+import React, { useState, useMemo } from "react";
+import {
+  DragDropContext,
+  Droppable,
+  Draggable,
+  DropResult,
+} from "@hello-pangea/dnd";
+import { useFinishChain } from "../hooks/useFinishChain";
+import { ChainStep, FinishOperation } from "../types/finish-chain";
 
 interface FinishChainPickerProps {
   quoteId: string;
@@ -38,12 +43,11 @@ export const FinishChainPicker: React.FC<FinishChainPickerProps> = ({
     validationErrors,
     loading,
     error,
-    validateChain,
     updateChain,
     deleteChain,
   } = useFinishChain({ quoteId, lineId, process });
 
-  const [searchTerm, setSearchTerm] = useState('');
+  const [searchTerm, setSearchTerm] = useState("");
   const [localSteps, setLocalSteps] = useState<ChainStep[]>([]);
   const [isSaving, setIsSaving] = useState(false);
 
@@ -58,18 +62,21 @@ export const FinishChainPicker: React.FC<FinishChainPickerProps> = ({
   const filteredOperations = useMemo(() => {
     const term = searchTerm.toLowerCase();
     return operations.filter(
-      op => op.name.toLowerCase().includes(term) || op.code.toLowerCase().includes(term),
+      (op) =>
+        op.name.toLowerCase().includes(term) ||
+        op.code.toLowerCase().includes(term),
     );
   }, [operations, searchTerm]);
 
   // Check if operation is already in chain
-  const isInChain = (code: string) => localSteps.some(s => s.operation_code === code);
+  const isInChain = (code: string) =>
+    localSteps.some((s) => s.operation_code === code);
 
   // Check if operation is compatible
   const isCompatible = (op: FinishOperation) => {
     // Check incompatibilities
     for (const step of localSteps) {
-      const stepOp = operations.find(o => o.code === step.operation_code);
+      const stepOp = operations.find((o) => o.code === step.operation_code);
       if (!stepOp) continue;
       if (stepOp.incompatibilities_json.includes(op.code)) return false;
       if (op.incompatibilities_json.includes(stepOp.code)) return false;
@@ -79,8 +86,8 @@ export const FinishChainPicker: React.FC<FinishChainPickerProps> = ({
 
   // Check if operation prerequisites are met
   const prerequisitesMet = (op: FinishOperation) => {
-    const currentCodes = new Set(localSteps.map(s => s.operation_code));
-    return op.prerequisites_json.every(prereq => currentCodes.has(prereq));
+    const currentCodes = new Set(localSteps.map((s) => s.operation_code));
+    return op.prerequisites_json.every((prereq) => currentCodes.has(prereq));
   };
 
   // Add operation to chain
@@ -99,7 +106,7 @@ export const FinishChainPicker: React.FC<FinishChainPickerProps> = ({
 
   // Remove operation from chain
   const removeOperation = (code: string) => {
-    setLocalSteps(localSteps.filter(s => s.operation_code !== code));
+    setLocalSteps(localSteps.filter((s) => s.operation_code !== code));
   };
 
   // Handle drag end
@@ -131,17 +138,20 @@ export const FinishChainPicker: React.FC<FinishChainPickerProps> = ({
         region,
       };
 
-      const steps = localSteps.map(s => ({
+      const steps = localSteps.map((s) => ({
         operation_code: s.operation_code,
         params: s.params,
       }));
 
       const updatedChain = await updateChain(steps, context);
       if (onChainUpdate) {
-        onChainUpdate(updatedChain.total_cost_cents, updatedChain.added_lead_days);
+        onChainUpdate(
+          updatedChain.total_cost_cents,
+          updatedChain.added_lead_days,
+        );
       }
     } catch (err) {
-      console.error('Failed to save chain:', err);
+      console.error("Failed to save chain:", err);
     } finally {
       setIsSaving(false);
     }
@@ -157,7 +167,7 @@ export const FinishChainPicker: React.FC<FinishChainPickerProps> = ({
         onChainUpdate(0, 0);
       }
     } catch (err) {
-      console.error('Failed to clear chain:', err);
+      console.error("Failed to clear chain:", err);
     } finally {
       setIsSaving(false);
     }
@@ -189,7 +199,7 @@ export const FinishChainPicker: React.FC<FinishChainPickerProps> = ({
             disabled={isSaving}
             className="px-3 py-1 text-sm bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50"
           >
-            {isSaving ? 'Saving...' : 'Save Chain'}
+            {isSaving ? "Saving..." : "Save Chain"}
           </button>
         </div>
       </div>
@@ -214,26 +224,28 @@ export const FinishChainPicker: React.FC<FinishChainPickerProps> = ({
             type="text"
             placeholder="Search operations..."
             value={searchTerm}
-            onChange={e => setSearchTerm(e.target.value)}
+            onChange={(e) => setSearchTerm(e.target.value)}
             className="w-full px-3 py-2 border rounded mb-3"
           />
           <div className="space-y-2 max-h-96 overflow-y-auto">
-            {filteredOperations.map(op => {
+            {filteredOperations.map((op) => {
               const inChain = isInChain(op.code);
               const compatible = isCompatible(op);
               const prereqsMet = prerequisitesMet(op);
               const disabled = inChain || !compatible || !prereqsMet;
 
-              let tooltip = '';
-              if (inChain) tooltip = 'Already in chain';
-              else if (!compatible) tooltip = 'Incompatible with current operations';
-              else if (!prereqsMet) tooltip = `Requires: ${op.prerequisites_json.join(', ')}`;
+              let tooltip = "";
+              if (inChain) tooltip = "Already in chain";
+              else if (!compatible)
+                tooltip = "Incompatible with current operations";
+              else if (!prereqsMet)
+                tooltip = `Requires: ${op.prerequisites_json.join(", ")}`;
 
               return (
                 <div
                   key={op.code}
                   className={`p-2 border rounded cursor-pointer hover:bg-gray-50 ${
-                    disabled ? 'opacity-50 cursor-not-allowed' : ''
+                    disabled ? "opacity-50 cursor-not-allowed" : ""
                   }`}
                   onClick={() => !disabled && addOperation(op)}
                   title={tooltip}
@@ -248,7 +260,9 @@ export const FinishChainPicker: React.FC<FinishChainPickerProps> = ({
                     </span>
                   </div>
                   {op.description && (
-                    <p className="text-xs text-gray-600 mt-1">{op.description}</p>
+                    <p className="text-xs text-gray-600 mt-1">
+                      {op.description}
+                    </p>
                   )}
                 </div>
               );
@@ -258,7 +272,9 @@ export const FinishChainPicker: React.FC<FinishChainPickerProps> = ({
 
         {/* Current Chain */}
         <div className="border rounded p-4">
-          <h4 className="font-semibold mb-2">Current Chain ({localSteps.length})</h4>
+          <h4 className="font-semibold mb-2">
+            Current Chain ({localSteps.length})
+          </h4>
           {localSteps.length === 0 ? (
             <p className="text-gray-500 text-sm">No operations selected</p>
           ) : (
@@ -289,19 +305,24 @@ export const FinishChainPicker: React.FC<FinishChainPickerProps> = ({
                                   <span className="text-xs font-mono bg-gray-200 px-1 rounded">
                                     {step.sequence}
                                   </span>
-                                  <span className="font-medium">{step.operation_name}</span>
+                                  <span className="font-medium">
+                                    {step.operation_name}
+                                  </span>
                                 </div>
                                 <div className="text-xs text-gray-500 mt-1">
                                   {step.operation_code}
                                 </div>
                                 {step.cost_cents !== undefined && (
                                   <div className="text-xs text-green-600 mt-1">
-                                    ${(step.cost_cents / 100).toFixed(2)} • +{step.lead_days} days
+                                    ${(step.cost_cents / 100).toFixed(2)} • +
+                                    {step.lead_days} days
                                   </div>
                                 )}
                               </div>
                               <button
-                                onClick={() => removeOperation(step.operation_code)}
+                                onClick={() =>
+                                  removeOperation(step.operation_code)
+                                }
                                 className="text-red-600 hover:text-red-800 text-sm"
                               >
                                 ✕
@@ -330,7 +351,9 @@ export const FinishChainPicker: React.FC<FinishChainPickerProps> = ({
                 </div>
                 <div className="flex justify-between">
                   <span className="text-gray-600">Added Lead Time:</span>
-                  <span className="font-semibold">+{chain.added_lead_days} days</span>
+                  <span className="font-semibold">
+                    +{chain.added_lead_days} days
+                  </span>
                 </div>
               </div>
             </div>

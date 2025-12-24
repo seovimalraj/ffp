@@ -1,23 +1,46 @@
-'use client';
+"use client";
 
-import { useState, useEffect } from 'react';
-import { useRouter } from 'next/navigation';
-import { api } from '@/lib/api';
-import { toast } from 'react-hot-toast';
-import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Textarea } from '@/components/ui/textarea';
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Badge } from '@/components/ui/badge';
-import { Skeleton } from '@/components/ui/skeleton';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { useState, useEffect } from "react";
+import { useRouter } from "next/navigation";
+import { api } from "@/lib/api";
+import { toast } from "react-hot-toast";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import {
-  DocumentTextIcon,
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Textarea } from "@/components/ui/textarea";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import { Badge } from "@/components/ui/badge";
+import { Skeleton } from "@/components/ui/skeleton";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import {
   ArrowLeftIcon,
   PlusIcon,
   EllipsisVerticalIcon,
@@ -26,15 +49,19 @@ import {
   DocumentDuplicateIcon,
   CubeIcon,
   PaintBrushIcon,
-  MagnifyingGlassIcon
-} from '@heroicons/react/24/outline';
-import type { SavedTemplate, TemplatesListResponse, TemplateFormData } from '@/types/order';
-import { trackEvent } from '@/lib/analytics/posthog';
+  MagnifyingGlassIcon,
+} from "@heroicons/react/24/outline";
+import type {
+  SavedTemplate,
+  TemplatesListResponse,
+  TemplateFormData,
+} from "@/types/order";
+import { trackEvent } from "@/lib/analytics/posthog";
 
 const TEMPLATE_TYPES = [
-  { value: 'material', label: 'Materials', icon: CubeIcon },
-  { value: 'finish', label: 'Finishes', icon: PaintBrushIcon },
-  { value: 'inspection', label: 'Inspection', icon: MagnifyingGlassIcon }
+  { value: "material", label: "Materials", icon: CubeIcon },
+  { value: "finish", label: "Finishes", icon: PaintBrushIcon },
+  { value: "inspection", label: "Inspection", icon: MagnifyingGlassIcon },
 ];
 
 const ITEMS_PER_PAGE = 25;
@@ -43,14 +70,15 @@ export default function TemplatesPage() {
   const router = useRouter();
   const [loading, setLoading] = useState(true);
   const [templates, setTemplates] = useState<SavedTemplate[]>([]);
-  const [total, setTotal] = useState(0);
-  const [activeTab, setActiveTab] = useState('material');
+  const [activeTab, setActiveTab] = useState("material");
   const [showCreateDialog, setShowCreateDialog] = useState(false);
-  const [editingTemplate, setEditingTemplate] = useState<SavedTemplate | null>(null);
+  const [editingTemplate, setEditingTemplate] = useState<SavedTemplate | null>(
+    null,
+  );
   const [formData, setFormData] = useState<TemplateFormData>({
-    type: 'material',
-    label: '',
-    payload: {}
+    type: "material",
+    label: "",
+    payload: {},
   });
   const [saving, setSaving] = useState(false);
 
@@ -62,13 +90,14 @@ export default function TemplatesPage() {
   const loadTemplates = async () => {
     try {
       setLoading(true);
-      const response = await api.get<TemplatesListResponse>(`/templates?type=${activeTab}&limit=${ITEMS_PER_PAGE}`);
+      const response = await api.get<TemplatesListResponse>(
+        `/templates?type=${activeTab}&limit=${ITEMS_PER_PAGE}`,
+      );
       setTemplates(response.data.templates);
-      setTotal(response.data.total);
-      trackEvent('templates_view', { type: activeTab });
+      trackEvent("templates_view", { type: activeTab });
     } catch (error: any) {
-      console.error('Error loading templates:', error);
-      toast.error('Failed to load templates');
+      console.error("Error loading templates:", error);
+      toast.error("Failed to load templates");
     } finally {
       setLoading(false);
     }
@@ -77,15 +106,15 @@ export default function TemplatesPage() {
   const handleCreateTemplate = async () => {
     try {
       setSaving(true);
-      await api.post('/templates', formData);
-      toast.success('Template created successfully');
-      trackEvent('template_created', { type: formData.type });
+      await api.post("/templates", formData);
+      toast.success("Template created successfully");
+      trackEvent("template_created", { type: formData.type });
       setShowCreateDialog(false);
       resetForm();
       await loadTemplates();
     } catch (error: any) {
-      console.error('Error creating template:', error);
-      toast.error('Failed to create template');
+      console.error("Error creating template:", error);
+      toast.error("Failed to create template");
     } finally {
       setSaving(false);
     }
@@ -97,42 +126,49 @@ export default function TemplatesPage() {
     try {
       setSaving(true);
       await api.put(`/templates/${editingTemplate.id}`, formData);
-      toast.success('Template updated successfully');
+      toast.success("Template updated successfully");
       setEditingTemplate(null);
       resetForm();
       await loadTemplates();
     } catch (error: any) {
-      console.error('Error updating template:', error);
-      toast.error('Failed to update template');
+      console.error("Error updating template:", error);
+      toast.error("Failed to update template");
     } finally {
       setSaving(false);
     }
   };
 
   const handleDeleteTemplate = async (template: SavedTemplate) => {
-    if (!confirm(`Are you sure you want to delete "${template.label}"? This action cannot be undone.`)) {
+    if (
+      !confirm(
+        `Are you sure you want to delete "${template.label}"? This action cannot be undone.`,
+      )
+    ) {
       return;
     }
 
     try {
       await api.delete(`/templates/${template.id}`);
-      toast.success('Template deleted successfully');
-      trackEvent('template_deleted', { template_id: template.id, type: template.type });
+      toast.success("Template deleted successfully");
+      trackEvent("template_deleted", {
+        template_id: template.id,
+        type: template.type,
+      });
       await loadTemplates();
     } catch (error: any) {
-      console.error('Error deleting template:', error);
-      toast.error('Failed to delete template');
+      console.error("Error deleting template:", error);
+      toast.error("Failed to delete template");
     }
   };
 
   const handleDuplicateTemplate = async (template: SavedTemplate) => {
     try {
       await api.post(`/templates/${template.id}/duplicate`);
-      toast.success('Template duplicated successfully');
+      toast.success("Template duplicated successfully");
       await loadTemplates();
     } catch (error: any) {
-      console.error('Error duplicating template:', error);
-      toast.error('Failed to duplicate template');
+      console.error("Error duplicating template:", error);
+      toast.error("Failed to duplicate template");
     }
   };
 
@@ -141,29 +177,29 @@ export default function TemplatesPage() {
     setFormData({
       type: template.type,
       label: template.label,
-      payload: template.payload
+      payload: template.payload,
     });
   };
 
   const resetForm = () => {
     setFormData({
       type: activeTab as any,
-      label: '',
-      payload: {}
+      label: "",
+      payload: {},
     });
     setEditingTemplate(null);
   };
 
   const getTemplatePreview = (template: SavedTemplate) => {
     switch (template.type) {
-      case 'material':
-        return `Grade: ${template.payload.grade || 'N/A'}, Stock: ${template.payload.stock_form || 'N/A'}`;
-      case 'finish':
-        return `Process: ${template.payload.process || 'N/A'}, Thickness: ${template.payload.thickness_um || 'N/A'}μm`;
-      case 'inspection':
-        return `Level: ${template.payload.level || 'N/A'}`;
+      case "material":
+        return `Grade: ${template.payload.grade || "N/A"}, Stock: ${template.payload.stock_form || "N/A"}`;
+      case "finish":
+        return `Process: ${template.payload.process || "N/A"}, Thickness: ${template.payload.thickness_um || "N/A"}μm`;
+      case "inspection":
+        return `Level: ${template.payload.level || "N/A"}`;
       default:
-        return 'Template details';
+        return "Template details";
     }
   };
 
@@ -203,7 +239,7 @@ export default function TemplatesPage() {
             <Button
               variant="ghost"
               size="sm"
-              onClick={() => router.push('/portal/account')}
+              onClick={() => router.push("/portal/account")}
             >
               <ArrowLeftIcon className="w-4 h-4 mr-2" />
               Back to Account
@@ -228,7 +264,7 @@ export default function TemplatesPage() {
             <DialogContent className="max-w-2xl">
               <DialogHeader>
                 <DialogTitle>
-                  {editingTemplate ? 'Edit Template' : 'Create New Template'}
+                  {editingTemplate ? "Edit Template" : "Create New Template"}
                 </DialogTitle>
               </DialogHeader>
               <div className="space-y-4">
@@ -237,7 +273,9 @@ export default function TemplatesPage() {
                     <Label htmlFor="template-type">Type</Label>
                     <Select
                       value={formData.type}
-                      onValueChange={(value) => setFormData({ ...formData, type: value as any })}
+                      onValueChange={(value) =>
+                        setFormData({ ...formData, type: value as any })
+                      }
                       disabled={!!editingTemplate}
                     >
                       <SelectTrigger>
@@ -257,7 +295,9 @@ export default function TemplatesPage() {
                     <Input
                       id="template-label"
                       value={formData.label}
-                      onChange={(e) => setFormData({ ...formData, label: e.target.value })}
+                      onChange={(e) =>
+                        setFormData({ ...formData, label: e.target.value })
+                      }
                       placeholder="Template name"
                     />
                   </div>
@@ -271,7 +311,7 @@ export default function TemplatesPage() {
                       try {
                         const payload = JSON.parse(e.target.value);
                         setFormData({ ...formData, payload });
-                      } catch (error) {
+                      } catch (_error) {
                         // Invalid JSON, keep current value
                       }
                     }}
@@ -280,12 +320,13 @@ export default function TemplatesPage() {
                     className="font-mono text-sm"
                   />
                   <p className="text-xs text-gray-500 mt-1">
-                    See schema for selected type. Example: {JSON.stringify(
-                      formData.type === 'material'
-                        ? { grade: '6061', density: 2.7, stock_form: 'plate' }
-                        : formData.type === 'finish'
-                        ? { process: 'anodize', thickness_um: 25 }
-                        : { level: 'Standard' }
+                    See schema for selected type. Example:{" "}
+                    {JSON.stringify(
+                      formData.type === "material"
+                        ? { grade: "6061", density: 2.7, stock_form: "plate" }
+                        : formData.type === "finish"
+                          ? { process: "anodize", thickness_um: 25 }
+                          : { level: "Standard" },
                     )}
                   </p>
                 </div>
@@ -301,10 +342,19 @@ export default function TemplatesPage() {
                     Cancel
                   </Button>
                   <Button
-                    onClick={editingTemplate ? handleUpdateTemplate : handleCreateTemplate}
+                    onClick={
+                      editingTemplate
+                        ? handleUpdateTemplate
+                        : handleCreateTemplate
+                    }
                     disabled={saving || !formData.label}
                   >
-                    {saving ? 'Saving...' : editingTemplate ? 'Update' : 'Create'} Template
+                    {saving
+                      ? "Saving..."
+                      : editingTemplate
+                        ? "Update"
+                        : "Create"}{" "}
+                    Template
                   </Button>
                 </div>
               </div>
@@ -325,7 +375,11 @@ export default function TemplatesPage() {
             {TEMPLATE_TYPES.map((type) => {
               const Icon = type.icon;
               return (
-                <TabsTrigger key={type.value} value={type.value} className="flex items-center gap-2">
+                <TabsTrigger
+                  key={type.value}
+                  value={type.value}
+                  className="flex items-center gap-2"
+                >
                   <Icon className="w-4 h-4" />
                   {type.label}
                 </TabsTrigger>
@@ -356,7 +410,9 @@ export default function TemplatesPage() {
                     <TableBody>
                       {templates.map((template) => (
                         <TableRow key={template.id}>
-                          <TableCell className="font-medium">{template.label}</TableCell>
+                          <TableCell className="font-medium">
+                            {template.label}
+                          </TableCell>
                           <TableCell className="text-gray-600">
                             {getTemplatePreview(template)}
                           </TableCell>
@@ -376,11 +432,17 @@ export default function TemplatesPage() {
                                 </Button>
                               </DropdownMenuTrigger>
                               <DropdownMenuContent align="end">
-                                <DropdownMenuItem onClick={() => handleEditTemplate(template)}>
+                                <DropdownMenuItem
+                                  onClick={() => handleEditTemplate(template)}
+                                >
                                   <PencilIcon className="w-4 h-4 mr-2" />
                                   Edit
                                 </DropdownMenuItem>
-                                <DropdownMenuItem onClick={() => handleDuplicateTemplate(template)}>
+                                <DropdownMenuItem
+                                  onClick={() =>
+                                    handleDuplicateTemplate(template)
+                                  }
+                                >
                                   <DocumentDuplicateIcon className="w-4 h-4 mr-2" />
                                   Duplicate
                                 </DropdownMenuItem>
@@ -401,7 +463,8 @@ export default function TemplatesPage() {
 
                   {templates.length === 0 && (
                     <div className="text-center py-8 text-gray-500">
-                      No {type.label.toLowerCase()} templates found. Create your first template to get started.
+                      No {type.label.toLowerCase()} templates found. Create your
+                      first template to get started.
                     </div>
                   )}
                 </CardContent>

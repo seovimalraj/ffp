@@ -1,3 +1,10 @@
+export type IRFQStatuses =
+  | "draft"
+  | "pending"
+  | "quoted"
+  | "accepted"
+  | "rejected";
+
 export type ICategory = {
   id: string;
   name: string;
@@ -39,13 +46,6 @@ export type IGroupedMaterial = {
   };
 };
 
-export type IGroupCategories = {
-  id: string;
-  name: string;
-  slug: string;
-  description: string;
-};
-
 export type IGroupWarehouses = {
   id: string;
   name: string;
@@ -55,6 +55,14 @@ export type IGroupWarehouses = {
   address: string;
 };
 
+export type IGroupRFQs = {
+  rfq_code: string;
+  final_price: number | null;
+  status: IRFQStatuses;
+  parts_count: number;
+  created_at: Date;
+  updated_at: Date;
+};
 
 export type IGroupTolerance = {
   id: string;
@@ -62,4 +70,4 @@ export type IGroupTolerance = {
   description: string;
   range_value: number;
   percentage: number;
-}
+};

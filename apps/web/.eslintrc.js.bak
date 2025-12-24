@@ -1,0 +1,86 @@
+/* eslint-env node */
+module.exports = {
+  root: true,
+  extends: ["next/core-web-vitals", "plugin:@typescript-eslint/recommended"],
+  plugins: ["@typescript-eslint"],
+  env: {
+    browser: true,
+    es2021: true,
+    node: true, // THIS IS THE KEY FIX
+  },
+  parser: "@typescript-eslint/parser",
+  parserOptions: {
+    ecmaVersion: "latest",
+    sourceType: "module",
+    babelOptions: {
+      presets: [require.resolve("next/babel")],
+    },
+  },
+  rules: {
+    // Unused variables - allow underscore prefix
+    "@typescript-eslint/no-unused-vars": [
+      "warn", // Changed to 'warn' instead of 'error' for better DX
+      {
+        argsIgnorePattern: "^_",
+        varsIgnorePattern: "^_",
+        caughtErrorsIgnorePattern: "^_",
+        destructuredArrayIgnorePattern: "^_",
+      },
+    ],
+    "@typescript-eslint/no-explicit-any": "warn", // Changed to 'warn'
+    "no-console": ["warn", { allow: ["warn", "error"] }],
+    "react-hooks/exhaustive-deps": "warn",
+
+    // Additional helpful rules
+    "no-useless-catch": "warn",
+    "no-empty": ["error", { allowEmptyCatch: true }],
+  },
+  ignorePatterns: [
+    "node_modules/",
+    ".next/",
+    "dist/",
+    "coverage/",
+    "out/",
+    "build/",
+    "public/occ/**/*.js", // Third-party library
+    "*.config.js", // Config files at root
+  ],
+  overrides: [
+    // Test files
+    {
+      files: ["**/*.test.ts", "**/*.spec.ts", "**/*.e2e-spec.ts", "e2e/**/*"],
+      env: {
+        jest: true,
+        node: true,
+      },
+      rules: {
+        "no-console": "off",
+        "@typescript-eslint/no-unused-vars": "off",
+      },
+    },
+    // TypeScript files - disable no-undef (TypeScript handles this)
+    {
+      files: ["**/*.ts", "**/*.tsx"],
+      rules: {
+        "no-undef": "off", // TypeScript already checks this
+      },
+    },
+    // Config files
+    {
+      files: ["*.config.js", "*.config.ts"],
+      env: {
+        node: true,
+      },
+      rules: {
+        "@typescript-eslint/no-var-requires": "off",
+      },
+    },
+    // API routes - allow console for logging
+    {
+      files: ["app/api/**/*", "pages/api/**/*"],
+      rules: {
+        "no-console": "off",
+      },
+    },
+  ],
+};

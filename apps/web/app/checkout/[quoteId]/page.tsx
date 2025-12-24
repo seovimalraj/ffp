@@ -16,33 +16,40 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Textarea } from "@/components/ui/textarea";
 import {
-  CreditCard,
   MapPin,
   Package,
   Clock,
-  CheckCircle,
-  ArrowLeft,
   ArrowRight,
   AlertCircle,
   Loader2,
-  ShieldCheck,
-  ShieldAlert,
-  Globe,
-  FileText,
-  Info,
-  ChevronRight,
   Truck,
-  Building2,
   Check,
-  Lock,
+  Plus,
+  CreditCard as CreditCardIcon,
+  ChevronRight,
+  LayoutDashboard,
+  Package2,
+  LogOut,
 } from "lucide-react";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { Accordion, AccordionItem } from "@/components/ui/accordion";
 import { notify } from "@/lib/toast";
 import { apiClient } from "@/lib/api";
-import { useSession } from "next-auth/react";
+import { signOut, useSession } from "next-auth/react";
 import { motion, AnimatePresence } from "framer-motion";
 import { cn } from "@/lib/utils";
+import Link from "next/link";
+import Logo from "@/components/ui/logo";
+import { User } from "@/components/Layouts/sidebar/icons";
+import Footer from "@/components/ui/footer";
 
 /* ------------------------------------------------------------------ */
 /* Types */
@@ -69,8 +76,23 @@ interface QuoteConfig {
   maxLeadTime: number;
 }
 
+interface ShippingAddress {
+  id: string;
+  name: string;
+  country: string;
+  street1: string;
+  street2?: string;
+  street3?: string;
+  city: string;
+  zip: string;
+  phone: string;
+  phoneExt: string;
+  email: string;
+}
+
 const COUNTRIES = [
   "United States",
+  "India",
   "Canada",
   "United Kingdom",
   "Germany",
@@ -88,6 +110,17 @@ const INDUSTRIES = [
   "Industrial",
   "Robotics",
   "Other",
+];
+
+const SHIPPING_SERVICES = ["FedEx", "UPS", "DHL", "USPS"];
+
+const SHIPPING_METHODS = [
+  "Ground",
+  "Standard",
+  "Express",
+  "Overnight",
+  "Next Day Air",
+  "2nd Day Air",
 ];
 
 /* ------------------------------------------------------------------ */
@@ -108,30 +141,105 @@ export default function CheckoutPage() {
   // --- Form State ---
 
   // 1. Shipping Address
-  const [shippingAddress, setShippingAddress] = useState({
+  const [addresses, setAddresses] = useState<ShippingAddress[]>([]);
+  const [selectedAddressId, setSelectedAddressId] = useState<string>("1");
+  const [showAddressForm, setShowAddressForm] = useState(false);
+  const [newAddress, setNewAddress] = useState<Omit<ShippingAddress, "id">>({
     name: "",
-    country: "United States",
-    street: "",
+    country: "India",
+    street1: "",
+    street2: "",
+    street3: "",
     city: "",
     zip: "",
     phone: "",
-    ext: "",
+    phoneExt: "+91",
     email: "",
   });
 
-  // 3. Export Control
-  const [exportControl, setExportControl] = useState<"no" | "yes" | "">("");
+  const [editingAddressId, setEditingAddressId] = useState<string | null>(null);
 
-  // 4. Customs Info
+  const selectedAddress = addresses.find((a) => a.id === selectedAddressId);
+
+  const handleAddAddress = () => {
+    if (
+      !newAddress.name ||
+      !newAddress.street1 ||
+      !newAddress.city ||
+      !newAddress.zip ||
+      !newAddress.phone ||
+      !newAddress.email
+    ) {
+      notify.error("Please fill in all required fields");
+      return;
+    }
+
+    if (editingAddressId) {
+      setAddresses(
+        addresses.map((a) =>
+          a.id === editingAddressId ? { ...newAddress, id: a.id } : a,
+        ),
+      );
+      setEditingAddressId(null);
+      notify.success("Address updated successfully");
+    } else {
+      const id = Math.random().toString(36).substring(2, 9);
+      const addedAddress = { ...newAddress, id };
+      setAddresses([...addresses, addedAddress]);
+      setSelectedAddressId(id);
+      notify.success("Address added successfully");
+    }
+
+    setShowAddressForm(false);
+    setNewAddress({
+      name: "",
+      country: "India",
+      street1: "",
+      street2: "",
+      street3: "",
+      city: "",
+      zip: "",
+      phone: "",
+      phoneExt: "+91",
+      email: "",
+    });
+  };
+
+  const handleEditAddress = (addr: ShippingAddress) => {
+    setNewAddress({ ...addr });
+    setEditingAddressId(addr.id);
+    setShowAddressForm(true);
+  };
+
+  const handleCancelForm = () => {
+    setShowAddressForm(false);
+    setEditingAddressId(null);
+    setNewAddress({
+      name: "",
+      country: "India",
+      street1: "",
+      street2: "",
+      street3: "",
+      city: "",
+      zip: "",
+      phone: "",
+      phoneExt: "+91",
+      email: "",
+    });
+  };
+
+  // 4. Customs & Compliance Information (Restored with updated design)
   const [customsInfo, setCustomsInfo] = useState({
     type: "prototype" as "prototype" | "production",
     industry: "",
     partDescriptions: {} as Record<string, string>,
   });
 
-  // 5. Shipping Method
   const [shippingMethod, setShippingMethod] = useState({
     method: "ffp" as "ffp" | "account",
+    service: "",
+    accountNumber: "",
+    shippingMethod: "",
     instructions: "",
   });
 
@@ -150,6 +258,8 @@ export default function CheckoutPage() {
   });
 
   const [termsAccepted, setTermsAccepted] = useState(false);
+  const [priceConcentAccepted, setPriceConcentAccepted] = useState(false);
+  const [selectedKeys, setSelectedKeys] = useState<string[]>(["1"]);
 
   /* ------------------------------------------------------------------ */
   /* Data Loading */
@@ -196,14 +306,6 @@ export default function CheckoutPage() {
           ...prev,
           partDescriptions: initialDescriptions,
         }));
-
-        // Auto-fill email if available
-        if (session.data?.user?.email) {
-          setShippingAddress((prev) => ({
-            ...prev,
-            email: session.data?.user?.email || "",
-          }));
-        }
       } catch (error) {
         console.error(error);
         notify.error("Failed to load quote data");
@@ -218,25 +320,87 @@ export default function CheckoutPage() {
   /* Handlers */
   /* ------------------------------------------------------------------ */
 
+  const isStep1Valid = () => {
+    if (!selectedAddress) return false;
+    if (shippingMethod.method === "account") {
+      return !!(
+        shippingMethod.service &&
+        shippingMethod.accountNumber &&
+        shippingMethod.shippingMethod
+      );
+    }
+    return true;
+  };
+
+  const isStep2Valid = () => {
+    return !!customsInfo.industry;
+  };
+
+  const isStep3Valid = () => {
+    return !!(
+      paymentInfo.cardName &&
+      paymentInfo.cardNumber &&
+      paymentInfo.expiry &&
+      paymentInfo.cvv
+    );
+  };
+
+  const handleNextFromShipping = () => {
+    if (!selectedAddress) {
+      notify.error("Please select or add a shipping address");
+      return;
+    }
+    if (shippingMethod.method === "account") {
+      if (
+        !shippingMethod.service ||
+        !shippingMethod.accountNumber ||
+        !shippingMethod.shippingMethod
+      ) {
+        notify.error("Please fill in all shipping account details");
+        return;
+      }
+    }
+    if (!selectedKeys.includes("2")) {
+      setSelectedKeys([...selectedKeys, "2"]);
+    }
+  };
+
+  const handleNextFromCustoms = () => {
+    if (!isStep2Valid()) {
+      notify.error("Please select an industry to proceed");
+      return;
+    }
+    if (!selectedKeys.includes("3")) {
+      setSelectedKeys([...selectedKeys, "3"]);
+    }
+  };
+
+  const handleNextFromPayment = () => {
+    if (!isStep3Valid()) {
+      notify.error("Please fill in all payment details");
+      return;
+    }
+    if (!selectedKeys.includes("4")) {
+      setSelectedKeys([...selectedKeys, "4"]);
+    }
+  };
+
   const handlePlaceOrder = async () => {
     if (!termsAccepted) {
-      notify.error("Please accept the terms and conditions");
+      notify.error("Please accept the terms and conditions in the summary");
+      return;
+    }
+
+    if (!priceConcentAccepted) {
+      notify.error(
+        "Please confirm you have reviewed the pricing in the order review section",
+      );
       return;
     }
 
     // Basic validation...
-    if (
-      !shippingAddress.name ||
-      !shippingAddress.street ||
-      !shippingAddress.city ||
-      !shippingAddress.zip
-    ) {
-      notify.error("Please fill in the shipping address");
-      return;
-    }
-
-    if (!exportControl) {
-      notify.error("Please confirm export control status");
+    if (!selectedAddress) {
+      notify.error("Please select or add a shipping address");
       return;
     }
 
@@ -246,9 +410,9 @@ export default function CheckoutPage() {
     setIsProcessing(false);
     setOrderPlaced(true);
 
-    setTimeout(() => {
-      router.push("/portal/orders");
-    }, 3000);
+    // setTimeout(() => {
+    //   router.push("/portal/orders");
+    // }, 3000);
   };
 
   /* ------------------------------------------------------------------ */
@@ -283,8 +447,8 @@ export default function CheckoutPage() {
 
   const subtotal = config.totalPrice;
   const shippingCost = 0; // or mock
-  const tax = subtotal * 0.08; // mock 8% tax
-  const total = subtotal + shippingCost + tax;
+  const tax = 0; // mock 8% tax
+  const total = subtotal + shippingCost;
 
   const estimatedShipDate = new Date();
   estimatedShipDate.setDate(estimatedShipDate.getDate() + config.maxLeadTime);
@@ -293,377 +457,616 @@ export default function CheckoutPage() {
   estimatedDeliveryDate.setDate(estimatedDeliveryDate.getDate() + 3);
 
   return (
-    <div className="min-h-screen bg-[#FDFDFD] text-[#1E293B] font-sans pb-20 selection:bg-blue-100 selection:text-blue-700">
+    <div className="min-h-screen invisible-scrollbar bg-[#F0F4F8] relative font-sans text-slate-900">
+      {/* Dynamic Background Elements */}
+      <div className="fixed inset-0 z-0 pointer-events-none">
+        <div className="absolute top-[-20%] right-[-10%] w-[800px] h-[800px] bg-blue-400/20 rounded-full blur-[100px] opacity-40"></div>
+        <div className="absolute bottom-[-20%] left-[-10%] w-[600px] h-[600px] bg-indigo-400/20 rounded-full blur-[100px] opacity-40"></div>
+      </div>
       {/* Header */}
-      <header className="sticky top-0 z-50 bg-white/70 backdrop-blur-xl border-b border-slate-200/60">
-        <div className="max-w-7xl mx-auto px-6 h-20 flex items-center justify-between">
+      <header className="sticky top-0 z-50 w-full border-b border-white/20 bg-white/80 backdrop-blur-xl shadow-sm supports-[backdrop-filter]:bg-white/60">
+        <div className="max-w-[1920px] mx-auto px-4 sm:px-6 h-20 flex items-center justify-between gap-4 py-3">
+          {/* Left: Logo & Breadcrumbs */}
           <div className="flex items-center gap-6">
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => router.back()}
-              className="text-slate-600 hover:text-slate-900 border-slate-200 bg-white shadow-sm transition-all active:scale-95"
+            <Link
+              href="/"
+              className="flex items-center gap-2 group transition-opacity hover:opacity-80"
             >
-              <ArrowLeft className="w-4 h-4 mr-2" />
-              Back
-            </Button>
-            <div className="h-8 w-px bg-slate-200" />
-            <div className="flex flex-col">
-              <h1 className="text-xl font-bold tracking-tight text-slate-900">
-                Secure Checkout
-              </h1>
-              <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest leading-none mt-0.5">
-                Frigate Manufacturing
-              </p>
+              <div className="h-12 w-auto relative">
+                <Logo classNames="h-full w-auto object-contain" />
+              </div>
+            </Link>
+            <div className="hidden md:block w-px h-8 bg-slate-200"></div>
+
+            <div className="hidden md:flex items-center gap-2 text-sm font-medium text-slate-500">
+              <Link
+                href="/instant-quote"
+                className="hover:text-blue-600 transition-colors"
+              >
+                Instant Quote
+              </Link>
+
+              <ChevronRight className="w-4 h-4 text-slate-400" />
+              <span>Configuration</span>
+
+              <ChevronRight className="w-4 h-4 text-slate-400" />
+              <span className="px-2.5 py-1 bg-blue-50 text-blue-700 rounded-lg text-xs font-bold uppercase tracking-wider border border-blue-100">
+                Checkout
+              </span>
             </div>
           </div>
           <div className="flex items-center gap-6">
-            <div className="hidden md:flex items-center gap-2 text-xs font-semibold text-slate-500 bg-slate-100 px-3 py-1.5 rounded-full">
-              <ShieldCheck className="w-3.5 h-3.5 text-blue-600" />
-              SSL SECURED
-            </div>
-            <div className="flex items-center gap-3 text-sm font-medium text-slate-600">
-              <div className="flex -space-x-2">
-                <div className="w-8 h-8 rounded-full border-2 border-white bg-slate-200 flex items-center justify-center text-[10px] font-bold">
-                  JD
-                </div>
+            {session.status === "authenticated" ? (
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    className="relative h-12 w-12 rounded-full bg-slate-100 p-0 hover:bg-blue-50 hover:text-blue-600 transition-all border border-slate-200 hover:border-blue-200"
+                  >
+                    <div className="h-12 w-12 rounded-xl bg-gradient-to-br from-blue-800 to-slate-900 border border-slate-700 flex items-center justify-center text-xs font-black text-white shadow-xl">
+                      <User className="w-6 h-6" />
+                    </div>
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent
+                  align="end"
+                  className="w-60 p-2 shadow-xl border-slate-100 rounded-xl"
+                >
+                  <DropdownMenuLabel className="font-normal p-2">
+                    <div className="flex flex-col space-y-1">
+                      <p className="text-sm font-bold text-slate-900 leading-none">
+                        {session?.data?.user?.name}
+                      </p>
+                      <p className="text-xs leading-none text-slate-500 truncate">
+                        {session?.data?.user?.email}
+                      </p>
+                    </div>
+                  </DropdownMenuLabel>
+                  <DropdownMenuSeparator className="bg-slate-100 my-1" />
+                  <DropdownMenuItem
+                    onClick={() => signOut()}
+                    className="text-slate-700 cursor-pointer rounded-lg focus:bg-slate-50 focus:text-blue-600 p-2"
+                  >
+                    <LayoutDashboard className="w-4 h-4 mr-2" />
+                    Dashboard
+                  </DropdownMenuItem>
+                  <DropdownMenuItem
+                    onClick={() => signOut()}
+                    className="text-slate-700 cursor-pointer rounded-lg focus:bg-slate-50 focus:text-blue-600 p-2"
+                  >
+                    <Package2 className="w-4 h-4 mr-2" />
+                    Orders
+                  </DropdownMenuItem>
+                  <DropdownMenuSeparator className="bg-slate-100 my-1" />
+                  <DropdownMenuItem
+                    onClick={() => signOut()}
+                    className="text-red-600 cursor-pointer rounded-lg focus:bg-red-50 focus:text-red-700 p-2"
+                  >
+                    <LogOut className="w-4 h-4 mr-2" />
+                    Sign Out
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            ) : (
+              <div className="flex items-center gap-2 pl-2">
+                <Link href="/login">
+                  <Button
+                    variant="ghost"
+                    className="text-slate-600 hover:text-blue-600 font-medium"
+                  >
+                    Sign In
+                  </Button>
+                </Link>
               </div>
-              <span className="hidden sm:inline">
-                Reviewing Quote:{" "}
-                <span className="text-slate-900 font-bold">
-                  #{quoteId.slice(-6).toUpperCase()}
-                </span>
-              </span>
-            </div>
+            )}
           </div>
         </div>
       </header>
 
       <main className="max-w-7xl mx-auto px-4 py-8">
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-10">
-          {/* Left Section - Form Fields */}
-          <div className="lg:col-span-8 space-y-8">
-            {/* 1. Shipping Address */}
-            <section id="shipping-address" className="space-y-6">
-              <div className="flex items-center gap-4 group">
-                <div className="w-10 h-10 rounded-xl bg-slate-900 text-white flex items-center justify-center text-sm font-bold shadow-lg shadow-slate-200 group-hover:bg-blue-600 transition-colors">
-                  01
-                </div>
-                <h2 className="text-2xl font-bold tracking-tight text-slate-900 group-hover:text-blue-600 transition-colors">
-                  Shipping Address
-                </h2>
-              </div>
-              <Card className="border-slate-200 shadow-[0_4px_20px_-4px_rgba(0,0,0,0.1)] overflow-hidden ring-1 ring-slate-200/50">
-                <CardContent className="p-8 grid grid-cols-1 md:grid-cols-2 gap-8">
-                  <div className="space-y-2 md:col-span-2">
-                    <Label htmlFor="ship-name">Full Name</Label>
-                    <Input
-                      id="ship-name"
-                      placeholder="e.g. John Doe"
-                      value={shippingAddress.name}
-                      onChange={(e) =>
-                        setShippingAddress({
-                          ...shippingAddress,
-                          name: e.target.value,
-                        })
-                      }
-                      className="border-slate-200 focus-visible:ring-blue-500"
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="ship-country">Country</Label>
-                    <Select
-                      value={shippingAddress.country}
-                      onValueChange={(v) =>
-                        setShippingAddress({ ...shippingAddress, country: v })
-                      }
-                    >
-                      <SelectTrigger className="border-slate-200">
-                        <SelectValue placeholder="Select country" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {COUNTRIES.map((c) => (
-                          <SelectItem key={c} value={c}>
-                            {c}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="ship-street">Street Address</Label>
-                    <Input
-                      id="ship-street"
-                      placeholder="Street and house number"
-                      value={shippingAddress.street}
-                      onChange={(e) =>
-                        setShippingAddress({
-                          ...shippingAddress,
-                          street: e.target.value,
-                        })
-                      }
-                      className="border-slate-200 focus-visible:ring-blue-500"
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="ship-city">City</Label>
-                    <Input
-                      id="ship-city"
-                      placeholder="City"
-                      value={shippingAddress.city}
-                      onChange={(e) =>
-                        setShippingAddress({
-                          ...shippingAddress,
-                          city: e.target.value,
-                        })
-                      }
-                      className="border-slate-200 focus-visible:ring-blue-500"
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="ship-zip">Zip / Postal Code</Label>
-                    <Input
-                      id="ship-zip"
-                      placeholder="ZIP"
-                      value={shippingAddress.zip}
-                      onChange={(e) =>
-                        setShippingAddress({
-                          ...shippingAddress,
-                          zip: e.target.value,
-                        })
-                      }
-                      className="border-slate-200 focus-visible:ring-blue-500"
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="ship-phone">Phone Number</Label>
-                    <div className="flex gap-2">
-                      <Input
-                        id="ship-phone"
-                        placeholder="Phone"
-                        className="flex-1 border-slate-200 focus-visible:ring-blue-500"
-                        value={shippingAddress.phone}
-                        onChange={(e) =>
-                          setShippingAddress({
-                            ...shippingAddress,
-                            phone: e.target.value,
-                          })
-                        }
-                      />
-                      <Input
-                        id="ship-ext"
-                        placeholder="Ext"
-                        className="w-20 border-slate-200 focus-visible:ring-blue-500"
-                        value={shippingAddress.ext}
-                        onChange={(e) =>
-                          setShippingAddress({
-                            ...shippingAddress,
-                            ext: e.target.value,
-                          })
-                        }
-                      />
+          {/* Left Section - Accordion Form */}
+          <div className="lg:col-span-8">
+            <Accordion
+              activeKey={selectedKeys}
+              onToggle={(key) => {
+                // Prevent opening later steps if previous aren't valid
+                if (key === "2" && !isStep1Valid()) {
+                  notify.error("Please complete the shipping section first");
+                  return;
+                }
+                if (key === "3" && (!isStep1Valid() || !isStep2Valid())) {
+                  notify.error("Please complete the previous sections first");
+                  return;
+                }
+                if (
+                  key === "4" &&
+                  (!isStep1Valid() || !isStep2Valid() || !isStep3Valid())
+                ) {
+                  notify.error("Please complete all sections before reviewing");
+                  return;
+                }
+
+                setSelectedKeys((prev) =>
+                  prev.includes(key)
+                    ? prev.filter((k) => k !== key)
+                    : [...prev, key],
+                );
+              }}
+              className="gap-4"
+              allowMultiple={true}
+            >
+              {/* Step 1: Shipping Address */}
+              <AccordionItem
+                id="1"
+                title={
+                  <div className="flex items-center gap-3">
+                    <div className="w-8 h-8 rounded-full bg-blue-50 text-blue-600 flex items-center justify-center text-sm">
+                      1
                     </div>
+                    <span>Shipping Address</span>
                   </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="ship-email">Email Address</Label>
-                    <Input
-                      id="ship-email"
-                      type="email"
-                      placeholder="email@example.com"
-                      value={shippingAddress.email}
-                      onChange={(e) =>
-                        setShippingAddress({
-                          ...shippingAddress,
-                          email: e.target.value,
-                        })
-                      }
-                      className="border-slate-200 focus-visible:ring-blue-500"
-                    />
-                  </div>
-                </CardContent>
-              </Card>
-            </section>
+                }
+              >
+                <div className="space-y-6 pt-2">
+                  {!showAddressForm ? (
+                    <div className="space-y-6">
+                      <div className="space-y-4">
+                        <Label className="text-base font-semibold text-slate-800">
+                          Your Addresses
+                        </Label>
+                        <div className="space-y-3">
+                          {addresses.map((addr) => (
+                            <div
+                              key={addr.id}
+                              onClick={() => setSelectedAddressId(addr.id)}
+                              className={cn(
+                                "flex items-start gap-4 p-4 rounded-xl border-2 transition-all cursor-pointer",
+                                selectedAddressId === addr.id
+                                  ? "border-blue-600 bg-blue-50/30"
+                                  : "border-transparent hover:bg-slate-50",
+                              )}
+                            >
+                              <div className="pt-0.5">
+                                <div
+                                  className={cn(
+                                    "w-5 h-5 rounded-full border-2 flex items-center justify-center transition-all",
+                                    selectedAddressId === addr.id
+                                      ? "border-blue-600 bg-blue-600"
+                                      : "border-slate-300 bg-white",
+                                  )}
+                                >
+                                  {selectedAddressId === addr.id && (
+                                    <div className="w-2 h-2 rounded-full bg-white" />
+                                  )}
+                                </div>
+                              </div>
+                              <div className="flex-1 min-w-0">
+                                <div className="flex justify-between items-start">
+                                  <p className="font-bold text-slate-900 mb-1">
+                                    {addr.name}
+                                  </p>
+                                  <Button
+                                    variant="link"
+                                    size="sm"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      handleEditAddress(addr);
+                                    }}
+                                    className="text-blue-600 font-semibold h-auto p-0 hover:no-underline"
+                                  >
+                                    Edit
+                                  </Button>
+                                </div>
+                                <div className="text-sm text-slate-600 leading-relaxed font-medium">
+                                  <p className="truncate">
+                                    {[
+                                      addr.street1,
+                                      addr.street2,
+                                      addr.street3,
+                                      addr.city + ",",
+                                      addr.zip,
+                                    ]
+                                      .filter(Boolean)
+                                      .join(" ")}
+                                  </p>
+                                  <p>{addr.country}</p>
+                                  <p className="mt-1">{addr.phone}</p>
+                                </div>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                        <Button
+                          variant="ghost"
+                          onClick={() => setShowAddressForm(true)}
+                          className="text-blue-600 hover:text-blue-700 hover:bg-blue-50 -ml-2 gap-2"
+                        >
+                          <Plus className="w-4 h-4" />
+                          <span>Add Shipping Address</span>
+                        </Button>
+                      </div>
 
-            {/* 2. Tax Exemptions */}
-            <section id="tax-exemptions" className="space-y-6">
-              <div className="flex items-center gap-4 group">
-                <div className="w-10 h-10 rounded-xl bg-slate-900 text-white flex items-center justify-center text-sm font-bold shadow-lg shadow-slate-200 group-hover:bg-blue-600 transition-colors">
-                  02
-                </div>
-                <h2 className="text-2xl font-bold tracking-tight text-slate-900 group-hover:text-blue-600 transition-colors">
-                  Tax Exemptions
-                </h2>
-              </div>
-              <Card className="border-slate-200 shadow-[0_2px_10px_-2px_rgba(0,0,0,0.05)] bg-slate-50/50">
-                <CardContent className="p-6 flex gap-6 items-start">
-                  <div className="p-2 bg-blue-100 rounded-full text-blue-600">
-                    <Info className="w-5 h-5" />
-                  </div>
-                  <div className="space-y-1">
-                    <p className="text-sm text-slate-700">
-                      This account doesn't have tax exempt certification. To add
-                      one, please contact our support team or upload your
-                      certificate in the account settings after checkout.
-                    </p>
-                    <Button
-                      variant="link"
-                      size="sm"
-                      className="p-0 h-auto text-blue-600 font-semibold"
-                    >
-                      Learn more about tax exemptions
-                    </Button>
-                  </div>
-                </CardContent>
-              </Card>
-            </section>
+                      <div className="pt-6 border-t border-slate-100">
+                        <Label className="mb-4 block font-bold text-slate-800">
+                          Shipping Method
+                        </Label>
+                        <RadioGroup
+                          value={shippingMethod.method}
+                          onValueChange={(v: any) =>
+                            setShippingMethod({ ...shippingMethod, method: v })
+                          }
+                          className="grid grid-cols-1 md:grid-cols-2 gap-4"
+                        >
+                          {[
+                            {
+                              id: "ffp",
+                              title: "FFP Standard",
+                              sub: "Standard shipping handled by us",
+                              iconType: "truck" as const,
+                            },
+                            {
+                              id: "account",
+                              title: "Collector / My Account",
+                              sub: "Use your own shipping account",
+                              iconType: "organization" as const,
+                            },
+                          ].map((opt) => (
+                            <label
+                              key={opt.id}
+                              className={cn(
+                                "flex items-center gap-4 p-4 rounded-xl cursor-pointer border-2 transition-all",
+                                shippingMethod.method === opt.id
+                                  ? "border-blue-600 bg-blue-50/50"
+                                  : "border-slate-100 hover:border-slate-200",
+                              )}
+                            >
+                              <div
+                                className={cn(
+                                  "w-10 h-10 rounded-lg flex items-center justify-center",
+                                  shippingMethod.method === opt.id
+                                    ? "bg-blue-600 text-white"
+                                    : "bg-slate-100 text-slate-400",
+                                )}
+                              >
+                                {opt.iconType === "truck" ? (
+                                  <Truck className="w-5 h-5" />
+                                ) : (
+                                  <img
+                                    src="/icons/organzation.svg"
+                                    alt=""
+                                    className={`w-10 h-10 ${shippingMethod.method === opt.id ? "invert" : ""}`}
+                                  />
+                                )}
+                              </div>
+                              <div className="flex-1">
+                                <p className="font-semibold text-slate-900">
+                                  {opt.title}
+                                </p>
+                                <p className="text-xs text-slate-500">
+                                  {opt.sub}
+                                </p>
+                              </div>
+                              <RadioGroupItem
+                                value={opt.id}
+                                className="sr-only"
+                              />
+                            </label>
+                          ))}
+                        </RadioGroup>
 
-            {/* 3. Export Control Confirmation */}
-            <section id="export-control" className="space-y-6">
-              <div className="flex items-center gap-4 group">
-                <div className="w-10 h-10 rounded-xl bg-slate-900 text-white flex items-center justify-center text-sm font-bold shadow-lg shadow-slate-200 group-hover:bg-blue-600 transition-colors">
-                  03
-                </div>
-                <h2 className="text-2xl font-bold tracking-tight text-slate-900 group-hover:text-blue-600 transition-colors">
-                  Export Control
-                </h2>
-              </div>
-              <Card className="border-slate-200 shadow-[0_4px_20px_-4px_rgba(0,0,0,0.1)] ring-1 ring-slate-200/50">
-                <CardContent className="p-8 space-y-8">
-                  <div className="space-y-3">
-                    <h3 className="text-lg font-bold text-slate-900">
-                      Are any parts subject to export control regulations?
-                    </h3>
-                    <p className="text-sm text-slate-500 leading-relaxed max-w-2xl">
-                      Parts containing sensitive technology may fall under ITAR
-                      or EAR regulations. Orders for military or aerospace
-                      applications are typically subject to these controls.
-                      <span className="text-blue-600 cursor-pointer ml-1 font-semibold hover:underline">
-                        Learn more about compliance.
-                      </span>
-                    </p>
-                  </div>
-
-                  <RadioGroup
-                    value={exportControl}
-                    onValueChange={(v: any) => setExportControl(v)}
-                    className="grid grid-cols-1 gap-4"
-                  >
-                    {[
-                      {
-                        id: "no",
-                        label: "No, standard parts only.",
-                        sub: "This quote does not include export controlled items.",
-                      },
-                      {
-                        id: "yes",
-                        label: "Yes, parts are subject to ITAR/EAR.",
-                        sub: "Including Controlled Unclassified Information (CUI).",
-                      },
-                    ].map((opt) => (
-                      <div
-                        key={opt.id}
-                        className={cn(
-                          "relative flex flex-col p-5 rounded-2xl cursor-pointer transition-all border-2",
-                          exportControl === opt.id
-                            ? "border-blue-600 bg-blue-50/30 shadow-[0_0_0_1px_rgba(37,99,235,1)]"
-                            : "border-slate-200 hover:border-slate-300 hover:bg-slate-50/50",
-                        )}
-                        onClick={() => setExportControl(opt.id as any)}
-                      >
-                        <div className="flex items-center justify-between">
-                          <div className="space-y-1">
-                            <Label className="text-sm font-bold text-slate-900 cursor-pointer">
-                              {opt.label}
-                            </Label>
-                            <p className="text-xs text-slate-500">{opt.sub}</p>
+                        {shippingMethod.method === "account" && (
+                          <div className="mt-6 grid grid-cols-1 md:grid-cols-2 gap-6 p-6 rounded-2xl border border-blue-100 bg-blue-50/30 animate-in fade-in slide-in-from-top-4 duration-300">
+                            <div className="space-y-2">
+                              <Label htmlFor="shipping-service">
+                                Shipping Service
+                              </Label>
+                              <Select
+                                value={shippingMethod.service}
+                                onValueChange={(v) =>
+                                  setShippingMethod({
+                                    ...shippingMethod,
+                                    service: v,
+                                  })
+                                }
+                              >
+                                <SelectTrigger
+                                  id="shipping-service"
+                                  className="bg-white border-slate-200"
+                                >
+                                  <SelectValue placeholder="Select Service" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  {SHIPPING_SERVICES.map((s) => (
+                                    <SelectItem key={s} value={s.toLowerCase()}>
+                                      {s}
+                                    </SelectItem>
+                                  ))}
+                                </SelectContent>
+                              </Select>
+                            </div>
+                            <div className="space-y-2">
+                              <Label htmlFor="account-number">
+                                Shipping Account Number
+                              </Label>
+                              <Input
+                                id="account-number"
+                                placeholder="Enter account number"
+                                className="bg-white border-slate-200"
+                                value={shippingMethod.accountNumber}
+                                onChange={(e) =>
+                                  setShippingMethod({
+                                    ...shippingMethod,
+                                    accountNumber: e.target.value,
+                                  })
+                                }
+                              />
+                            </div>
+                            <div className="space-y-2 md:col-span-2">
+                              <Label htmlFor="shipping-method">
+                                Shipping Method
+                              </Label>
+                              <Select
+                                value={shippingMethod.shippingMethod}
+                                onValueChange={(v) =>
+                                  setShippingMethod({
+                                    ...shippingMethod,
+                                    shippingMethod: v,
+                                  })
+                                }
+                              >
+                                <SelectTrigger
+                                  id="shipping-method"
+                                  className="bg-white border-slate-200"
+                                >
+                                  <SelectValue placeholder="Select Shipping Method" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  {SHIPPING_METHODS.map((m) => (
+                                    <SelectItem key={m} value={m.toLowerCase()}>
+                                      {m}
+                                    </SelectItem>
+                                  ))}
+                                </SelectContent>
+                              </Select>
+                            </div>
                           </div>
-                          <RadioGroupItem
-                            value={opt.id}
-                            id={`exp-${opt.id}`}
-                            className="ring-offset-white focus:ring-blue-600"
+                        )}
+                      </div>
+
+                      <div className="flex justify-end pt-8">
+                        <Button
+                          onClick={handleNextFromShipping}
+                          className="bg-blue-600 hover:bg-blue-700 min-w-[120px] h-11 px-8 rounded-lg font-bold shadow-lg shadow-blue-200"
+                        >
+                          Next
+                        </Button>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="space-y-6">
+                      <div className="flex items-center justify-between mb-4">
+                        <h3 className="text-lg font-bold text-slate-900">
+                          {editingAddressId
+                            ? "Edit Shipping Address"
+                            : "New Shipping Address"}
+                        </h3>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={handleCancelForm}
+                          className="text-slate-500"
+                        >
+                          Cancel
+                        </Button>
+                      </div>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 bg-slate-50/50 p-6 rounded-2xl border border-slate-100">
+                        <div className="space-y-2 md:col-span-2">
+                          <Label htmlFor="ship-name">Full Name</Label>
+                          <Input
+                            id="ship-name"
+                            placeholder="John Doe"
+                            value={newAddress.name}
+                            onChange={(e) =>
+                              setNewAddress({
+                                ...newAddress,
+                                name: e.target.value,
+                              })
+                            }
                           />
                         </div>
-                        {opt.id === "yes" && exportControl === "yes" && (
-                          <motion.div
-                            initial={{ height: 0, opacity: 0 }}
-                            animate={{ height: "auto", opacity: 1 }}
-                            className="mt-4 pt-4 border-t border-blue-100 overflow-hidden"
-                          >
-                            <ul className="text-[11px] text-blue-700/80 space-y-2 font-medium">
-                              <li className="flex items-center gap-2">
-                                <CheckCircle className="w-3 h-3" /> FFP utilizes
-                                verified registered partners only
-                              </li>
-                              <li className="flex items-center gap-2">
-                                <CheckCircle className="w-3 h-3" /> Access
-                                restricted to US Persons only
-                              </li>
-                              <li className="flex items-center gap-2">
-                                <CheckCircle className="w-3 h-3" /> Potential
-                                impact on pricing and lead times
-                              </li>
-                            </ul>
-                          </motion.div>
-                        )}
-                      </div>
-                    ))}
-                  </RadioGroup>
-                </CardContent>
-              </Card>
-            </section>
-
-            {/* 4. Information Required for Customs */}
-            <section id="customs-info" className="space-y-6">
-              <div className="flex items-center gap-4 group">
-                <div className="w-10 h-10 rounded-xl bg-slate-900 text-white flex items-center justify-center text-sm font-bold shadow-lg shadow-slate-200 group-hover:bg-blue-600 transition-colors">
-                  04
-                </div>
-                <h2 className="text-2xl font-bold tracking-tight text-slate-900 group-hover:text-blue-600 transition-colors">
-                  Customs Information
-                </h2>
-              </div>
-              <Card className="border-slate-200 shadow-[0_4px_20px_-4px_rgba(0,0,0,0.1)] ring-1 ring-slate-200/50">
-                <CardContent className="p-8 space-y-10">
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-                    <div className="space-y-3">
-                      <Label className="text-xs font-bold text-slate-400 uppercase tracking-widest">
-                        Quote Purpose
-                      </Label>
-                      <div className="flex bg-slate-100/50 p-1.5 rounded-xl border border-slate-200/50">
-                        {["prototype", "production"].map((t) => (
-                          <button
-                            key={t}
-                            className={cn(
-                              "flex-1 py-2 text-xs font-bold rounded-lg transition-all capitalize",
-                              customsInfo.type === t
-                                ? "bg-white shadow-md text-blue-600 ring-1 ring-slate-200"
-                                : "text-slate-500 hover:text-slate-700",
-                            )}
-                            onClick={() =>
-                              setCustomsInfo({ ...customsInfo, type: t as any })
+                        <div className="space-y-2 md:col-span-2">
+                          <Label htmlFor="ship-country">Country</Label>
+                          <Select
+                            value={newAddress.country}
+                            onValueChange={(v) =>
+                              setNewAddress({ ...newAddress, country: v })
                             }
                           >
-                            {t}
-                          </button>
-                        ))}
+                            <SelectTrigger>
+                              <SelectValue placeholder="Select country" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {COUNTRIES.map((c) => (
+                                <SelectItem key={c} value={c}>
+                                  {c}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                        <div className="space-y-2 md:col-span-2">
+                          <Label htmlFor="ship-street1">Street Address</Label>
+                          <div className="space-y-2">
+                            <Input
+                              id="ship-street1"
+                              placeholder="Line 1"
+                              value={newAddress.street1}
+                              onChange={(e) =>
+                                setNewAddress({
+                                  ...newAddress,
+                                  street1: e.target.value,
+                                })
+                              }
+                            />
+                            <Input
+                              id="ship-street2"
+                              placeholder="Line 2"
+                              value={newAddress.street2}
+                              onChange={(e) =>
+                                setNewAddress({
+                                  ...newAddress,
+                                  street2: e.target.value,
+                                })
+                              }
+                            />
+                            <Input
+                              id="ship-street3"
+                              placeholder="Line 3"
+                              value={newAddress.street3}
+                              onChange={(e) =>
+                                setNewAddress({
+                                  ...newAddress,
+                                  street3: e.target.value,
+                                })
+                              }
+                            />
+                          </div>
+                        </div>
+                        <div className="space-y-2 md:col-span-2">
+                          <Label htmlFor="ship-city">City</Label>
+                          <Input
+                            id="ship-city"
+                            placeholder="City"
+                            value={newAddress.city}
+                            onChange={(e) =>
+                              setNewAddress({
+                                ...newAddress,
+                                city: e.target.value,
+                              })
+                            }
+                          />
+                        </div>
+                        <div className="space-y-2 md:col-span-2">
+                          <Label htmlFor="ship-zip">Zip Code</Label>
+                          <Input
+                            id="ship-zip"
+                            placeholder="12345"
+                            value={newAddress.zip}
+                            onChange={(e) =>
+                              setNewAddress({
+                                ...newAddress,
+                                zip: e.target.value,
+                              })
+                            }
+                          />
+                        </div>
+
+                        <div className="md:col-span-2 pt-4">
+                          <h4 className="text-sm font-semibold text-slate-900 border-b border-slate-100 pb-2 mb-4">
+                            Contact Information
+                          </h4>
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <div className="space-y-2 md:col-span-2">
+                              <Label htmlFor="ship-phone">Phone Number</Label>
+                              <Input
+                                id="ship-phone"
+                                value={newAddress.phone}
+                                onChange={(e) =>
+                                  setNewAddress({
+                                    ...newAddress,
+                                    phone: e.target.value,
+                                  })
+                                }
+                              />
+                            </div>
+                            <div className="space-y-2 md:col-span-2">
+                              <Label htmlFor="ship-ext">Phone Ext</Label>
+                              <Input
+                                id="ship-ext"
+                                value={newAddress.phoneExt}
+                                onChange={(e) =>
+                                  setNewAddress({
+                                    ...newAddress,
+                                    phoneExt: e.target.value,
+                                  })
+                                }
+                              />
+                            </div>
+                            <div className="space-y-2 md:col-span-2">
+                              <Label htmlFor="ship-email">Email</Label>
+                              <Input
+                                id="ship-email"
+                                value={newAddress.email}
+                                onChange={(e) =>
+                                  setNewAddress({
+                                    ...newAddress,
+                                    email: e.target.value,
+                                  })
+                                }
+                              />
+                            </div>
+                          </div>
+                        </div>
                       </div>
+                      <Button
+                        onClick={handleAddAddress}
+                        className="w-full bg-blue-600 hover:bg-blue-700 h-12 rounded-xl font-bold"
+                      >
+                        {editingAddressId
+                          ? "Update Address"
+                          : "Save and Use This Address"}
+                      </Button>
                     </div>
-                    <div className="space-y-3">
-                      <Label className="text-xs font-bold text-slate-400 uppercase tracking-widest">
-                        Industry Segment
-                      </Label>
+                  )}
+                </div>
+              </AccordionItem>
+
+              {/* Step 2: Customs Information */}
+              <AccordionItem
+                id="2"
+                title={
+                  <div className="flex items-center gap-3">
+                    <div className="w-8 h-8 rounded-full bg-blue-50 text-blue-600 flex items-center justify-center text-sm">
+                      2
+                    </div>
+                    <span>Customs & Industry</span>
+                  </div>
+                }
+              >
+                <div className="space-y-6 pt-2">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div className="space-y-2">
+                      <Label htmlFor="part-type">Part Type</Label>
+                      <Select
+                        value={customsInfo.type}
+                        onValueChange={(v) =>
+                          setCustomsInfo({ ...customsInfo, type: v as any })
+                        }
+                      >
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select type" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="prototype">Prototype</SelectItem>
+                          <SelectItem value="production">Production</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="industry">Industry</Label>
                       <Select
                         value={customsInfo.industry}
                         onValueChange={(v) =>
                           setCustomsInfo({ ...customsInfo, industry: v })
                         }
                       >
-                        <SelectTrigger className="border-slate-200 h-11 rounded-xl shadow-sm bg-white">
+                        <SelectTrigger>
                           <SelectValue placeholder="Select industry" />
                         </SelectTrigger>
-                        <SelectContent className="rounded-xl border-slate-200">
+                        <SelectContent>
                           {INDUSTRIES.map((i) => (
-                            <SelectItem key={i} value={i} className="py-2.5">
+                            <SelectItem key={i} value={i}>
                               {i}
                             </SelectItem>
                           ))}
@@ -672,35 +1075,26 @@ export default function CheckoutPage() {
                     </div>
                   </div>
 
-                  <div className="space-y-6">
-                    <div className="flex items-center gap-2">
-                      <div className="h-4 w-1 bg-blue-600 rounded-full" />
-                      <h3 className="text-[10px] font-black text-slate-500 uppercase tracking-[0.2em]">
-                        Part Descriptions for Customs
-                      </h3>
-                    </div>
-                    <div className="grid grid-cols-1 gap-4">
+                  <div className="space-y-4 pt-4 border-t border-slate-100">
+                    <p className="text-sm font-semibold text-slate-700">
+                      Part Descriptions
+                    </p>
+                    <div className="space-y-3">
                       {config.parts.map((part) => (
                         <div
                           key={part.id}
-                          className="group flex flex-col md:flex-row md:items-center gap-6 p-6 rounded-2xl border border-slate-200 bg-white hover:border-blue-200 hover:shadow-md transition-all"
+                          className="flex gap-4 p-3 rounded-xl border border-slate-100 bg-slate-50/50"
                         >
-                          <div className="flex items-center gap-4 min-w-[200px]">
-                            <div className="w-12 h-12 bg-slate-50 border border-slate-100 rounded-xl flex items-center justify-center shrink-0 group-hover:bg-blue-50 group-hover:border-blue-100 transition-colors">
-                              <FileText className="w-6 h-6 text-slate-400 group-hover:text-blue-500 transition-colors" />
-                            </div>
-                            <div className="min-w-0">
-                              <p className="text-sm font-bold truncate text-slate-900">
-                                {part.fileName}
-                              </p>
-                              <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
-                                {part.material}
-                              </p>
-                            </div>
+                          <div className="w-12 h-12 rounded-lg bg-white border border-slate-200 flex items-center justify-center shrink-0">
+                            <Package className="w-6 h-6 text-slate-400" />
                           </div>
                           <div className="flex-1">
+                            <Label className="text-xs font-bold text-slate-500 truncate mb-1 block">
+                              {part.fileName}
+                            </Label>
                             <Input
-                              placeholder="Describe the function of this part (e.g. assembly bracket)"
+                              placeholder="e.g. Aluminum engine casing"
+                              className="h-9 bg-white"
                               value={
                                 customsInfo.partDescriptions[part.id] || ""
                               }
@@ -713,160 +1107,61 @@ export default function CheckoutPage() {
                                   },
                                 })
                               }
-                              className="h-12 border-slate-200 bg-slate-50/30 focus-visible:ring-blue-500 rounded-xl"
                             />
                           </div>
                         </div>
                       ))}
                     </div>
                   </div>
-                </CardContent>
-              </Card>
-            </section>
-
-            {/* 5. Shipping Method */}
-            <section id="shipping-method" className="space-y-6">
-              <div className="flex items-center gap-4 group">
-                <div className="w-10 h-10 rounded-xl bg-slate-900 text-white flex items-center justify-center text-sm font-bold shadow-lg shadow-slate-200 group-hover:bg-blue-600 transition-colors">
-                  05
-                </div>
-                <h2 className="text-2xl font-bold tracking-tight text-slate-900 group-hover:text-blue-600 transition-colors">
-                  Shipping Method
-                </h2>
-              </div>
-              <Card className="border-slate-200 shadow-[0_4px_20px_-4px_rgba(0,0,0,0.1)] ring-1 ring-slate-200/50">
-                <CardContent className="p-8 space-y-8">
-                  <div className="space-y-4">
-                    <Label className="text-xs font-bold text-slate-400 uppercase tracking-widest ml-1">
-                      Delivery Preference
-                    </Label>
-                    <RadioGroup
-                      value={shippingMethod.method}
-                      onValueChange={(v: any) =>
-                        setShippingMethod({ ...shippingMethod, method: v })
-                      }
-                      className="grid grid-cols-1 md:grid-cols-2 gap-6"
+                  <div className="flex justify-end pt-4">
+                    <Button
+                      onClick={handleNextFromCustoms}
+                      className="bg-blue-600 hover:bg-blue-700"
                     >
-                      {[
-                        {
-                          id: "ffp",
-                          title: "FFP Standard",
-                          sub: "Fast & Reliable",
-                          icon: Truck,
-                        },
-                        {
-                          id: "account",
-                          title: "My Account",
-                          sub: "UPS / FedEx / DHL",
-                          icon: Building2,
-                        },
-                      ].map((opt) => (
-                        <div
-                          key={opt.id}
-                          className={cn(
-                            "group relative flex items-center gap-4 p-5 rounded-2xl cursor-pointer transition-all border-2",
-                            shippingMethod.method === opt.id
-                              ? "border-blue-600 bg-blue-50/30 shadow-[0_0_0_1px_rgba(37,99,235,1)]"
-                              : "border-slate-200 hover:border-slate-300 hover:bg-slate-50/50",
-                          )}
-                          onClick={() =>
-                            setShippingMethod({
-                              ...shippingMethod,
-                              method: opt.id as any,
-                            })
-                          }
-                        >
-                          <div
-                            className={cn(
-                              "w-12 h-12 rounded-xl flex items-center justify-center transition-colors",
-                              shippingMethod.method === opt.id
-                                ? "bg-blue-600 text-white"
-                                : "bg-slate-100 text-slate-400 group-hover:bg-slate-200",
-                            )}
-                          >
-                            <opt.icon className="w-6 h-6" />
-                          </div>
-                          <div className="space-y-0.5">
-                            <Label className="font-bold text-slate-900 cursor-pointer">
-                              {opt.title}
-                            </Label>
-                            <p className="text-[11px] font-medium text-slate-500 uppercase tracking-tighter">
-                              {opt.sub}
-                            </p>
-                          </div>
-                          <RadioGroupItem
-                            value={opt.id}
-                            id={`ship-${opt.id}`}
-                            className="absolute right-5 top-5 opacity-0"
-                          />
-                        </div>
-                      ))}
-                    </RadioGroup>
+                      Continue to Payment
+                    </Button>
                   </div>
-
-                  <div className="space-y-3">
-                    <Label
-                      htmlFor="special-instructions"
-                      className="text-xs font-bold text-slate-400 uppercase tracking-widest ml-1"
-                    >
-                      Special Instructions
-                    </Label>
-                    <Textarea
-                      id="special-instructions"
-                      placeholder="Add any specific delivery requirements (e.g. lift gate, loading dock)..."
-                      className="min-h-[120px] border-slate-200 focus-visible:ring-blue-500 rounded-2xl bg-white shadow-sm p-4 text-sm"
-                      value={shippingMethod.instructions}
-                      onChange={(e) =>
-                        setShippingMethod({
-                          ...shippingMethod,
-                          instructions: e.target.value,
-                        })
-                      }
-                    />
-                  </div>
-                </CardContent>
-              </Card>
-            </section>
-
-            {/* 6. Payment Information */}
-            <section id="payment-info" className="space-y-6">
-              <div className="flex items-center gap-4 group">
-                <div className="w-10 h-10 rounded-xl bg-slate-900 text-white flex items-center justify-center text-sm font-bold shadow-lg shadow-slate-200 group-hover:bg-blue-600 transition-colors">
-                  06
                 </div>
-                <h2 className="text-2xl font-bold tracking-tight text-slate-900 group-hover:text-blue-600 transition-colors">
-                  Payment
-                </h2>
-              </div>
-              <Card className="border-slate-200 shadow-[0_4px_20px_-4px_rgba(0,0,0,0.1)] overflow-hidden ring-1 ring-slate-200/50">
-                <div className="bg-slate-50/80 px-8 py-5 border-b border-slate-200 flex items-center justify-between">
+              </AccordionItem>
+
+              {/* Step 3: Payment */}
+              <AccordionItem
+                id="3"
+                title={
                   <div className="flex items-center gap-3">
-                    <div className="p-2 bg-white rounded-lg shadow-sm">
-                      <CreditCard className="w-5 h-5 text-blue-600" />
+                    <div className="w-8 h-8 rounded-full bg-blue-50 text-blue-600 flex items-center justify-center text-sm">
+                      3
                     </div>
-                    <span className="text-sm font-bold text-slate-900 uppercase tracking-wider">
-                      Credit Card
-                    </span>
+                    <span>Payment Method</span>
                   </div>
-                  <div className="flex gap-1.5 opacity-60 grayscale hover:grayscale-0 transition-all">
-                    <div className="w-8 h-5 bg-slate-200 rounded animate-pulse" />
-                    <div className="w-8 h-5 bg-slate-200 rounded animate-pulse" />
-                    <div className="w-8 h-5 bg-slate-200 rounded animate-pulse" />
+                }
+              >
+                <div className="space-y-6 pt-2">
+                  <div className="p-4 rounded-xl border-2 border-blue-600 bg-blue-50/50 flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                      <div className="w-10 h-10 rounded-lg bg-blue-600 text-white flex items-center justify-center">
+                        <CreditCardIcon className="w-5 h-5" />
+                      </div>
+                      <div>
+                        <p className="font-semibold text-slate-900 leading-tight">
+                          Credit or Debit Card
+                        </p>
+                        <p className="text-xs text-slate-500">
+                          Secure encrypted transaction
+                        </p>
+                      </div>
+                    </div>
+                    <div className="flex gap-1">
+                      <div className="w-8 h-5 bg-white border border-slate-200 rounded" />
+                      <div className="w-8 h-5 bg-white border border-slate-200 rounded" />
+                    </div>
                   </div>
-                </div>
-                <CardContent className="p-8 space-y-8">
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-                    <div className="space-y-2 md:col-span-2">
-                      <Label
-                        htmlFor="card-name"
-                        className="text-xs font-bold text-slate-400 uppercase tracking-widest ml-1"
-                      >
-                        Name on Card
-                      </Label>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="md:col-span-2 space-y-2">
+                      <Label>Cardholder Name</Label>
                       <Input
-                        id="card-name"
-                        placeholder="AS PRINTED ON CARD"
-                        className="h-12 border-slate-200 focus-visible:ring-blue-500 rounded-xl bg-white shadow-sm font-medium uppercase placeholder:text-slate-300"
+                        placeholder="John Doe"
                         value={paymentInfo.cardName}
                         onChange={(e) =>
                           setPaymentInfo({
@@ -876,40 +1171,23 @@ export default function CheckoutPage() {
                         }
                       />
                     </div>
-                    <div className="space-y-2 md:col-span-2">
-                      <Label
-                        htmlFor="card-number"
-                        className="text-xs font-bold text-slate-400 uppercase tracking-widest ml-1"
-                      >
-                        Card Number
-                      </Label>
-                      <div className="relative">
-                        <Input
-                          id="card-number"
-                          placeholder="0000 0000 0000 0000"
-                          className="h-12 pl-12 border-slate-200 focus-visible:ring-blue-500 rounded-xl bg-white shadow-sm font-mono text-lg tracking-wider"
-                          value={paymentInfo.cardNumber}
-                          onChange={(e) =>
-                            setPaymentInfo({
-                              ...paymentInfo,
-                              cardNumber: e.target.value,
-                            })
-                          }
-                        />
-                        <ShieldCheck className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-300" />
-                      </div>
+                    <div className="md:col-span-2 space-y-2">
+                      <Label>Card Number</Label>
+                      <Input
+                        placeholder="0000 0000 0000 0000"
+                        value={paymentInfo.cardNumber}
+                        onChange={(e) =>
+                          setPaymentInfo({
+                            ...paymentInfo,
+                            cardNumber: e.target.value,
+                          })
+                        }
+                      />
                     </div>
                     <div className="space-y-2">
-                      <Label
-                        htmlFor="card-expiry"
-                        className="text-xs font-bold text-slate-400 uppercase tracking-widest ml-1"
-                      >
-                        Expiry Date
-                      </Label>
+                      <Label>Expiration Date</Label>
                       <Input
-                        id="card-expiry"
                         placeholder="MM / YY"
-                        className="h-12 border-slate-200 focus-visible:ring-blue-500 rounded-xl bg-white shadow-sm font-mono text-center tracking-widest"
                         value={paymentInfo.expiry}
                         onChange={(e) =>
                           setPaymentInfo({
@@ -920,392 +1198,375 @@ export default function CheckoutPage() {
                       />
                     </div>
                     <div className="space-y-2">
-                      <Label
-                        htmlFor="card-cvv"
-                        className="text-xs font-bold text-slate-400 uppercase tracking-widest ml-1"
-                      >
-                        CVC / CVV
-                      </Label>
-                      <div className="relative">
+                      <Label>CVC</Label>
+                      <Input
+                        placeholder="***"
+                        type="password"
+                        value={paymentInfo.cvv}
+                        onChange={(e) =>
+                          setPaymentInfo({
+                            ...paymentInfo,
+                            cvv: e.target.value,
+                          })
+                        }
+                      />
+                    </div>
+                  </div>
+
+                  <div className="flex items-start gap-3">
+                    <Checkbox
+                      id="billing-same"
+                      checked={paymentInfo.billingSameAsShipping}
+                      onCheckedChange={(checked) =>
+                        setPaymentInfo({
+                          ...paymentInfo,
+                          billingSameAsShipping: Boolean(checked),
+                        })
+                      }
+                    />
+                    <Label
+                      htmlFor="billing-same"
+                      className="text-sm text-slate-600 font-medium cursor-pointer"
+                    >
+                      Billing address is the same as shipping
+                    </Label>
+                  </div>
+
+                  {!paymentInfo.billingSameAsShipping && (
+                    <div className="p-4 rounded-xl border border-slate-200 bg-slate-50 space-y-4">
+                      <div className="space-y-2">
+                        <Label>Street Address</Label>
                         <Input
-                          id="card-cvv"
-                          placeholder="•••"
-                          type="password"
-                          className="h-12 border-slate-200 focus-visible:ring-blue-500 rounded-xl bg-white shadow-sm font-mono text-center tracking-widest"
-                          value={paymentInfo.cvv}
+                          placeholder="Address"
+                          value={paymentInfo.billingAddress.street}
                           onChange={(e) =>
                             setPaymentInfo({
                               ...paymentInfo,
-                              cvv: e.target.value,
+                              billingAddress: {
+                                ...paymentInfo.billingAddress,
+                                street: e.target.value,
+                              },
                             })
                           }
                         />
-                        <Info className="absolute right-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-300 cursor-help" />
                       </div>
-                    </div>
-                  </div>
-
-                  <div className="pt-8 border-t border-slate-100 flex flex-col gap-6">
-                    <div className="flex items-center space-x-3 p-1">
-                      <Checkbox
-                        id="billing-same"
-                        checked={paymentInfo.billingSameAsShipping}
-                        onCheckedChange={(checked) =>
-                          setPaymentInfo({
-                            ...paymentInfo,
-                            billingSameAsShipping: !!checked,
-                          })
-                        }
-                        className="rounded-md border-slate-300 data-[state=checked]:bg-blue-600 h-5 w-5"
-                      />
-                      <Label
-                        htmlFor="billing-same"
-                        className="text-sm font-bold text-slate-600 cursor-pointer select-none"
-                      >
-                        Billing address same as shipping
-                      </Label>
-                    </div>
-
-                    <AnimatePresence>
-                      {!paymentInfo.billingSameAsShipping && (
-                        <motion.div
-                          initial={{ height: 0, opacity: 0 }}
-                          animate={{ height: "auto", opacity: 1 }}
-                          exit={{ height: 0, opacity: 0 }}
-                          className="overflow-hidden"
-                        >
-                          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 p-6 bg-slate-50/50 rounded-2xl border border-slate-200 ring-4 ring-slate-50">
-                            <div className="md:col-span-2 space-y-2">
-                              <Label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">
-                                Street Address
-                              </Label>
-                              <Input
-                                placeholder="Enter street address"
-                                className="h-11 bg-white border-slate-200 rounded-xl shadow-sm"
-                                value={paymentInfo.billingAddress.street}
-                                onChange={(e) =>
-                                  setPaymentInfo({
-                                    ...paymentInfo,
-                                    billingAddress: {
-                                      ...paymentInfo.billingAddress,
-                                      street: e.target.value,
-                                    },
-                                  })
-                                }
-                              />
-                            </div>
-                            <div className="space-y-2">
-                              <Label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">
-                                City
-                              </Label>
-                              <Input
-                                placeholder="City"
-                                className="h-11 bg-white border-slate-200 rounded-xl shadow-sm"
-                                value={paymentInfo.billingAddress.city}
-                                onChange={(e) =>
-                                  setPaymentInfo({
-                                    ...paymentInfo,
-                                    billingAddress: {
-                                      ...paymentInfo.billingAddress,
-                                      city: e.target.value,
-                                    },
-                                  })
-                                }
-                              />
-                            </div>
-                            <div className="space-y-2">
-                              <Label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">
-                                ZIP Code
-                              </Label>
-                              <Input
-                                placeholder="Postal Code"
-                                className="h-11 bg-white border-slate-200 rounded-xl shadow-sm"
-                                value={paymentInfo.billingAddress.zip}
-                                onChange={(e) =>
-                                  setPaymentInfo({
-                                    ...paymentInfo,
-                                    billingAddress: {
-                                      ...paymentInfo.billingAddress,
-                                      zip: e.target.value,
-                                    },
-                                  })
-                                }
-                              />
-                            </div>
-                          </div>
-                        </motion.div>
-                      )}
-                    </AnimatePresence>
-                  </div>
-                </CardContent>
-              </Card>
-            </section>
-
-            {/* 7. Review */}
-            <section id="review" className="space-y-6">
-              <div className="flex items-center gap-4 group">
-                <div className="w-10 h-10 rounded-xl bg-slate-900 text-white flex items-center justify-center text-sm font-bold shadow-lg shadow-slate-200 group-hover:bg-blue-600 transition-colors">
-                  07
-                </div>
-                <h2 className="text-2xl font-bold tracking-tight text-slate-900 group-hover:text-blue-600 transition-colors">
-                  Review & Confirm
-                </h2>
-              </div>
-              <Card className="border-slate-200 shadow-[0_4px_20px_-4px_rgba(0,0,0,0.1)] ring-1 ring-slate-200/50 overflow-hidden">
-                <div className="bg-slate-50/50 px-8 py-4 border-b border-slate-200 flex items-center gap-2">
-                  <CheckCircle className="w-4 h-4 text-green-600" />
-                  <span className="text-xs font-bold text-slate-500 uppercase tracking-widest">
-                    Final Summary
-                  </span>
-                </div>
-                <CardContent className="p-8 space-y-10">
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-12">
-                    <div className="space-y-4">
-                      <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] ml-1">
-                        Shipping Destination
-                      </p>
-                      <div className="relative p-6 rounded-2xl bg-white border border-slate-200 shadow-sm ring-4 ring-slate-50 mt-2">
-                        <MapPin className="absolute right-6 top-6 w-5 h-5 text-slate-200" />
-                        <div className="text-sm text-slate-900 leading-relaxed font-bold">
-                          {shippingAddress.name || (
-                            <span className="text-slate-300 font-medium">
-                              No Name Provided
-                            </span>
-                          )}
-                          <br />
-                          {shippingAddress.street || (
-                            <span className="text-slate-300 font-medium">
-                              No Street Provided
-                            </span>
-                          )}
-                          <br />
-                          <span className="text-slate-500 font-medium">
-                            {shippingAddress.city}, {shippingAddress.zip}
-                          </span>
-                          <br />
-                          <span className="inline-block mt-2 px-2 py-0.5 rounded bg-slate-100 text-[10px] font-black uppercase tracking-wider">
-                            {shippingAddress.country}
-                          </span>
+                      <div className="grid grid-cols-2 gap-4">
+                        <div className="space-y-2">
+                          <Label>City</Label>
+                          <Input
+                            placeholder="City"
+                            value={paymentInfo.billingAddress.city}
+                            onChange={(e) =>
+                              setPaymentInfo({
+                                ...paymentInfo,
+                                billingAddress: {
+                                  ...paymentInfo.billingAddress,
+                                  city: e.target.value,
+                                },
+                              })
+                            }
+                          />
+                        </div>
+                        <div className="space-y-2">
+                          <Label>Zip Code</Label>
+                          <Input
+                            placeholder="Zip"
+                            value={paymentInfo.billingAddress.zip}
+                            onChange={(e) =>
+                              setPaymentInfo({
+                                ...paymentInfo,
+                                billingAddress: {
+                                  ...paymentInfo.billingAddress,
+                                  zip: e.target.value,
+                                },
+                              })
+                            }
+                          />
                         </div>
                       </div>
-                    </div>
-                    <div className="space-y-4">
-                      <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] ml-1">
-                        Delivery Method
-                      </p>
-                      <div className="relative p-6 rounded-2xl bg-white border border-slate-200 shadow-sm ring-4 ring-slate-50 mt-2">
-                        <Truck className="absolute right-6 top-6 w-5 h-5 text-slate-200" />
-                        <div className="text-sm text-slate-900 leading-relaxed font-bold">
-                          {shippingMethod.method === "ffp"
-                            ? "FFP Standard Logistics"
-                            : "Private Carrier Account"}
-                          <br />
-                          <span className="text-blue-600 font-bold">
-                            Est. Delivery:{" "}
-                            {estimatedDeliveryDate.toLocaleDateString("en-US", {
-                              month: "short",
-                              day: "numeric",
-                              year: "numeric",
-                            })}
-                          </span>
-                          <br />
-                          <span className="text-slate-400 text-xs font-medium block mt-1 italic">
-                            Standard Lead Time Applies
-                          </span>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="space-y-6">
-                    <div className="flex items-center justify-between">
-                      <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] ml-1">
-                        Line Items
-                      </p>
-                      <Badge
-                        variant="outline"
-                        className="text-[10px] font-bold border-slate-200"
-                      >
-                        {config.parts.length} Units
-                      </Badge>
-                    </div>
-                    <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
-                      <table className="w-full text-sm">
-                        <thead className="bg-slate-50/50">
-                          <tr>
-                            <th className="text-left px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-200">
-                              Part Info
-                            </th>
-                            <th className="text-center px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-200">
-                              Qty
-                            </th>
-                            <th className="text-right px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-200">
-                              Price
-                            </th>
-                          </tr>
-                        </thead>
-                        <tbody className="divide-y divide-slate-100">
-                          {config.parts.map((part) => (
-                            <tr
-                              key={part.id}
-                              className="hover:bg-slate-50/30 transition-colors"
-                            >
-                              <td className="px-6 py-5">
-                                <p className="font-bold text-slate-900 text-sm">
-                                  {part.fileName}
-                                </p>
-                                <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wide flex gap-2 mt-1">
-                                  <span>{part.material}</span>
-                                  <span className="opacity-40">•</span>
-                                  <span>{part.finish}</span>
-                                </div>
-                              </td>
-                              <td className="px-6 py-5 text-center font-bold text-slate-600">
-                                {part.quantity}
-                              </td>
-                              <td className="px-6 py-5 text-right">
-                                <p className="font-bold text-slate-900">
-                                  $
-                                  {part.finalPrice.toLocaleString(undefined, {
-                                    minimumFractionDigits: 2,
-                                    maximumFractionDigits: 2,
-                                  })}
-                                </p>
-                                <p className="text-[10px] font-medium text-slate-400">
-                                  $
-                                  {(part.finalPrice / part.quantity).toFixed(2)}{" "}
-                                  / unit
-                                </p>
-                              </td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
-                  </div>
-
-                  {config.parts.some(
-                    (p) => p.material.includes("cert") || true,
-                  ) && (
-                    <div className="p-6 bg-green-50/30 rounded-2xl border border-green-100/50 flex items-center justify-between group overflow-hidden relative">
-                      <div className="absolute right-0 top-0 bottom-0 w-24 bg-gradient-to-l from-green-100/20 to-transparent pointer-events-none" />
-                      <div className="flex gap-4">
-                        <div className="w-10 h-10 rounded-xl bg-white border border-green-100 flex items-center justify-center text-green-600 shrink-0 shadow-sm">
-                          <ShieldCheck className="w-5 h-5" />
-                        </div>
-                        <div className="space-y-1">
-                          <p className="text-sm font-bold text-slate-900">
-                            Standard Compliance Docs
-                          </p>
-                          <p className="text-[11px] font-medium text-slate-500 leading-relaxed">
-                            Certifications & reports provided upon shipment
-                            completion.
-                          </p>
-                        </div>
-                      </div>
-                      <Badge className="bg-green-100 text-green-700 hover:bg-green-100 border-none px-3 font-black text-[9px] tracking-widest">
-                        ENABLED
-                      </Badge>
                     </div>
                   )}
-                </CardContent>
-              </Card>
-            </section>
+                  <div className="flex justify-end pt-4">
+                    <Button
+                      onClick={handleNextFromPayment}
+                      className="bg-blue-600 hover:bg-blue-700"
+                    >
+                      Continue to Review
+                    </Button>
+                  </div>
+                </div>
+              </AccordionItem>
+
+              {/* Step 4: Final Review */}
+              <AccordionItem
+                id="4"
+                title={
+                  <div className="flex items-center gap-3">
+                    <div className="w-8 h-8 rounded-full bg-blue-50 text-blue-600 flex items-center justify-center text-sm">
+                      4
+                    </div>
+                    <span>Review Order</span>
+                  </div>
+                }
+              >
+                <div className="space-y-8 pt-4">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-8 p-6 rounded-2xl bg-slate-50/50 border border-slate-100">
+                    <div className="space-y-4">
+                      <p className="text-xs font-bold text-slate-400 uppercase tracking-widest flex items-center gap-2">
+                        <MapPin className="w-3.5 h-3.5" /> Shipping Destination
+                      </p>
+                      <div className="space-y-1">
+                        <p className="font-bold text-slate-900 text-base">
+                          {selectedAddress?.name || "Enter Name"}
+                        </p>
+                        <p className="text-slate-600 text-sm">
+                          {selectedAddress?.street1 || "Enter Street"}
+                        </p>
+                        {selectedAddress?.street2 && (
+                          <p className="text-slate-600 text-sm">
+                            {selectedAddress.street2}
+                          </p>
+                        )}
+                        {selectedAddress?.street3 && (
+                          <p className="text-slate-600 text-sm">
+                            {selectedAddress.street3}
+                          </p>
+                        )}
+                        <p className="text-slate-600 text-sm">
+                          {selectedAddress?.city
+                            ? `${selectedAddress.city}, `
+                            : ""}
+                          {selectedAddress?.zip
+                            ? `${selectedAddress.zip} `
+                            : ""}
+                          {selectedAddress?.country}
+                        </p>
+                      </div>
+                    </div>
+                    <div className="space-y-4">
+                      <p className="text-xs font-bold text-slate-400 uppercase tracking-widest flex items-center gap-2">
+                        <Truck className="w-3.5 h-3.5" /> Logistic Details
+                      </p>
+                      <div className="space-y-1">
+                        <p className="font-bold text-slate-900 text-base uppercase">
+                          {shippingMethod.method === "ffp"
+                            ? "FFP Standard"
+                            : `${shippingMethod.service?.toUpperCase()} (${shippingMethod.shippingMethod?.charAt(0).toUpperCase()}${shippingMethod.shippingMethod?.slice(1)})`}
+                        </p>
+                        {shippingMethod.method === "account" && (
+                          <p className="text-xs text-slate-500 font-medium">
+                            Account: {shippingMethod.accountNumber}
+                          </p>
+                        )}
+                        <div className="flex items-center gap-2 text-blue-600 font-semibold text-sm">
+                          <Clock className="w-4 h-4" />
+                          Est. Delivery:{" "}
+                          {estimatedDeliveryDate.toLocaleDateString()}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="space-y-4">
+                    <div className="flex items-center justify-between">
+                      <p className="text-xs font-bold text-slate-400 uppercase tracking-widest">
+                        Order Manifest ({config.parts.length} Components)
+                      </p>
+                    </div>
+                    <div className="divide-y divide-slate-100 border border-slate-100 rounded-2xl bg-white overflow-hidden shadow-sm">
+                      {config.parts.map((part) => (
+                        <div
+                          key={part.id}
+                          className="flex items-center justify-between p-4 hover:bg-slate-50 transition-colors"
+                        >
+                          <div className="flex gap-4 items-center">
+                            <div className="w-12 h-12 rounded-xl border border-slate-100 bg-slate-50/50 flex items-center justify-center">
+                              <Package className="w-6 h-6 text-slate-300" />
+                            </div>
+                            <div>
+                              <p className="text-sm font-bold text-slate-900">
+                                {part.fileName}
+                              </p>
+                              <div className="flex items-center gap-2 mt-0.5">
+                                <Badge
+                                  variant="secondary"
+                                  className="bg-slate-100 text-slate-600 border-none text-[10px] px-1.5 py-0 h-4"
+                                >
+                                  {part.material}
+                                </Badge>
+                                <span className="text-[10px] text-slate-500 font-medium">
+                                  Qty: {part.quantity}
+                                </span>
+                              </div>
+                            </div>
+                          </div>
+                          <div className="text-right">
+                            <p className="text-sm font-black text-slate-900 font-mono">
+                              ${part.finalPrice.toLocaleString()}
+                            </p>
+                            <p className="text-[10px] text-slate-400 font-bold uppercase tracking-tighter">
+                              Unit Cost
+                            </p>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                  <div className="pt-4 mt-6 border-t border-slate-100">
+                    <div
+                      className="flex items-center space-x-3 group cursor-pointer p-5 rounded-[2rem] bg-slate-50 border border-slate-200 hover:border-blue-200 transition-all duration-300 shadow-inner"
+                      onClick={() =>
+                        setPriceConcentAccepted(!priceConcentAccepted)
+                      }
+                    >
+                      <div className="pt-1">
+                        <Checkbox
+                          id="review-terms"
+                          checked={priceConcentAccepted}
+                          onCheckedChange={(c) => setPriceConcentAccepted(!!c)}
+                          className="h-6 w-6 rounded-lg border-slate-300 data-[state=checked]:bg-blue-600 data-[state=checked]:border-blue-600 shadow-sm transition-all"
+                        />
+                      </div>
+                      <Label
+                        htmlFor="review-terms"
+                        className="text-sm text-slate-600 leading-relaxed cursor-pointer select-none font-semibold"
+                      >
+                        I confirm that I have reviewed the pricing for this
+                        parts and agree to the final price.
+                      </Label>
+                    </div>
+                  </div>
+
+                  <div className="p-6 rounded-2xl bg-blue-600 text-white shadow-xl shadow-blue-200">
+                    <div className="flex justify-between items-center mb-6">
+                      <div>
+                        <h3 className="text-lg font-bold">Total Commitment</h3>
+                        <p className="text-blue-100 text-xs">
+                          Includes all parts and shipping
+                        </p>
+                      </div>
+                      <div className="text-right">
+                        <span className="text-3xl font-black tracking-tighter font-mono">
+                          ${total.toFixed(2)}
+                        </span>
+                        <p className="text-[10px] text-blue-100 uppercase font-black">
+                          USD
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </AccordionItem>
+            </Accordion>
           </div>
 
           {/* Right Section - Sticky Order Summary */}
           <div className="lg:col-span-4 lg:sticky lg:top-28 h-fit space-y-6">
-            <Card className="border-slate-200 shadow-[0_20px_50px_rgba(8,_112,_184,_0.07)] overflow-hidden ring-1 ring-blue-500/10 bg-white">
+            <Card className="border-slate-200 shadow-2xl shadow-slate-200/50 rounded-3xl overflow-hidden ring-1 ring-slate-200/50 bg-white">
               <CardHeader className="bg-slate-50/50 border-b border-slate-100 pb-6 pt-8 px-8">
-                <CardTitle className="text-xl font-bold flex items-center justify-between">
-                  <span className="tracking-tight text-slate-900">
-                    Order Summary
-                  </span>
+                <CardTitle className="flex items-center justify-between">
+                  <div className="flex flex-col gap-1">
+                    <span className="text-xl font-black tracking-tight text-slate-900">
+                      Order Summary
+                    </span>
+                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">
+                      Pricing Breakdown
+                    </p>
+                  </div>
                   <Badge
                     variant="secondary"
-                    className="bg-blue-100 text-blue-700 font-black border-none text-[10px] tracking-widest px-2.5 py-1"
+                    className="bg-blue-50 text-blue-600 font-black border-blue-100 text-[10px] tracking-widest px-3 py-1 rounded-lg"
                   >
                     {config.parts.length}{" "}
-                    {config.parts.length === 1 ? "ITEM" : "ITEMS"}
+                    {config.parts.length === 1 ? "PART" : "PARTS"}
                   </Badge>
                 </CardTitle>
               </CardHeader>
               <CardContent className="p-8 space-y-8">
-                <div className="space-y-3">
-                  <div className="flex items-center justify-between text-sm">
-                    <div className="flex items-center gap-2 text-slate-500">
-                      <Clock className="w-4 h-4" />
-                      Lead Time
-                    </div>
-                    <span className="font-semibold text-slate-700">
-                      {config.maxLeadTime} Business Days
-                    </span>
+                <div className="space-y-4">
+                  <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">
+                    Production Timeline
+                  </p>
+                  <div className="space-y-3">
+                    {config.parts.map((p) => (
+                      <div
+                        key={p.id}
+                        className="flex justify-between items-center text-sm"
+                      >
+                        <span className="text-slate-500 font-medium truncate max-w-[150px]">
+                          {p.fileName}
+                        </span>
+                        <div className="flex items-center gap-2 font-bold text-slate-900">
+                          <Clock className="w-3.5 h-3.5 text-blue-500" />
+                          {p.leadTime} Days
+                        </div>
+                      </div>
+                    ))}
                   </div>
-                  <div className="flex items-center justify-between text-sm">
-                    <div className="flex items-center gap-2 text-slate-500">
-                      <Truck className="w-4 h-4" />
-                      Estimated Ship Date
+
+                  <div className="pt-4 mt-4 border-t border-slate-100 flex items-center justify-between text-sm">
+                    <div className="flex items-center gap-2 text-slate-500 font-semibold uppercase text-[11px] tracking-wider">
+                      <Truck className="w-4 h-4 text-slate-400" />
+                      Estimated Shipping
                     </div>
-                    <span className="font-semibold text-slate-700">
-                      {estimatedShipDate.toLocaleDateString()}
-                    </span>
-                  </div>
-                  <div className="flex items-center justify-between text-sm pb-4 border-b border-slate-100">
-                    <div className="flex items-center gap-2 text-slate-500">
-                      <Package className="w-4 h-4" />
-                      Estimated Delivery
-                    </div>
-                    <span className="font-semibold text-slate-700">
-                      {estimatedDeliveryDate.toLocaleDateString()}
+
+                    <span className="font-semibold text-slate-800 self-end">
+                      Our team will reach out to confirm timelines.
                     </span>
                   </div>
                 </div>
 
-                <div className="space-y-3 pt-2">
-                  <div className="flex justify-between text-sm">
-                    <span className="text-slate-500">Subtotal</span>
-                    <span className="font-medium font-mono">
-                      ${subtotal.toFixed(2)}
+                <div className="space-y-4 pt-2">
+                  <div className="flex justify-between text-sm items-center">
+                    <span className="text-slate-500 font-medium">Subtotal</span>
+                    <span className="font-bold text-slate-900 font-mono">
+                      $
+                      {subtotal.toLocaleString(undefined, {
+                        minimumFractionDigits: 2,
+                      })}
                     </span>
                   </div>
-                  <div className="flex justify-between text-sm">
-                    <span className="text-slate-500">Shipping</span>
-                    <span className="text-green-600 font-semibold uppercase text-[10px] tracking-wider bg-green-50 px-2 py-0.5 rounded border border-green-100">
-                      Free Standard
+                  <div className="flex justify-between text-sm items-center">
+                    <span className="text-slate-500 font-medium">
+                      Shipping & Logistics
+                    </span>
+                    <span className="text-emerald-600 font-bold uppercase text-[10px] tracking-widest bg-emerald-50 px-2 py-1 rounded-lg border border-emerald-100 shadow-sm">
+                      Complimentary
                     </span>
                   </div>
-                  <div className="flex justify-between text-sm">
-                    <span className="text-slate-500">Discount</span>
-                    <span className="font-medium font-mono text-slate-400">
-                      -$0.00
+                  <div className="flex justify-between text-sm items-center">
+                    <span className="text-slate-500 font-medium">
+                      Estimated Tax
                     </span>
-                  </div>
-                  <div className="flex justify-between text-sm">
-                    <span className="text-slate-500">Tax</span>
-                    <span className="font-medium font-mono">
+                    <span className="font-bold text-slate-900 font-mono">
                       ${tax.toFixed(2)}
                     </span>
                   </div>
                 </div>
 
-                <div className="pt-6 border-t border-slate-200">
-                  <div className="flex justify-between items-baseline mb-6">
-                    <span className="text-lg font-bold text-slate-900">
-                      Total
-                    </span>
-                    <div className="text-right">
-                      <span className="text-3xl font-black text-blue-600 tracking-tighter font-mono">
-                        ${total.toFixed(2)}
+                <div className="pt-8 border-t border-slate-100">
+                  <div className="flex justify-between items-end mb-8">
+                    <div className="flex flex-col">
+                      <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">
+                        Total Payable
                       </span>
-                      <p className="text-[10px] text-slate-400 uppercase font-black mt-1">
-                        USD
-                      </p>
+                      <span className="text-xs font-bold text-slate-400">
+                        Currency in USD
+                      </span>
+                    </div>
+                    <div className="text-right">
+                      <span className="text-4xl font-black text-blue-600 tracking-tighter font-mono">
+                        $
+                        {total.toLocaleString(undefined, {
+                          minimumFractionDigits: 2,
+                        })}
+                      </span>
                     </div>
                   </div>
 
-                  <div className="space-y-4">
+                  <div className="space-y-6">
                     <div
-                      className="flex items-start space-x-3 group cursor-pointer"
+                      className="flex items-start space-x-3 group cursor-pointer p-4 rounded-2xl bg-slate-50/50 border border-transparent hover:border-slate-200 transition-all"
                       onClick={() => setTermsAccepted(!termsAccepted)}
                     >
                       <div className="pt-0.5">
@@ -1313,75 +1574,51 @@ export default function CheckoutPage() {
                           id="terms"
                           checked={termsAccepted}
                           onCheckedChange={(c) => setTermsAccepted(!!c)}
-                          className="rounded-md border-slate-300 data-[state=checked]:bg-blue-600"
+                          className="rounded-md border-slate-300 data-[state=checked]:bg-blue-600 shadow-sm"
                         />
                       </div>
                       <Label
                         htmlFor="terms"
-                        className="text-[11px] text-slate-500 leading-normal cursor-pointer select-none font-medium"
+                        className="text-[11px] text-slate-500 leading-relaxed cursor-pointer select-none font-medium"
                       >
                         I agree to the{" "}
-                        <span className="text-blue-600 font-bold hover:underline">
+                        <span className="text-blue-600 font-bold hover:underline transition-all">
                           Terms of Service
                         </span>{" "}
                         and{" "}
-                        <span className="text-blue-600 font-bold hover:underline">
-                          Privacy Policy
+                        <span className="text-blue-600 font-bold hover:underline transition-all">
+                          Manufacturing Guidelines
                         </span>
-                        . I confirm all configurations are accurate.
+                        .
                       </Label>
                     </div>
 
                     <Button
-                      className="w-full h-14 text-lg font-black bg-blue-600 hover:bg-blue-700 shadow-[0_10px_25px_-5px_rgba(37,99,235,0.4)] transition-all active:scale-[0.98] rounded-2xl group"
+                      className="w-full h-16 text-lg font-black bg-blue-600 hover:bg-blue-700 shadow-xl shadow-blue-200 transition-all active:scale-[0.98] rounded-2xl group"
                       onClick={handlePlaceOrder}
                       disabled={isProcessing}
                     >
                       {isProcessing ? (
                         <>
                           <Loader2 className="w-5 h-5 mr-3 animate-spin" />
-                          Processing Transaction...
+                          Processing...
                         </>
                       ) : (
-                        <div className="flex items-center justify-center gap-2">
-                          <span>Place Your Order</span>
-                          <ArrowRight className="w-5 h-5 group-hover:translate-x-1 transition-transform" />
+                        <div className="flex items-center justify-center gap-3">
+                          <span>Complete Order</span>
+                          <ArrowRight className="w-5 h-5 group-hover:translate-x-1.5 transition-transform" />
                         </div>
                       )}
                     </Button>
-
-                    <div className="flex flex-col items-center gap-4 pt-2">
-                      <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest text-center">
-                        Secure 256-bit SSL Encrypted Payment
-                      </p>
-                      <div className="flex items-center gap-6 opacity-30 grayscale hover:opacity-60 transition-opacity">
-                        <ShieldAlert className="w-5 h-5" />
-                        <Building2 className="w-5 h-5" />
-                        <Lock className="w-4 h-4" />
-                      </div>
-                    </div>
                   </div>
                 </div>
               </CardContent>
             </Card>
-
-            <div className="p-6 rounded-2xl bg-blue-50/50 border border-blue-100 flex items-start gap-4 ring-1 ring-blue-50">
-              <div className="p-2 bg-white rounded-xl shadow-sm">
-                <ShieldCheck className="w-5 h-5 text-blue-600" />
-              </div>
-              <div className="space-y-1">
-                <p className="text-sm font-bold text-blue-900">
-                  Frigate Manufacturing Guarantee
-                </p>
-                <p className="text-[11px] text-blue-700/70 font-medium leading-relaxed">
-                  Every order is protected by our quality guarantee. On-time
-                  delivery or your money back.
-                </p>
-              </div>
-            </div>
           </div>
         </div>
       </main>
+
+      <Footer />
 
       {/* Confirmation Modal */}
       <AnimatePresence>
@@ -1416,7 +1653,7 @@ export default function CheckoutPage() {
                 We've received your request. A confirmation and invoice have
                 been sent to{" "}
                 <span className="text-slate-900 font-bold underline decoration-blue-500 decoration-2 underline-offset-4">
-                  {shippingAddress.email}
+                  {selectedAddress?.email}
                 </span>
               </p>
 

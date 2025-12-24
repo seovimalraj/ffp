@@ -1,33 +1,33 @@
-'use client';
+"use client";
 
-import { useState, useEffect } from 'react';
-import { useRouter } from 'next/navigation';
-import { api } from '@/lib/api';
-import { toast } from 'react-hot-toast';
-import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Switch } from '@/components/ui/switch';
-import { Label } from '@/components/ui/label';
-import { Separator } from '@/components/ui/separator';
-import { Skeleton } from '@/components/ui/skeleton';
+import { useState, useEffect } from "react";
+import { useRouter } from "next/navigation";
+import { api } from "@/lib/api";
+import { toast } from "react-hot-toast";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Switch } from "@/components/ui/switch";
+import { Label } from "@/components/ui/label";
+import { Separator } from "@/components/ui/separator";
+import { Skeleton } from "@/components/ui/skeleton";
 import {
   BellIcon,
   ArrowLeftIcon,
   EnvelopeIcon,
-  ClockIcon
-} from '@heroicons/react/24/outline';
-import type { EmailPref } from '@/types/order';
-import { trackEvent } from '@/lib/analytics/posthog';
+  ClockIcon,
+} from "@heroicons/react/24/outline";
+import type { EmailPref } from "@/types/order";
+import { trackEvent } from "@/lib/analytics/posthog";
 
 export default function NotificationsPage() {
   const router = useRouter();
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [preferences, setPreferences] = useState<EmailPref['events']>({
+  const [preferences, setPreferences] = useState<EmailPref["events"]>({
     quote_sent: true,
     payment_succeeded: true,
     order_status_changed: true,
-    weekly_digest: false
+    weekly_digest: false,
   });
 
   // Load preferences
@@ -38,12 +38,12 @@ export default function NotificationsPage() {
   const loadPreferences = async () => {
     try {
       setLoading(true);
-      const response = await api.get<EmailPref>('/notifications/preferences');
+      const response = await api.get<EmailPref>("/notifications/preferences");
       setPreferences(response.data.events);
-      trackEvent('notifications_view');
+      trackEvent("notifications_view");
     } catch (error: any) {
-      console.error('Error loading preferences:', error);
-      toast.error('Failed to load notification preferences');
+      console.error("Error loading preferences:", error);
+      toast.error("Failed to load notification preferences");
     } finally {
       setLoading(false);
     }
@@ -52,21 +52,15 @@ export default function NotificationsPage() {
   const handleSave = async () => {
     try {
       setSaving(true);
-      await api.put('/notifications/preferences', { events: preferences });
-      toast.success('Notification preferences updated successfully');
-      trackEvent('notifications_saved', { preferences });
+      await api.put("/notifications/preferences", { events: preferences });
+      toast.success("Notification preferences updated successfully");
+      trackEvent("notifications_saved", { preferences });
     } catch (error: any) {
-      console.error('Error saving preferences:', error);
-      toast.error('Failed to update notification preferences');
+      console.error("Error saving preferences:", error);
+      toast.error("Failed to update notification preferences");
     } finally {
       setSaving(false);
     }
-  };
-
-  const hasUnsavedChanges = () => {
-    // This would need to compare with original values
-    // For now, we'll just enable save when component mounts
-    return true;
   };
 
   if (loading) {
@@ -102,7 +96,7 @@ export default function NotificationsPage() {
           <Button
             variant="ghost"
             size="sm"
-            onClick={() => router.push('/portal/account')}
+            onClick={() => router.push("/portal/account")}
           >
             <ArrowLeftIcon className="w-4 h-4 mr-2" />
             Back to Account
@@ -110,7 +104,9 @@ export default function NotificationsPage() {
         </div>
 
         <div>
-          <h1 className="text-3xl font-bold text-gray-900">Email Notifications</h1>
+          <h1 className="text-3xl font-bold text-gray-900">
+            Email Notifications
+          </h1>
           <p className="text-gray-600 mt-2">
             Configure your email notification preferences for account activity.
           </p>
@@ -150,7 +146,10 @@ export default function NotificationsPage() {
 
             <div className="flex items-center justify-between">
               <div>
-                <Label htmlFor="payment-succeeded" className="text-base font-medium">
+                <Label
+                  htmlFor="payment-succeeded"
+                  className="text-base font-medium"
+                >
                   Payment succeeded
                 </Label>
                 <p className="text-sm text-gray-600">
@@ -170,7 +169,10 @@ export default function NotificationsPage() {
 
             <div className="flex items-center justify-between">
               <div>
-                <Label htmlFor="order-status-changed" className="text-base font-medium">
+                <Label
+                  htmlFor="order-status-changed"
+                  className="text-base font-medium"
+                >
                   Order status updates
                 </Label>
                 <p className="text-sm text-gray-600">
@@ -181,7 +183,10 @@ export default function NotificationsPage() {
                 id="order-status-changed"
                 checked={preferences.order_status_changed}
                 onCheckedChange={(checked) =>
-                  setPreferences({ ...preferences, order_status_changed: checked })
+                  setPreferences({
+                    ...preferences,
+                    order_status_changed: checked,
+                  })
                 }
               />
             </div>
@@ -202,7 +207,10 @@ export default function NotificationsPage() {
           <CardContent>
             <div className="flex items-center justify-between">
               <div>
-                <Label htmlFor="weekly-digest" className="text-base font-medium">
+                <Label
+                  htmlFor="weekly-digest"
+                  className="text-base font-medium"
+                >
                   Weekly activity summary
                 </Label>
                 <p className="text-sm text-gray-600">
@@ -226,15 +234,22 @@ export default function NotificationsPage() {
             <div className="flex items-start gap-3">
               <BellIcon className="w-5 h-5 text-blue-600 mt-0.5" />
               <div>
-                <h4 className="font-medium text-gray-900">Notification Settings</h4>
+                <h4 className="font-medium text-gray-900">
+                  Notification Settings
+                </h4>
                 <p className="text-sm text-gray-600 mt-1">
                   You can update your notification preferences at any time.
                   Changes will take effect immediately for new notifications.
                 </p>
                 <div className="mt-3 text-xs text-gray-500">
-                  <p>• Instant notifications are sent within minutes of the event</p>
+                  <p>
+                    • Instant notifications are sent within minutes of the event
+                  </p>
                   <p>• Digest emails are sent on a weekly schedule</p>
-                  <p>• You can unsubscribe from individual notifications at any time</p>
+                  <p>
+                    • You can unsubscribe from individual notifications at any
+                    time
+                  </p>
                 </div>
               </div>
             </div>
@@ -243,12 +258,8 @@ export default function NotificationsPage() {
 
         {/* Save Button */}
         <div className="flex justify-end">
-          <Button
-            onClick={handleSave}
-            disabled={saving}
-            size="lg"
-          >
-            {saving ? 'Saving...' : 'Save Preferences'}
+          <Button onClick={handleSave} disabled={saving} size="lg">
+            {saving ? "Saving..." : "Save Preferences"}
           </Button>
         </div>
       </div>

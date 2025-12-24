@@ -1,13 +1,12 @@
-import { createClient } from '@/lib/supabase/server'
-import { cookies } from 'next/headers'
-import { PlusIcon } from '@heroicons/react/20/solid'
+import { createClient } from "@/lib/supabase/server";
+import { PlusIcon } from "@heroicons/react/20/solid";
 
 export default async function LeadTimesPage() {
-  const supabase = await createClient()
+  const supabase = await createClient();
   const { data: leadTimes } = await supabase
-    .from('lead_times')
-    .select('*')
-    .order('hours')
+    .from("lead_times")
+    .select("*")
+    .order("hours");
 
   return (
     <div className="p-6">
@@ -23,7 +22,10 @@ export default async function LeadTimesPage() {
             type="button"
             className="block rounded-md bg-primary px-3 py-2 text-center text-sm font-semibold text-white shadow-sm hover:bg-primary/90"
           >
-            <PlusIcon className="-ml-0.5 mr-1.5 h-5 w-5 inline-block" aria-hidden="true" />
+            <PlusIcon
+              className="-ml-0.5 mr-1.5 h-5 w-5 inline-block"
+              aria-hidden="true"
+            />
             Add Lead Time
           </button>
         </div>
@@ -36,19 +38,34 @@ export default async function LeadTimesPage() {
               <table className="min-w-full divide-y divide-gray-300">
                 <thead className="bg-gray-50">
                   <tr>
-                    <th scope="col" className="py-3.5 pl-4 pr-3 text-left text-sm font-semibold text-gray-900 sm:pl-6">
+                    <th
+                      scope="col"
+                      className="py-3.5 pl-4 pr-3 text-left text-sm font-semibold text-gray-900 sm:pl-6"
+                    >
                       Name
                     </th>
-                    <th scope="col" className="px-3 py-3.5 text-left text-sm font-semibold text-gray-900">
+                    <th
+                      scope="col"
+                      className="px-3 py-3.5 text-left text-sm font-semibold text-gray-900"
+                    >
                       Description
                     </th>
-                    <th scope="col" className="px-3 py-3.5 text-left text-sm font-semibold text-gray-900">
+                    <th
+                      scope="col"
+                      className="px-3 py-3.5 text-left text-sm font-semibold text-gray-900"
+                    >
                       Hours
                     </th>
-                    <th scope="col" className="px-3 py-3.5 text-left text-sm font-semibold text-gray-900">
+                    <th
+                      scope="col"
+                      className="px-3 py-3.5 text-left text-sm font-semibold text-gray-900"
+                    >
                       Cost Multiplier
                     </th>
-                    <th scope="col" className="relative py-3.5 pl-3 pr-4 sm:pr-6">
+                    <th
+                      scope="col"
+                      className="relative py-3.5 pl-3 pr-4 sm:pr-6"
+                    >
                       <span className="sr-only">Edit</span>
                     </th>
                   </tr>
@@ -85,5 +102,5 @@ export default async function LeadTimesPage() {
         </div>
       </div>
     </div>
-  )
+  );
 }

@@ -76,7 +76,6 @@ type DataViewProps<T> = {
   searchKeys?: (keyof T)[];
 };
 
-
 // Progress Bar Component
 const ProgressBar = ({
   current,
@@ -107,8 +106,8 @@ const ProgressBar = ({
               percentage >= 90
                 ? "text-red-600"
                 : percentage >= 70
-                ? "text-amber-600"
-                : "text-emerald-600"
+                  ? "text-amber-600"
+                  : "text-emerald-600"
             }`}
           >
             {percentage.toFixed(0)}%
@@ -261,7 +260,6 @@ function DataCard<T>({
   );
 }
 
-
 // Main DataView Component
 export function DataView<T>({
   columns,
@@ -290,7 +288,7 @@ export function DataView<T>({
     direction: "asc" | "desc";
   } | null>(null);
   const [selectedRows, setSelectedRows] = useState<Set<string | number>>(
-    new Set()
+    new Set(),
   );
 
   const visibleColumns = columns.filter((col) => !col.hidden);
@@ -301,7 +299,9 @@ export function DataView<T>({
         if (searchKeys.length === 0) return true;
         return searchKeys.some((key) => {
           const value = row[key];
-          return String(value).toLowerCase().includes(searchQuery.toLowerCase());
+          return String(value)
+            .toLowerCase()
+            .includes(searchQuery.toLowerCase());
         });
       })
     : data;
@@ -348,7 +348,9 @@ export function DataView<T>({
       newSelected.add(rowKey);
     }
     setSelectedRows(newSelected);
-    onSelectionChange?.(data.filter((row) => newSelected.has(keyExtractor(row))));
+    onSelectionChange?.(
+      data.filter((row) => newSelected.has(keyExtractor(row))),
+    );
   };
 
   const handleSelectAll = () => {
@@ -360,16 +362,16 @@ export function DataView<T>({
       paginatedData.forEach((row) => newSelected.add(keyExtractor(row)));
       setSelectedRows(newSelected);
       onSelectionChange?.(
-        data.filter((row) => newSelected.has(keyExtractor(row)))
+        data.filter((row) => newSelected.has(keyExtractor(row))),
       );
     }
   };
 
-  const totalColumns =
-    visibleColumns.length +
-    (actions?.length ? 1 : 0) +
-    (selectable ? 1 : 0) +
-    (numbering ? 1 : 0);
+  // const totalColumns =
+  //   visibleColumns.length +
+  //   (actions?.length ? 1 : 0) +
+  //   (selectable ? 1 : 0) +
+  //   (numbering ? 1 : 0);
 
   if (isLoading) {
     return (
@@ -490,13 +492,13 @@ export function DataView<T>({
                   >
                     <div className="flex items-center gap-2">
                       <span>{col.header}</span>
-                      {col.sortable && sortConfig?.key === col.key && (
-                        sortConfig.direction === "asc" ? (
+                      {col.sortable &&
+                        sortConfig?.key === col.key &&
+                        (sortConfig.direction === "asc" ? (
                           <ArrowUpIcon className="w-4 h-4" />
                         ) : (
                           <ArrowDownIcon className="w-4 h-4" />
-                        )
-                      )}
+                        ))}
                     </div>
                   </th>
                 ))}
@@ -598,7 +600,8 @@ export function DataView<T>({
       {sortedData.length > pageSize && (
         <div className="flex items-center justify-between px-2">
           <p className="text-sm text-muted-foreground">
-            Showing {startIndex + 1}-{Math.min(startIndex + pageSize, sortedData.length)} of{" "}
+            Showing {startIndex + 1}-
+            {Math.min(startIndex + pageSize, sortedData.length)} of{" "}
             {sortedData.length}
           </p>
           <div className="flex items-center gap-1">

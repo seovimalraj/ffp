@@ -10,13 +10,14 @@
   ],
   "sideEffects": false,
   "scripts": {
-  "build": "tsup && tsc -p tsconfig.build.json",
-  "dev": "tsup --watch",
-  "lint": "eslint \"src/**/*.ts\"",
-  "type-check": "tsc --noEmit",
-  "test": "tsx --test src/__tests__/quote.vnext.spec.ts"
+    "build": "tsup && tsc -p tsconfig.build.json",
+    "dev": "tsup --watch",
+    "lint": "eslint \"src/**/*.ts\"",
+    "type-check": "tsc --noEmit",
+    "test": "tsx --test src/__tests__/quote.vnext.spec.ts"
   },
   "dependencies": {
+    "uuid": "^13.0.0",
     "zod": "^4.1.9"
   },
   "devDependencies": {

@@ -1,120 +1,139 @@
-'use client'
+"use client";
 
-import { useState, useEffect } from 'react'
-import { Button } from '@/components/ui/button'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { Badge } from '@/components/ui/badge'
+import { useState, useEffect } from "react";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
 import {
   ClockIcon,
   DocumentIcon,
-  CurrencyDollarIcon,
-  TrashIcon
-} from '@heroicons/react/24/outline'
-import { formatDistanceToNow } from 'date-fns'
+  TrashIcon,
+} from "@heroicons/react/24/outline";
+import { formatDistanceToNow } from "date-fns";
 
 interface AbandonedQuote {
-  quoteId: string
-  userId?: string
-  guestEmail?: string
-  currentStep: 'file_upload' | 'pricing_review' | 'checkout_started' | 'payment_info'
+  quoteId: string;
+  userId?: string;
+  guestEmail?: string;
+  currentStep:
+    | "file_upload"
+    | "pricing_review"
+    | "checkout_started"
+    | "payment_info";
   files: Array<{
-    fileId: string
-    fileName: string
-    fileSize?: number
-    contentType?: string
-  }>
+    fileId: string;
+    fileName: string;
+    fileSize?: number;
+    contentType?: string;
+  }>;
   selectedLeadOptions?: {
-    [lineId: string]: string
-  }
+    [lineId: string]: string;
+  };
   customizations?: {
     [lineId: string]: {
-      material?: string
-      finish?: string
-      quantity?: number
-    }
-  }
-  checkoutData?: any
-  lastActivity: string
-  abandonedAt: string
+      material?: string;
+      finish?: string;
+      quantity?: number;
+    };
+  };
+  checkoutData?: any;
+  lastActivity: string;
+  abandonedAt: string;
 }
 
 interface AbandonedQuoteRecoveryProps {
-  userId?: string
-  guestEmail?: string
-  onResumeQuote: (quoteId: string, quoteData: AbandonedQuote) => void
+  userId?: string;
+  guestEmail?: string;
+  onResumeQuote: (quoteId: string, quoteData: AbandonedQuote) => void;
 }
 
-export function AbandonedQuoteRecovery({ userId, guestEmail, onResumeQuote }: AbandonedQuoteRecoveryProps) {
-  const [quotes, setQuotes] = useState<AbandonedQuote[]>([])
-  const [isLoading, setIsLoading] = useState(false)
-  const [error, setError] = useState<string | null>(null)
+export function AbandonedQuoteRecovery({
+  userId,
+  guestEmail,
+  onResumeQuote,
+}: AbandonedQuoteRecoveryProps) {
+  const [quotes, setQuotes] = useState<AbandonedQuote[]>([]);
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const loadAbandonedQuotes = async () => {
-    if (!userId && !guestEmail) return
+    if (!userId && !guestEmail) return;
 
-    setIsLoading(true)
-    setError(null)
+    setIsLoading(true);
+    setError(null);
 
     try {
-      const params = new URLSearchParams()
-      if (userId) params.append('userId', userId)
-      if (guestEmail) params.append('guestEmail', guestEmail)
+      const params = new URLSearchParams();
+      if (userId) params.append("userId", userId);
+      if (guestEmail) params.append("guestEmail", guestEmail);
 
-      const response = await fetch(`/api/quotes/abandoned?${params.toString()}`)
-      
+      const response = await fetch(
+        `/api/quotes/abandoned?${params.toString()}`,
+      );
+
       if (!response.ok) {
-        throw new Error('Failed to load abandoned quotes')
+        throw new Error("Failed to load abandoned quotes");
       }
 
-      const data = await response.json()
-      setQuotes(data.quotes || [])
+      const data = await response.json();
+      setQuotes(data.quotes || []);
     } catch (err) {
-      console.error('Failed to load abandoned quotes:', err)
-      setError('Failed to load your saved quotes')
+      console.error("Failed to load abandoned quotes:", err);
+      setError("Failed to load your saved quotes");
     } finally {
-      setIsLoading(false)
+      setIsLoading(false);
     }
-  }
+  };
 
   const deleteAbandonedQuote = async (quoteId: string) => {
     try {
       const response = await fetch(`/api/quotes/abandoned?quoteId=${quoteId}`, {
-        method: 'DELETE'
-      })
+        method: "DELETE",
+      });
 
       if (response.ok) {
-        setQuotes(quotes.filter(q => q.quoteId !== quoteId))
+        setQuotes(quotes.filter((q) => q.quoteId !== quoteId));
       }
     } catch (error) {
-      console.error('Failed to delete abandoned quote:', error)
+      console.error("Failed to delete abandoned quote:", error);
     }
-  }
+  };
 
   useEffect(() => {
-    loadAbandonedQuotes()
-  }, [userId, guestEmail])
+    loadAbandonedQuotes();
+  }, [userId, guestEmail]);
 
-  const getStepLabel = (step: AbandonedQuote['currentStep']) => {
+  const getStepLabel = (step: AbandonedQuote["currentStep"]) => {
     switch (step) {
-      case 'file_upload': return 'File Upload'
-      case 'pricing_review': return 'Pricing Review'
-      case 'checkout_started': return 'Checkout Started'
-      case 'payment_info': return 'Payment Info'
-      default: return 'Unknown'
+      case "file_upload":
+        return "File Upload";
+      case "pricing_review":
+        return "Pricing Review";
+      case "checkout_started":
+        return "Checkout Started";
+      case "payment_info":
+        return "Payment Info";
+      default:
+        return "Unknown";
     }
-  }
+  };
 
-  const getStepColor = (step: AbandonedQuote['currentStep']) => {
+  const getStepColor = (step: AbandonedQuote["currentStep"]) => {
     switch (step) {
-      case 'file_upload': return 'bg-blue-100 text-blue-800'
-      case 'pricing_review': return 'bg-yellow-100 text-yellow-800'
-      case 'checkout_started': return 'bg-orange-100 text-orange-800'
-      case 'payment_info': return 'bg-red-100 text-red-800'
-      default: return 'bg-gray-100 text-gray-800'
+      case "file_upload":
+        return "bg-blue-100 text-blue-800";
+      case "pricing_review":
+        return "bg-yellow-100 text-yellow-800";
+      case "checkout_started":
+        return "bg-orange-100 text-orange-800";
+      case "payment_info":
+        return "bg-red-100 text-red-800";
+      default:
+        return "bg-gray-100 text-gray-800";
     }
-  }
+  };
 
-  if (!userId && !guestEmail) return null
+  if (!userId && !guestEmail) return null;
 
   if (isLoading) {
     return (
@@ -129,7 +148,7 @@ export function AbandonedQuoteRecovery({ userId, guestEmail, onResumeQuote }: Ab
           </div>
         </CardContent>
       </Card>
-    )
+    );
   }
 
   if (error) {
@@ -147,10 +166,10 @@ export function AbandonedQuoteRecovery({ userId, guestEmail, onResumeQuote }: Ab
           </div>
         </CardContent>
       </Card>
-    )
+    );
   }
 
-  if (quotes.length === 0) return null
+  if (quotes.length === 0) return null;
 
   return (
     <Card className="mb-6">
@@ -160,35 +179,44 @@ export function AbandonedQuoteRecovery({ userId, guestEmail, onResumeQuote }: Ab
           Resume Previous Quotes ({quotes.length})
         </CardTitle>
         <p className="text-sm text-gray-600">
-          You have {quotes.length} saved quote{quotes.length !== 1 ? 's' : ''} that you can continue working on.
+          You have {quotes.length} saved quote{quotes.length !== 1 ? "s" : ""}{" "}
+          that you can continue working on.
         </p>
       </CardHeader>
       <CardContent>
         <div className="space-y-3">
           {quotes.map((quote) => (
-            <div key={quote.quoteId} className="border rounded-lg p-4 bg-gray-50">
+            <div
+              key={quote.quoteId}
+              className="border rounded-lg p-4 bg-gray-50"
+            >
               <div className="flex items-center justify-between">
                 <div className="flex-1">
                   <div className="flex items-center space-x-2 mb-2">
-                    <h4 className="font-medium text-gray-900">Quote {quote.quoteId}</h4>
+                    <h4 className="font-medium text-gray-900">
+                      Quote {quote.quoteId}
+                    </h4>
                     <Badge className={getStepColor(quote.currentStep)}>
                       {getStepLabel(quote.currentStep)}
                     </Badge>
                   </div>
-                  
+
                   <div className="flex items-center space-x-4 text-sm text-gray-600 mb-2">
                     <div className="flex items-center">
                       <DocumentIcon className="w-4 h-4 mr-1" />
-                      {quote.files.length} file{quote.files.length !== 1 ? 's' : ''}
+                      {quote.files.length} file
+                      {quote.files.length !== 1 ? "s" : ""}
                     </div>
                     <div className="flex items-center">
                       <ClockIcon className="w-4 h-4 mr-1" />
-                      {formatDistanceToNow(new Date(quote.abandonedAt), { addSuffix: true })}
+                      {formatDistanceToNow(new Date(quote.abandonedAt), {
+                        addSuffix: true,
+                      })}
                     </div>
                   </div>
 
                   <div className="text-xs text-gray-500">
-                    Files: {quote.files.map(f => f.fileName).join(', ')}
+                    Files: {quote.files.map((f) => f.fileName).join(", ")}
                   </div>
                 </div>
 
@@ -214,5 +242,5 @@ export function AbandonedQuoteRecovery({ userId, guestEmail, onResumeQuote }: Ab
         </div>
       </CardContent>
     </Card>
-  )
+  );
 }

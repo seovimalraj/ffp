@@ -1,11 +1,11 @@
-'use client';
+"use client";
 
-import { useState, useEffect } from 'react';
-import { useRouter, useParams } from 'next/navigation';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
-import { Textarea } from '@/components/ui/textarea';
+import { useState, useEffect } from "react";
+import { useRouter, useParams } from "next/navigation";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import { Textarea } from "@/components/ui/textarea";
 import {
   Table,
   TableBody,
@@ -13,13 +13,28 @@ import {
   TableHead,
   TableHeader,
   TableRow,
-} from '@/components/ui/table';
+} from "@/components/ui/table";
 import {
-  ArrowLeft, CheckCircle, XCircle, Clock, DollarSign,
-  TrendingUp, Award, Package, Loader2, Star,
-  AlertTriangle, FileText, Send, MessageSquare
-} from 'lucide-react';
-import { getRFQ, getOrder, getBidsForRFQ, updateBidStatus } from '../../../../lib/database';
+  ArrowLeft,
+  CheckCircle,
+  XCircle,
+  Clock,
+  TrendingUp,
+  Award,
+  Package,
+  Loader2,
+  Star,
+  AlertTriangle,
+  FileText,
+  Send,
+  MessageSquare,
+} from "lucide-react";
+import {
+  getRFQ,
+  getOrder,
+  getBidsForRFQ,
+  updateBidStatus,
+} from "../../../../lib/database";
 
 interface Bid {
   id: string;
@@ -45,97 +60,103 @@ export default function AdminRFQDetailPage() {
   const [bids, setBids] = useState<Bid[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedBid, setSelectedBid] = useState<string | null>(null);
-  const [adminNotes, setAdminNotes] = useState('');
+  const [adminNotes, setAdminNotes] = useState("");
   const [isProcessing, setIsProcessing] = useState(false);
 
   useEffect(() => {
     async function loadData() {
       if (!rfqId) return;
-      
+
       try {
         setLoading(true);
         const rfq = await getRFQ(rfqId);
         const order = await getOrder(rfq.order_id);
         const bidsData = await getBidsForRFQ(rfqId);
-        
+
         setRfqData(rfq);
         setOrderData(order);
         setBids(bidsData);
-        
-        const acceptedBid = bidsData.find(b => b.status === 'accepted');
+
+        const acceptedBid = bidsData.find((b) => b.status === "accepted");
         if (acceptedBid) {
           setSelectedBid(acceptedBid.id);
         }
       } catch (error) {
-        console.error('Error loading RFQ details:', error);
-        alert('Failed to load RFQ details.');
+        console.error("Error loading RFQ details:", error);
+        alert("Failed to load RFQ details.");
       } finally {
         setLoading(false);
       }
     }
-    
+
     loadData();
   }, [rfqId]);
 
   const handleAcceptBid = async (bidId: string) => {
-    if (!confirm('Are you sure you want to accept this bid? This will reject all other bids.')) {
+    if (
+      !confirm(
+        "Are you sure you want to accept this bid? This will reject all other bids.",
+      )
+    ) {
       return;
     }
 
     try {
       setIsProcessing(true);
-      
+
       // Accept the selected bid
-      await updateBidStatus(bidId, 'accepted');
-      
+      await updateBidStatus(bidId, "accepted");
+
       // Reject all other bids
-      const otherBids = bids.filter(b => b.id !== bidId);
-      await Promise.all(otherBids.map(b => updateBidStatus(b.id, 'rejected')));
-      
+      const otherBids = bids.filter((b) => b.id !== bidId);
+      await Promise.all(
+        otherBids.map((b) => updateBidStatus(b.id, "rejected")),
+      );
+
       // Reload data
       const updatedBids = await getBidsForRFQ(rfqId);
       setBids(updatedBids);
       setSelectedBid(bidId);
-      
-      alert('Bid accepted successfully! Supplier will be notified.');
+
+      alert("Bid accepted successfully! Supplier will be notified.");
     } catch (error) {
-      console.error('Error accepting bid:', error);
-      alert('Failed to accept bid. Please try again.');
+      console.error("Error accepting bid:", error);
+      alert("Failed to accept bid. Please try again.");
     } finally {
       setIsProcessing(false);
     }
   };
 
   const handleRejectBid = async (bidId: string) => {
-    if (!confirm('Are you sure you want to reject this bid?')) {
+    if (!confirm("Are you sure you want to reject this bid?")) {
       return;
     }
 
     try {
       setIsProcessing(true);
-      await updateBidStatus(bidId, 'rejected');
-      
+      await updateBidStatus(bidId, "rejected");
+
       const updatedBids = await getBidsForRFQ(rfqId);
       setBids(updatedBids);
-      
-      alert('Bid rejected successfully.');
+
+      alert("Bid rejected successfully.");
     } catch (error) {
-      console.error('Error rejecting bid:', error);
-      alert('Failed to reject bid. Please try again.');
+      console.error("Error rejecting bid:", error);
+      alert("Failed to reject bid. Please try again.");
     } finally {
       setIsProcessing(false);
     }
   };
 
   const getStatusBadge = (status: string) => {
-    if (status === 'accepted') {
+    if (status === "accepted") {
       return (
         <Badge className="bg-green-100 text-green-700 border-0">
           <CheckCircle className="w-3 h-3 mr-1" />
           Accepted
         </Badge>
       );
-    } else if (status === 'rejected') {
+    } else if (status === "rejected") {
       return (
         <Badge className="bg-red-100 text-red-700 border-0">
           <XCircle className="w-3 h-3 mr-1" />
@@ -154,14 +175,14 @@ export default function AdminRFQDetailPage() {
 
   const sortedBids = [...bids].sort((a, b) => {
     // Accepted bids first
-    if (a.status === 'accepted') return -1;
-    if (b.status === 'accepted') return 1;
-    
+    if (a.status === "accepted") return -1;
+    if (b.status === "accepted") return 1;
+
     // Then by price (lowest first)
     return a.price - b.price;
   });
 
-  const lowestBid = Math.min(...bids.map(b => b.price));
+  const lowestBid = Math.min(...bids.map((b) => b.price));
   const avgBid = bids.reduce((sum, b) => sum + b.price, 0) / bids.length;
 
   if (loading) {
@@ -181,10 +202,7 @@ export default function AdminRFQDetailPage() {
     <div className="space-y-6">
       {/* Header */}
       <div className="flex items-center gap-4">
-        <Button
-          variant="outline"
-          onClick={() => router.push('/admin/rfqs')}
-        >
+        <Button variant="outline" onClick={() => router.push("/admin/rfqs")}>
           <ArrowLeft className="w-4 h-4 mr-2" />
           Back to RFQs
         </Button>
@@ -201,9 +219,12 @@ export default function AdminRFQDetailPage() {
             <div className="flex items-center gap-3">
               <AlertTriangle className="w-6 h-6 text-orange-600" />
               <div>
-                <h3 className="font-semibold text-orange-900">No Bids Received Yet</h3>
+                <h3 className="font-semibold text-orange-900">
+                  No Bids Received Yet
+                </h3>
                 <p className="text-sm text-orange-700">
-                  This RFQ hasn't received any bids from suppliers. Check back later or reach out to suppliers directly.
+                  This RFQ hasn't received any bids from suppliers. Check back
+                  later or reach out to suppliers directly.
                 </p>
               </div>
             </div>
@@ -229,14 +250,18 @@ export default function AdminRFQDetailPage() {
                   <Button
                     variant="link"
                     className="p-0 h-auto font-semibold"
-                    onClick={() => router.push(`/admin/orders/${rfqData.order_id}`)}
+                    onClick={() =>
+                      router.push(`/admin/orders/${rfqData.order_id}`)
+                    }
                   >
                     {rfqData.order_id}
                   </Button>
                 </div>
                 <div>
                   <p className="text-sm text-gray-600 mb-1">Parts</p>
-                  <p className="text-lg font-semibold">{orderData?.parts?.length || 0}</p>
+                  <p className="text-lg font-semibold">
+                    {orderData?.parts?.length || 0}
+                  </p>
                 </div>
                 <div>
                   <p className="text-sm text-gray-600 mb-1">Lead Time</p>
@@ -262,10 +287,16 @@ export default function AdminRFQDetailPage() {
               <div>
                 <p className="text-sm text-gray-600 mb-2">Customer</p>
                 <div className="bg-gray-50 rounded-lg p-3">
-                  <p className="font-medium">{orderData?.customer_name || 'Anonymous'}</p>
-                  <p className="text-sm text-gray-600">{orderData?.customer_email}</p>
+                  <p className="font-medium">
+                    {orderData?.customer_name || "Anonymous"}
+                  </p>
+                  <p className="text-sm text-gray-600">
+                    {orderData?.customer_email}
+                  </p>
                   {orderData?.customer_company && (
-                    <p className="text-sm text-gray-600">{orderData.customer_company}</p>
+                    <p className="text-sm text-gray-600">
+                      {orderData.customer_company}
+                    </p>
                   )}
                 </div>
               </div>
@@ -282,7 +313,8 @@ export default function AdminRFQDetailPage() {
                 </span>
                 {bids.length > 0 && (
                   <div className="text-sm font-normal text-gray-600">
-                    Lowest: ${lowestBid.toLocaleString()} • Avg: ${avgBid.toLocaleString()}
+                    Lowest: ${lowestBid.toLocaleString()} • Avg: $
+                    {avgBid.toLocaleString()}
                   </div>
                 )}
               </CardTitle>
@@ -303,14 +335,16 @@ export default function AdminRFQDetailPage() {
                   </TableHeader>
                   <TableBody>
                     {sortedBids.map((bid) => (
-                      <TableRow 
+                      <TableRow
                         key={bid.id}
-                        className={bid.id === selectedBid ? 'bg-green-50' : ''}
+                        className={bid.id === selectedBid ? "bg-green-50" : ""}
                       >
                         <TableCell>
                           <div>
                             <p className="font-semibold">{bid.supplier_name}</p>
-                            <p className="text-xs text-gray-500">{bid.supplier_id}</p>
+                            <p className="text-xs text-gray-500">
+                              {bid.supplier_id}
+                            </p>
                           </div>
                         </TableCell>
                         <TableCell>
@@ -334,22 +368,24 @@ export default function AdminRFQDetailPage() {
                         <TableCell>
                           <div className="flex items-center gap-1">
                             <Star className="w-4 h-4 text-yellow-400 fill-yellow-400" />
-                            <span className="font-medium">{bid.quality_score}</span>
+                            <span className="font-medium">
+                              {bid.quality_score}
+                            </span>
                             <span className="text-xs text-gray-500">/5.0</span>
                           </div>
                         </TableCell>
                         <TableCell>
                           <div className="flex items-center gap-1">
                             <Award className="w-4 h-4 text-blue-400" />
-                            <span className="font-medium">{(bid.on_time_rate * 100).toFixed(0)}%</span>
+                            <span className="font-medium">
+                              {(bid.on_time_rate * 100).toFixed(0)}%
+                            </span>
                           </div>
                         </TableCell>
-                        <TableCell>
-                          {getStatusBadge(bid.status)}
-                        </TableCell>
+                        <TableCell>{getStatusBadge(bid.status)}</TableCell>
                         <TableCell>
                           <div className="flex gap-2">
-                            {bid.status === 'pending' && (
+                            {bid.status === "pending" && (
                               <>
                                 <Button
                                   size="sm"
@@ -371,7 +407,7 @@ export default function AdminRFQDetailPage() {
                                 </Button>
                               </>
                             )}
-                            {bid.status === 'accepted' && (
+                            {bid.status === "accepted" && (
                               <Badge className="bg-green-100 text-green-700">
                                 <CheckCircle className="w-3 h-3 mr-1" />
                                 Winner
@@ -386,22 +422,31 @@ export default function AdminRFQDetailPage() {
               </div>
 
               {/* Bid Notes */}
-              {sortedBids.some(b => b.notes) && (
+              {sortedBids.some((b) => b.notes) && (
                 <div className="mt-6 space-y-3">
-                  <h4 className="font-semibold text-sm text-gray-700">Supplier Notes</h4>
-                  {sortedBids.filter(b => b.notes).map(bid => (
-                    <div key={bid.id} className="bg-gray-50 rounded-lg p-3 border border-gray-200">
-                      <div className="flex items-center justify-between mb-2">
-                        <span className="font-medium text-sm">{bid.supplier_name}</span>
-                        {bid.id === selectedBid && (
-                          <Badge className="bg-green-100 text-green-700 border-0 text-xs">
-                            Selected
-                          </Badge>
-                        )}
+                  <h4 className="font-semibold text-sm text-gray-700">
+                    Supplier Notes
+                  </h4>
+                  {sortedBids
+                    .filter((b) => b.notes)
+                    .map((bid) => (
+                      <div
+                        key={bid.id}
+                        className="bg-gray-50 rounded-lg p-3 border border-gray-200"
+                      >
+                        <div className="flex items-center justify-between mb-2">
+                          <span className="font-medium text-sm">
+                            {bid.supplier_name}
+                          </span>
+                          {bid.id === selectedBid && (
+                            <Badge className="bg-green-100 text-green-700 border-0 text-xs">
+                              Selected
+                            </Badge>
+                          )}
+                        </div>
+                        <p className="text-sm text-gray-700">{bid.notes}</p>
                       </div>
-                      <p className="text-sm text-gray-700">{bid.notes}</p>
-                    </div>
-                  ))}
+                    ))}
                 </div>
               )}
             </CardContent>
@@ -418,7 +463,9 @@ export default function AdminRFQDetailPage() {
             <CardContent className="space-y-4">
               <div>
                 <p className="text-sm text-gray-600 mb-1">Total Bids</p>
-                <p className="text-2xl font-bold text-gray-900">{bids.length}</p>
+                <p className="text-2xl font-bold text-gray-900">
+                  {bids.length}
+                </p>
               </div>
               {bids.length > 0 && (
                 <>
@@ -429,7 +476,8 @@ export default function AdminRFQDetailPage() {
                         ${lowestBid.toLocaleString()}
                       </span>
                       <span className="text-sm text-gray-500">
-                        to ${Math.max(...bids.map(b => b.price)).toLocaleString()}
+                        to $
+                        {Math.max(...bids.map((b) => b.price)).toLocaleString()}
                       </span>
                     </div>
                   </div>
@@ -442,7 +490,7 @@ export default function AdminRFQDetailPage() {
                   <div className="border-t pt-4">
                     <p className="text-sm text-gray-600 mb-1">Best Lead Time</p>
                     <p className="text-2xl font-bold text-gray-900">
-                      {Math.min(...bids.map(b => b.lead_time))}d
+                      {Math.min(...bids.map((b) => b.lead_time))}d
                     </p>
                   </div>
                 </>
@@ -487,17 +535,11 @@ export default function AdminRFQDetailPage() {
                 <Package className="w-4 h-4 mr-2" />
                 View Full Order
               </Button>
-              <Button
-                variant="outline"
-                className="w-full justify-start"
-              >
+              <Button variant="outline" className="w-full justify-start">
                 <FileText className="w-4 h-4 mr-2" />
                 Download Comparison PDF
               </Button>
-              <Button
-                variant="outline"
-                className="w-full justify-start"
-              >
+              <Button variant="outline" className="w-full justify-start">
                 <Send className="w-4 h-4 mr-2" />
                 Contact Customer
               </Button>

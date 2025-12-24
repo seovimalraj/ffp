@@ -1,15 +1,14 @@
-'use client';
+"use client";
 
-import Link from 'next/link';
-import { useAuth } from '@/contexts/AuthContext';
+import Link from "next/link";
+import { useAuth } from "@/contexts/AuthContext";
 import {
   Bars3Icon,
   MagnifyingGlassIcon,
   BellIcon,
   ChatBubbleLeftRightIcon,
-  UserCircleIcon,
   ArrowRightOnRectangleIcon,
-} from '@heroicons/react/24/outline';
+} from "@heroicons/react/24/outline";
 
 interface HeaderProps {
   sidebarOpen: boolean;
@@ -40,7 +39,9 @@ const Header: React.FC<HeaderProps> = ({ sidebarOpen, setSidebarOpen }) => {
               <div className="w-8 h-8 bg-primary rounded-lg flex items-center justify-center">
                 <span className="text-white font-bold text-sm">C</span>
               </div>
-              <span className="text-lg font-bold text-black dark:text-white">CNC Quote</span>
+              <span className="text-lg font-bold text-black dark:text-white">
+                CNC Quote
+              </span>
             </div>
           </Link>
         </div>
@@ -100,7 +101,7 @@ const Header: React.FC<HeaderProps> = ({ sidebarOpen, setSidebarOpen }) => {
                     {user.name}
                   </span>
                   <span className="block text-xs text-gray-500 dark:text-gray-400">
-                    {user.role === 'admin' ? 'Administrator' : 'Customer'}
+                    {user.role === "admin" ? "Administrator" : "Customer"}
                   </span>
                 </div>
 

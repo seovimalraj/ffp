@@ -57,7 +57,7 @@ export function CadViewer({
   const [measureMode, setMeasureMode] = useState(false);
   const [measurePoints, setMeasurePoints] = useState<THREE.Vector3[]>([]);
   const [measureMM, setMeasureMM] = useState<number | null>(null);
-  const [dimScale, setDimScale] = useState(0.6);
+  const [dimScale, _setDimScale] = useState(0.6);
 
   // Appearance State
   const [wireframe, setWireframe] = useState(false);
@@ -78,6 +78,13 @@ export function CadViewer({
       workerRef.current = new Worker(
         new URL("../../workers/occ-worker.ts", import.meta.url),
       );
+      // Send origin to worker for robust path resolution (mostly for dev)
+      if (typeof window !== "undefined") {
+        workerRef.current.postMessage({
+          type: "init",
+          payload: { origin: window.location.origin },
+        });
+      }
     } catch (e) {
       console.error("Failed to initialize worker:", e);
       setError("Failed to initialize CAD worker");

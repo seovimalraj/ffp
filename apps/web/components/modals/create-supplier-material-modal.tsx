@@ -37,22 +37,20 @@ const CURRENCY_OPTIONS = [
   { value: "USD", label: "USD" },
   { value: "INR", label: "INR" },
   { value: "EUR", label: "EUR" },
-  ];
+];
 
 const STATUS_OPTIONS = [
   { value: "active", label: "Active" },
   { value: "inactive", label: "Inactive" },
 ];
 
-const UNIT_OPTIONS = [
-  { value: "kg", label: "kg" },
-];
+const UNIT_OPTIONS = [{ value: "kg", label: "kg" }];
 
-const STOCK_MATERIAL_OPTIONS = [
-  { value: "rod", label: "Rod" },
-  { value: "block", label: "Block" },
-  { value: "plate", label: "Plate" },
-];
+// const STOCK_MATERIAL_OPTIONS = [
+//   { value: "rod", label: "Rod" },
+//   { value: "block", label: "Block" },
+//   { value: "plate", label: "Plate" },
+// ];
 
 interface UnitTagProps {
   currency: string;
@@ -69,7 +67,11 @@ export function UnitTag({ currency, unit }: UnitTagProps) {
   );
 }
 
-export default function CreateSupplierMaterialModal({ isOpen, onClose, onSuccess }: StockModalProps) {
+export default function CreateSupplierMaterialModal({
+  isOpen,
+  onClose,
+  onSuccess,
+}: StockModalProps) {
   const [formData, setFormData] = useState<StockFormData>({
     material: "",
     warehouse: "",
@@ -81,32 +83,43 @@ export default function CreateSupplierMaterialModal({ isOpen, onClose, onSuccess
     status: "active",
   });
 
-  const [materials, setMaterials] = useState<Array<{ value: string; label: string }>>([]);
-  const [warehouses, setWarehouses] = useState<Array<{ value: string; label: string }>>([]);
+  const [materials, setMaterials] = useState<
+    Array<{ value: string; label: string }>
+  >([]);
+  const [warehouses, setWarehouses] = useState<
+    Array<{ value: string; label: string }>
+  >([]);
   const [isLoading, setIsLoading] = useState(false);
-  const [errors, setErrors] = useState<Partial<Record<keyof StockFormData, string>>>({});
+  const [errors, setErrors] = useState<
+    Partial<Record<keyof StockFormData, string>>
+  >({});
 
   useEffect(() => {
     async function fetchData() {
       try {
         setIsLoading(true);
-        
+
         // Fetch materials
         const materialsResponse = await apiClient.get("/materials/minimal");
-        const materialsData = materialsResponse.data.materials?.map((material: { id: string; name: string }) => ({
-          value: material.id,
-          label: material.name,
-        })) || [];
+        const materialsData =
+          materialsResponse.data.materials?.map(
+            (material: { id: string; name: string }) => ({
+              value: material.id,
+              label: material.name,
+            }),
+          ) || [];
         setMaterials(materialsData);
 
         // Fetch warehouses
         const warehousesResponse = await apiClient.get("/supplier/warehouses");
-        const warehousesData = warehousesResponse.data.warehouses?.map((warehouse: { id: string; name: string }) => ({
-          value: warehouse.id,
-          label: warehouse.name,
-        })) || [];
+        const warehousesData =
+          warehousesResponse.data.warehouses?.map(
+            (warehouse: { id: string; name: string }) => ({
+              value: warehouse.id,
+              label: warehouse.name,
+            }),
+          ) || [];
         setWarehouses(warehousesData);
-
       } catch (error) {
         console.error(error);
         notify.error("Error fetching data");
@@ -122,9 +135,15 @@ export default function CreateSupplierMaterialModal({ isOpen, onClose, onSuccess
 
   const validateStep = (step: number): boolean => {
     if (step === 1) {
-      const fieldsToValidate: (keyof StockFormData)[] = [ "material", "warehouse"];
+      const fieldsToValidate: (keyof StockFormData)[] = [
+        "material",
+        "warehouse",
+      ];
       const partialSchema = stockSchema.pick(
-        Object.fromEntries(fieldsToValidate.map((f) => [f, true])) as Record<keyof StockFormData, true>
+        Object.fromEntries(fieldsToValidate.map((f) => [f, true])) as Record<
+          keyof StockFormData,
+          true
+        >,
       );
       const result = partialSchema.safeParse(formData);
 
@@ -138,9 +157,16 @@ export default function CreateSupplierMaterialModal({ isOpen, onClose, onSuccess
         return false;
       }
     } else if (step === 2) {
-      const fieldsToValidate: (keyof StockFormData)[] = ["current_stock", "max_stock", "supplier_price"];
+      const fieldsToValidate: (keyof StockFormData)[] = [
+        "current_stock",
+        "max_stock",
+        "supplier_price",
+      ];
       const partialSchema = stockSchema.pick(
-        Object.fromEntries(fieldsToValidate.map((f) => [f, true])) as Record<keyof StockFormData, true>
+        Object.fromEntries(fieldsToValidate.map((f) => [f, true])) as Record<
+          keyof StockFormData,
+          true
+        >,
       );
       const result = partialSchema.safeParse(formData);
 
@@ -159,7 +185,10 @@ export default function CreateSupplierMaterialModal({ isOpen, onClose, onSuccess
     return true;
   };
 
-  const handleFieldChange = (name: keyof StockFormData, value: string | number) => {
+  const handleFieldChange = (
+    name: keyof StockFormData,
+    value: string | number,
+  ) => {
     setFormData((prev) => ({ ...prev, [name]: value }));
     if (errors[name]) {
       setErrors((prev) => ({ ...prev, [name]: undefined }));
@@ -217,26 +246,49 @@ export default function CreateSupplierMaterialModal({ isOpen, onClose, onSuccess
           <Step step={1} currentStep={currentStep}>
             <div className="space-y-5">
               <div className="grid grid-cols-2 gap-4">
-                <FormField label="Material" error={errors.material} required hint="Select the material type">
+                <FormField
+                  label="Material"
+                  error={errors.material}
+                  required
+                  hint="Select the material type"
+                >
                   <Select
                     value={formData.material}
-                    onChange={(e) => handleFieldChange("material", e.target.value)}
-                    options={[{ value: "", label: "Select a material" }, ...materials]}
+                    onChange={(e) =>
+                      handleFieldChange("material", e.target.value)
+                    }
+                    options={[
+                      { value: "", label: "Select a material" },
+                      ...materials,
+                    ]}
                     error={!!errors.material}
                   />
                 </FormField>
 
-                <FormField label="Warehouse" error={errors.warehouse} required hint="Select storage location">
+                <FormField
+                  label="Warehouse"
+                  error={errors.warehouse}
+                  required
+                  hint="Select storage location"
+                >
                   <Select
                     value={formData.warehouse}
-                    onChange={(e) => handleFieldChange("warehouse", e.target.value)}
-                    options={[{ value: "", label: "Select a warehouse" }, ...warehouses]}
+                    onChange={(e) =>
+                      handleFieldChange("warehouse", e.target.value)
+                    }
+                    options={[
+                      { value: "", label: "Select a warehouse" },
+                      ...warehouses,
+                    ]}
                     error={!!errors.warehouse}
                   />
                 </FormField>
               </div>
 
-              <FormField label="Status" hint="Whether this stock is available for use">
+              <FormField
+                label="Status"
+                hint="Whether this stock is available for use"
+              >
                 <RadioGroup
                   name="status"
                   value={formData.status}
@@ -249,12 +301,22 @@ export default function CreateSupplierMaterialModal({ isOpen, onClose, onSuccess
 
           <Step step={2} currentStep={currentStep}>
             <div className="space-y-5">
-              <FormField label="Current Quantity" error={errors.current_stock} required hint="Current available quantity">
+              <FormField
+                label="Current Quantity"
+                error={errors.current_stock}
+                required
+                hint="Current available quantity"
+              >
                 <div className="flex items-center gap-3">
                   <Input
                     type="number"
                     value={formData.current_stock}
-                    onChange={(e) => handleFieldChange("current_stock", parseFloat(e.target.value) || 0)}
+                    onChange={(e) =>
+                      handleFieldChange(
+                        "current_stock",
+                        parseFloat(e.target.value) || 0,
+                      )
+                    }
                     placeholder="0.00"
                     step="0.01"
                     min="0"
@@ -267,12 +329,22 @@ export default function CreateSupplierMaterialModal({ isOpen, onClose, onSuccess
                 </div>
               </FormField>
 
-              <FormField label="Max Stock" error={errors.max_stock} required hint="Maximum stock capacity">
+              <FormField
+                label="Max Stock"
+                error={errors.max_stock}
+                required
+                hint="Maximum stock capacity"
+              >
                 <div className="flex items-center gap-3">
                   <Input
                     type="number"
                     value={formData.max_stock}
-                    onChange={(e) => handleFieldChange("max_stock", parseFloat(e.target.value) || 0)}
+                    onChange={(e) =>
+                      handleFieldChange(
+                        "max_stock",
+                        parseFloat(e.target.value) || 0,
+                      )
+                    }
                     placeholder="0.00"
                     step="0.01"
                     min="0"
@@ -288,32 +360,49 @@ export default function CreateSupplierMaterialModal({ isOpen, onClose, onSuccess
               <FormField label="Stock Unit" hint="Unit of measurement (per kg)">
                 <Select
                   value={formData.stock_unit}
-                  onChange={(e) => handleFieldChange("stock_unit", e.target.value)}
+                  onChange={(e) =>
+                    handleFieldChange("stock_unit", e.target.value)
+                  }
                   options={UNIT_OPTIONS}
                   disabled
                 />
               </FormField>
 
-              <FormField label="Supplier Price" error={errors.supplier_price} required hint="Price from supplier">
+              <FormField
+                label="Supplier Price"
+                error={errors.supplier_price}
+                required
+                hint="Price from supplier"
+              >
                 <div className="flex items-center gap-3">
                   <Input
                     type="number"
                     value={formData.supplier_price}
-                    onChange={(e) => handleFieldChange("supplier_price", parseFloat(e.target.value) || 0)}
+                    onChange={(e) =>
+                      handleFieldChange(
+                        "supplier_price",
+                        parseFloat(e.target.value) || 0,
+                      )
+                    }
                     placeholder="0.00"
                     step="0.01"
                     min="0"
                     error={!!errors.supplier_price}
                     className="flex-1"
                   />
-                  <UnitTag currency={formData.currency} unit={formData.stock_unit} />
+                  <UnitTag
+                    currency={formData.currency}
+                    unit={formData.stock_unit}
+                  />
                 </div>
               </FormField>
 
               <FormField label="Currency" hint="Currency used for pricing">
                 <Select
                   value={formData.currency}
-                  onChange={(e) => handleFieldChange("currency", e.target.value)}
+                  onChange={(e) =>
+                    handleFieldChange("currency", e.target.value)
+                  }
                   options={CURRENCY_OPTIONS}
                   disabled
                 />

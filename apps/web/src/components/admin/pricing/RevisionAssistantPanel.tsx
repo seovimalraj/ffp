@@ -155,7 +155,6 @@ export const RevisionAssistantPanel: React.FC<RevisionAssistantPanelProps> = ({ 
       case "failed":
         return <Badge variant="destructive">Failed</Badge>;
   
-  
       case "processing":
         return (
           <Badge variant="outline">

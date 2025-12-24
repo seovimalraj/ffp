@@ -3,10 +3,9 @@
  * CRUD interface for managing finish operations with formula editor
  */
 
-'use client';
+"use client";
 
-import React, { useState, useEffect } from 'react';
-import { useRouter } from 'next/navigation';
+import React, { useState, useEffect } from "react";
 
 interface FinishOperation {
   id: string;
@@ -19,7 +18,7 @@ interface FinishOperation {
   prerequisites_json: string[];
   incompatibilities_json: string[];
   qos_json: {
-    mode: 'add' | 'max' | 'serial';
+    mode: "add" | "max" | "serial";
     parallel_compatible: boolean;
     batch_discount_threshold?: number;
   };
@@ -38,7 +37,6 @@ interface FormulaTestResult {
 }
 
 export default function AdminFinishOperationsPage() {
-  const router = useRouter();
   const [operations, setOperations] = useState<FinishOperation[]>([]);
   const [selectedOp, setSelectedOp] = useState<FinishOperation | null>(null);
   const [isEditing, setIsEditing] = useState(false);
@@ -48,27 +46,27 @@ export default function AdminFinishOperationsPage() {
 
   // Form state
   const [formData, setFormData] = useState<Partial<FinishOperation>>({
-    code: '',
-    name: '',
-    process: 'cnc_milling',
-    description: '',
-    cost_formula: '',
-    lead_days_formula: '',
+    code: "",
+    name: "",
+    process: "cnc_milling",
+    description: "",
+    cost_formula: "",
+    lead_days_formula: "",
     prerequisites_json: [],
     incompatibilities_json: [],
-    qos_json: { mode: 'add', parallel_compatible: false },
+    qos_json: { mode: "add", parallel_compatible: false },
     active: true,
   });
 
   // Test state
-  const [testFormula, setTestFormula] = useState('');
+  const [testFormula, setTestFormula] = useState("");
   const [testContext, setTestContext] = useState({
     area_m2: 0.25,
     volume_cm3: 150,
     qty: 10,
-    material: 'AL6061',
-    region: 'US',
-    color: 'black',
+    material: "AL6061",
+    region: "US",
+    color: "black",
   });
   const [testResult, setTestResult] = useState<FormulaTestResult | null>(null);
 
@@ -79,12 +77,12 @@ export default function AdminFinishOperationsPage() {
   const fetchOperations = async () => {
     try {
       setLoading(true);
-      const res = await fetch('/api/admin/finish-operations');
-      if (!res.ok) throw new Error('Failed to fetch operations');
+      const res = await fetch("/api/admin/finish-operations");
+      if (!res.ok) throw new Error("Failed to fetch operations");
       const data = await res.json();
       setOperations(data.operations || []);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Unknown error');
+      setError(err instanceof Error ? err.message : "Unknown error");
     } finally {
       setLoading(false);
     }
@@ -93,20 +91,20 @@ export default function AdminFinishOperationsPage() {
   const handleCreate = async () => {
     try {
       setLoading(true);
-      const res = await fetch('/api/admin/finish-operations', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+      const res = await fetch("/api/admin/finish-operations", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify(formData),
       });
-      if (!res.ok) throw new Error('Failed to create operation');
+      if (!res.ok) throw new Error("Failed to create operation");
       const data = await res.json();
       if (data.error) throw new Error(data.error);
-      
+
       await fetchOperations();
       setIsCreating(false);
       resetForm();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Unknown error');
+      setError(err instanceof Error ? err.message : "Unknown error");
     } finally {
       setLoading(false);
     }
@@ -117,36 +115,36 @@ export default function AdminFinishOperationsPage() {
     try {
       setLoading(true);
       const res = await fetch(`/api/admin/finish-operations/${selectedOp.id}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify(formData),
       });
-      if (!res.ok) throw new Error('Failed to update operation');
+      if (!res.ok) throw new Error("Failed to update operation");
       const data = await res.json();
       if (data.error) throw new Error(data.error);
-      
+
       await fetchOperations();
       setIsEditing(false);
       setSelectedOp(null);
       resetForm();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Unknown error');
+      setError(err instanceof Error ? err.message : "Unknown error");
     } finally {
       setLoading(false);
     }
   };
 
   const handleDelete = async (id: string) => {
-    if (!confirm('Are you sure you want to deactivate this operation?')) return;
+    if (!confirm("Are you sure you want to deactivate this operation?")) return;
     try {
       setLoading(true);
       const res = await fetch(`/api/admin/finish-operations/${id}`, {
-        method: 'DELETE',
+        method: "DELETE",
       });
-      if (!res.ok) throw new Error('Failed to delete operation');
+      if (!res.ok) throw new Error("Failed to delete operation");
       await fetchOperations();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Unknown error');
+      setError(err instanceof Error ? err.message : "Unknown error");
     } finally {
       setLoading(false);
     }
@@ -155,21 +153,21 @@ export default function AdminFinishOperationsPage() {
   const handleTestFormula = async () => {
     try {
       setLoading(true);
-      const res = await fetch('/api/admin/finish-operations/test-formula', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+      const res = await fetch("/api/admin/finish-operations/test-formula", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           formula: testFormula,
           context: testContext,
         }),
       });
-      if (!res.ok) throw new Error('Failed to test formula');
+      if (!res.ok) throw new Error("Failed to test formula");
       const data = await res.json();
       setTestResult(data);
     } catch (err) {
       setTestResult({
         success: false,
-        error: err instanceof Error ? err.message : 'Unknown error',
+        error: err instanceof Error ? err.message : "Unknown error",
       });
     } finally {
       setLoading(false);
@@ -178,15 +176,15 @@ export default function AdminFinishOperationsPage() {
 
   const resetForm = () => {
     setFormData({
-      code: '',
-      name: '',
-      process: 'cnc_milling',
-      description: '',
-      cost_formula: '',
-      lead_days_formula: '',
+      code: "",
+      name: "",
+      process: "cnc_milling",
+      description: "",
+      cost_formula: "",
+      lead_days_formula: "",
       prerequisites_json: [],
       incompatibilities_json: [],
-      qos_json: { mode: 'add', parallel_compatible: false },
+      qos_json: { mode: "add", parallel_compatible: false },
       active: true,
     });
   };
@@ -220,14 +218,18 @@ export default function AdminFinishOperationsPage() {
       {error && (
         <div className="mb-4 p-4 bg-red-50 border border-red-200 rounded text-red-800">
           {error}
-          <button onClick={() => setError(null)} className="float-right">✕</button>
+          <button onClick={() => setError(null)} className="float-right">
+            ✕
+          </button>
         </div>
       )}
 
       <div className="grid grid-cols-3 gap-6">
         {/* Operations List */}
         <div className="col-span-1 border rounded p-4 bg-white">
-          <h2 className="font-semibold mb-4">Operations ({operations.length})</h2>
+          <h2 className="font-semibold mb-4">
+            Operations ({operations.length})
+          </h2>
           {loading && !operations.length ? (
             <p className="text-gray-500">Loading...</p>
           ) : (
@@ -237,8 +239,8 @@ export default function AdminFinishOperationsPage() {
                   key={op.id}
                   onClick={() => startEdit(op)}
                   className={`p-3 border rounded cursor-pointer hover:bg-gray-50 ${
-                    selectedOp?.id === op.id ? 'border-blue-500 bg-blue-50' : ''
-                  } ${!op.active ? 'opacity-50' : ''}`}
+                    selectedOp?.id === op.id ? "border-blue-500 bg-blue-50" : ""
+                  } ${!op.active ? "opacity-50" : ""}`}
                 >
                   <div className="font-medium">{op.name}</div>
                   <div className="text-xs text-gray-500">{op.code}</div>
@@ -263,27 +265,37 @@ export default function AdminFinishOperationsPage() {
           ) : (
             <div className="space-y-4">
               <h2 className="font-semibold text-lg">
-                {isCreating ? 'Create New Operation' : `Edit: ${selectedOp?.name}`}
+                {isCreating
+                  ? "Create New Operation"
+                  : `Edit: ${selectedOp?.name}`}
               </h2>
 
               {/* Basic Info */}
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-sm font-medium mb-1">Code *</label>
+                  <label className="block text-sm font-medium mb-1">
+                    Code *
+                  </label>
                   <input
                     type="text"
                     value={formData.code}
-                    onChange={(e) => setFormData({ ...formData, code: e.target.value })}
+                    onChange={(e) =>
+                      setFormData({ ...formData, code: e.target.value })
+                    }
                     className="w-full px-3 py-2 border rounded"
                     placeholder="bead_blast"
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium mb-1">Name *</label>
+                  <label className="block text-sm font-medium mb-1">
+                    Name *
+                  </label>
                   <input
                     type="text"
                     value={formData.name}
-                    onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                    onChange={(e) =>
+                      setFormData({ ...formData, name: e.target.value })
+                    }
                     className="w-full px-3 py-2 border rounded"
                     placeholder="Bead Blast"
                   />
@@ -292,10 +304,14 @@ export default function AdminFinishOperationsPage() {
 
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-sm font-medium mb-1">Process *</label>
+                  <label className="block text-sm font-medium mb-1">
+                    Process *
+                  </label>
                   <select
                     value={formData.process}
-                    onChange={(e) => setFormData({ ...formData, process: e.target.value })}
+                    onChange={(e) =>
+                      setFormData({ ...formData, process: e.target.value })
+                    }
                     className="w-full px-3 py-2 border rounded"
                   >
                     <option value="cnc_milling">CNC Milling</option>
@@ -305,11 +321,16 @@ export default function AdminFinishOperationsPage() {
                   </select>
                 </div>
                 <div>
-                  <label className="block text-sm font-medium mb-1">Status</label>
+                  <label className="block text-sm font-medium mb-1">
+                    Status
+                  </label>
                   <select
-                    value={formData.active ? 'active' : 'inactive'}
+                    value={formData.active ? "active" : "inactive"}
                     onChange={(e) =>
-                      setFormData({ ...formData, active: e.target.value === 'active' })
+                      setFormData({
+                        ...formData,
+                        active: e.target.value === "active",
+                      })
                     }
                     className="w-full px-3 py-2 border rounded"
                   >
@@ -320,10 +341,14 @@ export default function AdminFinishOperationsPage() {
               </div>
 
               <div>
-                <label className="block text-sm font-medium mb-1">Description</label>
+                <label className="block text-sm font-medium mb-1">
+                  Description
+                </label>
                 <textarea
-                  value={formData.description || ''}
-                  onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+                  value={formData.description || ""}
+                  onChange={(e) =>
+                    setFormData({ ...formData, description: e.target.value })
+                  }
                   className="w-full px-3 py-2 border rounded"
                   rows={2}
                   placeholder="Brief description..."
@@ -337,13 +362,16 @@ export default function AdminFinishOperationsPage() {
                 </label>
                 <textarea
                   value={formData.cost_formula}
-                  onChange={(e) => setFormData({ ...formData, cost_formula: e.target.value })}
+                  onChange={(e) =>
+                    setFormData({ ...formData, cost_formula: e.target.value })
+                  }
                   className="w-full px-3 py-2 border rounded font-mono text-sm"
                   rows={3}
                   placeholder="tiered(sa,[{upTo:0.1,price:18}])*qty*regionMult(region,'BEAD_BLAST')"
                 />
                 <p className="text-xs text-gray-500 mt-1">
-                  Available: sa, qty, material, region, color, tiered(), regionMult(), hazardFee()
+                  Available: sa, qty, material, region, color, tiered(),
+                  regionMult(), hazardFee()
                 </p>
               </div>
 
@@ -354,7 +382,10 @@ export default function AdminFinishOperationsPage() {
                 <textarea
                   value={formData.lead_days_formula}
                   onChange={(e) =>
-                    setFormData({ ...formData, lead_days_formula: e.target.value })
+                    setFormData({
+                      ...formData,
+                      lead_days_formula: e.target.value,
+                    })
                   }
                   className="w-full px-3 py-2 border rounded font-mono text-sm"
                   rows={2}
@@ -365,15 +396,17 @@ export default function AdminFinishOperationsPage() {
               {/* Prerequisites & Incompatibilities */}
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-sm font-medium mb-1">Prerequisites</label>
+                  <label className="block text-sm font-medium mb-1">
+                    Prerequisites
+                  </label>
                   <input
                     type="text"
-                    value={(formData.prerequisites_json || []).join(', ')}
+                    value={(formData.prerequisites_json || []).join(", ")}
                     onChange={(e) =>
                       setFormData({
                         ...formData,
                         prerequisites_json: e.target.value
-                          .split(',')
+                          .split(",")
                           .map((s) => s.trim())
                           .filter(Boolean),
                       })
@@ -383,15 +416,17 @@ export default function AdminFinishOperationsPage() {
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium mb-1">Incompatibilities</label>
+                  <label className="block text-sm font-medium mb-1">
+                    Incompatibilities
+                  </label>
                   <input
                     type="text"
-                    value={(formData.incompatibilities_json || []).join(', ')}
+                    value={(formData.incompatibilities_json || []).join(", ")}
                     onChange={(e) =>
                       setFormData({
                         ...formData,
                         incompatibilities_json: e.target.value
-                          .split(',')
+                          .split(",")
                           .map((s) => s.trim())
                           .filter(Boolean),
                       })
@@ -405,15 +440,17 @@ export default function AdminFinishOperationsPage() {
               {/* QoS Config */}
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-sm font-medium mb-1">Lead Time Mode</label>
+                  <label className="block text-sm font-medium mb-1">
+                    Lead Time Mode
+                  </label>
                   <select
-                    value={formData.qos_json?.mode || 'add'}
+                    value={formData.qos_json?.mode || "add"}
                     onChange={(e) =>
                       setFormData({
                         ...formData,
                         qos_json: {
                           ...formData.qos_json!,
-                          mode: e.target.value as 'add' | 'max' | 'serial',
+                          mode: e.target.value as "add" | "max" | "serial",
                         },
                       })
                     }
@@ -425,15 +462,19 @@ export default function AdminFinishOperationsPage() {
                   </select>
                 </div>
                 <div>
-                  <label className="block text-sm font-medium mb-1">Parallel Compatible</label>
+                  <label className="block text-sm font-medium mb-1">
+                    Parallel Compatible
+                  </label>
                   <select
-                    value={formData.qos_json?.parallel_compatible ? 'yes' : 'no'}
+                    value={
+                      formData.qos_json?.parallel_compatible ? "yes" : "no"
+                    }
                     onChange={(e) =>
                       setFormData({
                         ...formData,
                         qos_json: {
                           ...formData.qos_json!,
-                          parallel_compatible: e.target.value === 'yes',
+                          parallel_compatible: e.target.value === "yes",
                         },
                       })
                     }
@@ -452,7 +493,7 @@ export default function AdminFinishOperationsPage() {
                   disabled={loading}
                   className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50"
                 >
-                  {loading ? 'Saving...' : isCreating ? 'Create' : 'Update'}
+                  {loading ? "Saving..." : isCreating ? "Create" : "Update"}
                 </button>
                 <button
                   onClick={() => {
@@ -485,7 +526,9 @@ export default function AdminFinishOperationsPage() {
         <h2 className="font-semibold text-lg mb-4">Formula Test Harness</h2>
         <div className="grid grid-cols-2 gap-4">
           <div>
-            <label className="block text-sm font-medium mb-1">Formula to Test</label>
+            <label className="block text-sm font-medium mb-1">
+              Formula to Test
+            </label>
             <textarea
               value={testFormula}
               onChange={(e) => setTestFormula(e.target.value)}
@@ -495,13 +538,17 @@ export default function AdminFinishOperationsPage() {
             />
           </div>
           <div>
-            <label className="block text-sm font-medium mb-1">Test Context (JSON)</label>
+            <label className="block text-sm font-medium mb-1">
+              Test Context (JSON)
+            </label>
             <textarea
               value={JSON.stringify(testContext, null, 2)}
               onChange={(e) => {
                 try {
                   setTestContext(JSON.parse(e.target.value));
-                } catch {}
+                } catch (err) {
+                  console.error(err);
+                }
               }}
               className="w-full px-3 py-2 border rounded font-mono text-sm"
               rows={3}
@@ -519,7 +566,9 @@ export default function AdminFinishOperationsPage() {
         {testResult && (
           <div
             className={`mt-4 p-4 border rounded ${
-              testResult.success ? 'bg-green-50 border-green-200' : 'bg-red-50 border-red-200'
+              testResult.success
+                ? "bg-green-50 border-green-200"
+                : "bg-red-50 border-red-200"
             }`}
           >
             {testResult.success ? (

@@ -156,11 +156,11 @@ export function createViewer(container: HTMLElement): Viewer {
     controls.update();
   }
 
-  function computeBoxOf(object: THREE.Object3D) {
-    const box = new THREE.Box3();
-    box.setFromObject(object);
-    return box;
-  }
+  // function computeBoxOf(object: THREE.Object3D) {
+  //   const box = new THREE.Box3();
+  //   box.setFromObject(object);
+  //   return box;
+  // }
 
   function pickAtScreenPosition(
     ndcX: number,

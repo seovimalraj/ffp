@@ -41,6 +41,7 @@ export function processParts(parts: any[]) {
       status: part.status || "active",
       fileName: part.file_name,
       filePath: part.cad_file_url,
+      finalPrice: part.final_price,
       cadFileType: part.cad_file_type,
       material: part.material,
       quantity: part.quantity || 1,

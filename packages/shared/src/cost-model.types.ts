@@ -1,6 +1,10 @@
-import { z } from 'zod';
-import { CostFactorsV1 } from './contracts/v1/pricing';
-import { GeometryMetricsV1, LeadTimeOption, ProcessType } from './contracts/v1/part-config';
+import { z } from "zod";
+import { CostFactorsV1 } from "./contracts/v1/pricing";
+import {
+  GeometryMetricsV1,
+  LeadTimeOption,
+  ProcessType,
+} from "./contracts/v1/part-config";
 
 // Cost Model Domain (Phase 1 foundation)
 // These schemas describe configurable commercial drivers that feed pricing computations.
@@ -48,14 +52,17 @@ export const FinishCostDriverSchema = z.object({
 // Inspection / QA driver
 export const InspectionCostDriverSchema = z.object({
   id: z.string(),
-  level: z.enum(['basic', 'enhanced', 'full']),
+  level: z.enum(["basic", "enhanced", "full"]),
   cost_per_part: z.number().nonnegative(),
 });
 
 // Lead time tier driver (maps UI option -> multiplier & promised days)
 export const LeadTimeTierSchema = z.object({
   id: z.string(),
-  code: z.enum(['standard', 'expedited']) as unknown as z.ZodType<LeadTimeOption>,
+  code: z.enum([
+    "standard",
+    "expedited",
+  ]) as unknown as z.ZodType<LeadTimeOption>,
   label: z.string(),
   days: z.number().positive(),
   /** Multiplier applied to unit price AFTER base margin (e.g. rush premium) */
@@ -97,7 +104,7 @@ export const CostModelSchema = z.object({
   quantity_discounts: z.array(QuantityDiscountSchema).default([]),
   complexity: ComplexityDriverSchema,
   margin: MarginPolicySchema,
-  currency: z.string().default('USD'),
+  currency: z.string().default("USD"),
   audit: z.object({
     generated_at: z.string().datetime(),
   }),
@@ -117,9 +124,9 @@ export type CostModel = z.infer<typeof CostModelSchema>;
 export interface CostSelectionContext {
   quantity: number;
   lead_time_option: LeadTimeOption;
-  machining_complexity?: 'low' | 'medium' | 'high';
+  machining_complexity?: "low" | "medium" | "high";
   finish_ids?: string[]; // catalog_finish_id list
-  inspection_level?: 'basic' | 'enhanced' | 'full';
+  inspection_level?: "basic" | "enhanced" | "full";
 }
 
 // Helper: derive CostFactorsV1 (contracts) from cost model + selection & geometry metrics.
@@ -127,30 +134,36 @@ export interface CostSelectionContext {
 export function deriveCostFactorsV1(
   model: CostModel,
   selection: CostSelectionContext,
-  metrics: GeometryMetricsV1
+  _metrics: GeometryMetricsV1
 ): CostFactorsV1 {
   // Machine & setup
   const machine_rate_per_hour = model.machine.machine_rate_per_hour;
   const setup_cost = model.machine.setup_cost;
 
   // Material estimation (placeholder simplistic mass calc if volume_cc present & density ~ 1 *for demo*)
-  const density_kg_per_cc = 0.000001; // TODO: pull real density from catalog material (kg/cc)
-  const net_mass_kg = (metrics.volume_cc ?? 0) * density_kg_per_cc;
-  const buy_mass_kg = net_mass_kg * model.material.buy_conversion_factor * (1 + model.material.scrap_rate);
+  // const density_kg_per_cc = 0.000001; // TODO: pull real density from catalog material (kg/cc)
+  // const net_mass_kg = (metrics.volume_cc ?? 0) * density_kg_per_cc;
+  // const buy_mass_kg =
+  //   net_mass_kg *
+  //   model.material.buy_conversion_factor *
+  //   (1 + model.material.scrap_rate);
   const material_price_per_kg = model.material.raw_cost_per_kg;
-  const material_cost_estimate = buy_mass_kg * material_price_per_kg; // used later externally
+  // const material_cost_estimate = buy_mass_kg * material_price_per_kg; // used later externally
 
   // Finish adders map
   const finish_cost_adders: Record<string, number> = {};
-  (selection.finish_ids || []).forEach(fid => {
-    const fin = model.finishes.find(f => f.catalog_finish_id === fid);
+  (selection.finish_ids || []).forEach((fid) => {
+    const fin = model.finishes.find((f) => f.catalog_finish_id === fid);
     if (fin) {
-      finish_cost_adders[fid] = fin.cost_per_part + (fin.batch_setup_cost ?? 0) / selection.quantity;
+      finish_cost_adders[fid] =
+        fin.cost_per_part + (fin.batch_setup_cost ?? 0) / selection.quantity;
     }
   });
 
   // Inspection
-  const inspection = model.inspection_levels.find(l => l.level === (selection.inspection_level || 'basic'));
+  const inspection = model.inspection_levels.find(
+    (l) => l.level === (selection.inspection_level || "basic")
+  );
   const inspection_cost_per_part = inspection ? inspection.cost_per_part : 0;
 
   // Overhead & margin
@@ -158,26 +171,41 @@ export function deriveCostFactorsV1(
   const base_margin_percent = model.margin.base_margin_percent;
 
   // Rush / lead time multiplier
-  const leadTier = model.lead_time_tiers.find(t => t.code === selection.lead_time_option);
-  const rush_multiplier = leadTier?.price_multiplier && leadTier.price_multiplier > 1 ? leadTier.price_multiplier : undefined;
+  const leadTier = model.lead_time_tiers.find(
+    (t) => t.code === selection.lead_time_option
+  );
+  const rush_multiplier =
+    leadTier?.price_multiplier && leadTier.price_multiplier > 1
+      ? leadTier.price_multiplier
+      : undefined;
 
   // Quantity breaks (convert discount fractions -> contract shape)
   const quantity_breaks = model.quantity_discounts
     .slice()
     .sort((a, b) => a.min_qty - b.min_qty)
-    .map(q => ({ min_qty: q.min_qty, discount_percent: q.discount_percent * 100 })) // keep as percent for v1? existing contract uses discount_percent (assumed percent not fraction)
-    .map(q => ({ ...q, discount_percent: q.discount_percent }));
+    .map((q) => ({
+      min_qty: q.min_qty,
+      discount_percent: q.discount_percent * 100,
+    })) // keep as percent for v1? existing contract uses discount_percent (assumed percent not fraction)
+    .map((q) => ({ ...q, discount_percent: q.discount_percent }));
 
   return {
     machine_rate_per_hour,
     setup_cost,
     material_price_per_kg: material_price_per_kg,
-    finish_cost_adders: Object.keys(finish_cost_adders).length ? finish_cost_adders : undefined,
+    finish_cost_adders: Object.keys(finish_cost_adders).length
+      ? finish_cost_adders
+      : undefined,
     inspection_cost_per_part: inspection_cost_per_part || undefined,
     overhead_percent,
     base_margin_percent,
     rush_multiplier,
-    quantity_breaks: quantity_breaks.length ? quantity_breaks.map(q => ({ min_qty: q.min_qty, discount_percent: q.discount_percent })) : undefined,
+    quantity_breaks: quantity_breaks.length
+      ? quantity_breaks.map((q) => ({
+          min_qty: q.min_qty,
+          discount_percent: q.discount_percent,
+        }))
+      : undefined,
   };
 }
 

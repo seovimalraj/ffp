@@ -1,12 +1,12 @@
-'use client';
+"use client";
 
-import React, { createContext, useContext, useEffect, useState } from 'react';
+import React, { createContext, useContext, useEffect, useState } from "react";
 
 export interface User {
   id: string;
   email: string;
   name: string;
-  role: 'admin' | 'engineer' | 'buyer' | 'security_analyst';
+  role: "admin" | "engineer" | "buyer" | "security_analyst";
   org?: {
     id: string;
     name: string;
@@ -18,7 +18,10 @@ export interface User {
 interface AuthContextType {
   user: User | null;
   loading: boolean;
-  login: (email: string, password: string) => Promise<{ success: boolean; error?: string }>;
+  login: (
+    email: string,
+    password: string,
+  ) => Promise<{ success: boolean; error?: string }>;
   register: (data: {
     email: string;
     password: string;
@@ -41,13 +44,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const checkAuth = async () => {
     try {
-      const response = await fetch('/api/auth/me');
+      const response = await fetch("/api/auth/me");
       if (response.ok) {
         const data = await response.json();
         setUser(data.user);
       }
     } catch (error) {
-      console.error('Auth check failed:', error);
+      console.error("Auth check failed:", error);
     } finally {
       setLoading(false);
     }
@@ -55,10 +58,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const login = async (email: string, password: string) => {
     try {
-      const response = await fetch('/api/auth/login', {
-        method: 'POST',
+      const response = await fetch("/api/auth/login", {
+        method: "POST",
         headers: {
-          'Content-Type': 'application/json',
+          "Content-Type": "application/json",
         },
         body: JSON.stringify({ email, password }),
       });
@@ -71,8 +74,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       } else {
         return { success: false, error: data.error };
       }
-    } catch (error) {
-      return { success: false, error: 'Network error' };
+    } catch (_error) {
+      return { success: false, error: "Network error" };
     }
   };
 
@@ -83,10 +86,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     company?: string;
   }) => {
     try {
-      const response = await fetch('/api/auth/register', {
-        method: 'POST',
+      const response = await fetch("/api/auth/register", {
+        method: "POST",
         headers: {
-          'Content-Type': 'application/json',
+          "Content-Type": "application/json",
         },
         body: JSON.stringify(registerData),
       });
@@ -99,17 +102,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       } else {
         return { success: false, error: data.error };
       }
-    } catch (error) {
-      return { success: false, error: 'Network error' };
+    } catch (_error) {
+      return { success: false, error: "Network error" };
     }
   };
 
   const logout = async () => {
     try {
-      await fetch('/api/auth/logout', { method: 'POST' });
+      await fetch("/api/auth/logout", { method: "POST" });
       setUser(null);
     } catch (error) {
-      console.error('Logout failed:', error);
+      console.error("Logout failed:", error);
     }
   };
 
@@ -127,8 +130,8 @@ export function useAuth() {
     return {
       user: null,
       loading: false,
-      login: async () => ({ success: false, error: 'Auth not available' }),
-      register: async () => ({ success: false, error: 'Auth not available' }),
+      login: async () => ({ success: false, error: "Auth not available" }),
+      register: async () => ({ success: false, error: "Auth not available" }),
       logout: async () => {},
     };
   }

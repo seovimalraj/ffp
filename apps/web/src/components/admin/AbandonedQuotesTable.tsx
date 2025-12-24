@@ -1,26 +1,16 @@
-'use client'
+"use client";
 
-import { useState } from 'react'
-import { Button } from '@/components/ui/button'
-import { Badge } from '@/components/ui/badge'
-import { useAbandonedQuotes } from '@/components/providers/AbandonedQuotesProvider'
-import { EyeIcon, PaperAirplaneIcon, UserPlusIcon, ArrowPathIcon } from '@heroicons/react/24/outline'
-import { posthog } from 'posthog-js'
-
-interface AbandonedQuote {
-  id: string
-  organization_id: string
-  buyer_name: string
-  buyer_email: string
-  last_activity: string
-  stage: 'Before Upload' | 'After Upload' | 'After CAD' | 'After First Price' | 'After Lead Select' | 'Checkout Abandon'
-  subtotal: number
-  files_count: number
-  dfm_blockers_count: number
-  promo_tried: boolean
-  assignee_id: string | null
-  created_at: string
-}
+import { useState } from "react";
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import { useAbandonedQuotes } from "@/components/providers/AbandonedQuotesProvider";
+import {
+  EyeIcon,
+  PaperAirplaneIcon,
+  UserPlusIcon,
+  ArrowPathIcon,
+} from "@heroicons/react/24/outline";
+import { posthog } from "posthog-js";
 
 export function AbandonedQuotesTable() {
   const {
@@ -29,61 +19,68 @@ export function AbandonedQuotesTable() {
     selectQuote,
     sendReminder,
     assignQuote,
-    convertToManualReview
-  } = useAbandonedQuotes()
+    convertToManualReview,
+  } = useAbandonedQuotes();
 
-  const [sendingReminder, setSendingReminder] = useState<string | null>(null)
-  const [assigningQuote, setAssigningQuote] = useState<string | null>(null)
-  const [convertingQuote, setConvertingQuote] = useState<string | null>(null)
+  const [sendingReminder, setSendingReminder] = useState<string | null>(null);
+  const [assigningQuote, setAssigningQuote] = useState<string | null>(null);
+  const [convertingQuote, setConvertingQuote] = useState<string | null>(null);
 
   const handleSendReminder = async (quoteId: string) => {
-    setSendingReminder(quoteId)
+    setSendingReminder(quoteId);
     try {
-      await sendReminder(quoteId)
-      posthog.capture('abandoned_reminder_sent', { quote_id: quoteId })
+      await sendReminder(quoteId);
+      posthog.capture("abandoned_reminder_sent", { quote_id: quoteId });
     } catch (error) {
-      console.error('Failed to send reminder:', error)
+      console.error("Failed to send reminder:", error);
     } finally {
-      setSendingReminder(null)
+      setSendingReminder(null);
     }
-  }
+  };
 
   const handleAssignQuote = async (quoteId: string) => {
-    setAssigningQuote(quoteId)
+    setAssigningQuote(quoteId);
     try {
       // In a real implementation, this would open a user selector
-      await assignQuote(quoteId, 'user-123') // Mock user ID
-      posthog.capture('abandoned_quote_assigned', { quote_id: quoteId })
+      await assignQuote(quoteId, "user-123"); // Mock user ID
+      posthog.capture("abandoned_quote_assigned", { quote_id: quoteId });
     } catch (error) {
-      console.error('Failed to assign quote:', error)
+      console.error("Failed to assign quote:", error);
     } finally {
-      setAssigningQuote(null)
+      setAssigningQuote(null);
     }
-  }
+  };
 
   const handleConvertToManualReview = async (quoteId: string) => {
-    setConvertingQuote(quoteId)
+    setConvertingQuote(quoteId);
     try {
-      await convertToManualReview(quoteId)
-      posthog.capture('abandoned_manual_review_convert', { quote_id: quoteId })
+      await convertToManualReview(quoteId);
+      posthog.capture("abandoned_manual_review_convert", { quote_id: quoteId });
     } catch (error) {
-      console.error('Failed to convert to manual review:', error)
+      console.error("Failed to convert to manual review:", error);
     } finally {
-      setConvertingQuote(null)
+      setConvertingQuote(null);
     }
-  }
+  };
 
   const getStageColor = (stage: string) => {
     switch (stage) {
-      case 'Before Upload': return 'bg-gray-100 text-gray-800'
-      case 'After Upload': return 'bg-blue-100 text-blue-800'
-      case 'After CAD': return 'bg-yellow-100 text-yellow-800'
-      case 'After First Price': return 'bg-green-100 text-green-800'
-      case 'After Lead Select': return 'bg-purple-100 text-purple-800'
-      case 'Checkout Abandon': return 'bg-red-100 text-red-800'
-      default: return 'bg-gray-100 text-gray-800'
+      case "Before Upload":
+        return "bg-gray-100 text-gray-800";
+      case "After Upload":
+        return "bg-blue-100 text-blue-800";
+      case "After CAD":
+        return "bg-yellow-100 text-yellow-800";
+      case "After First Price":
+        return "bg-green-100 text-green-800";
+      case "After Lead Select":
+        return "bg-purple-100 text-purple-800";
+      case "Checkout Abandon":
+        return "bg-red-100 text-red-800";
+      default:
+        return "bg-gray-100 text-gray-800";
     }
-  }
+  };
 
   if (isLoading) {
     return (
@@ -94,7 +91,7 @@ export function AbandonedQuotesTable() {
           ))}
         </div>
       </div>
-    )
+    );
   }
 
   if (quotes.length === 0) {
@@ -102,7 +99,7 @@ export function AbandonedQuotesTable() {
       <div className="p-8 text-center">
         <div className="text-gray-500">No abandoned quotes found</div>
       </div>
-    )
+    );
   }
 
   return (
@@ -195,7 +192,7 @@ export function AbandonedQuotesTable() {
                 )}
               </td>
               <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                {quote.assignee_id ? 'Assigned' : 'Unassigned'}
+                {quote.assignee_id ? "Assigned" : "Unassigned"}
               </td>
               <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
                 <div className="flex items-center space-x-2">
@@ -244,5 +241,5 @@ export function AbandonedQuotesTable() {
         </tbody>
       </table>
     </div>
-  )
+  );
 }

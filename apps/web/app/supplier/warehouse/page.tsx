@@ -9,7 +9,6 @@ import { notify } from "@/lib/toast";
 import { IGroupWarehouses } from "@/types";
 import { PermissionsNames } from "@cnc-quote/shared";
 import {
-  ChevronRight,
   Eye,
   PlusIcon,
   Trash,
@@ -20,7 +19,6 @@ import {
   Box,
   FactoryIcon,
 } from "lucide-react";
-import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useState, useMemo } from "react";
 
@@ -321,7 +319,8 @@ const Page = () => {
           {
             label: "View Details",
             icon: <Eye className="size-4" />,
-            onClick: (row) => router.push(`/supplier/warehouse/entity/${row.id}`),
+            onClick: (row) =>
+              router.push(`/supplier/warehouse/entity/${row.id}`),
           },
           {
             label: "Delete",

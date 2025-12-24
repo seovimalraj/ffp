@@ -1,13 +1,12 @@
 "use client";
 
-import React, { useState, useCallback, useEffect } from 'react';
-import { useRouter } from 'next/navigation';
-import { InstantQuoteStateProvider } from './InstantQuoteState';
-import { PartListPanel } from './PartListPanel';
-import { SelectedPartWorkspace } from './SelectedPartWorkspace';
-import { QuoteSummaryPanel } from './QuoteSummaryPanel';
-import { usePricingStore } from '../../store/pricingStore';
-import { api } from '../../lib/api';
+import React, { useState, useCallback, useEffect } from "react";
+import { useRouter } from "next/navigation";
+import { InstantQuoteStateProvider } from "./InstantQuoteState";
+import { PartListPanel } from "./PartListPanel";
+import { SelectedPartWorkspace } from "./SelectedPartWorkspace";
+import { QuoteSummaryPanel } from "./QuoteSummaryPanel";
+import { usePricingStore } from "../../store/pricingStore";
 
 interface EnhancedInstantQuoteProps {
   orgId: string;
@@ -15,40 +14,49 @@ interface EnhancedInstantQuoteProps {
   baseUrl?: string;
 }
 
-function EnhancedInstantQuoteInner({ orgId, accessToken, baseUrl }: EnhancedInstantQuoteProps) {
+function EnhancedInstantQuoteInner({
+  orgId,
+  accessToken,
+  baseUrl,
+}: EnhancedInstantQuoteProps) {
   const router = useRouter();
   const [quoteId, setQuoteId] = useState<string | undefined>(undefined);
   const [parts, setParts] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
-  const [dfmEvent, setDfmEvent] = useState<any>(undefined);
-  
-  const setStoreQuoteId = usePricingStore(s => s.setQuoteId);
-  const hydrateFromSummary = usePricingStore(s => s.hydrateFromSummary);
-  const reconcile = usePricingStore(s => s.reconcile);
+  const [dfmEvent] = useState<any>(undefined);
 
-  const fetchQuote = useCallback(async (qid: string) => {
-    if (!qid) return;
-    setLoading(true);
-    try {
-      const res = await fetch(`/api/quotes/${qid}?view=vnext`, { headers: { accept: 'application/json' } });
-      const summary = await res.json();
-      
-      if (summary?.parts && Array.isArray(summary.parts)) {
-        setParts(summary.parts);
-        hydrateFromSummary(summary.parts);
+  const setStoreQuoteId = usePricingStore((s) => s.setQuoteId);
+  const hydrateFromSummary = usePricingStore((s) => s.hydrateFromSummary);
+  const reconcile = usePricingStore((s) => s.reconcile);
+
+  const fetchQuote = useCallback(
+    async (qid: string) => {
+      if (!qid) return;
+      setLoading(true);
+      try {
+        const res = await fetch(`/api/quotes/${qid}?view=vnext`, {
+          headers: { accept: "application/json" },
+        });
+        const summary = await res.json();
+
+        if (summary?.parts && Array.isArray(summary.parts)) {
+          setParts(summary.parts);
+          hydrateFromSummary(summary.parts);
+        }
+      } catch (error) {
+        console.error("Failed to fetch quote:", error);
+      } finally {
+        setLoading(false);
       }
-    } catch (error) {
-      console.error('Failed to fetch quote:', error);
-    } finally {
-      setLoading(false);
-    }
-  }, [hydrateFromSummary]);
+    },
+    [hydrateFromSummary],
+  );
 
   // Ensure our axios helper carries the Supabase access token for any requests
   useEffect(() => {
     if (accessToken) {
       try {
-        localStorage.setItem('authToken', accessToken);
+        localStorage.setItem("authToken", accessToken);
       } catch {
         // ignore storage errors (e.g., SSR or disabled storage)
       }
@@ -66,31 +74,37 @@ function EnhancedInstantQuoteInner({ orgId, accessToken, baseUrl }: EnhancedInst
     setQuoteId(qid);
   }, []);
 
-  const handleUploaded = useCallback((ctx: { quote_id?: string }) => {
-    if (ctx.quote_id) {
-      // First successful upload → redirect to quote page
-      if (!quoteId) {
-        router.push(`/quotes/${ctx.quote_id}`);
-        return;
+  const handleUploaded = useCallback(
+    (ctx: { quote_id?: string }) => {
+      if (ctx.quote_id) {
+        // First successful upload → redirect to quote page
+        if (!quoteId) {
+          router.push(`/quotes/${ctx.quote_id}`);
+          return;
+        }
+        if (ctx.quote_id !== quoteId) {
+          setQuoteId(ctx.quote_id);
+        }
       }
-      if (ctx.quote_id !== quoteId) {
-        setQuoteId(ctx.quote_id);
+      if (quoteId) {
+        fetchQuote(quoteId);
       }
-    }
-    if (quoteId) {
-      fetchQuote(quoteId);
-    }
-  }, [quoteId, fetchQuote, router]);
+    },
+    [quoteId, fetchQuote, router],
+  );
 
-  const handleRecalc = useCallback(async (partId: string, _cfg: any) => {
-    if (!quoteId) return;
-    try {
-      await reconcile([partId]);
-      await fetchQuote(quoteId);
-    } catch (error) {
-      console.error('Recalc failed:', error);
-    }
-  }, [quoteId, reconcile, fetchQuote]);
+  const handleRecalc = useCallback(
+    async (partId: string, _cfg: any) => {
+      if (!quoteId) return;
+      try {
+        await reconcile([partId]);
+        await fetchQuote(quoteId);
+      } catch (error) {
+        console.error("Recalc failed:", error);
+      }
+    },
+    [quoteId, reconcile, fetchQuote],
+  );
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-50 via-indigo-50 to-purple-50 dark:from-gray-900 dark:to-gray-800">
@@ -156,10 +170,18 @@ function EnhancedInstantQuoteInner({ orgId, accessToken, baseUrl }: EnhancedInst
   );
 }
 
-export function EnhancedInstantQuote({ orgId, accessToken, baseUrl }: EnhancedInstantQuoteProps) {
+export function EnhancedInstantQuote({
+  orgId,
+  accessToken,
+  baseUrl,
+}: EnhancedInstantQuoteProps) {
   return (
     <InstantQuoteStateProvider>
-      <EnhancedInstantQuoteInner orgId={orgId} accessToken={accessToken} baseUrl={baseUrl} />
+      <EnhancedInstantQuoteInner
+        orgId={orgId}
+        accessToken={accessToken}
+        baseUrl={baseUrl}
+      />
     </InstantQuoteStateProvider>
   );
 }

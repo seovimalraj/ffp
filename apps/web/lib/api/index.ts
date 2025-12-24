@@ -1,12 +1,12 @@
-import axios, { AxiosInstance, AxiosRequestConfig, AxiosResponse } from 'axios';
-import { getSession, signOut } from 'next-auth/react';
+import axios, { AxiosInstance, AxiosResponse } from "axios";
+import { getSession, signOut } from "next-auth/react";
 
 // Create axios instance
 const apiClient: AxiosInstance = axios.create({
-  baseURL: process.env.NEXT_PUBLIC_NEST_API || 'http://localhost:4001',
+  baseURL: process.env.NEXT_PUBLIC_NEST_API || "http://localhost:4001",
   timeout: 10000,
   headers: {
-    'Content-Type': 'application/json',
+    "Content-Type": "application/json",
   },
 });
 
@@ -15,22 +15,22 @@ apiClient.interceptors.request.use(
   async (config) => {
     try {
       const session = await getSession();
-      
+
       if (session?.user?.id) {
         config.headers.Authorization = `Bearer ${session.user.id}`;
         // Also send session data as backup
-        config.headers['X-Session-Data'] = JSON.stringify(session.user);
+        config.headers["X-Session-Data"] = JSON.stringify(session.user);
       }
-      
+
       return config;
     } catch (error) {
-      console.error('Error getting session for API request:', error);
+      console.error("Error getting session for API request:", error);
       return config;
     }
   },
   (error) => {
     return Promise.reject(error);
-  }
+  },
 );
 
 // Response interceptor for error handling
@@ -40,19 +40,19 @@ apiClient.interceptors.response.use(
   },
   (error) => {
     if (error.response?.status === 401) {
-      console.error('Unauthorized request - redirecting to login');
+      console.error("Unauthorized request - redirecting to login");
       // You could redirect to login here if needed
-      signOut({callbackUrl: "/signin"})
+      signOut({ callbackUrl: "/signin" });
     }
-    
-    console.error('API Error:', {
+
+    console.error("API Error:", {
       status: error.response?.status,
       message: error.response?.data?.message || error.message,
       url: error.config?.url,
     });
-    
+
     return Promise.reject(error);
-  }
+  },
 );
 
-export { apiClient };
+export { apiClient, apiClient as api };

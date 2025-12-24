@@ -3,30 +3,30 @@
  * Ops UI for managing daily capacity ledger and lead time overrides
  */
 
-'use client';
+"use client";
 
-import React, { useState, useEffect } from 'react';
-import type { CapacityDay } from '@cnc-quote/shared';
+import React, { useState } from "react";
+import type { CapacityDay } from "@cnc-quote/shared";
 
 const MACHINE_GROUPS = [
-  { id: 'cnc-3axis', label: 'CNC 3-Axis' },
-  { id: 'cnc-5axis', label: 'CNC 5-Axis' },
-  { id: 'lathe', label: 'Lathe' },
-  { id: 'press-brake', label: 'Press Brake' },
-  { id: 'laser-cutter', label: 'Laser Cutter' },
+  { id: "cnc-3axis", label: "CNC 3-Axis" },
+  { id: "cnc-5axis", label: "CNC 5-Axis" },
+  { id: "lathe", label: "Lathe" },
+  { id: "press-brake", label: "Press Brake" },
+  { id: "laser-cutter", label: "Laser Cutter" },
 ];
 
 const PROCESSES = [
-  { id: 'cnc_milling', label: 'CNC Milling' },
-  { id: 'turning', label: 'Turning' },
-  { id: 'sheet', label: 'Sheet Metal' },
-  { id: 'im', label: 'Injection Molding' },
+  { id: "cnc_milling", label: "CNC Milling" },
+  { id: "turning", label: "Turning" },
+  { id: "sheet", label: "Sheet Metal" },
+  { id: "im", label: "Injection Molding" },
 ];
 
 export default function CapacityManagementPage() {
-  const [orgId, setOrgId] = useState<string>('');
-  const [process, setProcess] = useState<string>('cnc_milling');
-  const [machineGroup, setMachineGroup] = useState<string>('cnc-3axis');
+  const [orgId, setOrgId] = useState<string>("");
+  const [process, setProcess] = useState<string>("cnc_milling");
+  const [machineGroup, setMachineGroup] = useState<string>("cnc-3axis");
   const [dateFrom, setDateFrom] = useState<string>(getTodayStr());
   const [dateTo, setDateTo] = useState<string>(getDateStr(30));
   const [capacityData, setCapacityData] = useState<CapacityDay[]>([]);
@@ -48,12 +48,12 @@ export default function CapacityManagementPage() {
       });
 
       const res = await fetch(`/api/leadtime/capacity/window?${params}`);
-      if (!res.ok) throw new Error('Failed to fetch capacity');
+      if (!res.ok) throw new Error("Failed to fetch capacity");
 
       const data = await res.json();
       setCapacityData(data);
     } catch (err: any) {
-      console.error('Error fetching capacity:', err);
+      console.error("Error fetching capacity:", err);
       alert(`Error: ${err.message}`);
     } finally {
       setLoading(false);
@@ -61,13 +61,15 @@ export default function CapacityManagementPage() {
   };
 
   // Update capacity value
-  const updateCapacity = (day: string, field: 'capacityMinutes' | 'bookedMinutes', value: number) => {
+  const updateCapacity = (
+    day: string,
+    field: "capacityMinutes" | "bookedMinutes",
+    value: number,
+  ) => {
     setCapacityData((prev) => {
       const existing = prev.find((d) => d.day === day);
       if (existing) {
-        return prev.map((d) =>
-          d.day === day ? { ...d, [field]: value } : d
-        );
+        return prev.map((d) => (d.day === day ? { ...d, [field]: value } : d));
       } else {
         // Add new entry
         return [
@@ -75,8 +77,8 @@ export default function CapacityManagementPage() {
           {
             day,
             [field]: value,
-            capacityMinutes: field === 'capacityMinutes' ? value : 0,
-            bookedMinutes: field === 'bookedMinutes' ? value : 0,
+            capacityMinutes: field === "capacityMinutes" ? value : 0,
+            bookedMinutes: field === "bookedMinutes" ? value : 0,
             utilization: 0,
             machineGroup,
             process,
@@ -101,18 +103,18 @@ export default function CapacityManagementPage() {
         bookedMinutes: d.bookedMinutes,
       }));
 
-      const res = await fetch('/api/leadtime/capacity/bulk-upsert', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+      const res = await fetch("/api/leadtime/capacity/bulk-upsert", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ entries }),
       });
 
-      if (!res.ok) throw new Error('Failed to save capacity');
+      if (!res.ok) throw new Error("Failed to save capacity");
 
-      alert('Capacity saved successfully!');
+      alert("Capacity saved successfully!");
       fetchCapacity(); // Refresh
     } catch (err: any) {
-      console.error('Error saving capacity:', err);
+      console.error("Error saving capacity:", err);
       alert(`Error: ${err.message}`);
     } finally {
       setSaving(false);
@@ -210,7 +212,7 @@ export default function CapacityManagementPage() {
               disabled={loading || !orgId}
               className="rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
             >
-              {loading ? 'Loading...' : 'Load Capacity'}
+              {loading ? "Loading..." : "Load Capacity"}
             </button>
 
             <button
@@ -218,7 +220,7 @@ export default function CapacityManagementPage() {
               disabled={saving || capacityData.length === 0}
               className="rounded-md bg-green-600 px-4 py-2 text-sm font-medium text-white hover:bg-green-700 disabled:opacity-50"
             >
-              {saving ? 'Saving...' : 'Save Changes'}
+              {saving ? "Saving..." : "Save Changes"}
             </button>
           </div>
         </div>
@@ -266,7 +268,11 @@ export default function CapacityManagementPage() {
                             type="number"
                             value={data?.capacityMinutes || 0}
                             onChange={(e) =>
-                              updateCapacity(day, 'capacityMinutes', parseInt(e.target.value) || 0)
+                              updateCapacity(
+                                day,
+                                "capacityMinutes",
+                                parseInt(e.target.value) || 0,
+                              )
                             }
                             className="w-24 rounded border border-gray-300 px-2 py-1 text-sm focus:border-blue-500 focus:outline-none"
                           />
@@ -276,7 +282,11 @@ export default function CapacityManagementPage() {
                             type="number"
                             value={data?.bookedMinutes || 0}
                             onChange={(e) =>
-                              updateCapacity(day, 'bookedMinutes', parseInt(e.target.value) || 0)
+                              updateCapacity(
+                                day,
+                                "bookedMinutes",
+                                parseInt(e.target.value) || 0,
+                              )
                             }
                             className="w-24 rounded border border-gray-300 px-2 py-1 text-sm focus:border-blue-500 focus:outline-none"
                           />
@@ -286,7 +296,9 @@ export default function CapacityManagementPage() {
                             <div className="h-2 w-32 overflow-hidden rounded-full bg-gray-200">
                               <div
                                 className={`h-full ${getUtilizationColor(utilization)}`}
-                                style={{ width: `${Math.min(100, utilization)}%` }}
+                                style={{
+                                  width: `${Math.min(100, utilization)}%`,
+                                }}
                               />
                             </div>
                             <span className="text-xs text-gray-600">
@@ -313,7 +325,9 @@ export default function CapacityManagementPage() {
         {/* Empty state */}
         {!loading && capacityData.length === 0 && orgId && (
           <div className="rounded-lg border-2 border-dashed border-gray-300 bg-white p-12 text-center">
-            <p className="text-gray-500">No capacity data found. Enter values above and save.</p>
+            <p className="text-gray-500">
+              No capacity data found. Enter values above and save.
+            </p>
           </div>
         )}
       </div>
@@ -323,13 +337,13 @@ export default function CapacityManagementPage() {
 
 // Utility functions
 function getTodayStr(): string {
-  return new Date().toISOString().split('T')[0];
+  return new Date().toISOString().split("T")[0];
 }
 
 function getDateStr(daysFromNow: number): string {
   const date = new Date();
   date.setDate(date.getDate() + daysFromNow);
-  return date.toISOString().split('T')[0];
+  return date.toISOString().split("T")[0];
 }
 
 function generateDateRange(from: string, to: string): string[] {
@@ -338,7 +352,7 @@ function generateDateRange(from: string, to: string): string[] {
   const end = new Date(to);
 
   while (current <= end) {
-    dates.push(current.toISOString().split('T')[0]);
+    dates.push(current.toISOString().split("T")[0]);
     current.setDate(current.getDate() + 1);
   }
 
@@ -347,30 +361,30 @@ function generateDateRange(from: string, to: string): string[] {
 
 function formatDate(dateStr: string): string {
   const date = new Date(dateStr);
-  return date.toLocaleDateString('en-IN', {
-    weekday: 'short',
-    month: 'short',
-    day: 'numeric',
+  return date.toLocaleDateString("en-IN", {
+    weekday: "short",
+    month: "short",
+    day: "numeric",
   });
 }
 
 function getUtilizationColor(utilization: number): string {
-  if (utilization >= 95) return 'bg-red-500';
-  if (utilization >= 85) return 'bg-orange-500';
-  if (utilization >= 70) return 'bg-yellow-500';
-  return 'bg-green-500';
+  if (utilization >= 95) return "bg-red-500";
+  if (utilization >= 85) return "bg-orange-500";
+  if (utilization >= 70) return "bg-yellow-500";
+  return "bg-green-500";
 }
 
 function getStatusBadge(utilization: number): string {
-  if (utilization >= 95) return 'bg-red-100 text-red-800';
-  if (utilization >= 85) return 'bg-orange-100 text-orange-800';
-  if (utilization >= 70) return 'bg-yellow-100 text-yellow-800';
-  return 'bg-green-100 text-green-800';
+  if (utilization >= 95) return "bg-red-100 text-red-800";
+  if (utilization >= 85) return "bg-orange-100 text-orange-800";
+  if (utilization >= 70) return "bg-yellow-100 text-yellow-800";
+  return "bg-green-100 text-green-800";
 }
 
 function getStatusLabel(utilization: number): string {
-  if (utilization >= 95) return 'Critical';
-  if (utilization >= 85) return 'High';
-  if (utilization >= 70) return 'Moderate';
-  return 'Available';
+  if (utilization >= 95) return "Critical";
+  if (utilization >= 85) return "High";
+  if (utilization >= 70) return "Moderate";
+  return "Available";
 }

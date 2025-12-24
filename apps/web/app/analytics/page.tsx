@@ -1,7 +1,6 @@
-'use client';
+"use client";
 
-import DefaultLayout from '@/components/Layouts/DefaultLayout';
-import { useState } from 'react';
+import DefaultLayout from "@/components/Layouts/DefaultLayout";
 import {
   ChartBarIcon,
   ClockIcon,
@@ -10,7 +9,7 @@ import {
   ArrowTrendingUpIcon,
   ArrowTrendingDownIcon,
   EyeIcon,
-} from '@heroicons/react/24/outline';
+} from "@heroicons/react/24/outline";
 
 interface ChartData {
   name: string;
@@ -20,80 +19,89 @@ interface ChartData {
 }
 
 export default function AnalyticsPage() {
-
   // Mock analytics data
   const kpiData = [
     {
-      title: 'Total Revenue',
-      value: '$284,350',
-      change: '+12.5%',
+      title: "Total Revenue",
+      value: "$284,350",
+      change: "+12.5%",
       isPositive: true,
       icon: CurrencyDollarIcon,
-      color: 'text-primary',
+      color: "text-primary",
     },
     {
-      title: 'Total Quotes',
-      value: '1,247',
-      change: '+8.2%',
+      title: "Total Quotes",
+      value: "1,247",
+      change: "+8.2%",
       isPositive: true,
       icon: ChartBarIcon,
-      color: 'text-meta-3',
+      color: "text-meta-3",
     },
     {
-      title: 'Active Customers',
-      value: '342',
-      change: '+5.1%',
+      title: "Active Customers",
+      value: "342",
+      change: "+5.1%",
       isPositive: true,
       icon: UserGroupIcon,
-      color: 'text-meta-5',
+      color: "text-meta-5",
     },
     {
-      title: 'Avg. Lead Time',
-      value: '4.2 days',
-      change: '-0.8 days',
+      title: "Avg. Lead Time",
+      value: "4.2 days",
+      change: "-0.8 days",
       isPositive: true,
       icon: ClockIcon,
-      color: 'text-meta-6',
+      color: "text-meta-6",
     },
   ];
 
   const quotesByStatus: ChartData[] = [
-    { name: 'Pending', value: 45, change: 12, isPositive: true },
-    { name: 'Processing', value: 23, change: -5, isPositive: false },
-    { name: 'Quoted', value: 67, change: 18, isPositive: true },
-    { name: 'Approved', value: 89, change: 25, isPositive: true },
-    { name: 'Rejected', value: 12, change: -3, isPositive: false },
+    { name: "Pending", value: 45, change: 12, isPositive: true },
+    { name: "Processing", value: 23, change: -5, isPositive: false },
+    { name: "Quoted", value: 67, change: 18, isPositive: true },
+    { name: "Approved", value: 89, change: 25, isPositive: true },
+    { name: "Rejected", value: 12, change: -3, isPositive: false },
   ];
 
   const revenueByMonth = [
-    { month: 'Jan', revenue: 45000, quotes: 89 },
-    { month: 'Feb', revenue: 52000, quotes: 94 },
-    { month: 'Mar', revenue: 48000, quotes: 87 },
-    { month: 'Apr', revenue: 61000, quotes: 112 },
-    { month: 'May', revenue: 55000, quotes: 98 },
-    { month: 'Jun', revenue: 67000, quotes: 125 },
+    { month: "Jan", revenue: 45000, quotes: 89 },
+    { month: "Feb", revenue: 52000, quotes: 94 },
+    { month: "Mar", revenue: 48000, quotes: 87 },
+    { month: "Apr", revenue: 61000, quotes: 112 },
+    { month: "May", revenue: 55000, quotes: 98 },
+    { month: "Jun", revenue: 67000, quotes: 125 },
   ];
 
   const topCustomers = [
-    { name: 'Aerospace Dynamics', revenue: 45600, quotes: 23, growth: 15.2 },
-    { name: 'MedTech Solutions', revenue: 38900, quotes: 18, growth: 8.7 },
-    { name: 'AutoParts Manufacturing', revenue: 32400, quotes: 15, growth: 22.1 },
-    { name: 'Advanced Robotics Inc', revenue: 28700, quotes: 12, growth: -2.3 },
-    { name: 'Precision Components Ltd', revenue: 24800, quotes: 14, growth: 12.8 },
+    { name: "Aerospace Dynamics", revenue: 45600, quotes: 23, growth: 15.2 },
+    { name: "MedTech Solutions", revenue: 38900, quotes: 18, growth: 8.7 },
+    {
+      name: "AutoParts Manufacturing",
+      revenue: 32400,
+      quotes: 15,
+      growth: 22.1,
+    },
+    { name: "Advanced Robotics Inc", revenue: 28700, quotes: 12, growth: -2.3 },
+    {
+      name: "Precision Components Ltd",
+      revenue: 24800,
+      quotes: 14,
+      growth: 12.8,
+    },
   ];
 
   const materialUsage = [
-    { material: 'Aluminum 6061-T6', percentage: 35, color: 'bg-primary' },
-    { material: 'Stainless Steel 316', percentage: 25, color: 'bg-meta-3' },
-    { material: 'Mild Steel', percentage: 20, color: 'bg-meta-5' },
-    { material: 'Titanium Grade 2', percentage: 12, color: 'bg-meta-6' },
-    { material: 'Other', percentage: 8, color: 'bg-meta-1' },
+    { material: "Aluminum 6061-T6", percentage: 35, color: "bg-primary" },
+    { material: "Stainless Steel 316", percentage: 25, color: "bg-meta-3" },
+    { material: "Mild Steel", percentage: 20, color: "bg-meta-5" },
+    { material: "Titanium Grade 2", percentage: 12, color: "bg-meta-6" },
+    { material: "Other", percentage: 8, color: "bg-meta-1" },
   ];
 
   const formatCurrency = (amount: number) => {
-    return new Intl.NumberFormat('en-US', {
-      style: 'currency',
-      currency: 'USD',
+    return new Intl.NumberFormat("en-US", {
+      style: "currency",
+      currency: "USD",
     }).format(amount);
   };
 
@@ -140,7 +148,7 @@ export default function AnalyticsPage() {
                 </div>
                 <span
                   className={`flex items-center gap-1 text-sm font-medium ${
-                    kpi.isPositive ? 'text-meta-3' : 'text-meta-1'
+                    kpi.isPositive ? "text-meta-3" : "text-meta-1"
                   }`}
                 >
                   {kpi.change}
@@ -167,19 +175,27 @@ export default function AnalyticsPage() {
             <div className="p-7">
               <div className="space-y-4">
                 {quotesByStatus.map((item, index) => (
-                  <div key={index} className="flex items-center justify-between">
+                  <div
+                    key={index}
+                    className="flex items-center justify-between"
+                  >
                     <div className="flex items-center gap-3">
                       <div className="h-3 w-3 rounded-full bg-primary"></div>
-                      <span className="text-black dark:text-white">{item.name}</span>
+                      <span className="text-black dark:text-white">
+                        {item.name}
+                      </span>
                     </div>
                     <div className="flex items-center gap-3">
-                      <span className="text-black dark:text-white font-medium">{item.value}</span>
+                      <span className="text-black dark:text-white font-medium">
+                        {item.value}
+                      </span>
                       <span
                         className={`flex items-center gap-1 text-sm ${
-                          item.isPositive ? 'text-meta-3' : 'text-meta-1'
+                          item.isPositive ? "text-meta-3" : "text-meta-1"
                         }`}
                       >
-                        {item.isPositive ? '+' : ''}{item.change}
+                        {item.isPositive ? "+" : ""}
+                        {item.change}
                         {item.isPositive ? (
                           <ArrowTrendingUpIcon className="h-3 w-3" />
                         ) : (
@@ -205,8 +221,12 @@ export default function AnalyticsPage() {
                 {materialUsage.map((material, index) => (
                   <div key={index}>
                     <div className="flex items-center justify-between mb-2">
-                      <span className="text-black dark:text-white text-sm">{material.material}</span>
-                      <span className="text-black dark:text-white font-medium">{material.percentage}%</span>
+                      <span className="text-black dark:text-white text-sm">
+                        {material.material}
+                      </span>
+                      <span className="text-black dark:text-white font-medium">
+                        {material.percentage}%
+                      </span>
                     </div>
                     <div className="w-full bg-gray-200 rounded-full h-2 dark:bg-gray-700">
                       <div
@@ -236,10 +256,10 @@ export default function AnalyticsPage() {
                     <div
                       className="bg-primary rounded-t mx-auto"
                       style={{
-                        height: `${(month.revenue / 1000)}px`,
-                        width: '40px',
-                        minHeight: '20px',
-                        maxHeight: '100px',
+                        height: `${month.revenue / 1000}px`,
+                        width: "40px",
+                        minHeight: "20px",
+                        maxHeight: "100px",
                       }}
                     ></div>
                   </div>
@@ -247,7 +267,9 @@ export default function AnalyticsPage() {
                   <div className="text-sm font-medium text-black dark:text-white">
                     {formatCurrency(month.revenue)}
                   </div>
-                  <div className="text-xs text-meta-5">{month.quotes} quotes</div>
+                  <div className="text-xs text-meta-5">
+                    {month.quotes} quotes
+                  </div>
                 </div>
               ))}
             </div>
@@ -305,11 +327,12 @@ export default function AnalyticsPage() {
                         <span
                           className={`inline-flex items-center gap-1 rounded-full px-3 py-1 text-xs font-medium ${
                             customer.growth >= 0
-                              ? 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-300'
-                              : 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-300'
+                              ? "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-300"
+                              : "bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-300"
                           }`}
                         >
-                          {customer.growth >= 0 ? '+' : ''}{customer.growth.toFixed(1)}%
+                          {customer.growth >= 0 ? "+" : ""}
+                          {customer.growth.toFixed(1)}%
                         </span>
                       </td>
                       <td className="border-b border-[#eee] py-5 px-4 dark:border-strokedark">

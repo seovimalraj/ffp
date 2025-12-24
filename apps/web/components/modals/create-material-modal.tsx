@@ -4,11 +4,16 @@ import { useEffect, useState } from "react";
 import { Package2 } from "lucide-react";
 import { z } from "zod";
 import SteppedModal from "../ui/modal/SteppedModal";
-import { FormField, Input, Select, Textarea, RadioGroup } from "../ui/form-field";
+import {
+  FormField,
+  Input,
+  Select,
+  Textarea,
+  RadioGroup,
+} from "../ui/form-field";
 import Step from "../ui/modal/step";
 import { notify } from "@/lib/toast";
 import { apiClient } from "@/lib/api";
-import { Button } from "@/components/ui/button";
 
 const materialSchema = z.object({
   name: z.string().min(1, "Name is required"),
@@ -49,9 +54,7 @@ const STATUS_OPTIONS = [
   { value: "inactive", label: "Inactive" },
 ];
 
-const UNIT_OPTIONS = [
-  { value: "kg", label: "kg" },
-];
+const UNIT_OPTIONS = [{ value: "kg", label: "kg" }];
 
 interface UnitTagProps {
   currency: string;
@@ -68,8 +71,11 @@ export function UnitTag({ currency, unit }: UnitTagProps) {
   );
 }
 
-
-export default function MaterialModal({ isOpen, onClose, onSuccess }: MaterialModalProps) {
+export default function MaterialModal({
+  isOpen,
+  onClose,
+  onSuccess,
+}: MaterialModalProps) {
   const [formData, setFormData] = useState<MaterialFormData>({
     name: "",
     code: "",
@@ -85,17 +91,27 @@ export default function MaterialModal({ isOpen, onClose, onSuccess }: MaterialMo
     currency: "USD",
   });
 
-  const [categories, setCategories] = useState<Array<{ value: string; label: string }>>([])
-  const [isCategoryLoading, setIsCategoryLoading] = useState(false)
+  const [categories, setCategories] = useState<
+    Array<{ value: string; label: string }>
+  >([]);
+  const [isCategoryLoading, setIsCategoryLoading] = useState(false);
 
-  const [errors, setErrors] = useState<Partial<Record<keyof MaterialFormData, string>>>({});
+  const [errors, setErrors] = useState<
+    Partial<Record<keyof MaterialFormData, string>>
+  >({});
 
   useEffect(() => {
     async function fetchCategories() {
       try {
-        setIsCategoryLoading(true)
+        setIsCategoryLoading(true);
         const response = await apiClient.get("/materials/category");
-        const data = response.data.categories?.map(((category: { id: string, name: string }) => ({ value: category.id, label: category.name }))) || [];
+        const data =
+          response.data.categories?.map(
+            (category: { id: string; name: string }) => ({
+              value: category.id,
+              label: category.name,
+            }),
+          ) || [];
         console.log(data);
         setCategories(data);
       } catch (error) {
@@ -103,20 +119,27 @@ export default function MaterialModal({ isOpen, onClose, onSuccess }: MaterialMo
         notify.error("Error fetching categories");
         // Fallback to default categories if API fails
       } finally {
-        setIsCategoryLoading(false)
+        setIsCategoryLoading(false);
       }
     }
 
     if (isOpen) {
       fetchCategories();
     }
-  }, [isOpen])
+  }, [isOpen]);
 
   const validateStep = (step: number): boolean => {
     if (step === 1) {
-      const fieldsToValidate: (keyof MaterialFormData)[] = ["name", "code", "category"];
+      const fieldsToValidate: (keyof MaterialFormData)[] = [
+        "name",
+        "code",
+        "category",
+      ];
       const partialSchema = materialSchema.pick(
-        Object.fromEntries(fieldsToValidate.map((f) => [f, true])) as Record<keyof MaterialFormData, true>
+        Object.fromEntries(fieldsToValidate.map((f) => [f, true])) as Record<
+          keyof MaterialFormData,
+          true
+        >,
       );
       const result = partialSchema.safeParse(formData);
 
@@ -130,7 +153,9 @@ export default function MaterialModal({ isOpen, onClose, onSuccess }: MaterialMo
         return false;
       }
     } else if (step === 2) {
-      const result = materialSchema.shape.stock_prices.safeParse(formData.stock_prices);
+      const result = materialSchema.shape.stock_prices.safeParse(
+        formData.stock_prices,
+      );
       if (!result.success) {
         const newErrors: Partial<Record<string, string>> = {};
         result.error.issues.forEach((issue) => {
@@ -146,7 +171,10 @@ export default function MaterialModal({ isOpen, onClose, onSuccess }: MaterialMo
     return true;
   };
 
-  const handleFieldChange = (name: keyof MaterialFormData, value: string | number) => {
+  const handleFieldChange = (
+    name: keyof MaterialFormData,
+    value: string | number,
+  ) => {
     setFormData((prev) => ({ ...prev, [name]: value }));
     if (errors[name]) {
       setErrors((prev) => ({ ...prev, [name]: undefined }));
@@ -155,12 +183,11 @@ export default function MaterialModal({ isOpen, onClose, onSuccess }: MaterialMo
 
   const handleSubmit = async () => {
     try {
-
       console.log(formData, "<-- formdata");
       const response = await apiClient.post("/materials", formData);
       console.log(response);
       if (response.status === 201) {
-        onSuccess()
+        onSuccess();
         notify.success("Material created successfully");
         onClose();
       } else {
@@ -172,7 +199,10 @@ export default function MaterialModal({ isOpen, onClose, onSuccess }: MaterialMo
     }
   };
 
-  const handleStockPriceChange = (type: "block" | "bar" | "plate", value: number) => {
+  const handleStockPriceChange = (
+    type: "block" | "bar" | "plate",
+    value: number,
+  ) => {
     setFormData((prev) => ({
       ...prev,
       stock_prices: {
@@ -216,10 +246,15 @@ export default function MaterialModal({ isOpen, onClose, onSuccess }: MaterialMo
     >
       {({ currentStep }) => (
         <>
-          <Step step={1} currentStep={currentStep} >
+          <Step step={1} currentStep={currentStep}>
             <div className="space-y-5">
               <div className="grid grid-cols-2 gap-4">
-                <FormField label="Name" error={errors.name} required hint="Display name for the material">
+                <FormField
+                  label="Name"
+                  error={errors.name}
+                  required
+                  hint="Display name for the material"
+                >
                   <Input
                     value={formData.name}
                     onChange={(e) => handleFieldChange("name", e.target.value)}
@@ -228,7 +263,12 @@ export default function MaterialModal({ isOpen, onClose, onSuccess }: MaterialMo
                   />
                 </FormField>
 
-                <FormField label="Code" error={errors.code} required hint="Unique identifier code">
+                <FormField
+                  label="Code"
+                  error={errors.code}
+                  required
+                  hint="Unique identifier code"
+                >
                   <Input
                     value={formData.code}
                     onChange={(e) => handleFieldChange("code", e.target.value)}
@@ -238,24 +278,42 @@ export default function MaterialModal({ isOpen, onClose, onSuccess }: MaterialMo
                 </FormField>
               </div>
 
-              <FormField label="Category" error={errors.category} required hint="Material classification type">
+              <FormField
+                label="Category"
+                error={errors.category}
+                required
+                hint="Material classification type"
+              >
                 <Select
                   value={formData.category}
-                  onChange={(e) => handleFieldChange("category", e.target.value)}
-                  options={[{ value: "", label: "Select a category" }, ...categories]}
+                  onChange={(e) =>
+                    handleFieldChange("category", e.target.value)
+                  }
+                  options={[
+                    { value: "", label: "Select a category" },
+                    ...categories,
+                  ]}
                 />
               </FormField>
 
-              <FormField label="Description" hint="Additional details about the material">
+              <FormField
+                label="Description"
+                hint="Additional details about the material"
+              >
                 <Textarea
                   value={formData.description}
-                  onChange={(e) => handleFieldChange("description", e.target.value)}
+                  onChange={(e) =>
+                    handleFieldChange("description", e.target.value)
+                  }
                   placeholder="Enter material description..."
                   rows={3}
                 />
               </FormField>
 
-              <FormField label="Status" hint="Whether this material is available for use">
+              <FormField
+                label="Status"
+                hint="Whether this material is available for use"
+              >
                 <RadioGroup
                   name="status"
                   value={formData.status}
@@ -265,7 +323,6 @@ export default function MaterialModal({ isOpen, onClose, onSuccess }: MaterialMo
               </FormField>
             </div>
           </Step>
-
 
           <Step step={2} currentStep={currentStep}>
             <div className="space-y-5">
@@ -278,48 +335,81 @@ export default function MaterialModal({ isOpen, onClose, onSuccess }: MaterialMo
                 </p>
                 <div className="space-y-3">
                   <div className="flex items-center gap-3">
-                    <span className="w-16 text-sm text-neutral-600 dark:text-neutral-400">Block</span>
+                    <span className="w-16 text-sm text-neutral-600 dark:text-neutral-400">
+                      Block
+                    </span>
                     <Input
                       type="number"
                       value={formData.stock_prices.block}
-                      onChange={(e) => handleStockPriceChange("block", parseFloat(e.target.value) || 0)}
+                      onChange={(e) =>
+                        handleStockPriceChange(
+                          "block",
+                          parseFloat(e.target.value) || 0,
+                        )
+                      }
                       placeholder="0.00"
                       step="0.01"
                       min="0"
                       className="flex-1"
                     />
-                    <UnitTag currency={formData.currency} unit={formData.unit} />
+                    <UnitTag
+                      currency={formData.currency}
+                      unit={formData.unit}
+                    />
                   </div>
                   <div className="flex items-center gap-3">
-                    <span className="w-16 text-sm text-neutral-600 dark:text-neutral-400">Bar</span>
+                    <span className="w-16 text-sm text-neutral-600 dark:text-neutral-400">
+                      Bar
+                    </span>
                     <Input
                       type="number"
                       value={formData.stock_prices.bar}
-                      onChange={(e) => handleStockPriceChange("bar", parseFloat(e.target.value) || 0)}
+                      onChange={(e) =>
+                        handleStockPriceChange(
+                          "bar",
+                          parseFloat(e.target.value) || 0,
+                        )
+                      }
                       placeholder="0.00"
                       step="0.01"
                       min="0"
                       className="flex-1"
                     />
-                    <UnitTag currency={formData.currency} unit={formData.unit} />
+                    <UnitTag
+                      currency={formData.currency}
+                      unit={formData.unit}
+                    />
                   </div>
                   <div className="flex items-center gap-3">
-                    <span className="w-16 text-sm text-neutral-600 dark:text-neutral-400">Plate</span>
+                    <span className="w-16 text-sm text-neutral-600 dark:text-neutral-400">
+                      Plate
+                    </span>
                     <Input
                       type="number"
                       value={formData.stock_prices.plate}
-                      onChange={(e) => handleStockPriceChange("plate", parseFloat(e.target.value) || 0)}
+                      onChange={(e) =>
+                        handleStockPriceChange(
+                          "plate",
+                          parseFloat(e.target.value) || 0,
+                        )
+                      }
                       placeholder="0.00"
                       step="0.01"
                       min="0"
                       className="flex-1"
                     />
-                    <UnitTag currency={formData.currency} unit={formData.unit} />
+                    <UnitTag
+                      currency={formData.currency}
+                      unit={formData.unit}
+                    />
                   </div>
                 </div>
               </div>
 
-              <FormField label="Unit" hint="Unit of measurement for pricing (per kg)">
+              <FormField
+                label="Unit"
+                hint="Unit of measurement for pricing (per kg)"
+              >
                 <Select
                   value={formData.unit}
                   onChange={(e) => handleFieldChange("unit", e.target.value)}
@@ -331,7 +421,9 @@ export default function MaterialModal({ isOpen, onClose, onSuccess }: MaterialMo
               <FormField label="Currency" hint="Currency used for all pricing">
                 <Select
                   value={formData.currency}
-                  onChange={(e) => handleFieldChange("currency", e.target.value)}
+                  onChange={(e) =>
+                    handleFieldChange("currency", e.target.value)
+                  }
                   options={CURRENCY_OPTIONS}
                   disabled
                 />

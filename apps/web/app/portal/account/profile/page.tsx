@@ -1,18 +1,23 @@
-'use client';
+"use client";
 
-import { useState, useEffect, useRef } from 'react';
-import { useRouter } from 'next/navigation';
-import { api } from '@/lib/api';
-import { toast } from 'react-hot-toast';
-import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import { Switch } from '@/components/ui/switch';
-import { Separator } from '@/components/ui/separator';
-import { Badge } from '@/components/ui/badge';
-import { Skeleton } from '@/components/ui/skeleton';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
+import { useState, useEffect, useRef } from "react";
+import { useRouter } from "next/navigation";
+import { api } from "@/lib/api";
+import { toast } from "react-hot-toast";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Switch } from "@/components/ui/switch";
+import { Separator } from "@/components/ui/separator";
+import { Skeleton } from "@/components/ui/skeleton";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
 import {
   UserIcon,
   PhotoIcon,
@@ -23,10 +28,10 @@ import {
   EyeSlashIcon,
   TrashIcon,
   LinkIcon,
-  LinkSlashIcon
-} from '@heroicons/react/24/outline';
-import type { UserProfile, ProfileFormData } from '@/types/order';
-import { trackEvent } from '@/lib/analytics/posthog';
+  LinkSlashIcon,
+} from "@heroicons/react/24/outline";
+import type { UserProfile, ProfileFormData } from "@/types/order";
+import { trackEvent } from "@/lib/analytics/posthog";
 
 export default function ProfilePage() {
   const router = useRouter();
@@ -34,9 +39,16 @@ export default function ProfilePage() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [profile, setProfile] = useState<UserProfile | null>(null);
-  const [formData, setFormData] = useState<ProfileFormData>({ name: '', phone: '' });
+  const [formData, setFormData] = useState<ProfileFormData>({
+    name: "",
+    phone: "",
+  });
   const [showPasswordDialog, setShowPasswordDialog] = useState(false);
-  const [passwordData, setPasswordData] = useState({ current: '', new: '', confirm: '' });
+  const [passwordData, setPasswordData] = useState({
+    current: "",
+    new: "",
+    confirm: "",
+  });
   const [showCurrentPassword, setShowCurrentPassword] = useState(false);
   const [showNewPassword, setShowNewPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
@@ -49,16 +61,16 @@ export default function ProfilePage() {
   const loadProfile = async () => {
     try {
       setLoading(true);
-      const response = await api.get<UserProfile>('/auth/profile');
+      const response = await api.get<UserProfile>("/auth/profile");
       setProfile(response.data);
       setFormData({
         name: response.data.name,
-        phone: response.data.phone || ''
+        phone: response.data.phone || "",
       });
-      trackEvent('account_profile_view');
+      trackEvent("account_profile_view");
     } catch (error: any) {
-      console.error('Error loading profile:', error);
-      toast.error('Failed to load profile');
+      console.error("Error loading profile:", error);
+      toast.error("Failed to load profile");
     } finally {
       setLoading(false);
     }
@@ -67,77 +79,80 @@ export default function ProfilePage() {
   const handleSaveProfile = async () => {
     try {
       setSaving(true);
-      await api.put('/auth/profile', formData);
-      toast.success('Profile updated successfully');
-      trackEvent('account_profile_save');
+      await api.put("/auth/profile", formData);
+      toast.success("Profile updated successfully");
+      trackEvent("account_profile_save");
       await loadProfile(); // Refresh data
     } catch (error: any) {
-      console.error('Error updating profile:', error);
-      toast.error('Failed to update profile');
+      console.error("Error updating profile:", error);
+      toast.error("Failed to update profile");
     } finally {
       setSaving(false);
     }
   };
 
-  const handleAvatarUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+  const handleAvatarUpload = async (
+    event: React.ChangeEvent<HTMLInputElement>,
+  ) => {
     const file = event.target.files?.[0];
     if (!file) return;
 
     // Validate file type and size
-    if (!file.type.startsWith('image/')) {
-      toast.error('Please select an image file');
+    if (!file.type.startsWith("image/")) {
+      toast.error("Please select an image file");
       return;
     }
-    if (file.size > 2 * 1024 * 1024) { // 2MB limit
-      toast.error('Image must be less than 2MB');
+    if (file.size > 2 * 1024 * 1024) {
+      // 2MB limit
+      toast.error("Image must be less than 2MB");
       return;
     }
 
     try {
       const formData = new FormData();
-      formData.append('avatar', file);
+      formData.append("avatar", file);
 
-      await api.put('/auth/profile/avatar', formData, {
-        headers: { 'Content-Type': 'multipart/form-data' }
+      await api.put("/auth/profile/avatar", formData, {
+        headers: { "Content-Type": "multipart/form-data" },
       });
 
-      toast.success('Avatar updated successfully');
+      toast.success("Avatar updated successfully");
       await loadProfile();
     } catch (error: any) {
-      console.error('Error uploading avatar:', error);
-      toast.error('Failed to upload avatar');
+      console.error("Error uploading avatar:", error);
+      toast.error("Failed to upload avatar");
     }
   };
 
   const handleAvatarRemove = async () => {
     try {
-      await api.delete('/auth/profile/avatar');
-      toast.success('Avatar removed successfully');
+      await api.delete("/auth/profile/avatar");
+      toast.success("Avatar removed successfully");
       await loadProfile();
     } catch (error: any) {
-      console.error('Error removing avatar:', error);
-      toast.error('Failed to remove avatar');
+      console.error("Error removing avatar:", error);
+      toast.error("Failed to remove avatar");
     }
   };
 
   const handlePasswordChange = async () => {
     if (passwordData.new !== passwordData.confirm) {
-      toast.error('New passwords do not match');
+      toast.error("New passwords do not match");
       return;
     }
 
     try {
-      await api.post('/auth/password/change', {
+      await api.post("/auth/password/change", {
         current_password: passwordData.current,
-        new_password: passwordData.new
+        new_password: passwordData.new,
       });
 
-      toast.success('Password changed successfully');
+      toast.success("Password changed successfully");
       setShowPasswordDialog(false);
-      setPasswordData({ current: '', new: '', confirm: '' });
+      setPasswordData({ current: "", new: "", confirm: "" });
     } catch (error: any) {
-      console.error('Error changing password:', error);
-      toast.error(error.response?.data?.message || 'Failed to change password');
+      console.error("Error changing password:", error);
+      toast.error(error.response?.data?.message || "Failed to change password");
     }
   };
 
@@ -147,8 +162,8 @@ export default function ProfilePage() {
       // Redirect to OAuth provider
       window.location.href = response.data.auth_url;
     } catch (error: any) {
-      console.error('Error linking SSO:', error);
-      toast.error('Failed to link account');
+      console.error("Error linking SSO:", error);
+      toast.error("Failed to link account");
     }
   };
 
@@ -158,25 +173,24 @@ export default function ProfilePage() {
       toast.success(`${provider} account unlinked`);
       await loadProfile();
     } catch (error: any) {
-      console.error('Error unlinking SSO:', error);
-      toast.error('Failed to unlink account');
+      console.error("Error unlinking SSO:", error);
+      toast.error("Failed to unlink account");
     }
   };
 
   const handleMFAToggle = async (enabled: boolean) => {
     try {
       if (enabled) {
-        const response = await api.post('/auth/mfa/setup');
-        // Handle MFA setup flow (QR code, etc.)
-        toast.success('MFA setup initiated');
+        await api.post("/auth/mfa/setup");
+        toast.success("MFA setup initiated");
       } else {
-        await api.post('/auth/mfa/disable');
-        toast.success('MFA disabled');
+        await api.post("/auth/mfa/disable");
+        toast.success("MFA disabled");
         await loadProfile();
       }
     } catch (error: any) {
-      console.error('Error toggling MFA:', error);
-      toast.error('Failed to update MFA settings');
+      console.error("Error toggling MFA:", error);
+      toast.error("Failed to update MFA settings");
     }
   };
 
@@ -211,7 +225,7 @@ export default function ProfilePage() {
           <Button
             variant="ghost"
             size="sm"
-            onClick={() => router.push('/portal/account')}
+            onClick={() => router.push("/portal/account")}
           >
             <ArrowLeftIcon className="w-4 h-4 mr-2" />
             Back to Account
@@ -296,7 +310,9 @@ export default function ProfilePage() {
                 <Input
                   id="name"
                   value={formData.name}
-                  onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                  onChange={(e) =>
+                    setFormData({ ...formData, name: e.target.value })
+                  }
                   placeholder="Enter your full name"
                 />
               </div>
@@ -304,7 +320,7 @@ export default function ProfilePage() {
                 <Label htmlFor="email">Email Address</Label>
                 <Input
                   id="email"
-                  value={profile?.email || ''}
+                  value={profile?.email || ""}
                   disabled
                   className="bg-gray-50"
                 />
@@ -318,13 +334,15 @@ export default function ProfilePage() {
               <Input
                 id="phone"
                 value={formData.phone}
-                onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
+                onChange={(e) =>
+                  setFormData({ ...formData, phone: e.target.value })
+                }
                 placeholder="+1 (555) 123-4567"
               />
             </div>
             <div className="flex justify-end">
               <Button onClick={handleSaveProfile} disabled={saving}>
-                {saving ? 'Saving...' : 'Save Changes'}
+                {saving ? "Saving..." : "Save Changes"}
               </Button>
             </div>
           </CardContent>
@@ -344,9 +362,14 @@ export default function ProfilePage() {
               <h4 className="font-medium mb-3">Password</h4>
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-sm text-gray-600">Last changed: Recently</p>
+                  <p className="text-sm text-gray-600">
+                    Last changed: Recently
+                  </p>
                 </div>
-                <Dialog open={showPasswordDialog} onOpenChange={setShowPasswordDialog}>
+                <Dialog
+                  open={showPasswordDialog}
+                  onOpenChange={setShowPasswordDialog}
+                >
                   <DialogTrigger asChild>
                     <Button variant="outline" size="sm">
                       Change Password
@@ -358,22 +381,35 @@ export default function ProfilePage() {
                     </DialogHeader>
                     <div className="space-y-4">
                       <div>
-                        <Label htmlFor="current-password">Current Password</Label>
+                        <Label htmlFor="current-password">
+                          Current Password
+                        </Label>
                         <div className="relative">
                           <Input
                             id="current-password"
-                            type={showCurrentPassword ? 'text' : 'password'}
+                            type={showCurrentPassword ? "text" : "password"}
                             value={passwordData.current}
-                            onChange={(e) => setPasswordData({ ...passwordData, current: e.target.value })}
+                            onChange={(e) =>
+                              setPasswordData({
+                                ...passwordData,
+                                current: e.target.value,
+                              })
+                            }
                           />
                           <Button
                             type="button"
                             variant="ghost"
                             size="sm"
                             className="absolute right-0 top-0 h-full px-3"
-                            onClick={() => setShowCurrentPassword(!showCurrentPassword)}
+                            onClick={() =>
+                              setShowCurrentPassword(!showCurrentPassword)
+                            }
                           >
-                            {showCurrentPassword ? <EyeSlashIcon className="w-4 h-4" /> : <EyeIcon className="w-4 h-4" />}
+                            {showCurrentPassword ? (
+                              <EyeSlashIcon className="w-4 h-4" />
+                            ) : (
+                              <EyeIcon className="w-4 h-4" />
+                            )}
                           </Button>
                         </div>
                       </div>
@@ -382,9 +418,14 @@ export default function ProfilePage() {
                         <div className="relative">
                           <Input
                             id="new-password"
-                            type={showNewPassword ? 'text' : 'password'}
+                            type={showNewPassword ? "text" : "password"}
                             value={passwordData.new}
-                            onChange={(e) => setPasswordData({ ...passwordData, new: e.target.value })}
+                            onChange={(e) =>
+                              setPasswordData({
+                                ...passwordData,
+                                new: e.target.value,
+                              })
+                            }
                           />
                           <Button
                             type="button"
@@ -393,32 +434,52 @@ export default function ProfilePage() {
                             className="absolute right-0 top-0 h-full px-3"
                             onClick={() => setShowNewPassword(!showNewPassword)}
                           >
-                            {showNewPassword ? <EyeSlashIcon className="w-4 h-4" /> : <EyeIcon className="w-4 h-4" />}
+                            {showNewPassword ? (
+                              <EyeSlashIcon className="w-4 h-4" />
+                            ) : (
+                              <EyeIcon className="w-4 h-4" />
+                            )}
                           </Button>
                         </div>
                       </div>
                       <div>
-                        <Label htmlFor="confirm-password">Confirm New Password</Label>
+                        <Label htmlFor="confirm-password">
+                          Confirm New Password
+                        </Label>
                         <div className="relative">
                           <Input
                             id="confirm-password"
-                            type={showConfirmPassword ? 'text' : 'password'}
+                            type={showConfirmPassword ? "text" : "password"}
                             value={passwordData.confirm}
-                            onChange={(e) => setPasswordData({ ...passwordData, confirm: e.target.value })}
+                            onChange={(e) =>
+                              setPasswordData({
+                                ...passwordData,
+                                confirm: e.target.value,
+                              })
+                            }
                           />
                           <Button
                             type="button"
                             variant="ghost"
                             size="sm"
                             className="absolute right-0 top-0 h-full px-3"
-                            onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                            onClick={() =>
+                              setShowConfirmPassword(!showConfirmPassword)
+                            }
                           >
-                            {showConfirmPassword ? <EyeSlashIcon className="w-4 h-4" /> : <EyeIcon className="w-4 h-4" />}
+                            {showConfirmPassword ? (
+                              <EyeSlashIcon className="w-4 h-4" />
+                            ) : (
+                              <EyeIcon className="w-4 h-4" />
+                            )}
                           </Button>
                         </div>
                       </div>
                       <div className="flex justify-end gap-2">
-                        <Button variant="outline" onClick={() => setShowPasswordDialog(false)}>
+                        <Button
+                          variant="outline"
+                          onClick={() => setShowPasswordDialog(false)}
+                        >
                           Cancel
                         </Button>
                         <Button onClick={handlePasswordChange}>
@@ -437,18 +498,25 @@ export default function ProfilePage() {
             <div>
               <h4 className="font-medium mb-3">Social Sign-in</h4>
               <div className="space-y-3">
-                {['google', 'github', 'azuread'].map((provider) => {
-                  const isLinked = profile?.sso_providers.includes(provider as any);
+                {["google", "github", "azuread"].map((provider) => {
+                  const isLinked = profile?.sso_providers.includes(
+                    provider as any,
+                  );
                   return (
-                    <div key={provider} className="flex items-center justify-between">
+                    <div
+                      key={provider}
+                      className="flex items-center justify-between"
+                    >
                       <div className="flex items-center gap-3">
                         <div className="w-8 h-8 bg-gray-100 rounded flex items-center justify-center">
-                          <span className="text-sm font-medium capitalize">{provider[0]}</span>
+                          <span className="text-sm font-medium capitalize">
+                            {provider[0]}
+                          </span>
                         </div>
                         <div>
                           <p className="font-medium capitalize">{provider}</p>
                           <p className="text-sm text-gray-500">
-                            {isLinked ? 'Linked' : 'Not linked'}
+                            {isLinked ? "Linked" : "Not linked"}
                           </p>
                         </div>
                       </div>
@@ -492,7 +560,9 @@ export default function ProfilePage() {
           <CardContent>
             <div className="flex items-center justify-between">
               <div>
-                <Label htmlFor="mfa-toggle" className="text-base">Two-Factor Authentication</Label>
+                <Label htmlFor="mfa-toggle" className="text-base">
+                  Two-Factor Authentication
+                </Label>
                 <p className="text-sm text-gray-600">
                   Add an extra layer of security to your account
                 </p>

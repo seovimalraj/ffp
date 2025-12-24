@@ -16,16 +16,20 @@ interface AppHeaderProps {
   setIsMegaMenuOpen?: (open: boolean) => void;
 }
 
-const AppHeader = ({ setOpen, isMegaMenuOpen, setIsMegaMenuOpen }: AppHeaderProps) => {
+const AppHeader = ({
+  setOpen,
+  isMegaMenuOpen,
+  setIsMegaMenuOpen,
+}: AppHeaderProps) => {
   const [isApplicationMenuOpen, setApplicationMenuOpen] = useState(false);
   const { data: user } = useSession();
-  const { isMobileOpen, toggleSidebar, toggleMobileSidebar } = useSidebar();
+  const { isMobileOpen, toggleMobileSidebar } = useSidebar();
 
-  const isSupplier = user?.user.role === "supplier";
+  const isSupplier = user?.user?.role === "supplier";
   const handleToggle = () => {
     if (isSupplier) {
       setIsMegaMenuOpen && setIsMegaMenuOpen(!isMegaMenuOpen);
-      return
+      return;
     } else {
       setOpen();
       toggleMobileSidebar();
@@ -62,7 +66,12 @@ const AppHeader = ({ setOpen, isMegaMenuOpen, setIsMegaMenuOpen }: AppHeaderProp
             aria-label="Toggle Sidebar"
           >
             {isSupplier ? (
-              <LayoutGrid color="#009870" fill="#009870" width={32} height={32} />
+              <LayoutGrid
+                color="#009870"
+                fill="#009870"
+                width={32}
+                height={32}
+              />
             ) : isMobileOpen ? (
               <svg
                 width="24"

@@ -283,7 +283,7 @@ let parts: Part[] = [
   }
 ];
 
-let messages: Message[] = [
+const messages: Message[] = [
   {
     id: 'MSG-001',
     thread_id: 'THREAD-001',

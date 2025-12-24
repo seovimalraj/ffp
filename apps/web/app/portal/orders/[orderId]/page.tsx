@@ -1,36 +1,27 @@
-'use client';
+"use client";
 
-import { useState, useEffect } from 'react';
-import { useRouter, useParams } from 'next/navigation';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
-import { 
-  ArrowLeft, Package, Clock, CheckCircle, Truck,
-  FileText, MapPin, DollarSign, AlertCircle, Download, Loader2
-} from 'lucide-react';
-import { getOrder, getKanbanState, getOrderTimeline } from '../../../../lib/database';
-
-interface TimelineEvent {
-  id: string;
-  title: string;
-  description: string;
-  timestamp: string;
-  status: 'completed' | 'in-progress' | 'pending';
-  icon: any;
-}
-
-interface OrderTracking {
-  orderId: string;
-  status: 'placed' | 'manufacturing' | 'qa' | 'shipping' | 'delivered';
-  parts: any[];
-  totalPrice: number;
-  leadTime: number;
-  placedAt: string;
-  estimatedDelivery: string;
-  timeline: TimelineEvent[];
-  progress: number;
-}
+import { useState, useEffect } from "react";
+import { useRouter, useParams } from "next/navigation";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import {
+  ArrowLeft,
+  Package,
+  CheckCircle,
+  Truck,
+  FileText,
+  MapPin,
+  DollarSign,
+  AlertCircle,
+  Download,
+  Loader2,
+} from "lucide-react";
+import {
+  getOrder,
+  getKanbanState,
+  getOrderTimeline,
+} from "../../../../lib/database";
 
 export default function CustomerOrderTrackingPage() {
   const router = useRouter();
@@ -48,34 +39,37 @@ export default function CustomerOrderTrackingPage() {
 
   const loadOrderTracking = async () => {
     if (!orderId) return;
-    
+
     try {
       setLoading(true);
-      
+
       // Load order data
       const order = await getOrder(orderId);
       if (!order) {
-        alert('Order not found');
-        router.push('/portal/orders');
+        alert("Order not found");
+        router.push("/portal/orders");
         return;
       }
       setOrderData(order);
-      
+
       // Load kanban state for progress
       const kanbanState = await getKanbanState(orderId);
       if (kanbanState.length > 0) {
-        const completedParts = kanbanState.filter((p: any) => p.status === 'done').length;
-        const calculatedProgress = Math.round((completedParts / kanbanState.length) * 100);
+        const completedParts = kanbanState.filter(
+          (p: any) => p.status === "done",
+        ).length;
+        const calculatedProgress = Math.round(
+          (completedParts / kanbanState.length) * 100,
+        );
         setProgress(calculatedProgress);
       }
-      
+
       // Load timeline events
       const timelineData = await getOrderTimeline(orderId);
       setTimeline(timelineData);
-      
     } catch (error) {
-      console.error('Error loading order tracking:', error);
-      alert('Failed to load order tracking. Please try again.');
+      console.error("Error loading order tracking:", error);
+      alert("Failed to load order tracking. Please try again.");
     } finally {
       setLoading(false);
     }
@@ -106,7 +100,7 @@ export default function CustomerOrderTrackingPage() {
     production_started: Package,
     part_completed: CheckCircle,
     shipped: Truck,
-    delivered: MapPin
+    delivered: MapPin,
   };
 
   return (
@@ -116,7 +110,7 @@ export default function CustomerOrderTrackingPage() {
         <div className="mb-8 flex items-center gap-4">
           <Button
             variant="outline"
-            onClick={() => router.push('/portal/orders')}
+            onClick={() => router.push("/portal/orders")}
             className="flex items-center gap-2"
           >
             <ArrowLeft className="w-4 h-4" />
@@ -127,7 +121,7 @@ export default function CustomerOrderTrackingPage() {
             <p className="text-gray-600">Order #{orderData.id}</p>
           </div>
           <Badge className="bg-blue-100 text-blue-700 border-0 text-lg px-4 py-2">
-            {orderData.status?.toUpperCase() || 'PROCESSING'}
+            {orderData.status?.toUpperCase() || "PROCESSING"}
           </Badge>
         </div>
 
@@ -145,7 +139,9 @@ export default function CustomerOrderTrackingPage() {
               />
             </div>
             <div className="flex items-center justify-between mt-3 text-sm text-gray-600">
-              <span>Placed: {new Date(orderData.created_at).toLocaleDateString()}</span>
+              <span>
+                Placed: {new Date(orderData.created_at).toLocaleDateString()}
+              </span>
               <span>Est. Delivery: {deliveryDate.toLocaleDateString()}</span>
             </div>
           </CardContent>
@@ -208,9 +204,14 @@ export default function CustomerOrderTrackingPage() {
             <CardContent>
               <div className="space-y-3">
                 {orderData.parts?.map((part: any, index: number) => (
-                  <div key={index} className="flex items-center justify-between py-2 border-b last:border-0">
+                  <div
+                    key={index}
+                    className="flex items-center justify-between py-2 border-b last:border-0"
+                  >
                     <div>
-                      <p className="font-medium text-gray-900">{part.file_name}</p>
+                      <p className="font-medium text-gray-900">
+                        {part.file_name}
+                      </p>
                       <p className="text-sm text-gray-600">{part.material}</p>
                     </div>
                     <Badge variant="outline">Qty: {part.quantity}</Badge>
@@ -231,16 +232,25 @@ export default function CustomerOrderTrackingPage() {
               <div className="space-y-3">
                 <div className="flex justify-between">
                   <span className="text-gray-600">Total Parts:</span>
-                  <span className="font-semibold">{orderData.parts?.length || 0}</span>
+                  <span className="font-semibold">
+                    {orderData.parts?.length || 0}
+                  </span>
                 </div>
                 <div className="flex justify-between">
                   <span className="text-gray-600">Lead Time:</span>
-                  <span className="font-semibold">{orderData.lead_time} days</span>
+                  <span className="font-semibold">
+                    {orderData.lead_time} days
+                  </span>
                 </div>
                 <div className="flex justify-between pt-3 border-t">
-                  <span className="font-semibold text-gray-900">Total Amount:</span>
+                  <span className="font-semibold text-gray-900">
+                    Total Amount:
+                  </span>
                   <span className="text-xl font-bold text-blue-600">
-                    ${orderData.total_price?.toLocaleString('en-US', { minimumFractionDigits: 2 })}
+                    $
+                    {orderData.total_price?.toLocaleString("en-US", {
+                      minimumFractionDigits: 2,
+                    })}
                   </span>
                 </div>
               </div>
@@ -274,7 +284,8 @@ export default function CustomerOrderTrackingPage() {
           <div>
             <p className="font-semibold text-blue-900">Quality Guaranteed</p>
             <p className="text-sm text-blue-800">
-              Your parts are being manufactured by verified suppliers. All updates are tracked in real-time for your visibility.
+              Your parts are being manufactured by verified suppliers. All
+              updates are tracked in real-time for your visibility.
             </p>
           </div>
         </div>

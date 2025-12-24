@@ -11,11 +11,11 @@ import { useRouter } from "next/navigation";
 import { notify } from "@/lib/toast";
 import { Eye, EyeOff, Loader2, AlertCircle } from "lucide-react";
 
-interface SignUpFormProps {
-  action?: (formData: FormData) => void;
-}
+// interface SignUpFormProps {
+//   action?: (formData: FormData) => void;
+// }
 
-export function SignUpForm({ action }: SignUpFormProps) {
+export function SignUpForm() {
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
 
@@ -57,8 +57,7 @@ export function SignUpForm({ action }: SignUpFormProps) {
 
   const validatePassword = useCallback((password: string) => {
     if (!password) return "Password is required";
-    if (password.length < 6)
-      return "Password must be at least 6 characters";
+    if (password.length < 6) return "Password must be at least 6 characters";
 
     return "";
   }, []);
@@ -69,7 +68,7 @@ export function SignUpForm({ action }: SignUpFormProps) {
       if (password !== confirmPassword) return "Passwords do not match";
       return "";
     },
-    []
+    [],
   );
 
   const validateForm = () => {
@@ -80,11 +79,9 @@ export function SignUpForm({ action }: SignUpFormProps) {
       password: validatePassword(formData.password),
       confirmPassword: validateConfirmPassword(
         formData.password,
-        formData.confirmPassword
+        formData.confirmPassword,
       ),
-      agreeToTerms: formData.agreeToTerms
-        ? ""
-        : "You must agree to the terms",
+      agreeToTerms: formData.agreeToTerms ? "" : "You must agree to the terms",
     };
 
     setErrors(newErrors);
@@ -153,8 +150,9 @@ export function SignUpForm({ action }: SignUpFormProps) {
   return (
     <div className="w-full lg:w-1/2 bg-white p-8 lg:p-12 flex flex-col justify-center">
       <div className="max-w-md max-h-[500px] overflow-y-scroll invisible-scrollbar mx-auto w-full">
-
-        <h1 className="text-4xl font-bold text-gray-900 mb-2">Create your account</h1>
+        <h1 className="text-4xl font-bold text-gray-900 mb-2">
+          Create your account
+        </h1>
         <p className="text-gray-600 mb-8">
           Already have an account?{" "}
           <Link
@@ -166,7 +164,6 @@ export function SignUpForm({ action }: SignUpFormProps) {
         </p>
 
         <form onSubmit={handleSubmit} className="space-y-4" noValidate>
-
           {/* Email */}
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">
@@ -250,7 +247,7 @@ export function SignUpForm({ action }: SignUpFormProps) {
                     ...e,
                     confirmPassword: validateConfirmPassword(
                       formData.password,
-                      formData.confirmPassword
+                      formData.confirmPassword,
                     ),
                   }))
                 }
@@ -260,9 +257,7 @@ export function SignUpForm({ action }: SignUpFormProps) {
               />
               <button
                 type="button"
-                onClick={() =>
-                  setShowConfirmPassword(!showConfirmPassword)
-                }
+                onClick={() => setShowConfirmPassword(!showConfirmPassword)}
                 className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-500"
               >
                 {showConfirmPassword ? <EyeOff /> : <Eye />}
