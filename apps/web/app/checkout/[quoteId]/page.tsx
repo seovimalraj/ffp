@@ -501,11 +501,13 @@ export default function CheckoutPage() {
                 <DropdownMenuTrigger asChild>
                   <Button
                     variant="ghost"
-                    className="relative h-12 w-12 rounded-full bg-slate-100 p-0 hover:bg-blue-50 hover:text-blue-600 transition-all border border-slate-200 hover:border-blue-200"
+                    className="relative h-10 w-10 rounded-full bg-slate-100 p-0 hover:bg-blue-50 hover:text-blue-600 transition-all border border-slate-200 hover:border-blue-200"
                   >
-                    <div className="h-12 w-12 rounded-xl bg-gradient-to-br from-blue-800 to-slate-900 border border-slate-700 flex items-center justify-center text-xs font-black text-white shadow-xl">
-                      <User className="w-6 h-6" />
-                    </div>
+                    <User className="w-5 h-5" />
+                    <span className="absolute -top-1 -right-1 flex h-3 w-3">
+                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
+                      <span className="relative inline-flex rounded-full h-3 w-3 bg-green-500 border border-white"></span>
+                    </span>
                   </Button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent

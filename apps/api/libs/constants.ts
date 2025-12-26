@@ -87,7 +87,8 @@ export enum RoleNames {
 }
 
 export enum BucketNames {
-  storage = 'demo bucket',
+  storage = 'ffp',
+  rfqStore = 'ffp-rfq-store',
 }
 
 export type CurrencyType = 'USD' | 'INR' | 'EUR';

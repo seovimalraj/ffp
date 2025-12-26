@@ -3,14 +3,6 @@
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogDescription,
-} from "@/components/ui/dialog";
-
-import {
   Zap,
   Loader2,
   Upload,
@@ -23,18 +15,20 @@ import {
   Ruler,
   Check,
   Archive,
+  Wrench,
+  Expand,
 } from "lucide-react";
 import { useCallback, useState } from "react";
 import { useDropzone } from "react-dropzone";
 import dynamic from "next/dynamic";
 import { ImageViewerModal } from "@/components/image-viewer-modal";
 import { CubeIcon } from "@heroicons/react/24/outline";
-import { formatCurrencyFixed } from "@/lib/utils";
 import { CadViewer } from "@/components/cad/cad-viewer";
 import ExpandFileModal from "./expand-file-modal";
 import { EditPartModal } from "./edit-part-modal";
 import { useFileUpload } from "@/lib/hooks/use-file-upload";
 import { notify } from "@/lib/toast";
+import { calculateLeadTime } from "../[id]/page";
 
 // Dynamically import PDF viewer to avoid SSR issues with DOMMatrix
 const PdfViewerModal = dynamic(
@@ -53,6 +47,10 @@ import {
   ThreadItem,
 } from "@/types/part-config";
 import { apiClient } from "@/lib/api";
+import FileManagementModal from "./file-management-modal";
+import LeadTypeCard from "./lead-type-card";
+import { formatCurrencyFixed } from "@/lib/utils";
+import { leadTimeMeta, markupMap } from "@cnc-quote/shared";
 
 // --- Sub-Component: PartCardItem ---
 export function PartCardItem({
@@ -263,22 +261,7 @@ export function PartCardItem({
               className="absolute bottom-4 right-4 rounded-full bg-white/10 p-2 text-white backdrop-blur-sm transition-colors hover:bg-white/20"
               title="Expand View"
             >
-              <svg
-                xmlns="http://www.w3.org/2000/svg"
-                width="20"
-                height="20"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              >
-                <polyline points="15 3 21 3 21 9" />
-                <polyline points="9 21 3 21 3 15" />
-                <line x1="21" y1="3" x2="14" y2="10" />
-                <line x1="3" y1="21" x2="10" y2="14" />
-              </svg>
+              <Expand className="w-5 h-5" />
             </button>
           </div>
 
@@ -427,23 +410,36 @@ export function PartCardItem({
           <div className="flex flex-col gap-6 mb-8 border-b border-slate-100 pb-8">
             {/* Top Row: Title, Index & Actions */}
             <div className="flex items-center justify-between gap-4">
-              <div className="flex items-center gap-4 min-w-0">
-                <div className="flex items-center justify-center w-8 h-8 rounded-lg bg-blue-600 text-white text-sm font-black flex-shrink-0 shadow-sm">
+              <div className="flex min-w-0 items-start gap-4">
+                {/* Index */}
+                <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-blue-600 text-sm font-black text-white shadow-sm">
                   {index + 1}
                 </div>
+
+                {/* Title + Badges */}
                 <div className="min-w-0">
-                  <h3 className="text-xl font-black text-slate-900 truncate tracking-tight">
+                  <h3 className="truncate text-xl font-black tracking-tight text-slate-900">
                     {part.fileName}
                   </h3>
-                  {/* Badges immediately under title for context */}
-                  <div className="flex flex-wrap items-center gap-2 mt-3">
-                    <div className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-amber-50 border border-amber-100 text-[10px] font-bold text-amber-700 uppercase tracking-wider">
-                      <Zap className="w-3.5 h-3.5 text-amber-500" />
+
+                  {/* Badges */}
+                  <div className="mt-2 flex flex-wrap items-center gap-2">
+                    {/* CNC */}
+                    <div className="inline-flex items-center gap-1.5 rounded-md bg-amber-50 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider text-amber-700 ring-1 ring-inset ring-amber-200">
+                      <Zap className="h-3.5 w-3.5 text-amber-500" />
                       CNC Machining
                     </div>
+
+                    {/* Custom */}
+                    <div className="inline-flex items-center gap-1.5 rounded-md bg-slate-100 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider text-slate-700 ring-1 ring-inset ring-slate-200">
+                      <Wrench className="h-3.5 w-3.5 text-slate-500" />
+                      Custom
+                    </div>
+
+                    {/* Geometry */}
                     {part.geometry && (
-                      <div className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-blue-50 border border-blue-100 text-[10px] font-bold text-blue-700 uppercase tracking-wider">
-                        <Activity className="w-3.5 h-3.5 text-blue-400" />
+                      <div className="inline-flex items-center gap-1.5 rounded-md bg-blue-50 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider text-blue-700 ring-1 ring-inset ring-blue-200">
+                        <Activity className="h-3.5 w-3.5 text-blue-400" />
                         {part.geometry.complexity}
                       </div>
                     )}
@@ -456,23 +452,27 @@ export function PartCardItem({
             <div className="flex flex-col gap-5">
               {/* Row 1: Quantity Selector & Action Buttons */}
               <div className="flex items-center justify-between gap-4">
-                <div className="bg-slate-50 border border-slate-200 px-3 flex items-center gap-3 h-11 rounded-xl shadow-sm">
-                  <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest border-r border-slate-200 pr-3 h-full flex items-center">
+                <div className="flex h-11 items-center rounded-xl border border-slate-200 bg-white px-3 shadow-sm">
+                  {/* Label */}
+                  <span className="mr-3 flex h-full items-center border-r border-slate-200 pr-3 text-[10px] font-black uppercase tracking-widest text-slate-400">
                     Qty
                   </span>
-                  <div className="flex items-center gap-1">
+
+                  {/* Stepper */}
+                  <div className="flex items-center rounded-lg bg-slate-50 p-0.5">
                     <Button
                       variant="ghost"
                       size="icon"
-                      className="h-7 w-7 rounded-md hover:bg-white text-slate-600 hover:text-blue-600 transition-colors"
+                      className="h-7 w-7 rounded-md text-slate-500 hover:bg-white hover:text-blue-600 transition-colors"
                       onClick={() => {
                         const newQ = part.quantity - 1;
                         if (newQ >= 1)
                           updatePart(index, "quantity", newQ, false);
                       }}
                     >
-                      <span className="text-base font-bold">−</span>
+                      <span className="text-sm font-bold leading-none">−</span>
                     </Button>
+
                     <input
                       type="number"
                       value={part.quantity}
@@ -482,52 +482,74 @@ export function PartCardItem({
                           updatePart(index, "quantity", val, false);
                         }
                       }}
-                      className="w-10 text-center font-bold text-slate-900 border-none bg-transparent focus:ring-0 p-0 text-sm"
+                      className="mx-1 w-10 bg-transparent text-center text-sm font-bold text-slate-900 focus:outline-none"
                       min="1"
                     />
+
                     <Button
                       variant="ghost"
                       size="icon"
-                      className="h-7 w-7 rounded-md hover:bg-white text-slate-600 hover:text-blue-600 transition-colors"
+                      className="h-7 w-7 rounded-md text-slate-500 hover:bg-white hover:text-blue-600 transition-colors"
                       onClick={() =>
                         updatePart(index, "quantity", part.quantity + 1, false)
                       }
                     >
-                      <span className="text-base font-bold">+</span>
+                      <span className="text-sm font-bold leading-none">+</span>
                     </Button>
                   </div>
                 </div>
 
                 {/* Action Buttons: Standardized h-11 */}
                 <div className="flex items-center gap-2">
+                  {/* Primary */}
                   <Button
                     variant="outline"
-                    size="icon"
                     onClick={() => setIsEditModalOpen(true)}
-                    className="h-11 w-11 rounded-xl border-slate-200 text-slate-600 hover:text-blue-600 hover:border-blue-300 hover:bg-blue-50 shadow-sm transition-all"
                     title="Configure Part"
+                    className="
+                      h-11 px-4 gap-2 rounded-xl
+                      border-slate-300 text-slate-700
+                      bg-white shadow-sm
+                      hover:border-blue-500 hover:text-blue-700 hover:bg-blue-50
+                      focus-visible:ring-2 focus-visible:ring-blue-500
+                    "
                   >
-                    <Settings className="w-4.5 h-4.5" />
+                    <Settings className="h-4.5 w-4.5 text-slate-600" />
+                    <span className="text-xs font-semibold tracking-wide">
+                      Configure
+                    </span>
                   </Button>
+
+                  {/* Secondary (Archive) */}
                   {handleArchivePart && (
                     <Button
                       variant="outline"
-                      size="icon"
                       onClick={() => handleArchivePart(part.id)}
-                      className="h-11 w-11 rounded-xl border-slate-200 text-slate-600 hover:text-amber-600 hover:border-amber-300 hover:bg-amber-50 shadow-sm transition-all"
                       title="Archive Part"
+                      className="
+                        h-11 px-4 gap-2 rounded-xl
+                        border-slate-200 text-slate-400
+                        hover:border-amber-400 hover:bg-amber-50 hover:text-amber-700
+                        transition-all
+                      "
                     >
-                      <Archive className="w-4.5 h-4.5" />
+                      <Archive className="h-4.5 w-4.5" />
                     </Button>
                   )}
+
+                  {/* Destructive (Delete) */}
                   <Button
                     variant="outline"
-                    size="icon"
                     onClick={() => handleDeletePart(index)}
-                    className="h-11 w-11 rounded-xl border-slate-200 text-slate-400 hover:text-white hover:bg-red-500 hover:border-red-500 shadow-sm transition-all"
                     title="Delete Part"
+                    className="
+                      h-11 px-4 gap-2 rounded-xl
+                      border-slate-200 text-slate-400
+                      hover:border-red-500 hover:bg-red-50 hover:text-red-600
+                      transition-all
+                    "
                   >
-                    <Trash2 className="w-4.5 h-4.5" />
+                    <Trash2 className="h-4.5 w-4.5" />
                   </Button>
                 </div>
               </div>
@@ -537,54 +559,104 @@ export function PartCardItem({
                 <span className="text-[13px] font-black text-slate-400 uppercase tracking-widest px-1">
                   Lead Time & Pricing
                 </span>
-                <div className="grid mt-3 grid-cols-3 items-center gap-2">
-                  {["economy", "standard", "expedited"].map((leadTimeType) => {
-                    const leadTimePrice = calculatePrice(
-                      part,
-                      leadTimeType as "economy" | "standard" | "expedited",
-                    );
-                    const isSelected = part.leadTimeType === leadTimeType;
-                    const icon = `/icons/${leadTimeType}.png`;
+                <div className="mt-4 grid grid-cols-1 sm:grid-cols-3 gap-3">
+                  {(["economy", "standard", "expedited"] as const).map(
+                    (leadTimeType) => {
+                      const realPrice =
+                        calculatePrice(part, leadTimeType) / part.quantity;
 
-                    return (
-                      <div
-                        key={leadTimeType}
-                        onClick={() =>
-                          updatePart(
-                            index,
-                            "leadTimeType",
-                            leadTimeType as
-                              | "economy"
-                              | "standard"
-                              | "expedited",
-                            false,
-                          )
-                        }
-                        className={`group cursor-pointer relative flex items-center gap-4 px-4 py-2.5 rounded-xl transition-all border h-14 min-w-[140px]
-                          ${
-                            isSelected
-                              ? "border-blue-600 bg-blue-50 ring-1 ring-blue-600 shadow-sm"
-                              : "border-slate-200 bg-white hover:border-blue-400 hover:shadow-sm"
-                          }`}
-                      >
-                        <img
-                          src={icon}
-                          alt=""
-                          className="w-8 h-8 transition-all"
-                        />
-                        <div className="flex flex-col gap-y-2">
-                          <span
-                            className={`text-lg font-bold tracking-tight leading-none ${isSelected ? "text-blue-700" : "text-slate-900"}`}
-                          >
-                            {formatCurrencyFixed(leadTimePrice / part.quantity)}
-                          </span>
-                          <span className=" text-[12px] font-bold uppercase tracking-tight text-slate-500 leading-none mb-1">
-                            {leadTimeType}
-                          </span>
+                      const uplift = markupMap[leadTimeType];
+                      const marketingPrice = realPrice * (1 + uplift);
+
+                      const isSelected = part.leadTimeType === leadTimeType;
+                      const icon = `/icons/${leadTimeType}.png`;
+                      const leadTime = calculateLeadTime(part, leadTimeType);
+
+                      return (
+                        <div
+                          key={leadTimeType}
+                          onClick={() =>
+                            updatePart(
+                              index,
+                              "leadTimeType",
+                              leadTimeType,
+                              false,
+                            )
+                          }
+                          className={`
+                            relative cursor-pointer rounded-2xl border p-4 transition-all
+                            ${
+                              isSelected
+                                ? "border-blue-600 bg-blue-50 ring-2 ring-blue-600"
+                                : "border-slate-200 bg-white hover:border-slate-300 hover:shadow-sm"
+                            }
+                          `}
+                        >
+                          {/* Badge */}
+                          <div className="absolute -right-3 -top-2">
+                            <span
+                              className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wide ${isSelected ? "bg-blue-100 text-blue-700" : "bg-slate-200 text-slate-600"}`}
+                            >
+                              {leadTimeMeta[leadTimeType].badge}
+                            </span>
+                          </div>
+
+                          {/* Header */}
+                          <div className="mb-4 flex items-center gap-3">
+                            <img
+                              src={icon}
+                              alt=""
+                              className="h-9 w-9 shrink-0"
+                            />
+
+                            <div className="leading-tight">
+                              <div className="text-sm font-semibold capitalize text-slate-700">
+                                {leadTimeType}
+                              </div>
+                              <div className="text-xs text-slate-400">
+                                {leadTime} Business Days
+                              </div>
+                            </div>
+                          </div>
+
+                          {/* Pricing */}
+                          <div className="space-y-1">
+                            <div className="flex items-end justify-between">
+                              <div className="text-sm text-slate-400 line-through">
+                                {formatCurrencyFixed(marketingPrice)}
+                              </div>
+
+                              <div
+                                className={`text-2xl font-bold leading-none ${
+                                  isSelected
+                                    ? "text-blue-700"
+                                    : "text-slate-700"
+                                }`}
+                              >
+                                {formatCurrencyFixed(realPrice)}
+                              </div>
+                            </div>
+
+                            <div className="text-xs text-slate-500">
+                              You save{" "}
+                              <span className="font-semibold text-green-700">
+                                {formatCurrencyFixed(
+                                  marketingPrice - realPrice,
+                                )}
+                              </span>
+                            </div>
+                          </div>
+
+                          {/* Selected indicator */}
+                          {isSelected && (
+                            <div className="absolute bottom-3 right-3 text-[11px] font-semibold text-blue-700">
+                              Selected
+                            </div>
+                          )}
                         </div>
-                      </div>
-                    );
-                  })}
+                      );
+                    },
+                  )}
                 </div>
               </div>
             </div>
@@ -593,44 +665,89 @@ export function PartCardItem({
           {/* Content Area */}
           <div className="flex-1">
             <div className="space-y-5">
-              <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 p-5 rounded-xl bg-slate-50/50 border border-slate-200 shadow-sm">
-                <div className="space-y-1">
-                  <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">
-                    Material
-                  </p>
-                  <p className="text-sm font-bold text-slate-900 leading-tight">
-                    {MATERIALS_LIST.find((m) => m.value === part.material)
-                      ?.label ||
-                      part.material ||
-                      "Not specified"}
-                  </p>
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 p-6 rounded-2xl bg-white border border-slate-200 shadow-md">
+                {/* Material */}
+                <div className="flex items-center space-x-2">
+                  <span className="text-slate-400">
+                    <svg
+                      className="w-4 h-4"
+                      fill="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      {/* Example icon */}
+                    </svg>
+                  </span>
+                  <div>
+                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">
+                      Material
+                    </p>
+                    <p className="text-sm font-semibold text-slate-900 leading-tight">
+                      {MATERIALS_LIST.find((m) => m.value === part.material)
+                        ?.label ||
+                        part.material ||
+                        "Not specified"}
+                    </p>
+                  </div>
                 </div>
-                <div className="space-y-1">
-                  <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">
-                    Finish
-                  </p>
-                  <p className="text-sm font-bold text-slate-900 leading-tight">
-                    {FINISHES_LIST.find((f) => f.value === part.finish)
-                      ?.label ||
-                      part.finish ||
-                      "As Machined"}
-                  </p>
+
+                {/* Finish */}
+                <div className="flex items-center space-x-2">
+                  <span className="text-slate-400">
+                    <svg
+                      className="w-4 h-4"
+                      fill="currentColor"
+                      viewBox="0 0 24 24"
+                    ></svg>
+                  </span>
+                  <div>
+                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">
+                      Finish
+                    </p>
+                    <p className="text-sm font-semibold text-slate-900 leading-tight">
+                      {FINISHES_LIST.find((f) => f.value === part.finish)
+                        ?.label ||
+                        part.finish ||
+                        "As Machined"}
+                    </p>
+                  </div>
                 </div>
-                <div className="space-y-1">
-                  <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">
-                    Tolerance
-                  </p>
-                  <p className="text-sm font-bold text-slate-900 leading-tight capitalize">
-                    {part.tolerance || "Standard"}
-                  </p>
+
+                {/* Tolerance */}
+                <div className="flex items-center space-x-2">
+                  <span className="text-slate-400">
+                    <svg
+                      className="w-4 h-4"
+                      fill="currentColor"
+                      viewBox="0 0 24 24"
+                    ></svg>
+                  </span>
+                  <div>
+                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">
+                      Tolerance
+                    </p>
+                    <p className="text-sm font-semibold text-slate-900 leading-tight capitalize">
+                      {part.tolerance || "Standard"}
+                    </p>
+                  </div>
                 </div>
-                <div className="space-y-1">
-                  <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">
-                    Inspection
-                  </p>
-                  <p className="text-sm font-bold text-slate-900 leading-tight capitalize">
-                    {part.inspection || "Standard"}
-                  </p>
+
+                {/* Inspection */}
+                <div className="flex items-center space-x-2">
+                  <span className="text-slate-400">
+                    <svg
+                      className="w-4 h-4"
+                      fill="currentColor"
+                      viewBox="0 0 24 24"
+                    ></svg>
+                  </span>
+                  <div>
+                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">
+                      Inspection
+                    </p>
+                    <p className="text-sm font-semibold text-slate-900 leading-tight capitalize">
+                      {part.inspection || "Standard"}
+                    </p>
+                  </div>
                 </div>
               </div>
             </div>
@@ -662,132 +779,16 @@ export function PartCardItem({
       />
 
       {/* Files Management Modal */}
-      <Dialog open={isFilesModalOpen} onOpenChange={setIsFilesModalOpen}>
-        <DialogContent className="sm:max-w-3xl max-h-[85vh] overflow-hidden flex flex-col">
-          <DialogHeader>
-            <DialogTitle className="text-xl font-semibold">
-              2D Technical Drawings
-            </DialogTitle>
-            <DialogDescription>
-              Manage all technical drawings and documentation for this part
-            </DialogDescription>
-          </DialogHeader>
-
-          <div className="flex-1 overflow-y-auto invisible-scrollbar pr-2 -mr-2">
-            {/* Upload Section */}
-            <div className="mb-6">
-              <div
-                {...getRootProps()}
-                className="border-2 border-dashed border-slate-300 rounded-lg p-6 bg-slate-50/50 hover:bg-slate-50 hover:border-blue-400 transition-all cursor-pointer text-center group"
-              >
-                <input {...getInputProps()} />
-                {isUploading ? (
-                  <div className="flex flex-col items-center justify-center gap-2">
-                    <Loader2 className="w-6 h-6 text-blue-600 animate-spin" />
-                    <p className="text-sm font-medium text-slate-700">
-                      Uploading...
-                    </p>
-                  </div>
-                ) : (
-                  <div className="flex flex-col items-center gap-2">
-                    <div className="p-3 bg-white rounded-full border border-slate-200 shadow-sm group-hover:border-blue-300">
-                      <Upload className="w-6 h-6 text-slate-400 group-hover:text-blue-500" />
-                    </div>
-                    <div>
-                      <p className="text-sm font-medium text-slate-700 group-hover:text-blue-700">
-                        Upload more files
-                      </p>
-                      <p className="text-xs text-slate-500 mt-1">
-                        PDF, JPG, PNG, DXF, DWG - Multiple files supported
-                      </p>
-                    </div>
-                  </div>
-                )}
-              </div>
-            </div>
-
-            {/* Files Grid */}
-            {part.files2d && part.files2d.length > 0 && (
-              <div className="grid grid-cols-2 gap-4">
-                {part.files2d.map((file2d, fileIndex) => {
-                  const isPdfFile = file2d.file.type === "application/pdf";
-                  return (
-                    <div
-                      key={fileIndex}
-                      className="group relative border border-slate-200 rounded-lg p-4 hover:border-blue-300 hover:shadow-md transition-all bg-white"
-                    >
-                      {/* Preview/Icon Section */}
-                      <div
-                        className="aspect-square w-full bg-slate-50 rounded-lg mb-3 overflow-hidden cursor-pointer relative"
-                        onClick={() => {
-                          handleFileClick(file2d);
-                          setIsFilesModalOpen(false);
-                        }}
-                      >
-                        {isPdfFile ? (
-                          <div className="w-full h-full flex items-center justify-center">
-                            <FileText className="w-16 h-16 text-red-500" />
-                          </div>
-                        ) : (
-                          <img
-                            src={file2d.preview}
-                            alt={file2d.file.name}
-                            className="w-full h-full object-contain p-2"
-                          />
-                        )}
-                        <div className="absolute inset-0 bg-blue-900/0 group-hover:bg-blue-900/5 transition-colors flex items-center justify-center">
-                          <Maximize2 className="w-6 h-6 text-blue-600 opacity-0 group-hover:opacity-100 transition-opacity" />
-                        </div>
-                      </div>
-
-                      {/* File Info */}
-                      <div className="space-y-1">
-                        <h4 className="text-sm font-semibold text-slate-900 truncate">
-                          {file2d.file.name}
-                        </h4>
-                        <div className="flex items-center justify-between">
-                          {isPdfFile && (
-                            <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-red-100 text-red-700">
-                              PDF
-                            </span>
-                          )}
-                        </div>
-                      </div>
-
-                      {/* Delete Button */}
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity bg-white hover:bg-red-50 text-slate-400 hover:text-red-500 shadow-sm"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          handleDeleteFile(fileIndex);
-                          if (part.files2d && part.files2d.length <= 3) {
-                            setIsFilesModalOpen(false);
-                          }
-                        }}
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </Button>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-
-            {/* Empty State */}
-            {(!part.files2d || part.files2d.length === 0) && (
-              <div className="text-center py-12">
-                <FileIcon className="w-12 h-12 text-slate-300 mx-auto mb-3" />
-                <p className="text-sm text-slate-500">No files uploaded yet</p>
-                <p className="text-xs text-slate-400 mt-1">
-                  Upload your first file above
-                </p>
-              </div>
-            )}
-          </div>
-        </DialogContent>
-      </Dialog>
+      <FileManagementModal
+        isFilesModalOpen={isFilesModalOpen}
+        setIsFilesModalOpen={setIsFilesModalOpen}
+        part={part}
+        isUploading={isUploading}
+        handleDeleteFile={handleDeleteFile}
+        handleFileClick={handleFileClick}
+        getRootProps={getRootProps}
+        getInputProps={getInputProps}
+      />
 
       <EditPartModal
         isOpen={isEditModalOpen}

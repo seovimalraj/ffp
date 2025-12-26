@@ -3,9 +3,9 @@
  */
 export enum MetaNames {
   /** Key for storing role metadata in decorators */
-  rolesMetaKey = 'roles',
+  rolesMetaKey = "roles",
   /** Key for storing permission metadata in decorators */
-  permissionsMetaKey = 'permissions',
+  permissionsMetaKey = "permissions",
 }
 
 /**
@@ -13,29 +13,29 @@ export enum MetaNames {
  */
 export enum Tables {
   /** Table storing user account information */
-  UserTable = 'users',
+  UserTable = "users",
   /** Table storing organization details */
-  OrganizationTable = 'organizations',
+  OrganizationTable = "organizations",
   /** Table storing role definitions */
-  RolesTable = 'roles',
+  RolesTable = "roles",
   /** Table storing permission definitions */
-  PermissionsTable = 'permissions',
+  PermissionsTable = "permissions",
   /** Junction table linking organizations with their general roles */
-  GeneralOrganizationRolesTable = 'general_organization_roles',
+  GeneralOrganizationRolesTable = "general_organization_roles",
   /** Junction table linking roles with their permissions */
-  RolePermissionsTable = 'role_permissions',
+  RolePermissionsTable = "role_permissions",
   /** Table storing refresh tokens for authentication */
-  RefreshTokensTable = 'refresh_tokens',
+  RefreshTokensTable = "refresh_tokens",
 
-  GeneralMaterialsTable = 'general_materials',
+  GeneralMaterialsTable = "general_materials",
 
-  MaterialCategories = 'material_categories',
+  MaterialCategories = "material_categories",
 
-  SupplierMaterials = 'supplier_materials',
+  SupplierMaterials = "supplier_materials",
 
-  Warehouses = 'warehouses',
+  Warehouses = "warehouses",
 
-  MaterialTable = 'material'
+  MaterialTable = "material",
 }
 
 /**
@@ -43,9 +43,9 @@ export enum Tables {
  */
 
 export enum StockMaterial {
-  Block = 'block',
-  Rod = 'rod',
-  Plate = 'plate',
+  Block = "block",
+  Rod = "rod",
+  Plate = "plate",
 }
 
 /**
@@ -53,11 +53,11 @@ export enum StockMaterial {
  */
 export enum MaterializedViewNames {
   /** Materialized view containing user permission codes for fast lookup */
-  userPermissionCodesMV = 'user_permission_codes_mv',
+  userPermissionCodesMV = "user_permission_codes_mv",
 }
 
 export enum SQLFunctions {
-  userPermissionCodesMVRefresh = 'refresh_user_permission_codes_mv'
+  userPermissionCodesMVRefresh = "refresh_user_permission_codes_mv",
 }
 
 /**
@@ -65,15 +65,15 @@ export enum SQLFunctions {
  */
 export enum RoleNames {
   /** Administrator role with elevated privileges */
-  Admin = 'admin',
+  Admin = "admin",
   /** Supplier role for vendor users */
-  Supplier = 'supplier',
+  Supplier = "supplier",
   /** Customer role for end users */
-  Customer = 'customer',
+  Customer = "customer",
 }
 
-export type CurrencyType = 'USD' | 'INR';
-export type UnitType = 'kg' | 'tons' | 'liters' | 'pieces';
+export type CurrencyType = "USD" | "INR";
+export type UnitType = "kg" | "tons" | "liters" | "pieces";
 
 /**
  * Permission names following hierarchical naming convention
@@ -81,18 +81,18 @@ export type UnitType = 'kg' | 'tons' | 'liters' | 'pieces';
  */
 export enum PermissionsNames {
   /** Full administrative access to all system functions */
-  adminFullAccess = 'admin.access.allmight',
+  adminFullAccess = "admin.access.allmight",
   /** Full access to organization-level functions */
-  organizationFullAccess = 'org.access.allmight',
+  organizationFullAccess = "org.access.allmight",
 
   //   Warehouse permissions
-  warehouseFullAccess = 'warehouse.access.allmight',
-  warehouseReadAccess = 'warehouse.access.read',
-  warehouseWriteAccess = 'warehouse.access.write',
+  warehouseFullAccess = "warehouse.access.allmight",
+  warehouseReadAccess = "warehouse.access.read",
+  warehouseWriteAccess = "warehouse.access.write",
 
   //   Material permissions
-  materialReadAccess = 'material.access.read',
-  materialWriteAccess = 'material.access.write',
+  materialReadAccess = "material.access.read",
+  materialWriteAccess = "material.access.write",
 }
 
 /**
@@ -104,33 +104,75 @@ export enum PermissionsNames {
  */
 export const PERMISSION_ALIASES: Record<string, string[]> = {
   // Warehouse permissions
-  'warehouse.access.read': [
+  "warehouse.access.read": [
     PermissionsNames.adminFullAccess,
     PermissionsNames.organizationFullAccess,
     PermissionsNames.warehouseFullAccess,
   ],
-  'warehouse.access.write': [
+  "warehouse.access.write": [
     PermissionsNames.adminFullAccess,
     PermissionsNames.organizationFullAccess,
     PermissionsNames.warehouseFullAccess,
   ],
-  'warehouse.access.allmight': [
+  "warehouse.access.allmight": [
     PermissionsNames.adminFullAccess,
     PermissionsNames.organizationFullAccess,
     PermissionsNames.warehouseFullAccess,
   ],
 
   // Material permissions
-  'material.access.read': [
+  "material.access.read": [
     PermissionsNames.adminFullAccess,
     PermissionsNames.organizationFullAccess,
   ],
-  'material.access.write': [
+  "material.access.write": [
     PermissionsNames.adminFullAccess,
     PermissionsNames.organizationFullAccess,
   ],
-  'material.access.allmight': [
+  "material.access.allmight": [
     PermissionsNames.adminFullAccess,
     PermissionsNames.organizationFullAccess,
   ],
 };
+
+export const leadTimeMeta = {
+  economy: {
+    badge: "Best Value",
+    badgeClass: "bg-slate-100 text-slate-600",
+  },
+  standard: {
+    badge: "Most Popular",
+    badgeClass: "bg-blue-100 text-blue-700",
+  },
+  expedited: {
+    badge: "Fastest",
+    badgeClass: "bg-slate-100 text-slate-600",
+  },
+} as const;
+
+export const markupMap = {
+  economy: 0.2,
+  standard: 0.25,
+  expedited: 0.3,
+} as const;
+
+export const leadTypeStyles = {
+  economy: {
+    border: "border-emerald-600",
+    bg: "bg-emerald-50",
+    ring: "ring-emerald-600",
+    text: "text-emerald-700",
+  },
+  standard: {
+    border: "border-blue-600",
+    bg: "bg-blue-50",
+    ring: "ring-blue-600",
+    text: "text-blue-700",
+  },
+  expedited: {
+    border: "border-purple-600",
+    bg: "bg-purple-50",
+    ring: "ring-purple-600",
+    text: "text-purple-700",
+  },
+} as const;

@@ -116,7 +116,7 @@ const authOptions: NextAuthOptions = {
     maxAge: 30 * 24 * 60 * 60, // 30 days (matches refresh token expiry)
   },
   callbacks: {
-    async jwt({ token, user, _account }) {
+    async jwt({ token, user }) {
       // Initial sign in: Credentials provider may not provide `account`,
       // so create the token whenever `user` is present.
       if (user) {

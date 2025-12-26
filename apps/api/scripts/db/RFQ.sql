@@ -26,6 +26,7 @@ CREATE TABLE rfq_parts (
     delivery_date TIMESTAMP,
     geometry JSONB,
     pricing JSONB,
+    certificates JSONB,
     is_archived BOOLEAN DEFAULT FALSE,
     final_price numeric(10, 2),
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,

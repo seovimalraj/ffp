@@ -56,6 +56,7 @@ import { apiClient } from "@/lib/api";
 import { PartConfig } from "@/types/part-config";
 import Logo from "@/components/ui/logo";
 import ArchiveModal from "../components/archive-modal";
+import { SuggestionSidebar } from "../components/suggestion-sidebar";
 
 // --- Constants (Moved Outside) ---
 const MATERIALS_LIST = Object.entries(MATERIALS).map(([key, mat]) => ({
@@ -108,7 +109,7 @@ type IRFQ = {
 
 // --- Moved Helper Functions ---
 
-const calculateLeadTime = (
+export const calculateLeadTime = (
   part: PartConfig,
   tier?: "economy" | "standard" | "expedited",
 ) => {
@@ -220,14 +221,14 @@ export default function QuoteConfigPage() {
             inspection: "standard",
             notes: "",
             lead_time_type: "standard",
-            lead_time: 7,
+            lead_time: 0,
             geometry,
             pricing: undefined,
             final_price: 0,
             certificates: [],
           };
           newPart.final_price = calculatePrice(newPart);
-
+          newPart.lead_time = calculateLeadTime(newPart, "standard");
           newParts.push(newPart);
         }
         const { data } = await apiClient.post(`/rfq/${rfq.id}/add-parts`, {
@@ -285,7 +286,6 @@ export default function QuoteConfigPage() {
         return;
       }
 
-      setParts((prev) => prev.filter((p) => !partIds.includes(p.id)));
       notify.success(`Successfully deleted ${partIds.length} part(s)`);
     } catch (error) {
       console.error(error);
@@ -793,6 +793,33 @@ export default function QuoteConfigPage() {
     }
   };
 
+  // Handle applying suggestions
+  const handleApplySuggestion = (suggestion: any) => {
+    const partIndex = parts.findIndex((p) => p.id === suggestion.partId);
+    if (partIndex === -1) return;
+
+    switch (suggestion.type) {
+      case "quantity":
+        updatePart(partIndex, "quantity", suggestion.suggestedValue, true);
+        notify.success(`Quantity updated to ${suggestion.suggestedValue}`);
+        break;
+      case "material":
+        updatePart(partIndex, "material", suggestion.suggestedValue, true);
+        notify.success(`Material updated to ${suggestion.suggestedValue}`);
+        break;
+      case "finish":
+        updatePart(partIndex, "finish", suggestion.suggestedValue, true);
+        notify.success(`Finish updated to ${suggestion.suggestedValue}`);
+        break;
+      case "leadtime":
+        updatePart(partIndex, "leadTimeType", "standard", true);
+        notify.success("Lead time updated to Standard");
+        break;
+      default:
+        break;
+    }
+  };
+
   if (loading) {
     return (
       <div className="min-h-screen bg-[conic-gradient(at_top_right,_var(--tw-gradient-stops))] from-blue-100 via-blue-50 to-white flex items-center justify-center relative overflow-hidden">
@@ -1145,7 +1172,6 @@ export default function QuoteConfigPage() {
               {/* Mini Breakdown */}
               <div className="space-y-3 max-h-[calc(100vh-85px)] overflow-y-auto custom-scrollbar pr-1">
                 {parts.map((p, i) => {
-                  console.log(p, "p");
                   const pPrice = p.final_price || 0;
                   const calculatedLeadTime = p.leadTime || 0;
                   return (
@@ -1268,6 +1294,12 @@ export default function QuoteConfigPage() {
         FINISHES_LIST={FINISHES_LIST}
         handleUnarchivePart={handleUnarchivePart}
         handleUnarchiveAll={handleUnarchiveAll}
+      />
+
+      {/* Suggestion Sidebar */}
+      <SuggestionSidebar
+        parts={parts}
+        onApplySuggestion={handleApplySuggestion}
       />
 
       {/* Floating Action Bar for Selection Mode */}

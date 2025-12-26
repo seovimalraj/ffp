@@ -1,6 +1,8 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
+import { RoleNames } from '../../libs/constants';
+import { setRlsContext } from 'src/auth/set-rls-context';
 
 @Injectable()
 export class SupabaseService {
@@ -57,16 +59,22 @@ export class SupabaseService {
     file: Express.Multer.File,
     bucket: string = 'uploads',
     path?: string,
+    user?: { id: string; role: string },
   ) {
     if (!path) {
       path = `FFP-${Date.now()}-${file.originalname}`;
     }
+    await setRlsContext(this.supabase, user.id, user.role === RoleNames.Admin);
 
     const { error } = await this.supabase.storage
       .from(bucket)
       .upload(path, file.buffer, {
         contentType: file.mimetype,
         upsert: true,
+        metadata: {
+          user_id: user.id,
+          user_role: user.role,
+        },
       });
 
     if (error) {
