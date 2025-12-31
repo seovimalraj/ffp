@@ -23,7 +23,7 @@ Replaced mock pricing data with **real CAD geometry analysis** and **comprehensi
   - Volume calculation using signed tetrahedron method
   - Surface area computation from triangle areas
   - Bounding box extraction (X, Y, Z dimensions)
-  
+  test
 - **Geometry Metrics:**
   - Volume (mm³)
   - Surface area (mm²)
