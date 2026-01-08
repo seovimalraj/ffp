@@ -1,11 +1,13 @@
 "use client";
 
-import NotificationDropdown from "@/components/Header/NotificationDropdown";
-import UserDropdown from "@/components/Header/UserDropdown";
 import { useSidebar } from "@/context/SidebarContext";
 import Link from "next/link";
 import React, { useEffect, useRef } from "react";
 import Logo from "@/components/ui/logo";
+import { Search, Command } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { useRouter } from "next/navigation";
+import { useSession } from "next-auth/react";
 
 interface AppHeaderProps {
   setOpen: () => void;
@@ -13,6 +15,8 @@ interface AppHeaderProps {
 
 const AppHeader = ({ setOpen }: AppHeaderProps) => {
   const { toggleMobileSidebar } = useSidebar();
+  const router = useRouter();
+  const session = useSession();
 
   const handleToggle = () => {
     setOpen();
@@ -36,73 +40,71 @@ const AppHeader = ({ setOpen }: AppHeaderProps) => {
   }, []);
 
   return (
-    <header className="sticky top-0 flex w-full bg-white border-b border-gray-200/80 z-40 h-14 shadow-sm">
-      <div className="flex items-center justify-between w-full px-4 lg:px-6">
-        {/* Left section - only visible on mobile */}
-        <div className="flex items-center gap-3 lg:hidden">
+    <header className="sticky top-0 z-30 flex h-16 w-full items-center bg-white/80 backdrop-blur-md border-b border-slate-200 px-4 lg:px-8">
+      <div className="flex items-center justify-between w-full">
+        {/* Left section - Mobile Toggle & Logo */}
+        <div className="flex items-center gap-4 lg:hidden">
           <button
-            className="flex items-center justify-center w-9 h-9 text-gray-500 hover:bg-gray-100 rounded-lg transition-all duration-200 active:scale-95"
+            className="flex items-center justify-center w-10 h-10 text-slate-500 hover:bg-slate-50 rounded-xl transition-all active:scale-95"
             onClick={handleToggle}
             aria-label="Toggle Sidebar"
           >
-            <svg width="18" height="14" viewBox="0 0 16 12" fill="none">
-              <path
-                fillRule="evenodd"
-                clipRule="evenodd"
-                d="M0.583252 1C0.583252 0.585788 0.919038 0.25 1.33325 0.25H14.6666C15.0808 0.25 15.4166 0.585786 15.4166 1C15.4166 1.41421 15.0808 1.75 14.6666 1.75L1.33325 1.75C0.919038 1.75 0.583252 1.41422 0.583252 1ZM0.583252 11C0.583252 10.5858 0.919038 10.25 1.33325 10.25L14.6666 10.25C15.0808 10.25 15.4166 10.5858 15.4166 11C15.4166 11.4142 15.0808 11.75 14.6666 11.75L1.33325 11.75C0.919038 11.75 0.583252 11.4142 0.583252 11ZM1.33325 5.25C0.919038 5.25 0.583252 5.58579 0.583252 6C0.583252 6.41421 0.919038 6.75 1.33325 6.75L7.99992 6.75C8.41413 6.75 8.74992 6.41421 8.74992 6C8.74992 5.58579 8.41413 5.25 7.99992 5.25L1.33325 5.25Z"
-                fill="currentColor"
-              />
+            <svg
+              width="20"
+              height="20"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            >
+              <line x1="3" y1="12" x2="21" y2="12"></line>
+              <line x1="3" y1="6" x2="21" y2="6"></line>
+              <line x1="3" y1="18" x2="21" y2="18"></line>
             </svg>
           </button>
-          <Link href="/" className="flex-shrink-0">
-            <div className="h-7 w-auto">
+          <Link href="/portal/dashboard" className="flex-shrink-0">
+            <div className="h-8 w-auto">
               <Logo classNames="h-full w-auto object-contain" />
             </div>
           </Link>
         </div>
 
-        {/* Center section - Search Bar */}
-        <div className="hidden lg:flex flex-1 justify-center max-w-2xl mx-auto">
-          <form className="w-full max-w-md">
-            <div className="relative group">
-              <span className="absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none transition-colors">
-                <svg
-                  className="text-gray-400 group-focus-within:text-blue-500 transition-colors"
-                  width="16"
-                  height="16"
-                  viewBox="0 0 20 20"
-                  fill="none"
-                >
-                  <path
-                    fillRule="evenodd"
-                    clipRule="evenodd"
-                    d="M3.04175 9.37363C3.04175 5.87693 5.87711 3.04199 9.37508 3.04199C12.8731 3.04199 15.7084 5.87693 15.7084 9.37363C15.7084 12.8703 12.8731 15.7053 9.37508 15.7053C5.87711 15.7053 3.04175 12.8703 3.04175 9.37363ZM9.37508 1.54199C5.04902 1.54199 1.54175 5.04817 1.54175 9.37363C1.54175 13.6991 5.04902 17.2053 9.37508 17.2053C11.2674 17.2053 13.003 16.5344 14.357 15.4176L17.177 18.238C17.4699 18.5309 17.9448 18.5309 18.2377 18.238C18.5306 17.9451 18.5306 17.4703 18.2377 17.1774L15.418 14.3573C16.5365 13.0033 17.2084 11.2669 17.2084 9.37363C17.2084 5.04817 13.7011 1.54199 9.37508 1.54199Z"
-                    fill="currentColor"
-                  />
-                </svg>
-              </span>
-              <input
-                ref={inputRef}
-                type="text"
-                placeholder="Search task..."
-                className="h-9 w-full rounded-lg border border-gray-200 bg-white px-3 pl-9 pr-16 text-sm text-gray-700 placeholder:text-gray-400 hover:border-gray-300 focus:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-500/20 transition-all duration-200"
-              />
-              <button
-                type="button"
-                className="absolute right-2 top-1/2 -translate-y-1/2 inline-flex items-center gap-0.5 rounded border border-gray-200 bg-gray-50 px-1.5 py-0.5 text-[11px] text-gray-500 hover:bg-gray-100 transition-colors"
-              >
-                <span>⌘</span>
-                <span>F</span>
-              </button>
+        {/* Center section - Search Area */}
+        <div className="hidden lg:flex flex-1 max-w-xl">
+          <div className="relative w-full group">
+            <div className="absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none">
+              <Search className="w-4 h-4 text-slate-400 group-focus-within:text-blue-500 transition-colors" />
             </div>
-          </form>
+            <input
+              ref={inputRef}
+              type="text"
+              className="block w-full h-10 pl-10 pr-12 text-sm text-slate-900 bg-slate-50 border border-transparent rounded-xl focus:bg-white focus:ring-2 focus:ring-blue-500/10 focus:border-blue-500/30 transition-all outline-none"
+              placeholder="Search..."
+            />
+            <div className="absolute inset-y-0 right-0 flex items-center pr-3 pointer-events-none">
+              <kbd className="hidden sm:inline-flex items-center gap-1 h-5 px-1.5 font-sans text-[10px] font-medium text-slate-400 bg-white border border-slate-200 rounded">
+                <Command className="w-2.5 h-2.5" />
+                <span>K</span>
+              </kbd>
+            </div>
+          </div>
         </div>
 
-        {/* Right section - Actions */}
-        <div className="flex items-center gap-2">
-          <NotificationDropdown />
-          <UserDropdown />
-        </div>
+        {/* Right Section - Page Title or Contextual info */}
+        {session.data?.user.role === "customer" && (
+          <div className="hidden lg:flex items-center gap-4">
+            <div className="h-8 w-px bg-slate-200 mx-2" />
+            <Button
+              className="rounded-md"
+              variant="cta"
+              onClick={() => router.push("/instant-quote")}
+            >
+              New Quote
+            </Button>
+          </div>
+        )}
       </div>
     </header>
   );

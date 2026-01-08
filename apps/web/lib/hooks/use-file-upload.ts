@@ -1,8 +1,13 @@
 import { useState } from "react";
 import { apiClient } from "../api";
+import { dataURLtoFile } from "../utils";
 
 interface UseFileUploadReturn {
   upload: (file: File) => Promise<{ url: string; message: string }>;
+  uploadBase64: (
+    base64String: string,
+    fileName: string,
+  ) => Promise<{ url: string; message: string }>;
   isUploading: boolean;
   progress: number;
   error: string | null;
@@ -57,8 +62,14 @@ export function useFileUpload(): UseFileUploadReturn {
     }
   };
 
+  const uploadBase64 = async (base64String: string, fileName: string) => {
+    const file = dataURLtoFile(base64String, fileName);
+    return upload(file);
+  };
+
   return {
     upload,
+    uploadBase64,
     isUploading: status === "uploading",
     progress,
     error,

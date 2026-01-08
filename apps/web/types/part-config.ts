@@ -28,6 +28,7 @@ export interface PartConfig {
   certificates?: string[];
   final_price?: number;
   leadTime?: number;
+  snapshot_2d_url?: string;
   is_archived?: boolean;
 }
 

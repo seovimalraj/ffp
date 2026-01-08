@@ -4,6 +4,7 @@ CREATE TABLE rfq (
   user_id UUID NOT NULL REFERENCES users(id),
   final_price numeric(10, 2),
   status VARCHAR(50) NOT NULL,
+  organization_id UUID NOT NULL REFERENCES organizations(id),
   order_id UUID NOT NULL REFERENCES orders(id),
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
@@ -15,6 +16,7 @@ CREATE TABLE rfq_parts (
   file_name VARCHAR(255) NOT NULL,
   cad_file_url VARCHAR(255) NOT NULL,
   cad_file_type VARCHAR(50) NOT NULL,
+  snapshot_2d_url TEXT,
   material VARCHAR(50) NOT NULL,
   quantity INT NOT NULL,
   tolerance VARCHAR(50) NOT NULL,
@@ -25,10 +27,11 @@ CREATE TABLE rfq_parts (
   lead_time_type VARCHAR(50) NOT NULL,
   lead_time INT NOT NULL,
   delivery_date TIMESTAMP,
-  K geometry JSONB,
+  geometry JSONB,
   pricing JSONB,
   certificates JSONB,
   is_archived BOOLEAN DEFAULT FALSE,
+  organization_id UUID NOT NULL REFERENCES organizations(id),
   final_price numeric(10, 2),
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP

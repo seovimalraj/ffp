@@ -37,7 +37,7 @@ export function createViewer(container: HTMLElement): Viewer {
   (renderer as any).outputColorSpace =
     (THREE as any).SRGBColorSpace ?? undefined;
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
-  renderer.setClearColor(0x111827);
+  renderer.setClearColor(0xffffff);
   renderer.localClippingEnabled = true;
   container.appendChild(renderer.domElement);
 
@@ -73,7 +73,7 @@ export function createViewer(container: HTMLElement): Viewer {
   let gridHelper: THREE.GridHelper | null = null;
   let axesHelper: THREE.AxesHelper | null = null;
 
-  gridHelper = new THREE.GridHelper(1000, 50, 0x666666, 0x333333);
+  gridHelper = new THREE.GridHelper(1000, 50, 0xcccccc, 0xeeeeee);
   gridHelper.position.y = 0;
   scene.add(gridHelper);
 
@@ -88,7 +88,7 @@ export function createViewer(container: HTMLElement): Viewer {
   const pointer = new THREE.Vector2();
 
   const measureMaterial = new THREE.LineBasicMaterial({
-    color: 0xffffff,
+    color: 0x000000,
     depthTest: false,
     depthWrite: false,
   });
@@ -96,7 +96,7 @@ export function createViewer(container: HTMLElement): Viewer {
   let measureLabel: THREE.Sprite | null = null;
 
   const arrowMaterial = new THREE.MeshBasicMaterial({
-    color: 0xffffff,
+    color: 0x000000,
     side: THREE.DoubleSide,
     depthTest: false,
     depthWrite: false,
@@ -400,8 +400,8 @@ export function createViewer(container: HTMLElement): Viewer {
       canvas.width = textWidth + 20;
       canvas.height = fontSize + 20;
       ctx.font = `${fontSize}px sans-serif`;
-      ctx.fillStyle = "white";
-      ctx.strokeStyle = "black";
+      ctx.fillStyle = "black";
+      ctx.strokeStyle = "white";
       ctx.lineWidth = 4;
       ctx.strokeText(text, 10, fontSize);
       ctx.fillText(text, 10, fontSize);
@@ -572,8 +572,8 @@ export function createViewer(container: HTMLElement): Viewer {
     // we can do a default fit here (zoom=1) to ensure something is visible.
     if (gridHelper) gridHelper.position.y = 0;
 
-    // Default fit with zoom=1 (internally uses padding 1.3)
-    const padding = 1.3;
+    // Default fit with zoom=1 (internally uses padding 1.5)
+    const padding = 1.5;
     fitCameraToBox(finalBox, padding);
   }
 
@@ -645,7 +645,7 @@ export function createViewer(container: HTMLElement): Viewer {
     if (wireframe || xray) {
       renderer.setClearColor(0x000000);
     } else {
-      renderer.setClearColor(0x111827);
+      renderer.setClearColor(0xffffff);
     }
 
     modelRoot.traverse((child: any) => {
@@ -705,10 +705,10 @@ export function createViewer(container: HTMLElement): Viewer {
   function fitToScreen(zoom: number = 1) {
     if (modelRoot.children.length === 0) return;
     const box = new THREE.Box3().setFromObject(modelRoot);
-    // Base padding 1.3 (standard).
+    // Base padding 1.5 (generous).
     // userZoom > 1 means closer (smaller padding)
     // userZoom < 1 means further (larger padding)
-    const padding = 1.3 / Math.max(0.1, zoom);
+    const padding = 1.5 / Math.max(0.1, zoom);
     fitCameraToBox(box, padding);
   }
 

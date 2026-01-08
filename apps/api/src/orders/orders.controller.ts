@@ -171,6 +171,26 @@ export class OrdersController {
     return { data };
   }
 
+  @Post(':id/failure')
+  async markOrderAsFailure(
+    @CurrentUser() currentUser: CurrentUserDto,
+    @Param('id') id: string,
+  ) {
+    const client = this.supabaseService.getClient();
+    const { data, error } = await client.rpc(SQLFunctions.markOrderAsFailure, {
+      p_order_id: id,
+    });
+
+    if (error) {
+      this.logger.error(`Error marking order as failure: ${error.message}`);
+      throw new InternalServerErrorException(
+        `Error marking order as failure: ${error.message}`,
+      );
+    }
+
+    return { data };
+  }
+
   @Post(':id/pay')
   async payOrder(
     @CurrentUser() currentUser: CurrentUserDto,

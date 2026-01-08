@@ -135,6 +135,7 @@ $$;
 -- 
 -- -- Triggers
 -- 
-CREATE IF NOT EXISTS TRIGGER trg_create_part_confirmations_on_paid
+DROP TRIGGER IF EXISTS trg_create_part_confirmations_on_paid ON orders;
+CREATE TRIGGER trg_create_part_confirmations_on_paid
 AFTER
 UPDATE OF payment_status ON orders FOR EACH ROW EXECUTE FUNCTION create_part_confirmations_on_paid();

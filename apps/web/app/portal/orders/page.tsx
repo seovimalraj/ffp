@@ -5,6 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Column } from "@/components/ui/data-table";
 import { DataView } from "@/components/ui/data-view";
 import { Skeleton } from "@/components/ui/skeleton";
+import { StatusCards } from "@/components/ui/status-cards";
 import { apiClient } from "@/lib/api";
 import { formatCurrency, formatDate } from "@/lib/format";
 import { CubeIcon } from "@heroicons/react/24/outline";
@@ -93,8 +94,26 @@ const Page = () => {
             <CardTitle>Orders ({orders.length})</CardTitle>
           </CardHeader>
           <CardContent>
+            <StatusCards
+              items={[
+                {
+                  label: "Total Orders",
+                  value: orders.length,
+                },
+                {
+                  label: "Pending Orders",
+                  value: orders.filter((order) => order.status === "pending")
+                    .length,
+                },
+                {
+                  label: "Completed Orders",
+                  value: orders.filter((order) => order.status === "completed")
+                    .length,
+                },
+              ]}
+            />
             {loading ? (
-              <div className="space-y-4">
+              <div className="space-y-4 mt-5">
                 {Array.from({ length: 5 }).map((_, i) => (
                   <div key={i} className="flex items-center space-x-4">
                     <Skeleton className="w-16 h-4" />

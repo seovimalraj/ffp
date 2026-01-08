@@ -104,7 +104,7 @@ export function PartCardItem({
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [expandedFile, setExpandedFile] = useState<File | string | null>(null);
 
-  const { upload } = useFileUpload();
+  const { upload, uploadBase64 } = useFileUpload();
 
   const onDrop = useCallback(
     async (acceptedFiles: File[]) => {
@@ -242,7 +242,26 @@ export function PartCardItem({
             <CadViewer
               file={part.fileObject || part.filePath}
               className="h-full w-full"
-              zoom={0.9}
+              zoom={0.8}
+              {...(!part.snapshot_2d_url && {
+                onSnapshot: async (snapshot) => {
+                  try {
+                    const { url } = await uploadBase64(
+                      snapshot,
+                      `${part.fileName}-snapshot.png`,
+                    );
+
+                    await apiClient.post(
+                      `/rfq/${part.rfqId}/part/${part.id}/upload-snapshot`,
+                      { snapshot: url },
+                    );
+
+                    updatePart(index, "snapshot_2d_url", url, false);
+                  } catch (error) {
+                    console.error("Failed to upload snapshot:", error);
+                  }
+                },
+              })}
             />
             {/* Overlay Badges */}
             <div className="absolute top-2 right-2 flex flex-col gap-1 items-end">
@@ -257,10 +276,10 @@ export function PartCardItem({
               onClick={() =>
                 setExpandedFile(part.fileObject || part.filePath || null)
               }
-              className="absolute bottom-4 right-4 rounded-full bg-white/10 p-2 text-white backdrop-blur-sm transition-colors hover:bg-white/20"
+              className="absolute bottom-4 right-4 rounded-full bg-black/10 p-2 text-black backdrop-blur-sm transition-colors hover:bg-black/20"
               title="Expand View"
             >
-              <Expand className="w-5 h-5" />
+              <Expand className="w-5 h-5 text-black" fill="#000" />
             </button>
           </div>
 
@@ -583,7 +602,9 @@ export function PartCardItem({
                             )
                           }
                           className={`
-                            relative cursor-pointer rounded-2xl border p-4 transition-all
+                            relative cursor-pointer rounded-xl sm:rounded-2xl
+                            border p-3 sm:p-4 transition-all
+                            active:scale-[0.98]
                             ${
                               isSelected
                                 ? "border-blue-600 bg-blue-50 ring-2 ring-blue-600"
@@ -592,20 +613,26 @@ export function PartCardItem({
                           `}
                         >
                           {/* Badge */}
-                          <div className="absolute -right-3 -top-2">
+                          <div className="absolute right-2 top-2 sm:-right-3 sm:-top-2">
                             <span
-                              className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wide ${isSelected ? "bg-blue-100 text-blue-700" : "bg-slate-200 text-slate-600"}`}
+                              className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide
+                                ${
+                                  isSelected
+                                    ? "bg-blue-100 text-blue-700"
+                                    : "bg-slate-200 text-slate-600"
+                                }
+                              `}
                             >
                               {leadTimeMeta[leadTimeType].badge}
                             </span>
                           </div>
 
                           {/* Header */}
-                          <div className="mb-4 flex items-center gap-3">
+                          <div className="mb-3 sm:mb-4 flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3">
                             <img
                               src={icon}
                               alt=""
-                              className="h-9 w-9 shrink-0"
+                              className="h-8 w-8 sm:h-9 sm:w-9 shrink-0"
                             />
 
                             <div className="leading-tight">
@@ -620,13 +647,13 @@ export function PartCardItem({
 
                           {/* Pricing */}
                           <div className="space-y-1">
-                            <div className="flex items-end justify-between">
-                              <div className="text-sm text-slate-400 line-through">
+                            <div className="flex flex-col items-start justify-between">
+                              <div className="text-xs sm:text-sm text-slate-400 line-through">
                                 {formatCurrencyFixed(marketingPrice)}
                               </div>
 
                               <div
-                                className={`text-2xl font-bold leading-none ${
+                                className={`text-xl sm:text-2xl font-bold leading-none ${
                                   isSelected
                                     ? "text-blue-700"
                                     : "text-slate-700"
@@ -637,7 +664,7 @@ export function PartCardItem({
                             </div>
 
                             <div className="text-xs text-slate-500">
-                              You save{" "}
+                              Save{" "}
                               <span className="font-semibold text-green-700">
                                 {formatCurrencyFixed(
                                   marketingPrice - realPrice,
@@ -645,13 +672,6 @@ export function PartCardItem({
                               </span>
                             </div>
                           </div>
-
-                          {/* Selected indicator */}
-                          {isSelected && (
-                            <div className="absolute bottom-3 right-3 text-[11px] font-semibold text-blue-700">
-                              Selected
-                            </div>
-                          )}
                         </div>
                       );
                     },

@@ -16,12 +16,14 @@ import { Roles } from '../auth/roles.decorator';
 import { SupabaseService } from '../supabase/supabase.service';
 import {
   Add2DDrawingsDto,
+  DerivedRFQDto,
   InitialPartDto,
   InitialRFQDto,
   RemovePartsDto,
   SyncPricingDto,
   UpdatePartDto,
   UpdateRfqDto,
+  UploadSnapshotDto,
 } from './rfq.dto';
 import { AuthGuard } from '../auth/auth.guard';
 import { CurrentUser } from '../auth/user.decorator';
@@ -56,13 +58,17 @@ export class RfqController {
 
   @Post('')
   @Roles(RoleNames.Customer)
-  async createRfq(@Body() body: InitialRFQDto) {
+  async createRfq(
+    @Body() body: InitialRFQDto,
+    @CurrentUser() user: CurrentUserDto,
+  ) {
     const client = this.supbaseService.getClient();
 
     // check the code in the create-inital-rfq.sql file
     // for SQL function code
     const { data, error } = await client.rpc(SQLFunctions.createInitialRFQ, {
       p_user_id: body.user_id,
+      p_organization_id: user.organizationId,
       p_parts: body.parts,
     });
 
@@ -78,11 +84,70 @@ export class RfqController {
     };
   }
 
+  @Post('derived')
+  @Roles(RoleNames.Customer)
+  async dervieRfq(
+    @Body() body: { groups: DerivedRFQDto[] },
+    @CurrentUser() user: CurrentUserDto,
+  ) {
+    const client = this.supbaseService.getClient();
+
+    // Process all groups in parallel for maximum performance
+    const results = await Promise.all(
+      body.groups.map(async (group) => {
+        // Batch fetch all parts for this group in a single query (O(1) instead of O(n))
+        const { data: expandedParts, error: fetchError } = await client
+          .from(Tables.RFQPartsTable)
+          .select('*')
+          .in('id', group.parts);
+
+        if (fetchError) {
+          throw new HttpException(
+            `Failed to fetch parts: ${fetchError.message}`,
+            HttpStatus.BAD_REQUEST,
+          );
+        }
+
+        // Validate all parts were found
+        if (!expandedParts || expandedParts.length !== group.parts.length) {
+          throw new HttpException(
+            `Some parts not found. Expected ${group.parts.length}, found ${expandedParts?.length || 0}`,
+            HttpStatus.NOT_FOUND,
+          );
+        }
+
+        // Create new RFQ with the fetched parts
+        const { data, error } = await client.rpc(
+          SQLFunctions.createInitialRFQ,
+          {
+            p_user_id: user.id,
+            p_parts: expandedParts,
+          },
+        );
+
+        if (error) {
+          throw new HttpException(
+            `Failed to create RFQ: ${error.message}`,
+            HttpStatus.INTERNAL_SERVER_ERROR,
+          );
+        }
+
+        return data[0];
+      }),
+    );
+
+    return {
+      success: true,
+      rfqs: results,
+    };
+  }
+
   @Post(':rfqId/add-parts')
   @Roles(RoleNames.Customer)
   async addParts(
     @Param('rfqId') rfqId: string,
     @Body() body: { parts: InitialPartDto[] },
+    @CurrentUser() user: CurrentUserDto,
   ) {
     const client = this.supbaseService.getClient();
 
@@ -92,6 +157,7 @@ export class RfqController {
         body.parts.map((part) => ({
           rfq_id: rfqId,
           ...part,
+          organization_id: user.organizationId,
         })),
       )
       .select(); // IMPORTANT: return inserted rows
@@ -332,6 +398,33 @@ export class RfqController {
     return {
       rfq,
       parts: complete,
+    };
+  }
+
+  @Post(':rfqId/part/:partId/upload-snapshot')
+  @Roles(RoleNames.Admin, RoleNames.Supplier, RoleNames.Customer)
+  async uploadSnapshot(
+    @Body() body: UploadSnapshotDto,
+    @Param('partId') partId: string,
+  ) {
+    const client = this.supbaseService.getClient();
+
+    const { data, error } = await client
+      .from(Tables.RFQPartsTable)
+      .update({
+        snapshot_2d_url: body.snapshot,
+      })
+      .eq('id', partId)
+      .select()
+      .single();
+
+    if (error) {
+      throw new HttpException(error.message, HttpStatus.BAD_REQUEST);
+    }
+
+    return {
+      success: true,
+      part: data,
     };
   }
 

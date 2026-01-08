@@ -25,11 +25,26 @@ v_order_code TEXT;
 v_part order_part_input;
 v_part_id UUID;
 v_total NUMERIC(12, 2);
-BEGIN -- Calculate total
+BEGIN -------------------------------------------------------------------
+-- 1. If an order already exists for this RFQ, return it (ignore)
+-------------------------------------------------------------------
+SELECT id INTO v_order_id
+FROM orders
+WHERE rfq_id = p_rfq_id
+LIMIT 1;
+IF v_order_id IS NOT NULL THEN RETURN v_order_id;
+END IF;
+-------------------------------------------------------------------
+-- 2. Calculate total
+-------------------------------------------------------------------
 v_total := p_subtotal + p_shipping_cost + p_tax_amount;
--- Generate order code
+-------------------------------------------------------------------
+-- 3. Generate order code
+-------------------------------------------------------------------
 v_order_code := generate_order_code();
--- Create order
+-------------------------------------------------------------------
+-- 4. Create order
+-------------------------------------------------------------------
 INSERT INTO orders (
     order_code,
     organization_id,
@@ -41,7 +56,6 @@ INSERT INTO orders (
     total_amount,
     customs_info,
     internal_notes,
-    shipping_information,
     address_snapshot,
     status,
     payment_status
@@ -57,13 +71,14 @@ VALUES (
     v_total,
     p_customs_info,
     p_internal_notes,
-    p_shipping_information,
     p_address_snapshot,
     'payment pending',
     'pending'
   )
 RETURNING id INTO v_order_id;
--- Create order parts
+-------------------------------------------------------------------
+-- 5. Create order parts + history
+-------------------------------------------------------------------
 FOREACH v_part IN ARRAY p_parts LOOP
 INSERT INTO order_parts (
     order_id,
@@ -105,7 +120,9 @@ VALUES (
     'Order created'
   );
 END LOOP;
--- Create shipping (once per order)
+-------------------------------------------------------------------
+-- 6. Create shipping (once per order)
+-------------------------------------------------------------------
 INSERT INTO order_shipping (
     order_id,
     address_snapshot,
@@ -118,12 +135,15 @@ VALUES (
     p_shipping_method,
     p_shipping_information
   );
--- Update RFQ
+-------------------------------------------------------------------
+-- 7. Update RFQ (safe)
+-------------------------------------------------------------------
 UPDATE rfq
 SET order_id = v_order_id,
   status = 'payment pending',
   updated_at = now()
-WHERE id = p_rfq_id;
+WHERE id = p_rfq_id
+  AND order_id IS NULL;
 RETURN v_order_id;
 END;
 $$;

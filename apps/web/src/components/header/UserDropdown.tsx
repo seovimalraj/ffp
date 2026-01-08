@@ -1,115 +1,90 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useRef, useEffect } from "react";
 import { useSession, signOut } from "next-auth/react";
 import { useRouter } from "next/navigation";
-// import { Button } from '../ui/button';
-// import { notify } from '@/lib/toast';
-import { UserRound } from "lucide-react";
+import { UserRound, LogOut, LayoutGrid } from "lucide-react";
+import { cn } from "@/lib/utils";
 
 const UserDropdown = () => {
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const { data: session, status } = useSession();
   const router = useRouter();
-  const loading = status === "loading";
+  const dropdownRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (
+        dropdownRef.current &&
+        !dropdownRef.current.contains(event.target as Node)
+      ) {
+        setDropdownOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
 
   if (status === "unauthenticated") {
     router.push("/signin");
     return null;
   }
 
+  const userInitial = session?.user?.email?.[0]?.toUpperCase() || "U";
+
   return (
-    <div className="relative">
+    <div className="relative" ref={dropdownRef}>
       <button
         onClick={() => setDropdownOpen(!dropdownOpen)}
-        className="flex items-center justify-center w-10 h-10 text-gray-500 border-gray-200 rounded-lg dark:border-gray-800 dark:text-gray-400 lg:h-11 lg:w-11 lg:border"
+        className={cn(
+          "flex items-center justify-center w-10 h-10 rounded-xl transition-all duration-200 outline-none",
+          dropdownOpen
+            ? "bg-blue-50 text-blue-600 ring-2 ring-blue-500/20"
+            : "bg-slate-100 text-slate-600 hover:bg-slate-200",
+        )}
         aria-label="User menu"
       >
-        {/* <Image
-          width={32}
-          height={32}
-          className="w-8 h-8 rounded-full"
-          src="/images/user/user-01.png"
-          alt={'User'}
-        /> */}
-        <UserRound className="hidden h-7 w-7 text-gray-500 dark:text-gray-400 sm:block" />
+        <span className="text-xs font-bold leading-none">{userInitial}</span>
       </button>
 
       {dropdownOpen && (
-        <div className="absolute right-0 mt-2 w-56 bg-white border border-gray-200 rounded-lg shadow-lg dark:bg-gray-800 dark:border-gray-700 z-50">
-          <div className="p-4 border-b border-gray-200 dark:border-gray-700">
-            <div className="flex items-center">
-              {/* <Image
-                width={40}
-                height={40}
-                className="w-10 h-10 rounded-full mr-3"
-                src="/images/user/user-01.png"
-                alt={session?.user?.email || 'User'}
-              /> */}
-              <UserRound className="hidden h-7 w-7 text-gray-500 dark:text-gray-400 sm:block" />
-              <div>
-                <p className="text-sm font-medium text-gray-900 dark:text-white truncate max-w-[140px]">
-                  {session?.user?.email || (loading ? "Loading…" : "Guest")}
-                </p>
-                <p className="text-xs text-gray-500 dark:text-gray-400">
-                  {(session?.user as any)?.role || "anon"}
-                </p>
-              </div>
-            </div>
+        <div className="absolute left-0 bottom-full mb-2 w-64 bg-white border border-slate-200 rounded-2xl shadow-xl shadow-slate-200/50 z-[60] py-2 animate-in fade-in slide-in-from-bottom-2 duration-200">
+          <div className="px-4 py-3 border-b border-slate-50 mb-1">
+            <p className="text-sm font-semibold text-slate-900 truncate">
+              {session?.user?.email || "Guest User"}
+            </p>
+            <p className="text-[11px] font-medium text-slate-500 uppercase tracking-wider mt-0.5">
+              {(session?.user as any)?.role || "Customer"}
+            </p>
           </div>
-          <div className="py-1">
-            {/* <Link
-              href="/profile"
-              className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-700"
+
+          <div className="px-2 space-y-0.5">
+            <button
+              onClick={() => {
+                router.push("/portal/account");
+                setDropdownOpen(false);
+              }}
+              className="flex items-center gap-3 w-full px-3 py-2 text-[13px] font-medium text-slate-600 hover:text-slate-900 hover:bg-slate-50 rounded-xl transition-colors"
             >
-              Profile
-            </Link>
-            <RequireAnyRole
-              roles={["admin", "org_admin", "reviewer", "finance", "auditor"]}
+              <UserRound size={16} className="text-slate-400" />
+              Profile Settings
+            </button>
+            <button className="flex items-center gap-3 w-full px-3 py-2 text-[13px] font-medium text-slate-600 hover:text-slate-900 hover:bg-slate-50 rounded-xl transition-colors">
+              <LayoutGrid size={16} className="text-slate-400" />
+              Dashboard
+            </button>
+          </div>
+
+          <div className="mx-2 my-2 border-t border-slate-50" />
+
+          <div className="px-2">
+            <button
+              onClick={() => signOut({ callbackUrl: "/signin" })}
+              className="flex items-center gap-3 w-full px-3 py-2 text-[13px] font-medium text-red-500 hover:bg-red-50 rounded-xl transition-colors"
             >
-              <Link
-                href="/admin/dashboard"
-                className="block px-4 py-2 text-sm text-indigo-600 hover:bg-indigo-50 dark:text-indigo-300 dark:hover:bg-indigo-900/30"
-              >
-                Admin Panel
-              </Link>
-            </RequireAnyRole>
-            <Link
-              href="/portal/dashboard"
-              className="block px-4 py-2 text-sm text-blue-600 hover:bg-blue-50 dark:text-blue-300 dark:hover:bg-blue-900/30"
-            >
-              Customer Portal
-            </Link>
-            <Link
-              href="/settings"
-              className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-700"
-            >
-              Settings
-            </Link>
-            <Link
-              href="/billing"
-              className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-700"
-            >
-              Billing
-            </Link> */}
-            {/* <Button onClick={() => notify.success("Click")}>
-              Click
-            </Button>
-            <Button onClick={() => notify.error("Click")}>
-              Click
-            </Button>
-            <Button onClick={() => notify.info("Click")}>
-              Click
-            </Button> */}
-            <div className="border-t border-gray-200 dark:border-gray-700 my-1"></div>
-            {session?.user && (
-              <button
-                onClick={() => signOut({ callbackUrl: "/signin" })}
-                className="w-full text-left block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-700"
-              >
-                Sign out
-              </button>
-            )}
+              <LogOut size={16} />
+              Sign out
+            </button>
           </div>
         </div>
       )}

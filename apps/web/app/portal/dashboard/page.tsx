@@ -9,7 +9,6 @@ import {
   ArrowUpRight,
   ArrowRight,
   ShoppingCart,
-  Loader2,
 } from "lucide-react";
 import Link from "next/link";
 import { useEffect, useState } from "react";
@@ -20,6 +19,7 @@ import {
   RecentQuote,
 } from "../../../lib/api/dashboard";
 import { toast } from "sonner";
+import CustomLoader from "@/components/ui/loader/CustomLoader";
 
 export default function CustomerDashboardPage() {
   const [loading, setLoading] = useState(true);
@@ -139,14 +139,14 @@ export default function CustomerDashboardPage() {
   if (loading) {
     return (
       <div className="flex h-[calc(100vh-100px)] items-center justify-center">
-        <Loader2 className="h-8 w-8 animate-spin text-blue-600" />
+        <CustomLoader />
       </div>
     );
   }
 
   return (
     <div className="space-y-8 animate-in fade-in duration-500 p-6">
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-start">
         <div>
           <h1 className="text-3xl font-bold text-gray-900 dark:text-white">
             Dashboard
@@ -155,13 +155,6 @@ export default function CustomerDashboardPage() {
             Overview of your manufacturing activities
           </p>
         </div>
-        <Link
-          href="/instant-quote"
-          className="flex items-center gap-2 px-5 py-2.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors shadow-lg shadow-blue-500/20 font-medium"
-        >
-          <ShoppingCart size={18} />
-          New Quote
-        </Link>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">

@@ -52,6 +52,8 @@ $$ LANGUAGE plpgsql;
 CREATE TABLE order_parts (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   order_id UUID NOT NULL REFERENCES orders(id) ON DELETE CASCADE,
+  order_code TEXT,
+  part_code TEXT UNIQUE,
   rfq_part_id UUID NOT NULL REFERENCES rfq_parts(id),
   part_name TEXT,
   quantity INTEGER NOT NULL,
@@ -134,7 +136,7 @@ CREATE TABLE order_payments (
   payment_type TEXT NOT NULL,
   -- invoice, card, wire
   payment_gateway TEXT,
-  transaction_id TEXT,
+  transaction_id TEXT UNIQUE,
   amount_authorized NUMERIC(12, 2),
   amount_captured NUMERIC(12, 2),
   amount_refunded NUMERIC(12, 2) DEFAULT 0,
@@ -178,4 +180,8 @@ CREATE TABLE order_part_confirmations (
   metadata JSONB,
   created_at TIMESTAMP DEFAULT now(),
   UNIQUE (order_part_id, confirmation_type)
+);
+part_id,
+confirmation_type
+)
 );

@@ -21,6 +21,10 @@ export type InitialRFQDto = {
   parts: InitialPartDto[];
 };
 
+export type DerivedRFQDto = {
+  parts: string[];
+};
+
 export type RemovePartsDto = {
   partIds: string[];
 };
@@ -60,4 +64,8 @@ export type Drawing2DLookupDto = {
 export type UpdateRfqDto = {
   final_price?: number;
   status?: string;
+};
+
+export type UploadSnapshotDto = {
+  snapshot: string;
 };

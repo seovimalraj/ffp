@@ -6,6 +6,7 @@ CREATE OR REPLACE FUNCTION get_user_rfqs_with_parts_count(p_user_id UUID) RETURN
         status VARCHAR,
         created_at TIMESTAMP,
         updated_at TIMESTAMP,
+        order_id UUID,
         parts_count BIGINT
     ) LANGUAGE sql AS $$
 SELECT r.id,
