@@ -1,3 +1,5 @@
+"use client";
+
 import CustomerLayout from "@/components/CustomerLayout";
 import {
   Card,

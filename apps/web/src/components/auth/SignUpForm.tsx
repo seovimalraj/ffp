@@ -156,9 +156,6 @@ export function SignUpForm() {
           <h1 className="text-3xl font-bold text-gray-900 mb-2">
             Create your account
           </h1>
-          <p className="text-gray-500 text-sm">
-            Get started with your free 14-day trial
-          </p>
         </div>
 
         <form onSubmit={handleSubmit} noValidate className="space-y-4">

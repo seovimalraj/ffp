@@ -20,7 +20,7 @@ CREATE INDEX idx_users_email ON users(email);
 -- --
 CREATE TABLE IF NOT EXISTS organizations { id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
 name VARCHAR(255) NOT NULL,
-diplay_name VARCHAR(255),
+display_name VARCHAR(255),
 address TEXT,
 organization_type TEXT NOT NULL DEFAULT 'customer',
 created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,

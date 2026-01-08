@@ -11,6 +11,7 @@ import {
   Download,
   X,
   Trash2,
+  Zap,
 } from "lucide-react";
 import { api } from "@/lib/api";
 import { DataTable, Column } from "@/components/ui/data-table";
@@ -26,6 +27,10 @@ import {
   MakeQuoteModal,
   QuotePart,
 } from "@/components/modals/make-quote-modal";
+import {
+  QuoteSuccessModal,
+  CreatedRFQ,
+} from "@/components/modals/quote-success-modal";
 import { toast } from "sonner";
 
 type RFQPart = {
@@ -74,6 +79,8 @@ const Page = () => {
   const [previewFile, setPreviewFile] = useState<string | null>(null);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [isMakeQuoteModalOpen, setIsMakeQuoteModalOpen] = useState(false);
+  const [createdRfqs, setCreatedRfqs] = useState<CreatedRFQ[]>([]);
+  const [isSuccessModalOpen, setIsSuccessModalOpen] = useState(false);
 
   const selectedPartsList = useMemo(() => {
     return data
@@ -92,11 +99,14 @@ const Page = () => {
 
   const handleCreateQuote = async (groups: { parts: string[] }[]) => {
     try {
-      await api.post("/rfq/derived", { groups });
-      toast.success("Quotes created successfully");
-      setIsMakeQuoteModalOpen(false);
-      setSelectedIds(new Set());
-      fetchFiles(); // Refresh list
+      const response = await api.post("/rfq/derived", { groups });
+      if (response.data.success && response.data.rfqs) {
+        setCreatedRfqs(response.data.rfqs);
+        setIsMakeQuoteModalOpen(false);
+        setIsSuccessModalOpen(true);
+        setSelectedIds(new Set());
+        fetchFiles(); // Refresh list
+      }
     } catch (error) {
       console.error("Error creating quotes:", error);
       toast.error("Failed to create quotes");
@@ -277,7 +287,7 @@ const Page = () => {
         <div className="flex flex-col md:flex-row md:items-end justify-between gap-6">
           <div className="space-y-2">
             <h1 className="text-4xl font-bold tracking-tight text-slate-900 dark:text-white">
-              Files
+              Part Library
             </h1>
             <p className="text-slate-500 dark:text-neutral-400 text-lg">
               Manage and organize your project files and RFQs.
@@ -666,6 +676,15 @@ const Page = () => {
             onClick: () => setIsMakeQuoteModalOpen(true),
           },
           {
+            label: "Single Quote",
+            icon: <Zap className="w-4 h-4" />,
+            variant: "default",
+            onClick: async () => {
+              const group = { parts: Array.from(selectedIds) };
+              await handleCreateQuote([group]);
+            },
+          },
+          {
             label: "Delete",
             icon: <Trash2 className="w-4 h-4" />,
             variant: "outline",
@@ -685,6 +704,12 @@ const Page = () => {
         onClose={() => setIsMakeQuoteModalOpen(false)}
         parts={selectedPartsList}
         onConfirm={handleCreateQuote}
+      />
+
+      <QuoteSuccessModal
+        isOpen={isSuccessModalOpen}
+        onClose={() => setIsSuccessModalOpen(false)}
+        rfqs={createdRfqs}
       />
     </div>
   );

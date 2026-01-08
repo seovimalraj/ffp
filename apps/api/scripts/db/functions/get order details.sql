@@ -132,7 +132,9 @@ SELECT jsonb_build_object(
                                 'pricing',
                                 rp.pricing,
                                 'certificates',
-                                rp.certificates
+                                rp.certificates,
+                                'snapshot_2d_url',
+                                rp.snapshot_2d_url
                             ),
                             'drawings_2d',
                             (

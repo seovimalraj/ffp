@@ -1,0 +1,123 @@
+services:
+  # Nginx Reverse Proxy
+  nginx:
+    image: nginx:alpine
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx/app.frigate.ai.conf:/etc/nginx/conf.d/default.conf:ro
+      - ./ssl:/etc/ssl:ro
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    depends_on:
+      - web
+      - api
+      - cad-service
+    restart: unless-stopped
+    networks:
+      - app-network
+
+  # Web Application (Next.js)
+  web:
+    build:
+      context: .
+      dockerfile: apps/web/Dockerfile
+      args:
+        - SKIP_ENV_VALIDATION=true
+    environment:
+      - NODE_ENV=production
+      # Client-side API calls use relative paths (proxied by nginx)
+      - NEXT_PUBLIC_API_URL=/api
+      - NEXT_PUBLIC_CAD_SERVICE_URL=/cad
+      # Server-side API calls use internal Docker network
+      - INTERNAL_API_URL=http://api:4001
+      # Public URLs for external reference
+      - NEXT_PUBLIC_APP_URL=https://app.frigate.ai
+      - NEXT_PUBLIC_WEB_URL=https://app.frigate.ai
+      - NEXTAUTH_URL=https://app.frigate.ai
+      - NEXTAUTH_SECRET=W2aR6PONBYcX7hKmMJzrrl4y0U3jf7XSpFfeDu3Gptw
+      # Supabase configuration
+      - NEXT_PUBLIC_SUPABASE_URL=https://supabase.frigate.ai
+      - NEXT_PUBLIC_SUPABASE_ANON_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZS1kZW1vIiwicm9sZSI6ImFub24iLCJleHAiOjE5ODM4MTI5OTZ9.CRXP1A7WOeoJeXxjNni43kdQwgnWNReilDMblYTn_I0
+      - SUPABASE_URL=https://supabase.frigate.ai
+      - SUPABASE_SERVICE_ROLE_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZS1kZW1vIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImV4cCI6MTk4MzgxMjk5Nn0.EGIM96RAZx35lJzdJsyH-qQwv8Hdp7fsn3W0YpN81IU
+    depends_on:
+      - api
+      - cad-service
+    restart: unless-stopped
+    networks:
+      - app-network
+
+  # API Service (NestJS)
+  api:
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+    environment:
+      - NODE_ENV=production
+      - PORT=4001
+      # Database & Cache
+      - DATABASE_URL=postgresql://postgres:Nb+a5meKduZsNG/HtSaSktBQYbdB8mcb@host.docker.internal:5432/cnc_quote
+      - REDIS_URL=redis://redis:6379
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      # JWT
+      - JWT_SECRET=CvLsEGE0l29M+R1s6OcSm8r8We3JI7C9Gyox2fheQ4I=
+      - JWT_EXPIRES_IN=15m
+      # CORS
+      - ALLOWED_ORIGINS=https://app.frigate.ai,https://ffp-web.frigate.ai,https://ffp-api.frigate.ai
+      # Supabase
+      - SUPABASE_URL=https://supabase.frigate.ai
+      - SUPABASE_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZS1kZW1vIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImV4cCI6MTk4MzgxMjk5Nn0.EGIM96RAZx35lJzdJsyH-qQwv8Hdp7fsn3W0YpN81IU
+      - SUPABASE_SERVICE_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZS1kZW1vIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImV4cCI6MTk4MzgxMjk5Nn0.EGIM96RAZx35lJzdJsyH-qQwv8Hdp7fsn3W0YpN81IU
+      # Application URLs
+      - FRONTEND_URL=https://app.frigate.ai
+      - APP_URL=https://app.frigate.ai
+      - API_URL=https://ffp-api.frigate.ai
+      - WEB_URL=https://app.frigate.ai
+      # PayPal
+      - PAYPAL_API_URL=https://api-m.sandbox.paypal.com
+      - PAYPAL_CLIENT_ID=AdDKSG02aJs9hUfr2t0gfi8W0KkGbE9E4S2Q-v3q4NGQA0L4R1Pd-smGrsuAX_Gbuiips0AIOhzegC4U
+      - PAYPAL_CLIENT_SECRET=EEBcVv3QSfwYusy5u8i09b7FapfIY9P15Dc-ojrjKw-Mozy0bopznvCRtZ38jsm_ztVdU4CfWxN9HpU1
+    depends_on:
+      - redis
+    restart: unless-stopped
+    networks:
+      - app-network
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+  # CAD Service (Python)
+  cad-service:
+    build:
+      context: .
+      dockerfile: apps/cad-service/Dockerfile
+    environment:
+      - PYTHONUNBUFFERED=1
+      - DATABASE_URL=postgresql://postgres:postgres@host.docker.internal:5432/postgres
+      - REDIS_URL=redis://redis:6379
+      - PORT=10001
+    depends_on:
+      - redis
+    restart: unless-stopped
+    networks:
+      - app-network
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+  # Redis Cache
+  redis:
+    image: redis:7-alpine
+    volumes:
+      - redis_data:/data
+    restart: unless-stopped
+    networks:
+      - app-network
+
+volumes:
+  redis_data:
+
+networks:
+  app-network:
+    driver: bridge

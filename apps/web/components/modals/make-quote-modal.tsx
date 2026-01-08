@@ -127,16 +127,8 @@ const SortableItem = ({
         </p>
         <div className="flex items-center gap-2 text-xs text-slate-500 dark:text-neutral-400">
           <span>{part.material || "No material"}</span>
-          <span>•</span>
-          <span>Qty: {part.quantity}</span>
         </div>
       </div>
-
-      {part.rfq_code && (
-        <span className="shrink-0 text-[10px] font-medium px-1.5 py-0.5 rounded bg-slate-100 dark:bg-neutral-800 text-slate-500">
-          {part.rfq_code}
-        </span>
-      )}
     </div>
   );
 };
@@ -476,7 +468,7 @@ export const MakeQuoteModal = ({
                 },
               }}
             >
-              <div className="flex-1 overflow-x-auto p-8">
+              <div className="flex-1 overflow-x-auto glass-scrollbar p-8">
                 <div className="flex h-full gap-6 pb-4 min-w-max">
                   <SortableContext items={containers}>
                     {containers.map((containerId) => (
@@ -518,10 +510,18 @@ export const MakeQuoteModal = ({
 
             {/* Footer */}
             <div className="px-8 py-5 border-t border-slate-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 flex justify-end gap-3">
-              <Button onClick={onClose} variant="outline">
+              <Button
+                onClick={onClose}
+                className="rounded-sm"
+                variant="outline"
+              >
                 Cancel
               </Button>
-              <Button onClick={handleConfirm} variant="cta">
+              <Button
+                onClick={handleConfirm}
+                className="rounded-sm"
+                variant="cta"
+              >
                 Create Quotes
               </Button>
             </div>

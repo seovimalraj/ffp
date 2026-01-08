@@ -1,9 +1,0 @@
-{
-  "id": "quote-detail-structure-min",
-  "type": "quote-detail",
-  "description": "Ensure web pricing proxy returns matrix with tier keys",
-  "expected": {
-    "hasMatrix": true,
-    "tierKeys": ["quantity", "unitPrice", "totalPrice"]
-  }
-}

@@ -196,25 +196,57 @@ export default function CheckoutPage() {
           email: newAddress.email,
         });
 
-        if (response.data && response.data.data) {
-          const created = response.data.data[0];
-          if (created) {
-            const addedAddress: ShippingAddress = {
-              id: created.id,
-              name: created.name,
-              street1: created.street1,
-              street2: created.street2,
-              city: created.city,
-              zip: created.zip,
-              country: created.country,
-              phone: created.phone,
-              email: created.email,
-              phoneExt: "+91",
-              street3: "",
-            };
-            setAddresses([...addresses, addedAddress]);
-            setSelectedAddressId(created.id);
+        // Refetch all addresses to ensure synchronization
+        try {
+          const addrRes = await apiClient.get("/orders/shipping_address");
+          if (addrRes.data && addrRes.data.data) {
+            const fetchedAddresses = addrRes.data.data.map((addr: any) => ({
+              id: addr.id,
+              name: addr.name,
+              street1: addr.street1,
+              street2: addr.street2,
+              city: addr.city,
+              zip: addr.zip,
+              country: addr.country,
+              phone: addr.phone,
+              email: addr.email,
+              phoneExt: addr.phoneExt || "+91",
+              street3: addr.street3 || "",
+            }));
+            setAddresses(fetchedAddresses);
+            
+            // Set the newly added address as selected
+            if (response.data && response.data.data) {
+              const created = response.data.data;
+              if (created && created.id) {
+                setSelectedAddressId(created.id);
+              }
+            }
             notify.success("Address saved successfully");
+          }
+        } catch (fetchError) {
+          console.error("Failed to refetch addresses:", fetchError);
+          // Fallback to adding from response
+          if (response.data && response.data.data) {
+            const created = response.data.data[0];
+            if (created) {
+              const addedAddress: ShippingAddress = {
+                id: created.id,
+                name: created.name,
+                street1: created.street1,
+                street2: created.street2,
+                city: created.city,
+                zip: created.zip,
+                country: created.country,
+                phone: created.phone,
+                email: created.email,
+                phoneExt: "+91",
+                street3: "",
+              };
+              setAddresses([...addresses, addedAddress]);
+              setSelectedAddressId(created.id);
+              notify.success("Address saved successfully");
+            }
           }
         }
       }
@@ -407,9 +439,17 @@ export default function CheckoutPage() {
         return;
       }
     }
-    if (!selectedKeys.includes("2")) {
-      setSelectedKeys([...selectedKeys, "2"]);
-    }
+    // Close current section and open next
+    setSelectedKeys(["2"]);
+    // Scroll to next section after state update with offset for sticky header
+    setTimeout(() => {
+      const element = document.getElementById("accordion-item-2");
+      if (element) {
+        const yOffset = -100; // Offset for sticky header
+        const y = element.getBoundingClientRect().top + window.pageYOffset + yOffset;
+        window.scrollTo({ top: y, behavior: "smooth" });
+      }
+    }, 100);
   };
 
   const handleNextFromCustoms = () => {
@@ -417,9 +457,17 @@ export default function CheckoutPage() {
       notify.error("Please select an industry to proceed");
       return;
     }
-    if (!selectedKeys.includes("3")) {
-      setSelectedKeys([...selectedKeys, "3"]);
-    }
+    // Close current section and open next
+    setSelectedKeys(["3"]);
+    // Scroll to next section after state update with offset for sticky header
+    setTimeout(() => {
+      const element = document.getElementById("accordion-item-3");
+      if (element) {
+        const yOffset = -100; // Offset for sticky header
+        const y = element.getBoundingClientRect().top + window.pageYOffset + yOffset;
+        window.scrollTo({ top: y, behavior: "smooth" });
+      }
+    }, 100);
   };
 
   const handleNextFromPayment = () => {
@@ -427,9 +475,17 @@ export default function CheckoutPage() {
       notify.error("Please fill in all payment details");
       return;
     }
-    if (!selectedKeys.includes("4")) {
-      setSelectedKeys([...selectedKeys, "4"]);
-    }
+    // Close current section and open next
+    setSelectedKeys(["4"]);
+    // Scroll to next section after state update with offset for sticky header
+    setTimeout(() => {
+      const element = document.getElementById("accordion-item-4");
+      if (element) {
+        const yOffset = -100; // Offset for sticky header
+        const y = element.getBoundingClientRect().top + window.pageYOffset + yOffset;
+        window.scrollTo({ top: y, behavior: "smooth" });
+      }
+    }, 100);
   };
   // console.log(config, customsInfo, shippingMethod, paymentInfo);
   const createInternalOrder = async () => {
@@ -686,7 +742,7 @@ export default function CheckoutPage() {
                 <AccordionItem
                   id="1"
                   title={
-                    <div className="flex items-center gap-3">
+                    <div id="accordion-item-1" className="flex items-center gap-3">
                       <div className="w-8 h-8 rounded-full bg-blue-50 text-blue-600 flex items-center justify-center text-sm">
                         1
                       </div>
@@ -1121,7 +1177,7 @@ export default function CheckoutPage() {
                 <AccordionItem
                   id="2"
                   title={
-                    <div className="flex items-center gap-3">
+                    <div id="accordion-item-2" className="flex items-center gap-3">
                       <div className="w-8 h-8 rounded-full bg-blue-50 text-blue-600 flex items-center justify-center text-sm">
                         2
                       </div>
@@ -1225,7 +1281,7 @@ export default function CheckoutPage() {
                 <AccordionItem
                   id="3"
                   title={
-                    <div className="flex items-center gap-3">
+                    <div id="accordion-item-3" className="flex items-center gap-3">
                       <div className="w-8 h-8 rounded-full bg-blue-50 text-blue-600 flex items-center justify-center text-sm">
                         3
                       </div>
@@ -1277,7 +1333,7 @@ export default function CheckoutPage() {
                 <AccordionItem
                   id="4"
                   title={
-                    <div className="flex items-center gap-3">
+                    <div id="accordion-item-4" className="flex items-center gap-3">
                       <div className="w-8 h-8 rounded-full bg-blue-50 text-blue-600 flex items-center justify-center text-sm">
                         4
                       </div>

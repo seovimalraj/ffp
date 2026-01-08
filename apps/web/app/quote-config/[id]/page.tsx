@@ -1029,8 +1029,8 @@ export default function QuoteConfigPage() {
       </header>
       {/* Quote ID / Status - Refactored for better aesthetics and integration */}
 
-      <div className="flex items-center justify-between flex-wrap px-4 pt-4 sm:px-6 sm:pt-6 lg:px-10 lg:pt-8 max-w-[1440px] mx-auto">
-        <div className="flex items-center gap-3 text-lg">
+      <div className="flex items-center justify-between flex-wrap gap-4 px-4 pt-4 sm:px-6 sm:pt-6 lg:px-10 lg:pt-8 max-w-[1440px] mx-auto">
+        <div className="flex items-center gap-2 md:gap-3 text-base md:text-lg">
           <Link
             href="/portal/quotes"
             className="font-medium text-blue-700 hover:text-blue-800 transition-colors"
@@ -1038,15 +1038,15 @@ export default function QuoteConfigPage() {
             Quotes
           </Link>
 
-          <ChevronRight className="w-5 h-5 text-slate-400" />
+          <ChevronRight className="w-4 h-4 md:w-5 md:h-5 text-slate-400" />
 
-          <span className="font-bold text-slate-900 tracking-wide">
+          <span className="font-bold text-slate-900 tracking-wide truncate max-w-[200px] md:max-w-none">
             {rfq.rfq_code}
           </span>
         </div>
 
         {/* Total Parts Count - Inline */}
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-shrink-0">
           <div className="flex items-center gap-2 px-3 py-1.5 bg-blue-600 rounded-lg">
             <Package className="w-4 h-4 text-white" />
             <span className="text-sm font-semibold text-white">
@@ -1069,11 +1069,11 @@ export default function QuoteConfigPage() {
         </div>
 
         <Button
-          className="bg-gray-300 hover:bg-gray-400 text-black hover:text-white transition-colors relative"
+          className="bg-gray-300 hover:bg-gray-400 text-black hover:text-white transition-colors relative flex-shrink-0 text-sm md:text-base"
           onClick={() => setShowArchiveModal(true)}
         >
-          <Archive className="size-4 mr-2" />
-          Archive
+          <Archive className="size-4 md:mr-2" />
+          <span className="hidden md:inline">Archive</span>
           {archivedParts.length > 0 && (
             <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs font-bold rounded-full h-5 w-5 flex items-center justify-center">
               {archivedParts.length}
@@ -1082,9 +1082,9 @@ export default function QuoteConfigPage() {
         </Button>
       </div>
 
-      <div className="flex flex-col lg:flex-row max-w-[1440px] mx-auto">
+      <div className="flex flex-col xl:flex-row max-w-[1440px] mx-auto">
         {/* LEFT MAIN CONTENT (PARTS) */}
-        <div className="flex-1 p-4 sm:p-6 lg:p-10 overflow-scroll invisible-scrollbar space-y-8 pb-32">
+        <div className="flex-1 p-4 sm:p-6 md:p-8 lg:p-10 overflow-scroll invisible-scrollbar space-y-6 md:space-y-8 pb-32">
           {parts.map((part, index) => (
             <PartCardItem
               key={index}
@@ -1106,10 +1106,10 @@ export default function QuoteConfigPage() {
           ))}
 
           {/* Add Part Button */}
-          <div className="pt-8 w-full">
+          <div className="pt-6 md:pt-8 w-full">
             <div
               {...getRootProps()}
-              className={`bg-gradient-to-br from-white to-slate-50/80 rounded-2xl border-2 shadow-sm overflow-hidden transition-all duration-300 cursor-pointer ${
+              className={`bg-gradient-to-br from-white to-slate-50/80 rounded-xl md:rounded-2xl border-2 shadow-sm overflow-hidden transition-all duration-300 cursor-pointer ${
                 isDragActive
                   ? "border-blue-500 border-dashed bg-blue-50/50 shadow-lg scale-[1.01]"
                   : "border-slate-200 hover:border-blue-400 border-dashed hover:shadow-md"
@@ -1118,7 +1118,7 @@ export default function QuoteConfigPage() {
               <input {...getInputProps()} />
 
               {/* Upload Area */}
-              <div className="p-8 lg:p-12 bg-white/50 flex flex-col items-center justify-center gap-4 text-center border-b border-slate-200">
+              <div className="p-6 md:p-8 lg:p-12 bg-white/50 flex flex-col items-center justify-center gap-3 md:gap-4 text-center border-b border-slate-200">
                 {is3DFileUploading ? (
                   <div className="flex flex-col items-center justify-center py-6">
                     <div className="p-4 bg-blue-50 rounded-2xl mb-4 relative">
@@ -1136,21 +1136,21 @@ export default function QuoteConfigPage() {
                 ) : (
                   <>
                     <div
-                      className={`p-4 bg-gradient-to-br rounded-2xl transition-all shadow-sm ${
+                      className={`p-3 md:p-4 bg-gradient-to-br rounded-xl md:rounded-2xl transition-all shadow-sm ${
                         isDragActive
                           ? "from-blue-200 to-blue-100 scale-110"
                           : "from-blue-50 to-slate-50"
                       }`}
                     >
                       <Upload
-                        className={`w-10 h-10 transition-colors ${
+                        className={`w-8 h-8 md:w-10 md:h-10 transition-colors ${
                           isDragActive ? "text-blue-700" : "text-blue-600"
                         }`}
                       />
                     </div>
                     <div>
                       <p
-                        className={`font-bold text-xl mb-2 transition-colors ${
+                        className={`font-bold text-lg md:text-xl mb-2 transition-colors ${
                           isDragActive ? "text-blue-700" : "text-slate-900"
                         }`}
                       >
@@ -1158,17 +1158,17 @@ export default function QuoteConfigPage() {
                           ? "Drop your files here"
                           : "Add Another Part"}
                       </p>
-                      <p className="text-sm text-slate-500 max-w-xs mx-auto">
+                      <p className="text-xs md:text-sm text-slate-500 max-w-xs mx-auto">
                         {isDragActive
                           ? "Release to upload your CAD files"
                           : "Click to upload or drag and drop your CAD files here"}
                       </p>
                     </div>
-                    <div className="flex flex-wrap gap-2 justify-center mt-2">
+                    <div className="flex flex-wrap gap-1.5 md:gap-2 justify-center mt-2">
                       {["STEP", "STL", "IGES", "OBJ", "and More"].map((fmt) => (
                         <span
                           key={fmt}
-                          className={`px-2.5 py-1 text-xs font-medium rounded-md transition-colors ${
+                          className={`px-2 md:px-2.5 py-0.5 md:py-1 text-[10px] md:text-xs font-medium rounded-md transition-colors ${
                             isDragActive
                               ? "bg-blue-200 text-blue-800"
                               : "bg-slate-100 text-slate-600"
@@ -1193,7 +1193,7 @@ export default function QuoteConfigPage() {
                 <div className="p-2 bg-green-100 text-green-700 rounded-lg">
                   <ScrollText className="w-5 h-5" />
                 </div>
-                <h2 className="text-lg font-bold text-slate-800">
+                <h2 className="text-base md:text-lg font-bold text-slate-800">
                   Order Summary
                 </h2>
               </div>

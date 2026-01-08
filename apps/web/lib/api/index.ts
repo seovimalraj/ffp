@@ -3,7 +3,10 @@ import { getSession, signOut } from "next-auth/react";
 
 // Create axios instance
 const apiClient: AxiosInstance = axios.create({
-  baseURL: process.env.NEXT_PUBLIC_NEST_API || "http://localhost:4001",
+  baseURL:
+    process.env.NEXT_PUBLIC_NEST_API ||
+    process.env.NEXT_PUBLIC_API_URL ||
+    "/api",
   timeout: 10000,
   headers: {
     "Content-Type": "application/json",

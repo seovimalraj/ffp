@@ -32,6 +32,7 @@ export function RFQKanban({ parts, onRefresh, onItemClick }: Props) {
         leadTime: part.lead_time,
         unitPrice: part.unit_price,
         totalPrice: part.total_price,
+        snapshot_2d_url: part.rfq_part.snapshot_2d_url,
       },
     }));
   }, [parts]);

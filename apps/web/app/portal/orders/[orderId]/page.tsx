@@ -58,6 +58,7 @@ export type IOrderFull = {
       inspection: string;
       notes: string;
       cad_file_url: string;
+      snapshot_2d_url: string | null;
     };
   }>;
   shipping: {
@@ -219,27 +220,80 @@ export default function OrderPage() {
                 <button
                   key={part.order_part_id}
                   onClick={() => setSelectedPart(part)}
-                  className="text-left bg-white border rounded-lg p-5 space-y-3 hover:bg-slate-50 transition"
+                  className="group relative flex w-full bg-white border border-slate-200 rounded-xl overflow-hidden hover:shadow-md hover:border-indigo-400/50 transition-all duration-300 text-left items-stretch"
                 >
-                  <div className="font-medium text-slate-900">
-                    {part.rfq_part.file_name}
+                  {/* Left: Image / Snapshot */}
+                  <div className="w-32 bg-slate-50 border-r border-slate-100 p-4 flex items-center justify-center flex-shrink-0 group-hover:bg-indigo-50/30 transition-colors">
+                    {part.rfq_part.snapshot_2d_url ? (
+                      <img
+                        src={part.rfq_part.snapshot_2d_url}
+                        alt="Part snapshot"
+                        className="w-full h-full object-contain mix-blend-multiply opacity-90 group-hover:scale-105 transition-transform duration-300"
+                      />
+                    ) : (
+                      <div className="w-10 h-10 rounded-full bg-slate-200 flex items-center justify-center text-slate-400">
+                        <svg
+                          className="w-5 h-5"
+                          fill="none"
+                          viewBox="0 0 24 24"
+                          stroke="currentColor"
+                        >
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            strokeWidth={2}
+                            d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"
+                          />
+                        </svg>
+                      </div>
+                    )}
                   </div>
 
-                  <div className="text-xs text-slate-500">
-                    {part.rfq_part.material} • {part.rfq_part.finish}
-                  </div>
+                  {/* Right: Content */}
+                  <div className="flex-1 p-4 flex flex-col justify-between gap-3 min-w-0">
+                    <div className="space-y-2">
+                      <div className="font-semibold text-slate-900 truncate group-hover:text-indigo-600 transition-colors text-base">
+                        {part.rfq_part.file_name}
+                      </div>
 
-                  <div className="grid grid-cols-3 gap-4 text-sm">
-                    <Value label="Qty" value={part.quantity} />
-                    <Value
-                      label="Unit"
-                      value={formatCurrencyGeneric(part.unit_price)}
-                    />
-                    <Value
-                      label="Total"
-                      value={formatCurrencyGeneric(part.total_price)}
-                      strong
-                    />
+                      <div className="flex flex-wrap gap-1.5">
+                        <span className="inline-flex items-center px-2 py-1 rounded-md text-[10px] font-medium bg-slate-100 text-slate-600 border border-slate-200">
+                          {part.rfq_part.material}
+                        </span>
+                        <span className="inline-flex items-center px-2 py-1 rounded-md text-[10px] font-medium bg-slate-100 text-slate-600 border border-slate-200">
+                          {part.rfq_part.finish}
+                        </span>
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-3 gap-2 pt-3 border-t border-slate-100 mt-auto">
+                      <div>
+                        <div className="text-[10px] uppercase tracking-wider text-slate-400 font-bold">
+                          Qty
+                        </div>
+                        <div className="text-sm font-medium text-slate-700">
+                          {part.quantity}
+                        </div>
+                      </div>
+
+                      <div>
+                        <div className="text-[10px] uppercase tracking-wider text-slate-400 font-bold">
+                          Unit
+                        </div>
+                        <div className="text-sm font-medium text-slate-700">
+                          {formatCurrencyGeneric(part.unit_price)}
+                        </div>
+                      </div>
+
+                      <div>
+                        <div className="text-[10px] uppercase tracking-wider text-slate-400 font-bold">
+                          Total
+                        </div>
+                        <div className="text-sm font-bold text-indigo-600">
+                          {formatCurrencyGeneric(part.total_price)}
+                        </div>
+                      </div>
+                    </div>
                   </div>
                 </button>
               ))}

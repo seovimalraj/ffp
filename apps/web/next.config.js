@@ -69,6 +69,29 @@ const nextConfig = {
     return "build-" + Date.now();
   },
 
+  // Security and permissions headers
+  async headers() {
+    return [
+      {
+        source: '/:path*',
+        headers: [
+          {
+            key: 'Permissions-Policy',
+            value: 'bluetooth=(), camera=(), microphone=(), geolocation=(), payment=(), usb=()',
+          },
+          {
+            key: 'X-Content-Type-Options',
+            value: 'nosniff',
+          },
+          {
+            key: 'X-Frame-Options',
+            value: 'SAMEORIGIN',
+          },
+        ],
+      },
+    ];
+  },
+
   // Commenting out aggressive headers for now to fix static asset loading
   // async headers() {
   //   return [

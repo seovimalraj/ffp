@@ -1017,3 +1017,40 @@ span.flatpickr-weekday,
 .pulse-glow {
   animation: pulse-ring 2s ease-in-out infinite;
 }
+
+.glass-scrollbar {
+  /* Ensure the element is scrollable */
+  overflow-y: auto;
+
+  /* Firefox: Thin scrollbar with transparent track and semi-transparent thumb */
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.3) transparent;
+}
+
+/* WebKit browsers (Chrome, Safari, Edge): Detailed glass-like styling */
+.glass-scrollbar::-webkit-scrollbar {
+  width: 20px; /* Thin width */
+  background: transparent; /* Transparent track */
+}
+
+.glass-scrollbar::-webkit-scrollbar-track {
+  background: rgba(255, 255, 255, 0.05); /* Very subtle frosted track */
+  border-radius: 10px;
+  backdrop-filter: blur(4px); /* Frosted glass blur effect (if supported) */
+}
+
+.glass-scrollbar::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.25); /* Semi-transparent glass-like thumb */
+  border-radius: 10px;
+  border: 2px solid rgba(255, 255, 255, 0.1); /* Subtle border for depth */
+  backdrop-filter: blur(8px); /* Enhanced blur for liquid glass feel */
+}
+
+.glass-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.4); /* Slightly more visible on hover */
+}
+
+/* Optional: Hide scrollbar when not hovering (for a cleaner look) */
+.glass-scrollbar:not(:hover)::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.1);
+}
