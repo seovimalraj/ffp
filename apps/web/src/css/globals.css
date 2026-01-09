@@ -988,6 +988,18 @@ span.flatpickr-weekday,
   }
 }
 
+@keyframes glassSweep {
+  0% {
+    transform: translateX(-120%);
+  }
+  50% {
+    transform: translateX(120%);
+  }
+  100% {
+    transform: translateX(120%);
+  }
+}
+
 .animated-gradient-btn {
   background: linear-gradient(90deg, #3b82f6, #8b5cf6, #6366f1, #3b82f6);
   background-size: 300% 100%;
@@ -1053,4 +1065,14 @@ span.flatpickr-weekday,
 /* Optional: Hide scrollbar when not hovering (for a cleaner look) */
 .glass-scrollbar:not(:hover)::-webkit-scrollbar-thumb {
   background: rgba(255, 255, 255, 0.1);
+}
+
+@keyframes flowDots {
+  to {
+    stroke-dashoffset: -24;
+  }
+}
+
+.animate-flow-dots {
+  animation: flowDots 1s linear infinite;
 }

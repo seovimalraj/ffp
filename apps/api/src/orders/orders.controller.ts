@@ -25,7 +25,7 @@ import {
 } from './order.dto';
 import { ShippingAddressService } from './shipping-address.service';
 import { SupabaseService } from 'src/supabase/supabase.service';
-import { RoleNames, SQLFunctions } from '../../libs/constants';
+import { RoleNames, SQLFunctions, Tables } from '../../libs/constants';
 import { OrderService } from './order.service';
 import { RolesGuard } from 'src/auth/roles.guard';
 import { Roles } from 'src/auth/roles.decorator';
@@ -112,6 +112,29 @@ export class OrdersController {
       this.logger.error(`Error deleting shipping address: ${error.message}`);
       throw new InternalServerErrorException(
         `Error deleting shipping address: ${error.message}`,
+      );
+    }
+
+    return { data };
+  }
+
+  @Post('tracking/:orderId')
+  async updateTrackingNumber(
+    @Body() body: { trackingNumber: string },
+    @Param('orderId') orderId: string,
+  ) {
+    const client = this.supabaseService.getClient();
+    const { data, error } = await client
+      .from(Tables.OrderShippingTable)
+      .update({
+        tracking_number: body.trackingNumber,
+      })
+      .eq('order_id', orderId);
+
+    if (error) {
+      this.logger.error(`Error updating tracking number: ${error.message}`);
+      throw new InternalServerErrorException(
+        `Error updating tracking number: ${error.message}`,
       );
     }
 

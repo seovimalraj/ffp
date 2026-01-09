@@ -47,7 +47,7 @@ export default function AccountPage() {
       setLoading(true);
 
       const [profileRes, orgRes, addressRes] = await Promise.all([
-        api.get("/profile"), // Changed from /auth/profile to /profile
+        api.get("/auth/profile"), // Changed from /auth/profile to /profile
         api.get("/org/current"),
         api.get("/orders/shipping_address"),
       ]);

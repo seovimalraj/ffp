@@ -1,0 +1,9 @@
+@keyframes flowDots {
+  to {
+    stroke-dashoffset: -24;
+  }
+}
+
+.animate-flow-dots {
+  animation: flowDots 1s linear infinite;
+}

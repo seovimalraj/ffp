@@ -14,7 +14,7 @@ type FolderCardProps = {
 };
 
 export function FolderCard({
-  accentColor = "#7036E9",
+  accentColor = "#155CFA",
   className = "",
   children,
   isSelected,

@@ -18,6 +18,9 @@ export enum StockMaterial {
   Plate = "plate",
 }
 
+export const LOGO_URL =
+  "https://frigate.ai/wp-content/uploads/2024/03/frigate_whitelogo.svg";
+
 /**
  * Materialized view names for optimized queries
  */

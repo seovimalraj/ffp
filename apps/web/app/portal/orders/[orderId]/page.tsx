@@ -67,6 +67,7 @@ export type IOrderFull = {
       method: string;
       accountNumber?: string;
     };
+    tracking_number?: string;
   };
 };
 
@@ -198,7 +199,11 @@ export default function OrderPage() {
                   Tracking Number
                 </div>
                 <div className="font-medium max-w-[200px] text-slate-900">
-                  <CommandBlock command={generateRandomSlug()} />
+                  <CommandBlock
+                    command={
+                      data.shipping.tracking_number ?? generateRandomSlug()
+                    }
+                  />
                 </div>
 
                 {data.shipping.shipping_information.accountNumber && (
@@ -460,19 +465,24 @@ export const AddressCard = ({
   name: string;
   address: (string | undefined)[];
 }) => (
-  <div className="bg-white border rounded-lg p-4 text-sm space-y-1">
-    <div className="text-xs uppercase tracking-wide text-slate-400">
+  <div className="bg-white border border-slate-200 rounded-xl p-6 shadow-sm min-w-[240px]">
+    <div className="text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-3 border-b border-slate-100 pb-2">
       {title}
     </div>
-    <div className="font-medium">{name}</div>
-    {address.map(
-      (line, i) =>
-        line && (
-          <div key={i} className="text-slate-600">
-            {line}
-          </div>
-        ),
-    )}
+    <div className="space-y-0.5">
+      <div className="font-bold text-lg text-slate-900 mb-1.5">{name}</div>
+      {address.map(
+        (line, i) =>
+          line && (
+            <div
+              key={i}
+              className="text-sm text-slate-500 font-medium leading-relaxed"
+            >
+              {line}
+            </div>
+          ),
+      )}
+    </div>
   </div>
 );
 

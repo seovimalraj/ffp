@@ -65,6 +65,7 @@ interface PartConfig {
   complexity: string;
   finalPrice: number;
   leadTime: number;
+  snapshot_2d_url: string | null;
 }
 
 interface QuoteConfig {
@@ -214,7 +215,7 @@ export default function CheckoutPage() {
               street3: addr.street3 || "",
             }));
             setAddresses(fetchedAddresses);
-            
+
             // Set the newly added address as selected
             if (response.data && response.data.data) {
               const created = response.data.data;
@@ -342,6 +343,7 @@ export default function CheckoutPage() {
           complexity: p.geometry?.complexity || "standard",
           finalPrice: p.final_price,
           leadTime: p.lead_time || 7,
+          snapshot_2d_url: p.snapshot_2d_url,
         }));
 
         setConfig({
@@ -446,7 +448,8 @@ export default function CheckoutPage() {
       const element = document.getElementById("accordion-item-2");
       if (element) {
         const yOffset = -100; // Offset for sticky header
-        const y = element.getBoundingClientRect().top + window.pageYOffset + yOffset;
+        const y =
+          element.getBoundingClientRect().top + window.pageYOffset + yOffset;
         window.scrollTo({ top: y, behavior: "smooth" });
       }
     }, 100);
@@ -464,7 +467,8 @@ export default function CheckoutPage() {
       const element = document.getElementById("accordion-item-3");
       if (element) {
         const yOffset = -100; // Offset for sticky header
-        const y = element.getBoundingClientRect().top + window.pageYOffset + yOffset;
+        const y =
+          element.getBoundingClientRect().top + window.pageYOffset + yOffset;
         window.scrollTo({ top: y, behavior: "smooth" });
       }
     }, 100);
@@ -482,7 +486,8 @@ export default function CheckoutPage() {
       const element = document.getElementById("accordion-item-4");
       if (element) {
         const yOffset = -100; // Offset for sticky header
-        const y = element.getBoundingClientRect().top + window.pageYOffset + yOffset;
+        const y =
+          element.getBoundingClientRect().top + window.pageYOffset + yOffset;
         window.scrollTo({ top: y, behavior: "smooth" });
       }
     }, 100);
@@ -742,7 +747,10 @@ export default function CheckoutPage() {
                 <AccordionItem
                   id="1"
                   title={
-                    <div id="accordion-item-1" className="flex items-center gap-3">
+                    <div
+                      id="accordion-item-1"
+                      className="flex items-center gap-3"
+                    >
                       <div className="w-8 h-8 rounded-full bg-blue-50 text-blue-600 flex items-center justify-center text-sm">
                         1
                       </div>
@@ -1177,7 +1185,10 @@ export default function CheckoutPage() {
                 <AccordionItem
                   id="2"
                   title={
-                    <div id="accordion-item-2" className="flex items-center gap-3">
+                    <div
+                      id="accordion-item-2"
+                      className="flex items-center gap-3"
+                    >
                       <div className="w-8 h-8 rounded-full bg-blue-50 text-blue-600 flex items-center justify-center text-sm">
                         2
                       </div>
@@ -1281,7 +1292,10 @@ export default function CheckoutPage() {
                 <AccordionItem
                   id="3"
                   title={
-                    <div id="accordion-item-3" className="flex items-center gap-3">
+                    <div
+                      id="accordion-item-3"
+                      className="flex items-center gap-3"
+                    >
                       <div className="w-8 h-8 rounded-full bg-blue-50 text-blue-600 flex items-center justify-center text-sm">
                         3
                       </div>
@@ -1333,7 +1347,10 @@ export default function CheckoutPage() {
                 <AccordionItem
                   id="4"
                   title={
-                    <div id="accordion-item-4" className="flex items-center gap-3">
+                    <div
+                      id="accordion-item-4"
+                      className="flex items-center gap-3"
+                    >
                       <div className="w-8 h-8 rounded-full bg-blue-50 text-blue-600 flex items-center justify-center text-sm">
                         4
                       </div>
@@ -1414,7 +1431,15 @@ export default function CheckoutPage() {
                           >
                             <div className="flex gap-4 items-center">
                               <div className="w-12 h-12 rounded-xl border border-slate-100 bg-slate-50/50 flex items-center justify-center">
-                                <Package className="w-6 h-6 text-slate-300" />
+                                {part.snapshot_2d_url ? (
+                                  <img
+                                    src={part.snapshot_2d_url}
+                                    alt={part.fileName}
+                                    className="h-full w-full object-contain"
+                                  />
+                                ) : (
+                                  <Package className="w-6 h-6 text-slate-300" />
+                                )}
                               </div>
                               <div>
                                 <Link

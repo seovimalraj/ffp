@@ -7,7 +7,6 @@ import {
   Loader2,
   Upload,
   Trash2,
-  Settings,
   FileIcon,
   FileText,
   Maximize2,
@@ -17,6 +16,10 @@ import {
   Archive,
   Wrench,
   Expand,
+  Layers,
+  Droplet,
+  ClipboardCheck,
+  Edit,
 } from "lucide-react";
 import { useCallback, useState } from "react";
 import { useDropzone } from "react-dropzone";
@@ -423,135 +426,64 @@ export function PartCardItem({
         </div>
 
         {/* RIGHT MAIN CONTENT: Configuration & Details */}
-        <div className="flex-1 p-6 lg:p-10 flex flex-col min-w-0">
+        <div className="flex-1 p-6 lg:p-8 flex flex-col min-w-0">
           {/* Header Section */}
-          <div className="flex flex-col gap-6 mb-8 border-b border-slate-100 pb-8">
+          <div className="flex flex-col gap-6 mb-1 pb-4">
             {/* Top Row: Title, Index & Actions */}
-            <div className="flex items-center justify-between gap-4">
-              <div className="flex min-w-0 items-start gap-4">
-                {/* Index */}
-                <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-blue-600 text-sm font-black text-white shadow-sm">
-                  {index + 1}
-                </div>
+            <div className="flex flex-col w-full gap-5">
+              {/* Row 1: Identity & Meta Actions */}
+              <div className="flex items-start justify-between w-full gap-4">
+                <div className="flex items-start gap-4 min-w-0 flex-1">
+                  {/* Index */}
+                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-blue-600 text-base font-black text-white shadow-md ring-4 ring-blue-50">
+                    {index + 1}
+                  </div>
+                  <div className="min-w-0 flex flex-col gap-1.5 pt-0.5">
+                    <h3 className="truncate text-xl font-black tracking-tight text-slate-900 leading-tight">
+                      {part.fileName}
+                    </h3>
 
-                {/* Title + Badges */}
-                <div className="min-w-0">
-                  <h3 className="truncate text-xl font-black tracking-tight text-slate-900">
-                    {part.fileName}
-                  </h3>
-
-                  {/* Badges */}
-                  <div className="mt-2 flex flex-wrap items-center gap-2">
-                    {/* CNC */}
-                    <div className="inline-flex items-center gap-1.5 rounded-md bg-amber-50 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider text-amber-700 ring-1 ring-inset ring-amber-200">
-                      <Zap className="h-3.5 w-3.5 text-amber-500" />
-                      CNC Machining
-                    </div>
-
-                    {/* Custom */}
-                    <div className="inline-flex items-center gap-1.5 rounded-md bg-slate-100 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider text-slate-700 ring-1 ring-inset ring-slate-200">
-                      <Wrench className="h-3.5 w-3.5 text-slate-500" />
-                      Custom
-                    </div>
-
-                    {/* Geometry */}
-                    {part.geometry && (
-                      <div className="inline-flex items-center gap-1.5 rounded-md bg-blue-50 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider text-blue-700 ring-1 ring-inset ring-blue-200">
-                        <Activity className="h-3.5 w-3.5 text-blue-400" />
-                        {part.geometry.complexity}
+                    {/* Badges */}
+                    <div className="flex flex-wrap items-center gap-2">
+                      {/* CNC */}
+                      <div className="inline-flex items-center gap-1.5 rounded-md bg-amber-50 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider text-amber-700 ring-1 ring-inset ring-amber-200">
+                        <Zap className="h-3.5 w-3.5 text-amber-500" />
+                        CNC Machining
                       </div>
-                    )}
-                  </div>
-                </div>
-              </div>
-            </div>
 
-            {/* Controls Section: Qty & Lead Time */}
-            <div className="flex flex-col gap-5">
-              {/* Row 1: Quantity Selector & Action Buttons */}
-              <div className="flex items-center justify-between gap-4">
-                <div className="flex h-11 items-center rounded-xl border border-slate-200 bg-white px-3 shadow-sm">
-                  {/* Label */}
-                  <span className="mr-3 flex h-full items-center border-r border-slate-200 pr-3 text-[10px] font-black uppercase tracking-widest text-slate-400">
-                    Qty
-                  </span>
+                      {/* Custom */}
+                      <div className="inline-flex items-center gap-1.5 rounded-md bg-slate-100 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider text-slate-700 ring-1 ring-inset ring-slate-200">
+                        <Wrench className="h-3.5 w-3.5 text-slate-500" />
+                        Custom
+                      </div>
 
-                  {/* Stepper */}
-                  <div className="flex items-center rounded-lg bg-slate-50 p-0.5">
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="h-7 w-7 rounded-md text-slate-500 hover:bg-white hover:text-blue-600 transition-colors"
-                      onClick={() => {
-                        const newQ = part.quantity - 1;
-                        if (newQ >= 1)
-                          updatePart(index, "quantity", newQ, false);
-                      }}
-                    >
-                      <span className="text-sm font-bold leading-none">−</span>
-                    </Button>
-
-                    <input
-                      type="number"
-                      value={part.quantity}
-                      onChange={(e) => {
-                        const val = parseInt(e.target.value || "1");
-                        if (!isNaN(val) && val >= 1) {
-                          updatePart(index, "quantity", val, false);
-                        }
-                      }}
-                      className="mx-1 w-10 bg-transparent text-center text-sm font-bold text-slate-900 focus:outline-none"
-                      min="1"
-                    />
-
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="h-7 w-7 rounded-md text-slate-500 hover:bg-white hover:text-blue-600 transition-colors"
-                      onClick={() =>
-                        updatePart(index, "quantity", part.quantity + 1, false)
-                      }
-                    >
-                      <span className="text-sm font-bold leading-none">+</span>
-                    </Button>
+                      {/* Geometry */}
+                      {part.geometry && (
+                        <div className="inline-flex items-center gap-1.5 rounded-md bg-blue-50 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider text-blue-700 ring-1 ring-inset ring-blue-200">
+                          <Activity className="h-3.5 w-3.5 text-blue-400" />
+                          {part.geometry.complexity}
+                        </div>
+                      )}
+                    </div>
                   </div>
                 </div>
 
-                {/* Action Buttons: Standardized h-11 */}
-                <div className="flex items-center gap-2">
-                  {/* Primary */}
-                  <Button
-                    variant="outline"
-                    onClick={() => setIsEditModalOpen(true)}
-                    title="Configure Part"
-                    className="
-                      h-11 px-4 gap-2 rounded-xl
-                      border-slate-300 text-slate-700
-                      bg-white shadow-sm
-                      hover:border-blue-500 hover:text-blue-700 hover:bg-blue-50
-                      focus-visible:ring-2 focus-visible:ring-blue-500
-                    "
-                  >
-                    <Settings className="h-4.5 w-4.5 text-slate-600" />
-                    <span className="text-xs font-semibold tracking-wide">
-                      Configure
-                    </span>
-                  </Button>
-
+                <div className="flex items-center gap-2 shrink-0 ml-2">
                   {/* Secondary (Archive) */}
                   {handleArchivePart && (
                     <Button
                       variant="outline"
                       onClick={() => handleArchivePart(part.id)}
                       title="Archive Part"
+                      size="icon"
                       className="
-                        h-11 px-4 gap-2 rounded-xl
+                        h-9 w-9 rounded-lg
                         border-slate-200 text-slate-400
                         hover:border-amber-400 hover:bg-amber-50 hover:text-amber-700
                         transition-all
                       "
                     >
-                      <Archive className="h-4.5 w-4.5" />
+                      <Archive className="h-4 w-4" />
                     </Button>
                   )}
 
@@ -560,50 +492,195 @@ export function PartCardItem({
                     variant="outline"
                     onClick={() => handleDeletePart(index)}
                     title="Delete Part"
+                    size="icon"
                     className="
-                      h-11 px-4 gap-2 rounded-xl
+                      h-9 w-9 rounded-lg
                       border-slate-200 text-slate-400
                       hover:border-red-500 hover:bg-red-50 hover:text-red-600
                       transition-all
                     "
                   >
-                    <Trash2 className="h-4.5 w-4.5" />
+                    <Trash2 className="h-4 w-4" />
                   </Button>
                 </div>
               </div>
 
-              {/* Row 2: Lead Time Pricing Options */}
-              <div className="space-y-4">
-                <span className="text-[13px] font-black text-slate-400 uppercase tracking-widest px-1">
-                  Lead Time & Pricing
-                </span>
-                <div className="mt-4 grid grid-cols-1 sm:grid-cols-3 gap-3">
-                  {(["economy", "standard", "expedited"] as const).map(
-                    (leadTimeType) => {
-                      const realPrice =
-                        calculatePrice(part, leadTimeType) / part.quantity;
+              {/* Row 2: Quantity & Configure Actions */}
+              <div className="flex items-center justify-between gap-4 w-full">
+                <div className="flex items-center gap-3 w-full justify-between">
+                  <Button
+                    variant="outline"
+                    onClick={() => setIsEditModalOpen(true)}
+                    title="Configure Part"
+                    className="
+                      h-11 px-5 gap-2.5 rounded-xl
+                      border-slate-300 text-slate-700
+                      bg-white shadow-sm
+                      hover:border-blue-500 hover:text-blue-700 hover:bg-blue-50
+                      focus-visible:ring-2 focus-visible:ring-blue-500
+                      group
+                    "
+                  >
+                    <Edit className="h-4.5 w-4.5 text-slate-500 group-hover:text-blue-600 transition-colors" />
+                    <span className="text-xs font-bold tracking-wide">
+                      Edit Specification
+                    </span>
+                  </Button>
+                  {/* Action Buttons: Standardized h-11 */}
+                  <div className="flex h-11 items-center rounded-xl border border-slate-200 bg-white px-2 shadow-sm transition-all hover:border-blue-200">
+                    {/* Label */}
+                    <span className="mx-2 text-[10px] font-black uppercase tracking-widest text-slate-400">
+                      Qty
+                    </span>
 
-                      const uplift = markupMap[leadTimeType];
-                      const marketingPrice = realPrice * (1 + uplift);
+                    {/* Stepper */}
+                    <div className="flex items-center rounded-lg bg-slate-50 p-0.5 ml-1">
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-7 w-7 rounded-md text-slate-500 hover:bg-white hover:text-blue-600 transition-colors shadow-sm"
+                        onClick={() => {
+                          const newQ = part.quantity - 1;
+                          if (newQ >= 1)
+                            updatePart(index, "quantity", newQ, false);
+                        }}
+                      >
+                        <span className="text-sm font-bold leading-none">
+                          −
+                        </span>
+                      </Button>
 
-                      const isSelected = part.leadTimeType === leadTimeType;
-                      const icon = `/icons/${leadTimeType}.png`;
-                      const leadTime = calculateLeadTime(part, leadTimeType);
-
-                      return (
-                        <div
-                          key={leadTimeType}
-                          onClick={() =>
-                            updatePart(
-                              index,
-                              "leadTimeType",
-                              leadTimeType,
-                              false,
-                            )
+                      <input
+                        type="number"
+                        value={part.quantity}
+                        onChange={(e) => {
+                          const val = parseInt(e.target.value || "1");
+                          if (!isNaN(val) && val >= 1) {
+                            updatePart(index, "quantity", val, false);
                           }
-                          className={`
+                        }}
+                        className="mx-1 w-12 bg-transparent text-center text-sm font-bold text-slate-900 focus:outline-none"
+                        min="1"
+                      />
+
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-7 w-7 rounded-md text-slate-500 hover:bg-white hover:text-blue-600 transition-colors shadow-sm"
+                        onClick={() =>
+                          updatePart(
+                            index,
+                            "quantity",
+                            part.quantity + 1,
+                            false,
+                          )
+                        }
+                      >
+                        <span className="text-sm font-bold leading-none">
+                          +
+                        </span>
+                      </Button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div className="flex flex-col xl:flex-row gap-8">
+            {/* Content Area */}
+            <div className="flex-1 space-y-4">
+              <div className="flex flex-col">
+                {/* Material */}
+                <div className="flex items-center gap-4 py-4 group">
+                  <div className="h-10 w-10 shrink-0 rounded-lg bg-slate-50 flex items-center justify-center text-slate-500 group-hover:text-blue-600 group-hover:bg-blue-50 transition-colors">
+                    <Layers className="w-5 h-5" />
+                  </div>
+                  <div className="min-w-0">
+                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-0.5">
+                      Material
+                    </p>
+                    <p className="text-sm font-bold text-slate-900 truncate">
+                      {MATERIALS_LIST.find((m) => m.value === part.material)
+                        ?.label ||
+                        part.material ||
+                        "Not specified"}
+                    </p>
+                  </div>
+                </div>
+
+                {/* Finish */}
+                <div className="flex items-center gap-4 py-4 group">
+                  <div className="h-10 w-10 shrink-0 rounded-lg bg-slate-50 flex items-center justify-center text-slate-500 group-hover:text-blue-600 group-hover:bg-blue-50 transition-colors">
+                    <Droplet className="w-5 h-5" />
+                  </div>
+                  <div className="min-w-0">
+                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-0.5">
+                      Finish
+                    </p>
+                    <p className="text-sm font-bold text-slate-900 truncate">
+                      {FINISHES_LIST.find((f) => f.value === part.finish)
+                        ?.label ||
+                        part.finish ||
+                        "As Machined"}
+                    </p>
+                  </div>
+                </div>
+
+                {/* Tolerance */}
+                <div className="flex items-center gap-4 py-4 group">
+                  <div className="h-10 w-10 shrink-0 rounded-lg bg-slate-50 flex items-center justify-center text-slate-500 group-hover:text-blue-600 group-hover:bg-blue-50 transition-colors">
+                    <Ruler className="w-5 h-5" />
+                  </div>
+                  <div className="min-w-0">
+                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-0.5">
+                      Tolerance
+                    </p>
+                    <p className="text-sm font-bold text-slate-900 truncate capitalize">
+                      {part.tolerance || "Standard"}
+                    </p>
+                  </div>
+                </div>
+
+                {/* Inspection */}
+                <div className="flex items-center gap-4 py-4 group">
+                  <div className="h-10 w-10 shrink-0 rounded-lg bg-slate-50 flex items-center justify-center text-slate-500 group-hover:text-blue-600 group-hover:bg-blue-50 transition-colors">
+                    <ClipboardCheck className="w-5 h-5" />
+                  </div>
+                  <div className="min-w-0">
+                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-0.5">
+                      Inspection
+                    </p>
+                    <p className="text-sm font-bold text-slate-900 truncate capitalize">
+                      {part.inspection || "Standard"}
+                    </p>
+                  </div>
+                </div>
+              </div>
+            </div>
+            {/* Row 2: Lead Time Pricing Options */}
+            <div className="w-full xl:w-[240px] shrink-0">
+              <div className="grid grid-cols-1 gap-3">
+                {(["economy", "standard", "expedited"] as const).map(
+                  (leadTimeType) => {
+                    const realPrice =
+                      calculatePrice(part, leadTimeType) / part.quantity;
+
+                    const uplift = markupMap[leadTimeType];
+                    const marketingPrice = realPrice * (1 + uplift);
+
+                    const isSelected = part.leadTimeType === leadTimeType;
+                    const icon = `/icons/${leadTimeType}.png`;
+                    const leadTime = calculateLeadTime(part, leadTimeType);
+
+                    return (
+                      <div
+                        key={leadTimeType}
+                        onClick={() =>
+                          updatePart(index, "leadTimeType", leadTimeType, false)
+                        }
+                        className={`
                             relative cursor-pointer rounded-xl sm:rounded-2xl
-                            border p-3 sm:p-4 transition-all
+                            border p-3 transition-all
                             active:scale-[0.98]
                             ${
                               isSelected
@@ -611,58 +688,53 @@ export function PartCardItem({
                                 : "border-slate-200 bg-white hover:border-slate-300 hover:shadow-sm"
                             }
                           `}
-                        >
-                          {/* Badge */}
-                          <div className="absolute right-2 top-2 sm:-right-3 sm:-top-2">
-                            <span
-                              className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide
+                      >
+                        {/* Badge */}
+                        <div className="absolute right-2 top-2 sm:-right-3 sm:-top-2">
+                          <span
+                            className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide
                                 ${
                                   isSelected
                                     ? "bg-blue-100 text-blue-700"
                                     : "bg-slate-200 text-slate-600"
                                 }
                               `}
-                            >
-                              {leadTimeMeta[leadTimeType].badge}
-                            </span>
-                          </div>
+                          >
+                            {leadTimeMeta[leadTimeType].badge}
+                          </span>
+                        </div>
 
-                          {/* Header */}
-                          <div className="mb-3 sm:mb-4 flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3">
-                            <img
-                              src={icon}
-                              alt=""
-                              className="h-8 w-8 sm:h-9 sm:w-9 shrink-0"
-                            />
+                        {/* Header */}
+                        <div className="mb-3 sm:mb-4 flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3">
+                          <img
+                            src={icon}
+                            alt=""
+                            className="h-8 w-8 sm:h-9 sm:w-9 shrink-0"
+                          />
 
-                            <div className="leading-tight">
-                              <div className="text-sm font-semibold capitalize text-slate-700">
-                                {leadTimeType}
-                              </div>
-                              <div className="text-xs text-slate-400">
-                                {leadTime} Business Days
-                              </div>
+                          <div className="leading-tight">
+                            <div className="text-sm font-semibold capitalize text-slate-700">
+                              {leadTimeType}
+                            </div>
+                            <div className="text-xs text-slate-400">
+                              {leadTime} Business Days
                             </div>
                           </div>
+                        </div>
 
-                          {/* Pricing */}
-                          <div className="space-y-1">
-                            <div className="flex flex-col items-start justify-between">
-                              <div className="text-xs sm:text-sm text-slate-400 line-through">
-                                {formatCurrencyFixed(marketingPrice)}
-                              </div>
-
-                              <div
-                                className={`text-xl sm:text-2xl font-bold leading-none ${
-                                  isSelected
-                                    ? "text-blue-700"
-                                    : "text-slate-700"
-                                }`}
-                              >
-                                {formatCurrencyFixed(realPrice)}
-                              </div>
+                        {/* Pricing */}
+                        <div className="space-y-1">
+                          <div
+                            className={`text-xl sm:text-2xl font-bold leading-none ${
+                              isSelected ? "text-blue-700" : "text-slate-700"
+                            }`}
+                          >
+                            {formatCurrencyFixed(realPrice)}
+                          </div>
+                          <div className="flex items-baseline gap-x-2">
+                            <div className="text-xs sm:text-sm text-red-500 line-through">
+                              {formatCurrencyFixed(marketingPrice)}
                             </div>
-
                             <div className="text-xs text-slate-500">
                               Save{" "}
                               <span className="font-semibold text-green-700">
@@ -673,101 +745,10 @@ export function PartCardItem({
                             </div>
                           </div>
                         </div>
-                      );
-                    },
-                  )}
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {/* Content Area */}
-          <div className="flex-1">
-            <div className="space-y-5">
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 p-6 rounded-2xl bg-white border border-slate-200 shadow-md">
-                {/* Material */}
-                <div className="flex items-center space-x-2">
-                  <span className="text-slate-400">
-                    <svg
-                      className="w-4 h-4"
-                      fill="currentColor"
-                      viewBox="0 0 24 24"
-                    >
-                      {/* Example icon */}
-                    </svg>
-                  </span>
-                  <div>
-                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">
-                      Material
-                    </p>
-                    <p className="text-sm font-semibold text-slate-900 leading-tight">
-                      {MATERIALS_LIST.find((m) => m.value === part.material)
-                        ?.label ||
-                        part.material ||
-                        "Not specified"}
-                    </p>
-                  </div>
-                </div>
-
-                {/* Finish */}
-                <div className="flex items-center space-x-2">
-                  <span className="text-slate-400">
-                    <svg
-                      className="w-4 h-4"
-                      fill="currentColor"
-                      viewBox="0 0 24 24"
-                    ></svg>
-                  </span>
-                  <div>
-                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">
-                      Finish
-                    </p>
-                    <p className="text-sm font-semibold text-slate-900 leading-tight">
-                      {FINISHES_LIST.find((f) => f.value === part.finish)
-                        ?.label ||
-                        part.finish ||
-                        "As Machined"}
-                    </p>
-                  </div>
-                </div>
-
-                {/* Tolerance */}
-                <div className="flex items-center space-x-2">
-                  <span className="text-slate-400">
-                    <svg
-                      className="w-4 h-4"
-                      fill="currentColor"
-                      viewBox="0 0 24 24"
-                    ></svg>
-                  </span>
-                  <div>
-                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">
-                      Tolerance
-                    </p>
-                    <p className="text-sm font-semibold text-slate-900 leading-tight capitalize">
-                      {part.tolerance || "Standard"}
-                    </p>
-                  </div>
-                </div>
-
-                {/* Inspection */}
-                <div className="flex items-center space-x-2">
-                  <span className="text-slate-400">
-                    <svg
-                      className="w-4 h-4"
-                      fill="currentColor"
-                      viewBox="0 0 24 24"
-                    ></svg>
-                  </span>
-                  <div>
-                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">
-                      Inspection
-                    </p>
-                    <p className="text-sm font-semibold text-slate-900 leading-tight capitalize">
-                      {part.inspection || "Standard"}
-                    </p>
-                  </div>
-                </div>
+                      </div>
+                    );
+                  },
+                )}
               </div>
             </div>
           </div>
