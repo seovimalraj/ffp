@@ -8,6 +8,7 @@ import { Search, Command } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useRouter } from "next/navigation";
 import { useSession } from "next-auth/react";
+import { useMetaStore } from "@/components/store/title-store";
 
 interface AppHeaderProps {
   setOpen: () => void;
@@ -17,6 +18,7 @@ const AppHeader = ({ setOpen }: AppHeaderProps) => {
   const { toggleMobileSidebar } = useSidebar();
   const router = useRouter();
   const session = useSession();
+  const { pageTitle } = useMetaStore();
 
   const handleToggle = () => {
     setOpen();
@@ -69,6 +71,16 @@ const AppHeader = ({ setOpen }: AppHeaderProps) => {
               <Logo classNames="h-full w-auto object-contain" />
             </div>
           </Link>
+        </div>
+
+        {/* Page Title with Premium Styling */}
+        <div className="hidden lg:flex items-center gap-3">
+          <div className="relative">
+            <div className="absolute -left-3 top-1/2 -translate-y-1/2 w-1 h-8 bg-gradient-to-b from-blue-500 to-purple-500 rounded-full animate-pulse" />
+            <h1 className="text-3xl font-bold bg-gradient-to-r from-slate-800 via-slate-700 to-slate-600 bg-clip-text text-transparent tracking-tight">
+              {pageTitle}
+            </h1>
+          </div>
         </div>
 
         {/* Center section - Search Area */}

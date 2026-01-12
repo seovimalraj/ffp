@@ -509,7 +509,7 @@ export function PartCardItem({
               <div className="flex items-center justify-between gap-4 w-full">
                 <div className="flex items-center gap-3 w-full justify-between">
                   <Button
-                    variant="outline"
+                    variant="blueCta"
                     onClick={() => setIsEditModalOpen(true)}
                     title="Configure Part"
                     className="
@@ -521,8 +521,11 @@ export function PartCardItem({
                       group
                     "
                   >
-                    <Edit className="h-4.5 w-4.5 text-slate-500 group-hover:text-blue-600 transition-colors" />
-                    <span className="text-xs font-bold tracking-wide">
+                    <Edit
+                      stroke="white"
+                      className="h-4.5 w-4.5 text-white group-hover:text-blue-600 transition-colors"
+                    />
+                    <span className="text-xs text-white ml-1 font-bold tracking-wide">
                       Edit Specification
                     </span>
                   </Button>

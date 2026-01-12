@@ -1,12 +1,11 @@
 "use client";
 
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useRef, useCallback } from "react";
 import {
   LayoutGrid,
   List as ListIcon,
   Files as FilesIcon,
   Folder as FolderIcon,
-  Search,
   Filter,
   Download,
   X,
@@ -32,6 +31,7 @@ import {
   CreatedRFQ,
 } from "@/components/modals/quote-success-modal";
 import { toast } from "sonner";
+import { useMetaStore } from "@/components/store/title-store";
 
 type RFQPart = {
   id: string;
@@ -58,6 +58,7 @@ type RFQPart = {
     mime_type: string;
     created_at: string;
   } | null;
+  rfq_created_at: string;
   created_at: string; // Assuming it exists or using drawing date
 };
 
@@ -69,11 +70,18 @@ type GroupedRFQ = {
   lastUpdated: string;
 };
 
+const RFQ_LIMIT = 10;
+
 const Page = () => {
-  const [view, setView] = useState<"grid" | "table">("grid");
+  const [view, setView] = useState<"grid" | "table">("table");
   const [groupBy, setGroupBy] = useState<"file" | "rfq">("rfq");
+  const [statusTab, setStatusTab] = useState<
+    "all" | "draft" | "submitted" | "paid"
+  >("all");
   const [data, setData] = useState<RFQPart[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [isFetchingMore, setIsFetchingMore] = useState(false);
+  const [hasMore, setHasMore] = useState(true);
   const [selectedRfq, setSelectedRfq] = useState<GroupedRFQ | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [previewFile, setPreviewFile] = useState<string | null>(null);
@@ -81,6 +89,7 @@ const Page = () => {
   const [isMakeQuoteModalOpen, setIsMakeQuoteModalOpen] = useState(false);
   const [createdRfqs, setCreatedRfqs] = useState<CreatedRFQ[]>([]);
   const [isSuccessModalOpen, setIsSuccessModalOpen] = useState(false);
+  const { setPageTitle, resetTitle } = useMetaStore();
 
   const selectedPartsList = useMemo(() => {
     return data
@@ -96,6 +105,13 @@ const Page = () => {
         }),
       );
   }, [data, selectedIds]);
+
+  useEffect(() => {
+    setPageTitle("Part Library");
+    return () => {
+      resetTitle();
+    };
+  }, []);
 
   const handleCreateQuote = async (groups: { parts: string[] }[]) => {
     try {
@@ -132,44 +148,103 @@ const Page = () => {
   }, [groupBy]);
 
   useEffect(() => {
-    fetchFiles();
-  }, []);
+    fetchFiles(statusTab);
+  }, [statusTab]);
 
-  const fetchFiles = async () => {
-    setIsLoading(true);
-    try {
-      const response = await api.get("/files/rfq");
-      setData(response.data);
-    } catch (error) {
-      console.error("Error fetching files:", error);
-    } finally {
-      setIsLoading(false);
-    }
-  };
+  const fetchFiles = useCallback(
+    async (status?: string, isNext = false) => {
+      if (isNext) {
+        if (isFetchingMore || !hasMore) return;
+        setIsFetchingMore(true);
+      } else {
+        setIsLoading(true);
+        setHasMore(true);
+      }
+
+      try {
+        const params: any = {
+          status: status === "all" ? undefined : status,
+          limit: RFQ_LIMIT,
+        };
+
+        if (isNext && data.length > 0) {
+          const lastPart = data[data.length - 1];
+          params.cursorCreatedAt = lastPart.rfq_created_at;
+          params.cursorRfqId = lastPart.rfq_id;
+        }
+
+        const response = await api.get("/files/rfq", { params });
+        const newData = response.data || [];
+
+        setData((prev) => (isNext ? [...prev, ...newData] : newData));
+
+        // Determine hasMore based on distinct RFQs in current batch
+        const distinctRfqs = new Set(newData.map((p: any) => p.rfq_id)).size;
+        setHasMore(distinctRfqs === RFQ_LIMIT);
+      } catch (error) {
+        console.error("Error fetching files:", error);
+      } finally {
+        setIsLoading(false);
+        setIsFetchingMore(false);
+      }
+    },
+    [data, hasMore, isFetchingMore],
+  );
+
+  const handleLoadMore = useCallback(() => {
+    fetchFiles(statusTab, true);
+  }, [statusTab, fetchFiles]);
+
+  const observerTarget = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (view === "table") return;
+
+    const element = observerTarget.current;
+    if (!element || !hasMore || isFetchingMore) return;
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0].isIntersecting) {
+          handleLoadMore();
+        }
+      },
+      { threshold: 0.1, rootMargin: "200px" },
+    );
+
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, [view, hasMore, isFetchingMore, handleLoadMore]);
 
   const groupedData = useMemo(() => {
-    const groups: Record<string, GroupedRFQ> = {};
+    const groups: GroupedRFQ[] = [];
+    const groupMap: Record<string, number> = {}; // rfq_id -> index in groups array
+
     data.forEach((part) => {
       const rfqId = part.rfq_id;
-      if (!groups[rfqId]) {
-        groups[rfqId] = {
+      if (groupMap[rfqId] === undefined) {
+        groupMap[rfqId] = groups.length;
+        groups.push({
           rfq_id: rfqId,
           rfq_code: part.rfq?.rfq_code || "Unknown RFQ",
           status: part.rfq?.status || "Draft",
           parts: [],
           lastUpdated:
-            part.part_drawing_2d?.created_at || new Date().toISOString(),
-        };
+            part.rfq_created_at ||
+            part.part_drawing_2d?.created_at ||
+            new Date().toISOString(),
+        });
       }
-      groups[rfqId].parts.push(part);
-      if (
-        part.part_drawing_2d?.created_at &&
-        part.part_drawing_2d.created_at > groups[rfqId].lastUpdated
-      ) {
-        groups[rfqId].lastUpdated = part.part_drawing_2d.created_at;
+
+      const groupIndex = groupMap[rfqId];
+      groups[groupIndex].parts.push(part);
+
+      const partDate = part.part_drawing_2d?.created_at;
+      if (partDate && partDate > groups[groupIndex].lastUpdated) {
+        groups[groupIndex].lastUpdated = partDate;
       }
     });
-    return Object.values(groups);
+    return groups;
   }, [data]);
 
   const filteredParts = useMemo(() => {
@@ -194,6 +269,7 @@ const Page = () => {
     {
       key: "snapshot_2d",
       header: "Preview",
+      sticky: "left",
       render: (row) => (
         <div
           className="flex items-center justify-center"
@@ -263,134 +339,130 @@ const Page = () => {
         ),
       sortable: true,
     },
-    {
-      key: "actions",
-      header: "",
-      render: (_row) => (
-        <div className="flex items-center justify-end gap-2">
-          <button
-            onClick={() => window.open(_row.cad_file_url, "_blank")}
-            className="p-2 hover:bg-slate-100 dark:hover:bg-neutral-800 rounded-lg transition-colors"
-            title="Download"
-          >
-            <Download className="w-4 h-4 text-slate-500" />
-          </button>
-        </div>
-      ),
-    },
   ];
 
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-neutral-950 p-6">
       {/* Header section */}
-      <div className="max-w-7xl mx-auto space-y-8">
-        <div className="flex flex-col gap-6">
-          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-            <div className="space-y-1">
-              <h1 className="text-3xl font-bold tracking-tight text-slate-900 dark:text-white">
-                Part Library
-              </h1>
-              <p className="text-slate-500 dark:text-neutral-400">
-                Manage and organize your project files and RFQs.
-              </p>
-            </div>
-          </div>
-
-          <div className="flex flex-col md:flex-row items-center justify-between gap-4">
-            <div className="relative w-full md:w-96">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-              <input
-                type="text"
-                placeholder="Search..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full pl-10 pr-4 py-2 bg-white dark:bg-neutral-900 border border-slate-200 dark:border-neutral-800 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary/20 transition-all text-sm"
-              />
-            </div>
-
-            <div className="flex items-center gap-3 w-full md:w-auto justify-end overflow-x-auto pb-1 md:pb-0">
-              <div className="flex items-center gap-1 p-1 bg-white dark:bg-neutral-900 border border-slate-200 dark:border-neutral-800 rounded-xl shadow-sm">
-                <span className="px-2 text-[10px] font-semibold uppercase tracking-wider text-slate-400">
-                  View
-                </span>
-                <button
-                  onClick={() => setView("grid")}
-                  className={cn(
-                    "flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm font-medium transition-all",
-                    view === "grid"
-                      ? "bg-slate-100 dark:bg-neutral-800 text-slate-900 dark:text-white shadow-sm"
-                      : "text-slate-500 hover:text-slate-700 dark:hover:text-neutral-300",
-                  )}
-                >
-                  <LayoutGrid className="w-4 h-4" />
-                  Grid
-                </button>
-                <button
-                  onClick={() => setView("table")}
-                  className={cn(
-                    "flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm font-medium transition-all",
-                    view === "table"
-                      ? "bg-slate-100 dark:bg-neutral-800 text-slate-900 dark:text-white shadow-sm"
-                      : "text-slate-500 hover:text-slate-700 dark:hover:text-neutral-300",
-                  )}
-                >
-                  <ListIcon className="w-4 h-4" />
-                  Table
-                </button>
-              </div>
-
-              <div
+      <div className="max-w-7xl mx-auto space-y-4">
+        {/* Controls Bar */}
+        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+          {/* Left: Status Tabs */}
+          <div className="flex items-center gap-1 p-1 bg-white dark:bg-neutral-900 border border-slate-200 dark:border-neutral-800 rounded-xl shadow-sm relative">
+            {(["all", "draft", "submitted", "paid"] as const).map((tab) => (
+              <button
+                key={tab}
+                onClick={() => setStatusTab(tab)}
                 className={cn(
-                  "flex items-center gap-1 p-1 bg-white dark:bg-neutral-900 border border-slate-200 dark:border-neutral-800 rounded-xl shadow-sm transition-opacity",
-                  view === "table" && "opacity-50 pointer-events-none",
+                  "relative px-6 py-2.5 rounded-lg text-sm font-bold transition-colors duration-200",
+                  statusTab === tab
+                    ? "text-white dark:text-slate-900"
+                    : "text-slate-500 dark:text-neutral-500 hover:text-slate-900 dark:hover:text-white",
                 )}
               >
-                <span className="px-2 text-[10px] font-semibold uppercase tracking-wider text-slate-400">
-                  Group
-                </span>
-                <button
-                  onClick={() => setGroupBy("file")}
-                  disabled={view === "table"}
-                  className={cn(
-                    "flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm font-medium transition-all",
-                    groupBy === "file"
-                      ? "bg-slate-100 dark:bg-neutral-800 text-slate-900 dark:text-white shadow-sm"
-                      : "text-slate-500 hover:text-slate-700 dark:hover:text-neutral-300",
-                  )}
-                >
-                  <FilesIcon className="w-4 h-4" />
-                  Files
-                </button>
-                <button
-                  onClick={() => setGroupBy("rfq")}
-                  disabled={view === "table"}
-                  className={cn(
-                    "flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm font-medium transition-all",
-                    groupBy === "rfq"
-                      ? "bg-slate-100 dark:bg-neutral-800 text-slate-900 dark:text-white shadow-sm"
-                      : "text-slate-500 hover:text-slate-700 dark:hover:text-neutral-300",
-                  )}
-                >
-                  <FolderIcon className="w-4 h-4" />
-                  RFQs
-                </button>
-              </div>
-
-              <button className="flex items-center gap-2 px-3 py-2 bg-white dark:bg-neutral-900 border border-slate-200 dark:border-neutral-800 rounded-xl text-sm font-medium hover:bg-slate-50 dark:hover:bg-neutral-800 transition-colors shadow-sm">
-                <Filter className="w-4 h-4" />
-                <span>Filters</span>
+                {statusTab === tab && (
+                  <motion.div
+                    layoutId="active-tab-library"
+                    className="absolute inset-0 bg-slate-900 dark:bg-white rounded-[10px] shadow-md shadow-slate-200 dark:shadow-none"
+                    transition={{
+                      type: "spring",
+                      bounce: 0.15,
+                      duration: 0.5,
+                    }}
+                  />
+                )}
+                <span className="relative z-10 capitalize">{tab}</span>
               </button>
+            ))}
+          </div>
 
-              {selectedIds.size > 0 && (
-                <button
-                  onClick={handleClearSelection}
-                  className="flex items-center gap-2 px-3 py-2 text-sm font-medium text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-xl transition-all"
-                  title="Clear Selection"
-                >
-                  <X className="w-4 h-4" />
-                </button>
-              )}
+          {/* Right: View, Group, Filter Controls */}
+          <div className="flex items-center gap-3 overflow-x-auto pb-1 sm:pb-0">
+            {/* View Toggle */}
+            <div className="flex items-center gap-1 p-1 bg-white dark:bg-neutral-900 border border-slate-200 dark:border-neutral-800 rounded-xl shadow-sm">
+              <span className="px-2 text-[10px] font-semibold uppercase tracking-wider text-slate-400">
+                View
+              </span>
+              <button
+                onClick={() => setView("grid")}
+                className={cn(
+                  "flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm font-medium transition-all",
+                  view === "grid"
+                    ? "bg-slate-100 dark:bg-neutral-800 text-slate-900 dark:text-white shadow-sm"
+                    : "text-slate-500 hover:text-slate-700 dark:hover:text-neutral-300",
+                )}
+              >
+                <LayoutGrid className="w-4 h-4" />
+                Grid
+              </button>
+              <button
+                onClick={() => setView("table")}
+                className={cn(
+                  "flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm font-medium transition-all",
+                  view === "table"
+                    ? "bg-slate-100 dark:bg-neutral-800 text-slate-900 dark:text-white shadow-sm"
+                    : "text-slate-500 hover:text-slate-700 dark:hover:text-neutral-300",
+                )}
+              >
+                <ListIcon className="w-4 h-4" />
+                Table
+              </button>
             </div>
+
+            {/* Group By Toggle */}
+            <div
+              className={cn(
+                "flex items-center gap-1 p-1 bg-white dark:bg-neutral-900 border border-slate-200 dark:border-neutral-800 rounded-xl shadow-sm transition-opacity",
+                view === "table" && "opacity-50 pointer-events-none",
+              )}
+            >
+              <span className="px-2 text-[10px] font-semibold uppercase tracking-wider text-slate-400">
+                Group
+              </span>
+              <button
+                onClick={() => setGroupBy("file")}
+                disabled={view === "table"}
+                className={cn(
+                  "flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm font-medium transition-all",
+                  groupBy === "file"
+                    ? "bg-slate-100 dark:bg-neutral-800 text-slate-900 dark:text-white shadow-sm"
+                    : "text-slate-500 hover:text-slate-700 dark:hover:text-neutral-300",
+                )}
+              >
+                <FilesIcon className="w-4 h-4" />
+                Files
+              </button>
+              <button
+                onClick={() => setGroupBy("rfq")}
+                disabled={view === "table"}
+                className={cn(
+                  "flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm font-medium transition-all",
+                  groupBy === "rfq"
+                    ? "bg-slate-100 dark:bg-neutral-800 text-slate-900 dark:text-white shadow-sm"
+                    : "text-slate-500 hover:text-slate-700 dark:hover:text-neutral-300",
+                )}
+              >
+                <FolderIcon className="w-4 h-4" />
+                RFQs
+              </button>
+            </div>
+
+            {/* Filter Button */}
+            <button className="flex items-center gap-2 px-3 py-2 bg-white dark:bg-neutral-900 border border-slate-200 dark:border-neutral-800 rounded-xl text-sm font-medium hover:bg-slate-50 dark:hover:bg-neutral-800 transition-colors shadow-sm">
+              <Filter className="w-4 h-4" />
+              <span>Filters</span>
+            </button>
+
+            {/* Clear Selection Button */}
+            {selectedIds.size > 0 && (
+              <button
+                onClick={handleClearSelection}
+                className="flex items-center gap-2 px-3 py-2 text-sm font-medium text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-xl transition-all"
+                title="Clear Selection"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            )}
           </div>
         </div>
 
@@ -421,159 +493,181 @@ const Page = () => {
               keyExtractor={(row) => row.id}
               pageSize={30}
               selectable={true}
+              actions={[
+                {
+                  label: "Download",
+                  icon: <Download className="w-4 h-4" />,
+                  onClick: () => {},
+                },
+              ]}
               onSelectionChange={(selected) => {
                 setSelectedIds(new Set(selected.map((s) => s.id)));
               }}
+              onEndReached={handleLoadMore}
+              hasMore={hasMore}
+              isLoading={isLoading || isFetchingMore}
             />
           </div>
         ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 mt-16 gap-12 pb-10">
-            <AnimatePresence mode="popLayout">
-              {groupBy === "rfq"
-                ? filteredGroupedData.map((group) => (
-                    <motion.div
-                      key={group.rfq_id}
-                      layout
-                      initial={{ opacity: 0, y: 20 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      exit={{ opacity: 0, scale: 0.95 }}
-                      onClick={() => setSelectedRfq(group)}
-                      className="cursor-pointer group"
-                    >
-                      <FolderCard
-                        accentColor={
-                          group.status === "Completed" ? "#10b981" : "#7036E9"
-                        }
-                        className="w-full"
-                        isSelected={group.parts.every((part) =>
-                          selectedIds.has(part.id),
-                        )}
-                        onSelect={() => {
-                          // Check if all parts are currently selected
-                          const allSelected = group.parts.every((part) =>
-                            selectedIds.has(part.id),
-                          );
-
-                          setSelectedIds((prev) => {
-                            const newSet = new Set(prev);
-                            if (allSelected) {
-                              // Deselect all parts in this RFQ
-                              group.parts.forEach((part) => {
-                                newSet.delete(part.id);
-                              });
-                            } else {
-                              // Select all parts in this RFQ
-                              group.parts.forEach((part) => {
-                                newSet.add(part.id);
-                              });
-                            }
-                            return newSet;
-                          });
-                        }}
+          <div className="space-y-8">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 mt-16 gap-12 pb-10">
+              <AnimatePresence mode="popLayout">
+                {groupBy === "rfq"
+                  ? filteredGroupedData.map((group) => (
+                      <motion.div
+                        key={group.rfq_id}
+                        layout
+                        initial={{ opacity: 0, y: 20 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        exit={{ opacity: 0, scale: 0.95 }}
+                        onClick={() => setSelectedRfq(group)}
+                        className="cursor-pointer group"
                       >
-                        {/* Header */}
-                        <FolderCard.Header>
-                          <div className="flex justify-between gap-6">
-                            {/* Left */}
-                            <div className="flex flex-col">
-                              <span className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">
-                                RFQ
-                              </span>
+                        <FolderCard
+                          accentColor={
+                            group.status === "Completed" ? "#10b981" : "#7036E9"
+                          }
+                          className="w-full"
+                          isSelected={group.parts.every((part) =>
+                            selectedIds.has(part.id),
+                          )}
+                          onSelect={() => {
+                            // Check if all parts are currently selected
+                            const allSelected = group.parts.every((part) =>
+                              selectedIds.has(part.id),
+                            );
 
-                              <div className="flex items-center gap-2">
-                                <h3 className="text-lg font-extrabold text-slate-900">
-                                  {group.rfq_code}
-                                </h3>
-
-                                <span
-                                  className={`px-2 py-0.5 rounded text-[9px] font-bold uppercase ${
-                                    group.status === "Completed"
-                                      ? "bg-emerald-100 text-emerald-700"
-                                      : group.status === "Pending"
-                                        ? "bg-yellow-100 text-yellow-700"
-                                        : "bg-slate-100 text-slate-600"
-                                  }`}
-                                >
-                                  {group.status}
+                            setSelectedIds((prev) => {
+                              const newSet = new Set(prev);
+                              if (allSelected) {
+                                // Deselect all parts in this RFQ
+                                group.parts.forEach((part) => {
+                                  newSet.delete(part.id);
+                                });
+                              } else {
+                                // Select all parts in this RFQ
+                                group.parts.forEach((part) => {
+                                  newSet.add(part.id);
+                                });
+                              }
+                              return newSet;
+                            });
+                          }}
+                        >
+                          {/* Header */}
+                          <FolderCard.Header>
+                            <div className="flex justify-between gap-6">
+                              {/* Left */}
+                              <div className="flex flex-col">
+                                <span className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">
+                                  RFQ
                                 </span>
-                              </div>
-                            </div>
 
-                            {/* Right */}
-                            <div className="text-right">
-                              <span className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">
-                                Files
-                              </span>
-                              <div className="text-lg font-extrabold text-primary">
-                                {group.parts.length}
-                              </div>
-                            </div>
-                          </div>
-                        </FolderCard.Header>
+                                <div className="flex items-center gap-2">
+                                  <h3 className="text-lg font-extrabold text-slate-900">
+                                    {group.rfq_code}
+                                  </h3>
 
-                        {/* Meta */}
-                        <FolderCard.Meta>
-                          Updated{" "}
-                          {format(new Date(group.lastUpdated), "MMM d, yyyy")}
-                        </FolderCard.Meta>
-
-                        {/* Body */}
-                        <FolderCard.Body>
-                          <div className="space-y-2 invisible-scrollbar">
-                            {group.parts.slice(0, 3).map((part) => (
-                              <div
-                                key={part.id}
-                                className="flex items-center gap-3 rounded-lg bg-slate-50 px-3 py-2"
-                              >
-                                <div className="flex h-8 w-8 items-center justify-center rounded-md bg-white border border-slate-200">
-                                  <FilesIcon className="h-4 w-4 text-slate-400" />
+                                  <span
+                                    className={`px-2 py-0.5 rounded text-[9px] font-bold uppercase ${
+                                      group.status === "Completed"
+                                        ? "bg-emerald-100 text-emerald-700"
+                                        : group.status === "Pending"
+                                          ? "bg-yellow-100 text-yellow-700"
+                                          : "bg-slate-100 text-slate-600"
+                                    }`}
+                                  >
+                                    {group.status}
+                                  </span>
                                 </div>
+                              </div>
 
-                                <span className="text-sm font-medium text-slate-700 truncate">
-                                  {part.file_name}
+                              {/* Right */}
+                              <div className="text-right">
+                                <span className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">
+                                  Files
                                 </span>
+                                <div className="text-lg font-extrabold text-primary">
+                                  {group.parts.length}
+                                </div>
                               </div>
-                            ))}
+                            </div>
+                          </FolderCard.Header>
 
-                            {group.parts.length > 3 && (
-                              <div className="pt-1 text-center text-xs font-medium text-slate-400">
-                                +{group.parts.length - 3} more files
-                              </div>
-                            )}
-                          </div>
-                        </FolderCard.Body>
-                      </FolderCard>
-                    </motion.div>
-                  ))
-                : filteredParts.map((part) => (
-                    <motion.div
-                      key={part.id}
-                      layout
-                      initial={{ opacity: 0, y: 20 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      exit={{ opacity: 0, scale: 0.95 }}
-                    >
-                      <FileCard
-                        rfqId={part.rfq_id}
-                        partId={part.id}
-                        fileName={part.file_name}
-                        fileType={part.cad_file_type}
-                        thumbnailUrl={part.snapshot_2d_url}
-                        cadFileUrl={part.cad_file_url}
-                        uploadedAt={
-                          part.part_drawing_2d?.created_at ||
-                          new Date().toISOString()
-                        }
-                        onPreview={() => setPreviewFile(part.cad_file_url)}
-                        onDownload={() =>
-                          window.open(part.cad_file_url, "_blank")
-                        }
-                        isSelected={selectedIds.has(part.id)}
-                        onSelect={() => toggleSelection(part.id)}
-                      />
-                    </motion.div>
-                  ))}
-            </AnimatePresence>
+                          {/* Meta */}
+                          <FolderCard.Meta>
+                            Updated{" "}
+                            {format(new Date(group.lastUpdated), "MMM d, yyyy")}
+                          </FolderCard.Meta>
+
+                          {/* Body */}
+                          <FolderCard.Body>
+                            <div className="space-y-2 invisible-scrollbar">
+                              {group.parts.slice(0, 3).map((part) => (
+                                <div
+                                  key={part.id}
+                                  className="flex items-center gap-3 rounded-lg bg-slate-50 px-3 py-2"
+                                >
+                                  <div className="flex h-8 w-8 items-center justify-center rounded-md bg-white border border-slate-200">
+                                    <FilesIcon className="h-4 w-4 text-slate-400" />
+                                  </div>
+
+                                  <span className="text-sm font-medium text-slate-700 truncate">
+                                    {part.file_name}
+                                  </span>
+                                </div>
+                              ))}
+
+                              {group.parts.length > 3 && (
+                                <div className="pt-1 text-center text-xs font-medium text-slate-400">
+                                  +{group.parts.length - 3} more files
+                                </div>
+                              )}
+                            </div>
+                          </FolderCard.Body>
+                        </FolderCard>
+                      </motion.div>
+                    ))
+                  : filteredParts.map((part) => (
+                      <motion.div
+                        key={part.id}
+                        layout
+                        initial={{ opacity: 0, y: 20 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        exit={{ opacity: 0, scale: 0.95 }}
+                      >
+                        <FileCard
+                          rfqId={part.rfq_id}
+                          partId={part.id}
+                          fileName={part.file_name}
+                          fileType={part.cad_file_type}
+                          thumbnailUrl={part.snapshot_2d_url}
+                          cadFileUrl={part.cad_file_url}
+                          uploadedAt={
+                            part.part_drawing_2d?.created_at ||
+                            new Date().toISOString()
+                          }
+                          onPreview={() => setPreviewFile(part.cad_file_url)}
+                          onDownload={() =>
+                            window.open(part.cad_file_url, "_blank")
+                          }
+                          isSelected={selectedIds.has(part.id)}
+                          onSelect={() => toggleSelection(part.id)}
+                        />
+                      </motion.div>
+                    ))}
+              </AnimatePresence>
+            </div>
+
+            {/* Infinite Load Trigger */}
+            {hasMore && (
+              <div
+                ref={observerTarget}
+                className="flex items-center justify-center py-10"
+              >
+                <CustomLoader />
+              </div>
+            )}
           </div>
         )}
       </div>

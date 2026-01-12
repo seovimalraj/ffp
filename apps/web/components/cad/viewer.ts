@@ -642,12 +642,6 @@ export function createViewer(container: HTMLElement): Viewer {
     wireframe: boolean,
     xray: boolean,
   ) {
-    if (wireframe || xray) {
-      renderer.setClearColor(0x000000);
-    } else {
-      renderer.setClearColor(0xffffff);
-    }
-
     modelRoot.traverse((child: any) => {
       if (child.isMesh && child.material) {
         const updateMaterial = (m: any) => {

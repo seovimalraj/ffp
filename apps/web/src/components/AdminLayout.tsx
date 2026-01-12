@@ -1,7 +1,7 @@
 "use client";
 import React, { useState } from "react";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import AppHeader from "@/layout/AppHeader";
 import { cn } from "@/lib/utils";
 import {
@@ -91,6 +91,12 @@ export default function AdminLayout({ children }: Readonly<AdminLayoutProps>) {
   const pathname = usePathname();
   const [mobileOpen, setMobileOpen] = useState(false);
   const [desktopOpen, setDesktopOpen] = useState(true);
+  const router = useRouter();
+
+  const handleSignOut = () => {
+    signOut();
+    router.push("/signin");
+  };
 
   return (
     <div className="flex h-screen w-full overflow-hidden bg-gradient-to-br from-slate-50 via-gray-50 to-slate-100 dark:from-gray-950 dark:via-slate-950 dark:to-gray-900">
@@ -202,7 +208,7 @@ export default function AdminLayout({ children }: Readonly<AdminLayoutProps>) {
               <>
                 <div className="flex flex-col gap-2 w-full">
                   <Button
-                    onClick={() => signOut()}
+                    onClick={() => handleSignOut()}
                     variant="outline"
                     className="w-full justify-start gap-2 border-gray-200 dark:border-gray-700"
                   >
@@ -228,7 +234,7 @@ export default function AdminLayout({ children }: Readonly<AdminLayoutProps>) {
               </>
             ) : (
               <Button
-                onClick={() => signOut()}
+                onClick={() => handleSignOut()}
                 variant="ghost"
                 size="icon"
                 className="h-10 w-10 text-gray-500 hover:text-gray-900"

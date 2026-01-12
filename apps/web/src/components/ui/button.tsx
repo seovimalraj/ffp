@@ -5,7 +5,7 @@ import { cn } from "@/lib/utils";
 import { Loader } from "lucide-react";
 
 const buttonVariants = cva(
-  "relative inline-flex items-center justify-center whitespace-nowrap rounded-md text-sm font-medium ring-offset-background transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50",
+  "relative inline-flex items-center justify-center whitespace-nowrap text-sm font-medium ring-offset-background transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50",
   {
     variants: {
       variant: {
@@ -32,6 +32,20 @@ const buttonVariants = cva(
           "rounded-full px-10 py-6 text-lg font-bold " +
           "before:absolute before:inset-0 before:-z-10 before:rounded-full " +
           "before:bg-[inherit] before:blur-2xl before:opacity-80",
+        blueCta:
+          "relative group transition-all duration-300 active:scale-95 " +
+          "text-white font-bold text-lg rounded-full px-10 py-6 " +
+          "bg-[linear-gradient(-45deg,#3b82f6,#2563eb,#0ea5e9)] bg-[length:200%_200%] " +
+          "animate-[gradient-animation_6s_linear_infinite] " +
+          "hover:shadow-[0_0_40px_8px_rgba(59,130,246,0.4)] " +
+          // The Glow Effect
+          "before:absolute before:inset-0 before:-z-10 before:rounded-full " +
+          "before:bg-[inherit] before:blur-xl before:opacity-50 " +
+          "group-hover:before:opacity-100 group-hover:before:blur-2xl before:transition-all",
+        /** NEW */
+        stroke:
+          "bg-transparent p-0 w-[300px] h-[80px] text-[#98A5A6] " +
+          "hover:text-[#BEC3C7]",
       },
 
       size: {
@@ -70,25 +84,53 @@ const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
     ref,
   ) => {
     const Comp = asChild ? Slot : "button";
+    const isStroke = variant === "stroke";
+
     return (
       <Comp
-        className={cn(buttonVariants({ variant, size, className }))}
         ref={ref}
         disabled={loading || props.disabled}
+        className={cn(buttonVariants({ variant, size, className }))}
         {...props}
       >
-        {asChild ? (
-          children
-        ) : (
-          <>
+        {isStroke && (
+          <svg
+            className="absolute inset-0 h-full w-full pointer-events-none"
+            viewBox="0 0 300 80"
+            aria-hidden
+          >
+            <rect
+              className="btn-line btn-line--outer"
+              x="4"
+              y="4"
+              width="292"
+              height="72"
+              rx="36"
+            />
+            <rect
+              className="btn-line btn-line--inner"
+              x="4"
+              y="4"
+              width="292"
+              height="72"
+              rx="36"
+            />
+          </svg>
+        )}
+
+        {!asChild && (
+          <span className="relative z-10 flex items-center">
             {loading && <Loader className="mr-2 h-4 w-4 animate-spin" />}
             {loading ? <span className="opacity-0">{children}</span> : children}
-          </>
+          </span>
         )}
+
+        {asChild && children}
       </Comp>
     );
   },
 );
+
 Button.displayName = "Button";
 
 export { Button, buttonVariants };

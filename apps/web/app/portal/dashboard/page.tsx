@@ -20,6 +20,7 @@ import {
 } from "../../../lib/api/dashboard";
 import { toast } from "sonner";
 import CustomLoader from "@/components/ui/loader/CustomLoader";
+import { useMetaStore } from "@/components/store/title-store";
 
 export default function CustomerDashboardPage() {
   const [loading, setLoading] = useState(true);
@@ -31,6 +32,15 @@ export default function CustomerDashboardPage() {
   });
   const [recentQuotes, setRecentQuotes] = useState<RecentQuote[]>([]);
   const [recentOrders, setRecentOrders] = useState<RecentOrder[]>([]);
+
+  const { setPageTitle, resetTitle } = useMetaStore();
+
+  useEffect(() => {
+    setPageTitle("Dashboard");
+    return () => {
+      resetTitle();
+    };
+  }, []);
 
   useEffect(() => {
     const loadDashboardData = async () => {
@@ -146,17 +156,6 @@ export default function CustomerDashboardPage() {
 
   return (
     <div className="space-y-8 animate-in fade-in duration-500 p-6">
-      <div className="flex items-center justify-start">
-        <div>
-          <h1 className="text-3xl font-bold text-gray-900 dark:text-white">
-            Dashboard
-          </h1>
-          <p className="text-gray-500 dark:text-gray-400 mt-1">
-            Overview of your manufacturing activities
-          </p>
-        </div>
-      </div>
-
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
         {statItems.map((stat) => {
           const Icon = stat.icon;
@@ -222,7 +221,7 @@ export default function CustomerDashboardPage() {
                 {recentQuotes.map((quote) => (
                   <Link
                     key={quote.id}
-                    href={`/portal/quotes/${quote.id}`}
+                    href={`/quote-config/${quote.id}`}
                     className="block p-3 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors border border-transparent hover:border-gray-100 dark:hover:border-gray-800"
                   >
                     <div className="flex items-center justify-between mb-1">

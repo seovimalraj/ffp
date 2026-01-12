@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { useRouter, useParams } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import {
@@ -182,16 +182,21 @@ export default function QuoteConfigPage() {
   const [unsavedChanges, setUnsavedChanges] = useState<Set<string>>(new Set()); // Track parts with pending changes
   const [showUploadModal, setShowUploadModal] = useState(false);
   const [showScrollIndicator, setShowScrollIndicator] = useState(false);
+  const partsContainerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     const checkScroll = () => {
-      const isScrollable =
-        document.documentElement.scrollHeight > window.innerHeight;
-      const scrolledToBottom =
-        window.innerHeight + window.scrollY >=
-        document.documentElement.scrollHeight - 100;
+      if (!partsContainerRef.current) return;
 
-      setShowScrollIndicator(isScrollable && !scrolledToBottom);
+      const partsContainer = partsContainerRef.current;
+      const containerRect = partsContainer.getBoundingClientRect();
+      const containerBottom = containerRect.bottom;
+      const windowHeight = window.innerHeight;
+
+      // Check if there's more content to scroll in the parts section
+      const hasMoreToScroll = containerBottom > windowHeight + 100;
+
+      setShowScrollIndicator(hasMoreToScroll);
     };
 
     checkScroll();
@@ -1107,7 +1112,10 @@ export default function QuoteConfigPage() {
 
       <div className="flex flex-col lg:flex-row max-w-[1440px] mx-auto">
         {/* LEFT MAIN CONTENT (PARTS) */}
-        <div className="flex-1 p-4 sm:p-6 md:p-8 lg:p-10 overflow-scroll invisible-scrollbar space-y-6 md:space-y-8 pb-32">
+        <div
+          ref={partsContainerRef}
+          className="flex-1 p-4 sm:p-6 md:p-8 lg:p-10 overflow-scroll invisible-scrollbar space-y-6 md:space-y-8 pb-32"
+        >
           {parts.map((part, index) => (
             <PartCardItem
               key={index}
@@ -1399,78 +1407,16 @@ export default function QuoteConfigPage() {
       />
 
       {/* Scroll Indicator */}
-      {showScrollIndicator && parts.length > 1 && (
-        <div className="fixed bottom-8 left-1/2 -translate-x-1/2 z-10 pointer-events-none transition-opacity duration-300">
-          <div className="relative group p-3 rounded-full animate-bounce">
-            {/* Base Blue Glass */}
-            <div
-              className="
-          absolute inset-0 rounded-full
-          backdrop-blur-[24px]
-          bg-gradient-to-b
-          from-blue-200/55 via-blue-100/40 to-blue-50/30
-          border border-blue-300/40
-          shadow-[0_14px_45px_rgba(37,99,235,0.25)]
-        "
-            />
-
-            {/* Inner Refraction */}
-            <div
-              className="
-          absolute inset-[1px] rounded-full
-          bg-gradient-to-b
-          from-white/60 via-blue-100/20 to-transparent
-          shadow-inner
-        "
-            />
-
-            {/* Liquid Caustics */}
-            <div className="absolute inset-0 rounded-full overflow-hidden">
-              <div
-                className="
-            absolute -top-1/2 -left-1/2 w-[200%] h-[200%]
-            bg-[radial-gradient(circle_at_30%_30%,rgba(147,197,253,0.45),transparent_55%)]
-            animate-[spin_26s_linear_infinite]
-          "
-              />
-            </div>
-
-            {/* Blue Light Sweep */}
-            <div className="absolute inset-0 rounded-full overflow-hidden">
-              <div
-                className="
-            absolute inset-0
-            bg-[linear-gradient(120deg,transparent,rgba(191,219,254,0.7),transparent)]
-            translate-x-[-120%]
-            animate-[glassSweep_3.8s_ease-in-out_infinite]
-          "
-              />
-            </div>
-
-            {/* Chromatic Blue Edge */}
-            <div
-              className="
-          absolute inset-0 rounded-full
-          ring-1 ring-blue-200/40
-          before:absolute before:inset-0 before:rounded-full
-          before:ring-2 before:ring-blue-400/20
-          before:blur-sm
-        "
-            />
-
-            {/* Subtle Noise (Optional but Recommended) */}
-            <div
-              className="
-          absolute inset-0 rounded-full
-          bg-[url('/noise.png')]
-          opacity-[0.05]
-          mix-blend-overlay
-          pointer-events-none
-        "
-            />
-
+      {showScrollIndicator && (
+        <div className="fixed bottom-2 left-1/2 -translate-x-1/2 z-10 pointer-events-none transition-opacity duration-300">
+          <div className="flex flex-col items-center gap-1.5 px-4 py-2 rounded-full bg-white shadow-lg border border-gray-200 animate-bounce">
             {/* Icon */}
-            <ChevronDown className="relative z-10 w-6 h-6 text-blue-700 drop-shadow-md" />
+            <ChevronDown className="w-4 h-4 text-blue-600" />
+
+            {/* Text */}
+            <p className="text-xs font-medium text-gray-700 whitespace-nowrap">
+              {parts.length > 1 ? "Scroll to view all parts" : "Add more parts"}
+            </p>
           </div>
         </div>
       )}

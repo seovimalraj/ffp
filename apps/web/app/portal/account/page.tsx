@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { useRouter, usePathname } from "next/navigation";
+import { usePathname } from "next/navigation";
 import { api } from "@/lib/api";
 import { toast } from "react-hot-toast";
 import { Button } from "@/components/ui/button";
@@ -15,15 +15,24 @@ import {
 } from "@heroicons/react/24/outline";
 import { trackEvent } from "@/lib/analytics/posthog";
 import { Trash2 } from "lucide-react";
+import { useMetaStore } from "@/components/store/title-store";
 
 export default function AccountPage() {
-  const router = useRouter();
   const pathname = usePathname();
   const [activeTab, setActiveTab] = useState("profile");
   const [loading, setLoading] = useState(true);
   const [profile, setProfile] = useState<any | null>(null);
   const [organization, setOrganization] = useState<any | null>(null);
   const [addresses, setAddresses] = useState<any[]>([]);
+
+  const { setPageTitle, resetTitle } = useMetaStore();
+
+  useEffect(() => {
+    setPageTitle("Account");
+    return () => {
+      resetTitle();
+    };
+  }, []);
 
   // Determine active tab from pathname
   useEffect(() => {
@@ -85,7 +94,6 @@ export default function AccountPage() {
 
   const handleTabChange = (value: string) => {
     setActiveTab(value);
-    router.push(`/portal/account/${value === "profile" ? "" : value}`);
   };
 
   const getTabIcon = (tab: string) => {
@@ -131,17 +139,6 @@ export default function AccountPage() {
   return (
     <div className="container mx-auto px-4 py-8 max-w-7xl">
       <div className="space-y-6">
-        {/* Header */}
-        <div>
-          <h1 className="text-3xl font-bold text-gray-900">
-            Account & Organization
-          </h1>
-          <p className="text-gray-600 mt-2">
-            Manage your profile, organization settings, team members, and
-            preferences.
-          </p>
-        </div>
-
         {/* Quick Stats */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           <Card>
