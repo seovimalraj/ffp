@@ -89,40 +89,6 @@ services:
       - ffp-network
     restart: unless-stopped
 
-  worker:
-    build:
-      context: .
-      dockerfile: apps/worker/Dockerfile
-    container_name: ffp-worker
-    environment:
-      NODE_ENV: production
-      
-      # External Supabase Database
-      DATABASE_URL: postgresql://postgres:uekrlbczst9ib354dpwiztqpjluswjcf@ffp-supabase-0913e9-31-97-103-26.traefik.me:5432/postgres
-      
-      # External Redis
-      REDIS_URL: redis://default:8ysnsuqspjdjzpza@ffp-redis-o6ngzu:6379
-      REDIS_HOST: ffp-redis-o6ngzu
-      REDIS_PORT: 6379
-      REDIS_PASSWORD: 8ysnsuqspjdjzpza
-      
-      # Supabase Configuration
-      SUPABASE_URL: https://ffp-supabase-0913e9-31-97-103-26.traefik.me
-      SUPABASE_SERVICE_KEY: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpYXQiOjE3NjgyNDQ0MDUsImV4cCI6MTg5MzQ1NjAwMCwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlzcyI6InN1cGFiYXNlIn0.EEGk9NAKrzO670rKAeFJbol-7jUaqHfHW1kmfvuQnV8
-      SUPABASE_ANON_KEY: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpYXQiOjE3NjgyNDQ0MDUsImV4cCI6MTg5MzQ1NjAwMCwicm9sZSI6ImFub24iLCJpc3MiOiJzdXBhYmFzZSJ9.WzLzSu9G1JUkVAG13sdt1Aa4MPyvWDUccpvJL-anLTw
-      SUPABASE_STORAGE_BUCKET: cad-files
-      
-      # JWT Configuration
-      JWT_SECRET: cigjaz10fpxv76bvmzber5tjnmc8semu
-      
-      # Worker Settings
-      WORKER_CONCURRENCY: 5
-      JOB_TIMEOUT: 300
-    networks:
-      - ffp-network
-    restart: unless-stopped
-
 networks:
   ffp-network:
     driver: bridge
-
