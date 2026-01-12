@@ -14,6 +14,7 @@ import { IRFQStatuses } from "@/types";
 import { DataView } from "@/components/ui/data-view";
 import Link from "next/link";
 import { formatDate } from "@/lib/format";
+import { useMetaStore } from "@/components/store/title-store";
 
 // Types based on RFQ API response
 interface Quote {
@@ -43,6 +44,14 @@ export default function QuotesListPage() {
     status: "Any",
     dateRange: { from: undefined, to: undefined },
   });
+  const { setPageTitle, resetTitle } = useMetaStore();
+
+  useEffect(() => {
+    setPageTitle("Quotes");
+    return () => {
+      resetTitle();
+    };
+  }, []);
 
   useEffect(() => {
     // Track page view
@@ -192,10 +201,7 @@ export default function QuotesListPage() {
     <div className="min-h-screen">
       <div className="mx-auto">
         <Card>
-          <CardHeader>
-            <CardTitle>Quotes ({quotes.length})</CardTitle>
-          </CardHeader>
-          <CardContent>
+          <CardContent className="mt-4">
             {loading ? (
               <div className="space-y-4">
                 {Array.from({ length: 5 }).map((_, i) => (

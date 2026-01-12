@@ -127,13 +127,15 @@ INSERT INTO order_shipping (
     order_id,
     address_snapshot,
     shipping_method,
-    shipping_information
+    shipping_information,
+    tracking_number
   )
 VALUES (
     v_order_id,
     p_address_snapshot,
     p_shipping_method,
-    p_shipping_information
+    p_shipping_information,
+    encode(gen_random_bytes(8), 'hex')
   );
 -------------------------------------------------------------------
 -- 7. Update RFQ (safe)

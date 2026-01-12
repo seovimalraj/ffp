@@ -1,7 +1,8 @@
 "use client";
 
+import { useMetaStore } from "@/components/store/title-store";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Column } from "@/components/ui/data-table";
 import { DataView } from "@/components/ui/data-view";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -30,6 +31,8 @@ const Page = () => {
   const [orders, setOrders] = useState<IOrder[]>([]);
   const [loading, setLoading] = useState(true);
   const router = useRouter();
+  const { setPageTitle, resetTitle } = useMetaStore();
+
   useEffect(() => {
     const fetchOrders = async () => {
       try {
@@ -44,6 +47,13 @@ const Page = () => {
       }
     };
     fetchOrders();
+  }, []);
+
+  useEffect(() => {
+    setPageTitle("Orders");
+    return () => {
+      resetTitle();
+    };
   }, []);
 
   const columns: Column<IOrder>[] = [
@@ -90,10 +100,7 @@ const Page = () => {
     <div className="min-h-screen">
       <div className="mx-auto">
         <Card>
-          <CardHeader>
-            <CardTitle>Orders ({orders.length})</CardTitle>
-          </CardHeader>
-          <CardContent>
+          <CardContent className="mt-4">
             <StatusCards
               items={[
                 {

@@ -22,16 +22,13 @@ const CustomLoader = ({
 
   return (
     <div className={containerClasses}>
-      <div className="banter-loader">
-        <div className="banter-loader__box"></div>
-        <div className="banter-loader__box"></div>
-        <div className="banter-loader__box"></div>
-        <div className="banter-loader__box"></div>
-        <div className="banter-loader__box"></div>
-        <div className="banter-loader__box"></div>
-        <div className="banter-loader__box"></div>
-        <div className="banter-loader__box"></div>
-        <div className="banter-loader__box"></div>
+      <div className="spinner">
+        <div></div>
+        <div></div>
+        <div></div>
+        <div></div>
+        <div></div>
+        <div></div>
       </div>
     </div>
   );

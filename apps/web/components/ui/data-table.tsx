@@ -23,6 +23,7 @@ export type Column<T> = {
   render: (row: T, index: number) => ReactNode;
   sortable?: boolean;
   hidden?: boolean;
+  sticky?: "left" | "right";
 };
 
 export type Action<T> = {
@@ -229,22 +230,33 @@ export function DataTable<T>({
     );
   }
 
+  // Calculate offsets for left-sticky columns
+  let currentLeftOffset = 0;
+  if (numbering) currentLeftOffset += 48; // Estimate width for numbering
+  if (selectable) currentLeftOffset += 52; // Estimate width for selectable
+
   return (
-    <div className="relative w-full bg-card rounded-xl border border-border shadow-sm">
-      <div className="w-full">
-        <table className="w-full text-sm text-left">
-          <thead className="bg-muted/50 text-muted-foreground font-medium sticky top-0 z-20 backdrop-blur-sm">
-            <tr className="border-b border-border">
+    <div className="relative w-full bg-card rounded-xl border border-border shadow-sm overflow-hidden">
+      <div className="w-full overflow-x-auto custom-scrollbar">
+        <table className="w-full text-sm text-left border-separate border-spacing-0">
+          <thead className="text-muted-foreground font-medium sticky top-0 z-30">
+            <tr className="">
               {numbering && (
                 <th
                   scope="col"
-                  className="px-6 py-4 w-12 text-xs font-semibold uppercase tracking-wider first:rounded-tl-xl"
+                  className="px-6 py-4 w-12 text-xs font-semibold uppercase tracking-wider sticky left-0 z-40 bg-muted border-b border-border"
                 >
                   #
                 </th>
               )}
               {selectable && (
-                <th scope="col" className="px-6 py-4 w-12 first:rounded-tl-xl">
+                <th
+                  scope="col"
+                  className={cn(
+                    "px-6 py-4 w-12 sticky z-40 bg-muted border-b border-border",
+                    numbering ? "left-12" : "left-0",
+                  )}
+                >
                   <div className="flex items-center">
                     <input
                       type="checkbox"
@@ -259,43 +271,50 @@ export function DataTable<T>({
                   </div>
                 </th>
               )}
-              {visibleColumns.map((col, idx) => (
-                <th
-                  key={col.key}
-                  scope="col"
-                  className={`px-6 py-4 text-xs font-semibold uppercase tracking-wider ${
-                    idx === 0 && !selectable && !numbering
-                      ? "pl-8 first:rounded-tl-xl"
-                      : ""
-                  } ${
-                    col.sortable
-                      ? "cursor-pointer select-none hover:text-foreground transition-colors group"
-                      : ""
-                  } ${col.headerClassName ?? ""} ${idx === visibleColumns.length - 1 && !actions ? "last:rounded-tr-xl" : ""}`}
-                  onClick={() => col.sortable && handleSort(col.key)}
-                >
-                  <div className="flex items-center gap-2">
-                    <span>{col.header}</span>
-                    {col.sortable && (
-                      <span className="inline-flex opacity-0 group-hover:opacity-100 transition-opacity">
-                        {sortConfig?.key === col.key ? (
-                          sortConfig.direction === "asc" ? (
-                            <ArrowUpIcon className="w-3.5 h-3.5" />
-                          ) : (
-                            <ArrowDownIcon className="w-3.5 h-3.5" />
-                          )
-                        ) : (
-                          <ArrowUpIcon className="w-3.5 h-3.5 text-muted-foreground/50" />
-                        )}
-                      </span>
+              {visibleColumns.map((col, idx) => {
+                const isSticky = col.sticky === "left";
+                const leftPos = isSticky ? currentLeftOffset : undefined;
+                if (isSticky) currentLeftOffset += 200; // Assume a default width for sticky data columns
+
+                return (
+                  <th
+                    key={col.key}
+                    scope="col"
+                    className={cn(
+                      "px-6 py-4 text-xs font-semibold uppercase tracking-wider border-b border-border bg-muted",
+                      idx === 0 && !selectable && !numbering && "pl-8",
+                      col.sortable &&
+                        "cursor-pointer select-none hover:text-foreground transition-colors group",
+                      col.headerClassName,
+                      isSticky &&
+                        "sticky z-40 shadow-[1px_0_0_0_rgba(0,0,0,0.1)]",
                     )}
-                  </div>
-                </th>
-              ))}
+                    style={isSticky ? { left: leftPos } : {}}
+                    onClick={() => col.sortable && handleSort(col.key)}
+                  >
+                    <div className="flex items-center gap-2 whitespace-nowrap">
+                      <span>{col.header}</span>
+                      {col.sortable && (
+                        <span className="inline-flex opacity-0 group-hover:opacity-100 transition-opacity">
+                          {sortConfig?.key === col.key ? (
+                            sortConfig.direction === "asc" ? (
+                              <ArrowUpIcon className="w-3.5 h-3.5" />
+                            ) : (
+                              <ArrowDownIcon className="w-3.5 h-3.5" />
+                            )
+                          ) : (
+                            <ArrowUpIcon className="w-3.5 h-3.5 text-muted-foreground/50" />
+                          )}
+                        </span>
+                      )}
+                    </div>
+                  </th>
+                );
+              })}
               {actions && actions.length > 0 && (
                 <th
                   scope="col"
-                  className="px-6 py-4 text-right text-xs font-semibold uppercase tracking-wider w-12 last:rounded-tr-xl"
+                  className="px-6 py-4 text-right text-xs font-semibold uppercase tracking-wider w-12 sticky right-0 z-40 bg-muted border-b border-border"
                 >
                   <span className="sr-only">Actions</span>
                 </th>
@@ -307,7 +326,7 @@ export function DataTable<T>({
               <tr>
                 <td
                   colSpan={totalColumns}
-                  className="py-16 text-center text-muted-foreground"
+                  className="py-16 text-center text-muted-foreground bg-card"
                 >
                   {emptyMessage}
                 </td>
@@ -317,22 +336,33 @@ export function DataTable<T>({
                 const rowKey = keyExtractor(row);
                 const isSelected = selectedRows.has(rowKey);
 
+                // Reset offset for cells
+                let cellLeftOffset = 0;
+                if (numbering) cellLeftOffset += 48;
+                if (selectable) cellLeftOffset += 52;
+
                 return (
                   <tr
                     key={rowKey}
-                    className={`group transition-colors duration-200 ${
+                    className={cn(
+                      "group transition-colors duration-200",
                       isSelected
-                        ? "bg-primary/5 hover:bg-primary/10"
-                        : "hover:bg-muted/30"
-                    }`}
+                        ? "bg-primary/5 shadow-[inset_0_0_0_999px_rgba(var(--primary-rgb),0.05)]"
+                        : "bg-card",
+                    )}
                   >
                     {numbering && (
-                      <td className="px-6 py-4 text-muted-foreground font-mono text-xs">
+                      <td className="px-6 py-4 text-muted-foreground font-mono text-xs sticky left-0 z-10 bg-white dark:bg-neutral-950 group-hover:bg-slate-50 dark:group-hover:bg-neutral-900 group-[.is-selected]:bg-slate-50 dark:group-[.is-selected]:bg-neutral-900 shadow-[1px_0_0_0_rgba(0,0,0,0.1)] dark:shadow-[1px_0_0_0_rgba(255,255,255,0.1)]">
                         {rowIndex + 1}
                       </td>
                     )}
                     {selectable && (
-                      <td className="px-6 py-4">
+                      <td
+                        className={cn(
+                          "px-6 py-4 sticky z-10 bg-white dark:bg-neutral-950 group-hover:bg-slate-50 dark:group-hover:bg-neutral-900 group-[.is-selected]:bg-slate-50 dark:group-[.is-selected]:bg-neutral-900 shadow-[1px_0_0_0_rgba(0,0,0,0.1)] dark:shadow-[1px_0_0_0_rgba(255,255,255,0.1)]",
+                          numbering ? "left-12" : "left-0",
+                        )}
+                      >
                         <div className="flex items-center">
                           <input
                             type="checkbox"
@@ -344,20 +374,31 @@ export function DataTable<T>({
                         </div>
                       </td>
                     )}
-                    {visibleColumns.map((col, colIndex) => (
-                      <td
-                        key={col.key}
-                        className={`px-6 py-4 ${
-                          colIndex === 0 && !selectable && !numbering
-                            ? "pl-8 font-medium text-foreground"
-                            : "text-muted-foreground"
-                        } ${col.cellClassName ?? ""}`}
-                      >
-                        {col.render(row, rowIndex)}
-                      </td>
-                    ))}
+                    {visibleColumns.map((col, colIndex) => {
+                      const isSticky = col.sticky === "left";
+                      const leftPos = isSticky ? cellLeftOffset : undefined;
+                      if (isSticky) cellLeftOffset += 200;
+
+                      return (
+                        <td
+                          key={col.key}
+                          className={cn(
+                            "px-6 py-4 whitespace-nowrap bg-card group-hover:bg-muted/30 group-[.is-selected]:bg-primary/5",
+                            colIndex === 0 && !selectable && !numbering
+                              ? "pl-8 font-medium text-foreground"
+                              : "text-muted-foreground",
+                            col.cellClassName,
+                            isSticky &&
+                              "sticky z-10 bg-white dark:bg-neutral-950 group-hover:bg-slate-50 dark:group-hover:bg-neutral-900 group-[.is-selected]:bg-slate-50 dark:group-[.is-selected]:bg-neutral-900 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.1)] dark:shadow-[2px_0_5px_-2px_rgba(255,255,255,0.1)]",
+                          )}
+                          style={isSticky ? { left: leftPos } : {}}
+                        >
+                          {col.render(row, rowIndex)}
+                        </td>
+                      );
+                    })}
                     {actions && actions.length > 0 && (
-                      <td className="px-6 py-4 text-right">
+                      <td className="px-6 py-4 text-right sticky right-0 z-10 bg-white dark:bg-neutral-950 group-hover:bg-slate-50 dark:group-hover:bg-neutral-900 group-[.is-selected]:bg-slate-50 dark:group-[.is-selected]:bg-neutral-900 shadow-[-1px_0_0_0_rgba(0,0,0,0.1)] dark:shadow-[-1px_0_0_0_rgba(255,255,255,0.1)]">
                         <DropdownMenu>
                           <DropdownMenuTrigger asChild>
                             <button
@@ -414,7 +455,7 @@ export function DataTable<T>({
             {/* Loading more indicator or end of list spacer */}
             {(hasMore || visibleCount < filteredData.length) && (
               <tr ref={observerTarget}>
-                <td colSpan={totalColumns} className="py-6 text-center">
+                <td colSpan={totalColumns} className="py-6 text-center bg-card">
                   {(isLoading || visibleCount < filteredData.length) && (
                     <div className="flex items-center justify-center gap-2 text-sm text-muted-foreground">
                       <div className="w-4 h-4 border-2 border-primary/50 border-t-transparent rounded-full animate-spin" />

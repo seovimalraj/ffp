@@ -1076,3 +1076,54 @@ span.flatpickr-weekday,
 .animate-flow-dots {
   animation: flowDots 1s linear infinite;
 }
+
+:root {
+  --btn-path: 672.1px;
+}
+
+.btn-line {
+  fill: none;
+  stroke-linecap: round;
+  stroke-dasharray: calc(var(--btn-path) / 2) calc(var(--btn-path) / 2);
+}
+
+.btn-line--outer {
+  stroke: #ebc445;
+  stroke-width: 8;
+  animation: btn-outer 6s linear infinite;
+}
+
+.btn-line--inner {
+  stroke: #d9823b;
+  stroke-width: 4;
+  animation: btn-inner 5s linear infinite;
+}
+
+button:hover .btn-line,
+button:focus-visible .btn-line {
+  animation-play-state: paused;
+}
+
+@keyframes btn-outer {
+  0% {
+    stroke-dashoffset: 0;
+  }
+  50% {
+    stroke-dasharray: calc(var(--btn-path) / 3) calc((var(--btn-path) / 3) * 2);
+  }
+  100% {
+    stroke-dashoffset: var(--btn-path);
+  }
+}
+
+@keyframes btn-inner {
+  0% {
+    stroke-dashoffset: 0;
+  }
+  50% {
+    stroke-dasharray: calc(var(--btn-path) / 3) calc((var(--btn-path) / 3) * 2);
+  }
+  100% {
+    stroke-dashoffset: calc(var(--btn-path) * -1);
+  }
+}

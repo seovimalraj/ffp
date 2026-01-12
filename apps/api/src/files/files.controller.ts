@@ -7,10 +7,11 @@ import {
   BadRequestException,
   UseGuards,
   InternalServerErrorException,
+  Query,
 } from '@nestjs/common';
 import { SupabaseService } from 'src/supabase/supabase.service';
 import { FileInterceptor } from '@nestjs/platform-express';
-import { BucketNames } from '../../libs/constants';
+import { BucketNames, SQLFunctions } from '../../libs/constants';
 import { CurrentUser } from 'src/auth/user.decorator';
 import { CurrentUserDto } from 'src/auth/auth.dto';
 import { AuthGuard } from 'src/auth/auth.guard';
@@ -21,42 +22,38 @@ export class FilesController {
   constructor(private readonly supabaseService: SupabaseService) {}
 
   @Get('/rfq')
-  async getRFQFiles(@CurrentUser() user: CurrentUserDto) {
+  async getRFQFiles(
+    @CurrentUser() user: CurrentUserDto,
+    @Query('status') status?: string,
+    @Query('limit') limit?: number,
+    @Query('cursorCreatedAt') cursorCreatedAt?: string,
+    @Query('cursorRfqId') cursorRfqId?: string,
+  ) {
     const client = this.supabaseService.getClient();
 
-    const { data, error } = await client
-      .from('rfq_parts')
-      .select(
-        `
-      id,
-      rfq_id,
-      file_name,
-      cad_file_url,
-      cad_file_type,
-      snapshot_2d_url,
-      status,
-      material,
-      quantity,
-      lead_time,
-      lead_time_type,
-      final_price,
+    const params: any = {
+      p_organization_id: user.organizationId,
+    };
 
-      rfq (
-        id,
-        rfq_code,
-        status
-      ),
+    if (status) {
+      params.p_status = status;
+    }
 
-      part_drawing_2d (
-        id,
-        file_name,
-        file_url,
-        mime_type,
-        created_at
-      )
-    `,
-      )
-      .eq('organization_id', user.organizationId);
+    if (limit) {
+      params.p_rfq_limit = limit;
+    }
+
+    if (cursorCreatedAt) {
+      params.p_cursor_created_at = cursorCreatedAt;
+    }
+
+    if (cursorRfqId) {
+      params.p_cursor_rfq_id = cursorRfqId;
+    }
+
+    let query = client.rpc(SQLFunctions.getRFQPartsInfinite, params);
+
+    const { data, error } = await query;
 
     if (error) {
       throw new InternalServerErrorException(error.message);

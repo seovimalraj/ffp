@@ -132,6 +132,7 @@ export function EditPartModal({
   useEffect(() => {
     if (isOpen) {
       setLocalPart(part);
+      setActiveTab("config"); // Reset to config tab when modal opens
     }
   }, [isOpen, part]);
 
@@ -194,7 +195,7 @@ export function EditPartModal({
         <div className="flex flex-1 overflow-hidden">
           {/* Left Panel: Visualizer (40%) */}
           <div className="w-[40%] bg-gray-50/50 border-r p-2 border-gray-100 flex flex-col group">
-            <div className="h-[calc(100%-86px)] p-4">
+            <div className="flex-1 p-4 overflow-auto">
               <CadViewer
                 file={localPart.fileObject || localPart.filePath}
                 className="w-full rounded-2xl"
@@ -219,6 +220,65 @@ export function EditPartModal({
                 </span>
               </p>
             </div>
+            {activeTab === "config" && (
+              <div
+                key={`pricing-table-${activeTab}`}
+                className="border hidden md:block col-span-2 mt-2 border-gray-200 rounded-xl overflow-hidden shadow-sm"
+              >
+                <table className="w-full text-xs text-left">
+                  <thead className="bg-gray-50 text-gray-600 font-medium border-b border-gray-200">
+                    <tr>
+                      <th className="px-4 py-3 font-semibold">Qty</th>
+                      <th className="px-4 py-3 font-semibold">Unit Price</th>
+                      <th className="px-4 py-3 font-semibold">Subtotal</th>
+                      <th className="px-4 py-3 font-semibold text-green-600">
+                        You Save
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody className="bg-white divide-y divide-gray-100">
+                    {[1, 5, 10, 25, 50].map((qty) => {
+                      const total = calculatePrice(
+                        { ...localPart, quantity: qty },
+                        localPart.leadTimeType,
+                      );
+                      const unit = total / qty;
+                      const baseTotal = calculatePrice(
+                        { ...localPart, quantity: 1 },
+                        localPart.leadTimeType,
+                      );
+                      const baseUnit = baseTotal / 1;
+                      const savings = baseUnit * qty - total;
+                      const isCurrent = localPart.quantity === qty;
+
+                      return (
+                        <tr
+                          key={qty}
+                          className={`
+                                      transition-colors cursor-pointer 
+                                      ${isCurrent ? "bg-green-50 ring-1 ring-inset ring-green-500/20" : "hover:bg-gray-50"}
+                                    `}
+                          onClick={() => updateLocalPart("quantity", qty)}
+                        >
+                          <td className="px-4 py-3 font-bold text-gray-900">
+                            {qty}
+                          </td>
+                          <td className="px-4 py-3 text-gray-600">
+                            {formatCurrency(unit)}
+                          </td>
+                          <td className="px-4 py-3 text-gray-900 font-semibold">
+                            {formatCurrency(total)}
+                          </td>
+                          <td className="px-4 py-3 text-green-600 font-medium">
+                            {savings > 0.01 ? formatCurrency(savings) : "-"}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
           </div>
 
           {/* Right Panel: Configuration (60%) */}
@@ -312,71 +372,6 @@ export function EditPartModal({
                             </p>
                           </div>
                         )}
-                      </div>
-
-                      <div className="border col-span-2 border-gray-200 rounded-xl overflow-hidden shadow-sm">
-                        <table className="w-full text-sm text-left">
-                          <thead className="bg-gray-50 text-gray-600 font-medium border-b border-gray-200">
-                            <tr>
-                              <th className="px-4 py-3 font-semibold">Qty</th>
-                              <th className="px-4 py-3 font-semibold">
-                                Unit Price
-                              </th>
-                              <th className="px-4 py-3 font-semibold">
-                                Subtotal
-                              </th>
-                              <th className="px-4 py-3 font-semibold text-green-600">
-                                You Save
-                              </th>
-                            </tr>
-                          </thead>
-                          <tbody className="bg-white divide-y divide-gray-100">
-                            {[1, 5, 10, 25, 50, 100, 200, 300, 400, 500].map(
-                              (qty) => {
-                                const total = calculatePrice(
-                                  { ...localPart, quantity: qty },
-                                  localPart.leadTimeType,
-                                );
-                                const unit = total / qty;
-                                const baseTotal = calculatePrice(
-                                  { ...localPart, quantity: 1 },
-                                  localPart.leadTimeType,
-                                );
-                                const baseUnit = baseTotal / 1;
-                                const savings = baseUnit * qty - total;
-                                const isCurrent = localPart.quantity === qty;
-
-                                return (
-                                  <tr
-                                    key={qty}
-                                    className={`
-                                      transition-colors cursor-pointer 
-                                      ${isCurrent ? "bg-green-50 ring-1 ring-inset ring-green-500/20" : "hover:bg-gray-50"}
-                                    `}
-                                    onClick={() =>
-                                      updateLocalPart("quantity", qty)
-                                    }
-                                  >
-                                    <td className="px-4 py-3 font-bold text-gray-900">
-                                      {qty}
-                                    </td>
-                                    <td className="px-4 py-3 text-gray-600">
-                                      {formatCurrency(unit)}
-                                    </td>
-                                    <td className="px-4 py-3 text-gray-900 font-semibold">
-                                      {formatCurrency(total)}
-                                    </td>
-                                    <td className="px-4 py-3 text-green-600 font-medium">
-                                      {savings > 0.01
-                                        ? formatCurrency(savings)
-                                        : "-"}
-                                    </td>
-                                  </tr>
-                                );
-                              },
-                            )}
-                          </tbody>
-                        </table>
                       </div>
                     </div>
                   </div>

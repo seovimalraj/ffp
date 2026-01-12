@@ -100,6 +100,8 @@ export enum SQLFunctions {
   updateOrderStatus = 'update_order_status',
   updateOrderPartStatus = 'update_order_part_status',
   markOrderAsFailure = 'mark_order_payment_failed',
+
+  getRFQPartsInfinite = 'get_rfq_parts_infinite',
 }
 
 /**
