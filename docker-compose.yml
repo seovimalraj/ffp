@@ -3,15 +3,18 @@ version: '3.8'
 services:
   api:
     build:
-      context: .
+      context: https://github.com/seovimalraj/ffp.git#main
       dockerfile: apps/api/Dockerfile
     container_name: ffp-api
     environment:
       NODE_ENV: production
       PORT: 3001
       
+      # Required Frontend URL
+      FRONTEND_URL: https://app.frigate.ai
+      
       # External Supabase Database
-      DATABASE_URL: postgresql://postgres:uekrlbczst9ib354dpwiztqpjluswjcf@ffp-supabase-0913e9-31-97-103-26.traefik.me:5432/postgres
+      DATABASE_URL: postgresql://postgres:nt1hoziaodxredplrvxpevqdmkhacl1w@supabase.frigate.ai:5432/postgres
       
       # External Redis
       REDIS_URL: redis://default:8ysnsuqspjdjzpza@ffp-redis-o6ngzu:6379
@@ -20,32 +23,44 @@ services:
       REDIS_PASSWORD: 8ysnsuqspjdjzpza
       
       # Supabase Configuration
-      SUPABASE_URL: https://ffp-supabase-0913e9-31-97-103-26.traefik.me
-      SUPABASE_SERVICE_KEY: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpYXQiOjE3NjgyNDQ0MDUsImV4cCI6MTg5MzQ1NjAwMCwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlzcyI6InN1cGFiYXNlIn0.EEGk9NAKrzO670rKAeFJbol-7jUaqHfHW1kmfvuQnV8
-      SUPABASE_ANON_KEY: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpYXQiOjE3NjgyNDQ0MDUsImV4cCI6MTg5MzQ1NjAwMCwicm9sZSI6ImFub24iLCJpc3MiOiJzdXBhYmFzZSJ9.WzLzSu9G1JUkVAG13sdt1Aa4MPyvWDUccpvJL-anLTw
+      SUPABASE_URL: https://supabase.frigate.ai
+      SUPABASE_KEY: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpYXQiOjE3NjgyNTIxNTksImV4cCI6MTg5MzQ1NjAwMCwicm9sZSI6ImFub24iLCJpc3MiOiJzdXBhYmFzZSJ9.AQGFy8cbWjB53FzmLW3BILn8gxkLHU5RTy13kWt0d2k
+      SUPABASE_SERVICE_KEY: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpYXQiOjE3NjgyNTIxNTksImV4cCI6MTg5MzQ1NjAwMCwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlzcyI6InN1cGFiYXNlIn0.TLX_zlAqairJaJqidxgwjJygZXdwVq4XGDYH1srSNHo
+      SUPABASE_ANON_KEY: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpYXQiOjE3NjgyNTIxNTksImV4cCI6MTg5MzQ1NjAwMCwicm9sZSI6ImFub24iLCJpc3MiOiJzdXBhYmFzZSJ9.AQGFy8cbWjB53FzmLW3BILn8gxkLHU5RTy13kWt0d2k
       SUPABASE_STORAGE_BUCKET: cad-files
       
       # JWT Configuration
-      JWT_SECRET: cigjaz10fpxv76bvmzber5tjnmc8semu
+      JWT_SECRET: yqoi04dc0cwjzz7pvdd3qnxpxi6vrgea
       JWT_EXPIRES_IN: 7d
       
       # Service URLs
       CAD_SERVICE_URL: http://cad-service:10001
-      APP_URL: https://ffp-web.frigate.ai
-      ALLOWED_ORIGINS: https://ffp-web.frigate.ai,https://ffp-api.frigate.ai,https://ffp-cad.frigate.ai,https://dokploy.frigate.ai
+      APP_URL: https://app.frigate.ai
+      ALLOWED_ORIGINS: https://app.frigate.ai,https://ffp-web.frigate.ai,https://ffp-api.frigate.ai,https://ffp-cad.frigate.ai,https://dokploy.frigate.ai
       
       # File Upload Settings
       MAX_FILE_SIZE: 100MB
       ALLOWED_FILE_TYPES: .step,.stp,.stl,.iges,.igs,.obj
-    expose:
-      - "3001"
+    labels:
+      # Subdomain access
+      - "traefik.enable=true"
+      - "traefik.http.routers.ffp-api.rule=Host(`ffp-api.frigate.ai`)"
+      - "traefik.http.routers.ffp-api.entrypoints=websecure"
+      - "traefik.http.routers.ffp-api.tls.certresolver=letsencrypt"
+      # Combined URL - app.frigate.ai/api
+      - "traefik.http.routers.ffp-api-combined.rule=Host(`app.frigate.ai`) && PathPrefix(`/api`)"
+      - "traefik.http.routers.ffp-api-combined.entrypoints=websecure"
+      - "traefik.http.routers.ffp-api-combined.tls.certresolver=letsencrypt"
+      - "traefik.http.routers.ffp-api-combined.middlewares=ffp-api-stripprefix"
+      - "traefik.http.middlewares.ffp-api-stripprefix.stripprefix.prefixes=/api"
+      - "traefik.http.services.ffp-api.loadbalancer.server.port=3001"
     networks:
-      - ffp-network
+      - dokploy-network
     restart: unless-stopped
 
   cad-service:
     build:
-      context: .
+      context: https://github.com/seovimalraj/ffp.git#main
       dockerfile: apps/cad-service/Dockerfile
     container_name: ffp-cad-service
     environment:
@@ -53,7 +68,7 @@ services:
       PORT: 10001
       
       # External Supabase Database
-      DATABASE_URL: postgresql://postgres:uekrlbczst9ib354dpwiztqpjluswjcf@ffp-supabase-0913e9-31-97-103-26.traefik.me:5432/postgres
+      DATABASE_URL: postgresql://postgres:nt1hoziaodxredplrvxpevqdmkhacl1w@supabase.frigate.ai:5432/postgres
       
       # External Redis
       REDIS_URL: redis://default:8ysnsuqspjdjzpza@ffp-redis-o6ngzu:6379
@@ -64,31 +79,45 @@ services:
       PROCESSING_TIMEOUT: 300
       
       # Security
-      API_KEY: cigjaz10fpxv76bvmzber5tjnmc8semu
-      CORS_ORIGINS: https://ffp-web.frigate.ai,https://ffp-api.frigate.ai,https://ffp-cad.frigate.ai,https://dokploy.frigate.ai
-    expose:
-      - "10001"
+      API_KEY: yqoi04dc0cwjzz7pvdd3qnxpxi6vrgea
+      CORS_ORIGINS: https://app.frigate.ai,https://ffp-web.frigate.ai,https://ffp-api.frigate.ai,https://ffp-cad.frigate.ai,https://dokploy.frigate.ai
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.ffp-cad.rule=Host(`ffp-cad.frigate.ai`)"
+      - "traefik.http.routers.ffp-cad.entrypoints=websecure"
+      - "traefik.http.routers.ffp-cad.tls.certresolver=letsencrypt"
+      - "traefik.http.services.ffp-cad.loadbalancer.server.port=10001"
     networks:
-      - ffp-network
+      - dokploy-network
     restart: unless-stopped
 
   web:
     build:
-      context: .
+      context: https://github.com/seovimalraj/ffp.git#main
       dockerfile: apps/web/Dockerfile
       args:
-        NEXT_PUBLIC_API_URL: https://ffp-api.frigate.ai
+        NEXT_PUBLIC_API_URL: https://app.frigate.ai/api
     container_name: ffp-web
     environment:
       NODE_ENV: production
       PORT: 3000
-      NEXT_PUBLIC_API_URL: https://ffp-api.frigate.ai
-    expose:
-      - "3000"
+      NEXT_PUBLIC_API_URL: https://app.frigate.ai/api
+    labels:
+      # Subdomain access
+      - "traefik.enable=true"
+      - "traefik.http.routers.ffp-web.rule=Host(`ffp-web.frigate.ai`)"
+      - "traefik.http.routers.ffp-web.entrypoints=websecure"
+      - "traefik.http.routers.ffp-web.tls.certresolver=letsencrypt"
+      # Combined URL - app.frigate.ai (root and all other paths)
+      - "traefik.http.routers.ffp-web-combined.rule=Host(`app.frigate.ai`)"
+      - "traefik.http.routers.ffp-web-combined.entrypoints=websecure"
+      - "traefik.http.routers.ffp-web-combined.tls.certresolver=letsencrypt"
+      - "traefik.http.routers.ffp-web-combined.priority=1"
+      - "traefik.http.services.ffp-web.loadbalancer.server.port=3000"
     networks:
-      - ffp-network
+      - dokploy-network
     restart: unless-stopped
 
 networks:
-  ffp-network:
-    driver: bridge
+  dokploy-network:
+    external: true
