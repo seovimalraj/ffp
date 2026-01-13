@@ -1,6 +1,7 @@
 "use client";
 
 import React, { createContext, useContext, useEffect, useState } from "react";
+import { getSession, signIn, signOut } from "next-auth/react";
 
 export interface User {
   id: string;
@@ -44,10 +45,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const checkAuth = async () => {
     try {
-      const response = await fetch("/api/auth/me");
-      if (response.ok) {
-        const data = await response.json();
-        setUser(data.user);
+      const session = await getSession();
+      if (session?.user) {
+        setUser({
+          id: session.user.id,
+          email: session.user.email,
+          name: session.user.name || "",
+          role: session.user.role as User["role"],
+          org: session.user.organizationId
+            ? { id: session.user.organizationId, name: "" }
+            : undefined,
+          avatar: undefined,
+        });
       }
     } catch (error) {
       console.error("Auth check failed:", error);
@@ -58,22 +67,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const login = async (email: string, password: string) => {
     try {
-      const response = await fetch("/api/auth/login", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ email, password }),
+      const result = await signIn("credentials", {
+        redirect: false,
+        email,
+        password,
       });
 
-      const data = await response.json();
-
-      if (response.ok) {
-        setUser(data.user);
-        return { success: true };
-      } else {
-        return { success: false, error: data.error };
+      if (result?.error) {
+        return { success: false, error: result.error };
       }
+
+      await checkAuth();
+      return { success: true };
     } catch (_error) {
       return { success: false, error: "Network error" };
     }
@@ -86,7 +91,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     company?: string;
   }) => {
     try {
-      const response = await fetch("/api/auth/register", {
+      const response = await fetch("/api/v1/auth/register", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -97,7 +102,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const data = await response.json();
 
       if (response.ok) {
-        setUser(data.user);
+        // Ensure a NextAuth session exists after registration
+        await signIn("credentials", {
+          redirect: false,
+          email: registerData.email,
+          password: registerData.password,
+        });
+        await checkAuth();
         return { success: true };
       } else {
         return { success: false, error: data.error };
@@ -109,7 +120,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const logout = async () => {
     try {
-      await fetch("/api/auth/logout", { method: "POST" });
+      await signOut({ redirect: false, callbackUrl: "/signin" });
       setUser(null);
     } catch (error) {
       console.error("Logout failed:", error);
