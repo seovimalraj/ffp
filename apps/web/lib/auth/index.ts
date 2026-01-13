@@ -17,6 +17,9 @@ async function refreshAccessToken(token: any) {
     const apiUrl =
       process.env.INTERNAL_API_URL ||
       "http://api:4001";
+    
+    console.log("Refreshing token via API:", apiUrl);
+    
     const res = await fetch(`${apiUrl}/auth/refresh`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -33,6 +36,7 @@ async function refreshAccessToken(token: any) {
       throw refreshedTokens;
     }
 
+    console.log("Token refreshed successfully");
     return {
       ...token,
       accessToken: refreshedTokens.accessToken,
@@ -41,7 +45,18 @@ async function refreshAccessToken(token: any) {
     };
   } catch (error) {
     console.error("Error refreshing access token:", error);
-    // Return token with error flag - this will trigger sign out
+    
+    // Check if it's a network error (API not reachable)
+    if (error instanceof Error && (error.message.includes('ECONNREFUSED') || error.message.includes('fetch failed'))) {
+      console.warn("API service not reachable, extending current token");
+      // Extend the current token by 5 minutes to avoid constant refresh attempts
+      return {
+        ...token,
+        accessTokenExpires: Date.now() + 5 * 60 * 1000, // 5 more minutes
+      };
+    }
+    
+    // For other errors, mark token as expired
     return {
       ...token,
       error: "RefreshAccessTokenError",
