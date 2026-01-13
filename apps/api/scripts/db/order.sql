@@ -181,7 +181,3 @@ CREATE TABLE order_part_confirmations (
   created_at TIMESTAMP DEFAULT now(),
   UNIQUE (order_part_id, confirmation_type)
 );
-part_id,
-confirmation_type
-)
-);

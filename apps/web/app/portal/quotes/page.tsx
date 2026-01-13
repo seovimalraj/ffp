@@ -2,19 +2,20 @@
 
 import React, { useState, useEffect, useMemo } from "react";
 import { useRouter } from "next/navigation";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { EyeIcon, CubeIcon } from "@heroicons/react/24/outline";
 import { posthog } from "posthog-js";
 import { apiClient } from "@/lib/api";
-import { Column } from "@/components/ui/data-table";
+import { DataTable, Column } from "@/components/ui/data-table";
 import { IRFQStatuses } from "@/types";
-import { DataView } from "@/components/ui/data-view";
 import Link from "next/link";
 import { formatDate } from "@/lib/format";
 import { useMetaStore } from "@/components/store/title-store";
+import { StatusCards } from "@/components/ui/status-cards";
+import { CheckCircle, File, Wallet } from "lucide-react";
 
 // Types based on RFQ API response
 interface Quote {
@@ -39,12 +40,15 @@ export default function QuotesListPage() {
   const router = useRouter();
   const [quotes, setQuotes] = useState<Quote[]>([]);
   const [loading, setLoading] = useState(true);
+  const [hasMore, setHasMore] = useState(true);
+  const [isFetchingMore, setIsFetchingMore] = useState(false);
   const [filters, _setFilters] = useState<Filters>({
     query: "",
     status: "Any",
     dateRange: { from: undefined, to: undefined },
   });
   const { setPageTitle, resetTitle } = useMetaStore();
+  const QUOTE_LIMIT = 20;
 
   useEffect(() => {
     setPageTitle("Quotes");
@@ -53,26 +57,44 @@ export default function QuotesListPage() {
     };
   }, []);
 
-  useEffect(() => {
-    // Track page view
-    posthog.capture("quotes_list_view");
+  const fetchQuotes = React.useCallback(
+    async (isNext = false) => {
+      if (isNext) {
+        setIsFetchingMore(true);
+      } else {
+        setLoading(true);
+      }
 
-    // Fetch quotes from API
-    const fetchQuotes = async () => {
-      setLoading(true);
       try {
-        const response = await apiClient.get("/rfq");
-        console.log(response.data);
-        setQuotes(response.data.rfqs || []);
+        const lastQuote = isNext ? quotes[quotes.length - 1] : null;
+        const params = {
+          limit: QUOTE_LIMIT,
+          cursorCreatedAt: lastQuote?.created_at,
+          cursorId: lastQuote?.id,
+          status:
+            filters.status !== "Any" ? filters.status.toLowerCase() : undefined,
+        };
+
+        const response = await apiClient.get("/rfq", { params });
+        const newData = response.data.data || [];
+
+        setQuotes((prev) => (isNext ? [...prev, ...newData] : newData));
+        setHasMore(response.data.hasMore);
       } catch (error) {
         console.error("Failed to fetch quotes:", error);
       } finally {
         setLoading(false);
+        setIsFetchingMore(false);
       }
-    };
+    },
+    [quotes, filters.status],
+  );
 
+  useEffect(() => {
+    // Track page view
+    posthog.capture("quotes_list_view");
     fetchQuotes();
-  }, []);
+  }, [filters.status]);
 
   const filteredQuotes = useMemo(() => {
     return quotes.filter((quote) => {
@@ -198,10 +220,40 @@ export default function QuotesListPage() {
   ];
 
   return (
-    <div className="min-h-screen">
+    <div className="min-h-screen space-y-4">
+      <StatusCards
+        isLoading={loading}
+        items={[
+          {
+            label: "Total Quotes",
+            value: quotes.length,
+            icon: CubeIcon,
+            color: "blue",
+          },
+          {
+            label: "Draft Quotes",
+            value: quotes.filter((quote) => quote.status === "draft").length,
+            icon: File,
+            color: "gray",
+          },
+          {
+            label: "Submitted Quotes",
+            value: quotes.filter((quote) => quote.status === "submitted")
+              .length,
+            icon: CheckCircle,
+            color: "orange",
+          },
+          {
+            label: "Paid Quotes",
+            value: quotes.filter((quote) => quote.status === "paid").length,
+            icon: Wallet,
+            color: "green",
+          },
+        ]}
+      />
       <div className="mx-auto">
-        <Card>
-          <CardContent className="mt-4">
+        <div>
+          <div className="mt-4">
             {loading ? (
               <div className="space-y-4">
                 {Array.from({ length: 5 }).map((_, i) => (
@@ -230,16 +282,19 @@ export default function QuotesListPage() {
               </div>
             ) : (
               <>
-                <DataView
+                <DataTable
                   columns={columns}
                   data={filteredQuotes}
-                  searchPlaceholder="Search quotes..."
                   keyExtractor={(m) => m.id}
                   emptyMessage="No Quotes Found"
-                  isLoading={loading}
-                  defaultView="table"
-                  showViewToggle={true}
+                  isLoading={loading || isFetchingMore}
                   numbering={true}
+                  hasMore={hasMore}
+                  onEndReached={() => {
+                    if (hasMore && !isFetchingMore) {
+                      fetchQuotes(true);
+                    }
+                  }}
                   actions={[
                     {
                       label: "Open",
@@ -250,8 +305,8 @@ export default function QuotesListPage() {
                 />
               </>
             )}
-          </CardContent>
-        </Card>
+          </div>
+        </div>
       </div>
     </div>
   );

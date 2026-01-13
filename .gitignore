@@ -22,10 +22,6 @@ yarn-debug.log*
 yarn-error.log*
 .pnpm-debug.log*
 
-# local env files
-.env*.local
-.env
-
 # turbo
 .turbo
 
@@ -34,7 +30,6 @@ __pycache__/
 *.py[cod]
 *$py.class
 venv/
-.env
 
 # IDE
 .idea/

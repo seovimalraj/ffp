@@ -174,13 +174,11 @@ const Page = () => {
         }
 
         const response = await api.get("/files/rfq", { params });
-        const newData = response.data || [];
+        const newData = response.data.data || [];
 
         setData((prev) => (isNext ? [...prev, ...newData] : newData));
 
-        // Determine hasMore based on distinct RFQs in current batch
-        const distinctRfqs = new Set(newData.map((p: any) => p.rfq_id)).size;
-        setHasMore(distinctRfqs === RFQ_LIMIT);
+        setHasMore(response.data.hasMore);
       } catch (error) {
         console.error("Error fetching files:", error);
       } finally {
@@ -319,7 +317,7 @@ const Page = () => {
       header: "Status",
       render: (row) => (
         <span className="px-2 py-1 rounded-full text-xs font-medium bg-slate-100 text-slate-700 dark:bg-neutral-800 dark:text-neutral-300">
-          {row.status}
+          {row.rfq.status}
         </span>
       ),
       sortable: true,

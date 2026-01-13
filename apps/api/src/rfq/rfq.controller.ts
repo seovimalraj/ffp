@@ -10,6 +10,7 @@ import {
   Patch,
   Delete,
   InternalServerErrorException,
+  Query,
 } from '@nestjs/common';
 import { RoleNames, SQLFunctions, Tables } from '../../libs/constants';
 import { Roles } from '../auth/roles.decorator';
@@ -36,13 +37,23 @@ export class RfqController {
 
   @Get('')
   @Roles(RoleNames.Admin, RoleNames.Customer)
-  async getUserRfqs(@CurrentUser() user: CurrentUserDto) {
+  async getUserRfqs(
+    @CurrentUser() user: CurrentUserDto,
+    @Query('status') status?: string,
+    @Query('limit') limit?: number,
+    @Query('cursorCreatedAt') cursorCreatedAt?: string,
+    @Query('cursorId') cursorId?: string,
+  ) {
     const client = this.supbaseService.getClient();
 
     const { data, error } = await client.rpc(
-      SQLFunctions.getUserRFQsWithPartsCount,
+      SQLFunctions.getUserRFQsWithPartsCountInfinite,
       {
         p_user_id: user.id,
+        p_status: status || null,
+        p_limit: limit || 20,
+        p_cursor_created_at: cursorCreatedAt || null,
+        p_cursor_id: cursorId || null,
       },
     );
 
@@ -52,7 +63,7 @@ export class RfqController {
 
     return {
       success: true,
-      rfqs: data,
+      ...data,
     };
   }
 
@@ -64,11 +75,12 @@ export class RfqController {
   ) {
     const client = this.supbaseService.getClient();
 
+    console.log(user.id);
+
     // check the code in the create-inital-rfq.sql file
     // for SQL function code
     const { data, error } = await client.rpc(SQLFunctions.createInitialRFQ, {
-      p_user_id: body.user_id,
-      p_organization_id: user.organizationId,
+      p_user_id: user.id,
       p_parts: body.parts,
     });
 
