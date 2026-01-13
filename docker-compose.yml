@@ -3,358 +3,121 @@ version: '3.8'
 services:
   api:
     build:
-      context: .
+      context: https://github.com/seovimalraj/ffp.git#main
       dockerfile: apps/api/Dockerfile
-    ports:
-      - "3001:3001"
+    container_name: ffp-api
     environment:
-      - NODE_ENV=production
-      - DATABASE_URL=postgresql://postgres:Nb+a5meKduZsNG/HtSaSktBQYbdB8mcb@db:5432/cnc_quote
-      - REDIS_URL=redis://redis:6379
-      - REDIS_HOST=redis
-      - REDIS_PORT=6379
-      - REDIS_PASSWORD=
-      - JWT_SECRET=CvLsEGE0l29M+R1s6OcSm8r8We3JI7C9Gyox2fheQ4I=
-      - ALLOWED_ORIGINS=https://app.frigate.ai,https://app.frigate.ai/api,https://app.frigate.ai/cad
-      - SUPABASE_URL=https://app.frigate.ai/db
-      - SUPABASE_SERVICE_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZS1kZW1vIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImV4cCI6MTk4MzgxMjk5Nn0.EGIM96RAZx35lJzdJsyH-qQwv8Hdp7fsn3W0YpN81IU
-      - APP_URL=https://app.frigate.ai
-      # MinIO Configuration
-      - MINIO_ENDPOINT=minio
-      - MINIO_PORT=9000
-      - MINIO_ACCESS_KEY=minioadmin
-      - MINIO_SECRET_KEY=${MINIO_ROOT_PASSWORD:-minioadmin123}
-      - MINIO_USE_SSL=false
-      - MINIO_BUCKET_CAD_FILES=cad-files
-      # Step 19: OpenTelemetry configuration
-      - OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4317
-      - OTEL_EXPORTER_OTLP_PROTOCOL=grpc
-      - OTEL_RESOURCE_SERVICE_NAME=api
-      - OTEL_RESOURCE_SERVICE_VERSION=1.0.0
-      - TRACE_SAMPLING_RATE=0.1
-      - LOG_LEVEL=info
-      - ENVIRONMENT=production
-    depends_on:
-      - db
-      - redis
-      - minio
-      - otel-collector
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:3001/v1/health"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 40s
+      NODE_ENV: production
+      PORT: 3001
+      
+      # Required Frontend URL
+      FRONTEND_URL: https://app.frigate.ai
+      
+      # External Supabase Database
+      DATABASE_URL: postgresql://postgres:nt1hoziaodxredplrvxpevqdmkhacl1w@supabase.frigate.ai:5432/postgres
+      
+      # External Redis
+      REDIS_URL: redis://default:8ysnsuqspjdjzpza@ffp-redis-o6ngzu:6379
+      REDIS_HOST: ffp-redis-o6ngzu
+      REDIS_PORT: 6379
+      REDIS_PASSWORD: 8ysnsuqspjdjzpza
+      
+      # Supabase Configuration
+      SUPABASE_URL: https://supabase.frigate.ai
+      SUPABASE_KEY: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpYXQiOjE3NjgyNTIxNTksImV4cCI6MTg5MzQ1NjAwMCwicm9sZSI6ImFub24iLCJpc3MiOiJzdXBhYmFzZSJ9.AQGFy8cbWjB53FzmLW3BILn8gxkLHU5RTy13kWt0d2k
+      SUPABASE_SERVICE_KEY: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpYXQiOjE3NjgyNTIxNTksImV4cCI6MTg5MzQ1NjAwMCwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlzcyI6InN1cGFiYXNlIn0.TLX_zlAqairJaJqidxgwjJygZXdwVq4XGDYH1srSNHo
+      SUPABASE_ANON_KEY: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpYXQiOjE3NjgyNTIxNTksImV4cCI6MTg5MzQ1NjAwMCwicm9sZSI6ImFub24iLCJpc3MiOiJzdXBhYmFzZSJ9.AQGFy8cbWjB53FzmLW3BILn8gxkLHU5RTy13kWt0d2k
+      SUPABASE_STORAGE_BUCKET: cad-files
+      
+      # JWT Configuration
+      JWT_SECRET: yqoi04dc0cwjzz7pvdd3qnxpxi6vrgea
+      JWT_EXPIRES_IN: 7d
+      
+      # Service URLs
+      CAD_SERVICE_URL: http://cad-service:10001
+      APP_URL: https://app.frigate.ai
+      ALLOWED_ORIGINS: https://app.frigate.ai,https://ffp-web.frigate.ai,https://ffp-api.frigate.ai,https://ffp-cad.frigate.ai,https://dokploy.frigate.ai
+      
+      # File Upload Settings
+      MAX_FILE_SIZE: 100MB
+      ALLOWED_FILE_TYPES: .step,.stp,.stl,.iges,.igs,.obj
+    labels:
+      # Subdomain access
+      - "traefik.enable=true"
+      - "traefik.http.routers.ffp-api.rule=Host(`ffp-api.frigate.ai`)"
+      - "traefik.http.routers.ffp-api.entrypoints=websecure"
+      - "traefik.http.routers.ffp-api.tls.certresolver=letsencrypt"
+      # Combined URL - app.frigate.ai/api
+      - "traefik.http.routers.ffp-api-combined.rule=Host(`app.frigate.ai`) && PathPrefix(`/api`)"
+      - "traefik.http.routers.ffp-api-combined.entrypoints=websecure"
+      - "traefik.http.routers.ffp-api-combined.tls.certresolver=letsencrypt"
+      - "traefik.http.routers.ffp-api-combined.middlewares=ffp-api-stripprefix"
+      - "traefik.http.middlewares.ffp-api-stripprefix.stripprefix.prefixes=/api"
+      - "traefik.http.services.ffp-api.loadbalancer.server.port=3001"
+    networks:
+      - dokploy-network
+    restart: unless-stopped
 
   cad-service:
     build:
-      context: .
+      context: https://github.com/seovimalraj/ffp.git#main
       dockerfile: apps/cad-service/Dockerfile
-    ports:
-      - "3002:10001"
+    container_name: ffp-cad-service
     environment:
-      - PYTHONUNBUFFERED=1
-      - DATABASE_URL=postgresql://postgres:Nb+a5meKduZsNG/HtSaSktBQYbdB8mcb@db:5432/cnc_quote
-      - REDIS_URL=redis://redis:6379
-      - PORT=10001
-      # Step 19: OpenTelemetry configuration
-      - OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4317
-      - OTEL_EXPORTER_OTLP_PROTOCOL=grpc
-      - SERVICE_NAME=cad
-      - SERVICE_VERSION=1.0.0
-      - TRACE_SAMPLING_RATE=0.1
-      - LOG_LEVEL=INFO
-      - ENVIRONMENT=production
-    depends_on:
-      - db
-      - redis
-      - otel-collector
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:10001/health"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 40s
+      PYTHONUNBUFFERED: 1
+      PORT: 10001
+      
+      # External Supabase Database
+      DATABASE_URL: postgresql://postgres:nt1hoziaodxredplrvxpevqdmkhacl1w@supabase.frigate.ai:5432/postgres
+      
+      # External Redis
+      REDIS_URL: redis://default:8ysnsuqspjdjzpza@ffp-redis-o6ngzu:6379
+      
+      # Processing Settings
+      MAX_FILE_SIZE: 100MB
+      TEMP_DIR: /tmp/cad-uploads
+      PROCESSING_TIMEOUT: 300
+      
+      # Security
+      API_KEY: yqoi04dc0cwjzz7pvdd3qnxpxi6vrgea
+      CORS_ORIGINS: https://app.frigate.ai,https://ffp-web.frigate.ai,https://ffp-api.frigate.ai,https://ffp-cad.frigate.ai,https://dokploy.frigate.ai
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.ffp-cad.rule=Host(`ffp-cad.frigate.ai`)"
+      - "traefik.http.routers.ffp-cad.entrypoints=websecure"
+      - "traefik.http.routers.ffp-cad.tls.certresolver=letsencrypt"
+      - "traefik.http.services.ffp-cad.loadbalancer.server.port=10001"
+    networks:
+      - dokploy-network
+    restart: unless-stopped
 
   web:
     build:
-      context: .
+      context: https://github.com/seovimalraj/ffp.git#main
       dockerfile: apps/web/Dockerfile
-    ports:
-      - "3000:3000"
+      args:
+        NEXT_PUBLIC_API_URL: https://app.frigate.ai/api
+    container_name: ffp-web
     environment:
-      - NODE_ENV=production
-      - NEXT_PUBLIC_API_URL=https://app.frigate.ai/api
-      - NEXT_PUBLIC_CAD_SERVICE_URL=https://app.frigate.ai/cad
-    depends_on:
-      - api
-      - cad-service
-
-  db:
-    image: postgres:15-alpine
-    ports:
-      - "5432:5432"
-    environment:
-      - POSTGRES_USER=postgres
-      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
-      - POSTGRES_DB=cnc_quote
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
-      - ./init-services-db.sh:/docker-entrypoint-initdb.d/init-services-db.sh
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-
-  redis:
-    image: redis:7-alpine
-    ports:
-      - "6379:6379"
-    volumes:
-      - redis_data:/data
-    healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-
-  # MinIO Object Storage for CAD files
-  minio:
-    image: minio/minio:latest
-    ports:
-      - "9050:9000"      # API
-      - "9051:9001"      # Console UI
-    environment:
-      - MINIO_ROOT_USER=minioadmin
-      - MINIO_ROOT_PASSWORD=${MINIO_ROOT_PASSWORD:-minioadmin123}
-      - MINIO_BROWSER_REDIRECT_URL=https://app.frigate.ai/storage
-    volumes:
-      - minio_data:/data
-    command: server /data --console-address ":9001"
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
-      interval: 30s
-      timeout: 20s
-      retries: 3
-
-  # Step 18: BullMQ Worker Service
-  worker:
-    build:
-      context: .
-      dockerfile: apps/worker/Dockerfile
-    environment:
-      - NODE_ENV=production
-      - REDIS_URL=redis://redis:6379
-      - WORKER_CONCURRENCY_DEFAULT=4
-      - API_BASE_URL=http://api:3001
-      - CAD_SERVICE_URL=http://cad-service:10001
-      - HEALTH_PORT=3001
-      - WORKER_SECRET=${WORKER_SECRET:-dev-secret-change-in-prod}
-      - JOB_TTL_SECONDS=604800
-      - WORKER_MAX_ATTEMPTS=5
-      # Step 19: OpenTelemetry configuration
-      - OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4317
-      - OTEL_EXPORTER_OTLP_PROTOCOL=grpc
-      - OTEL_RESOURCE_SERVICE_NAME_WORKER=worker
-      - SERVICE_VERSION=1.0.0
-      - TRACE_SAMPLING_RATE=0.1
-      - LOG_LEVEL=info
-      - ENVIRONMENT=production
-    depends_on:
-      - redis
-      - api
-      - cad-service
-      - otel-collector
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:3001/health"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 40s
+      NODE_ENV: production
+      PORT: 3000
+      NEXT_PUBLIC_API_URL: https://app.frigate.ai/api
+    labels:
+      # Subdomain access
+      - "traefik.enable=true"
+      - "traefik.http.routers.ffp-web.rule=Host(`ffp-web.frigate.ai`)"
+      - "traefik.http.routers.ffp-web.entrypoints=websecure"
+      - "traefik.http.routers.ffp-web.tls.certresolver=letsencrypt"
+      # Combined URL - app.frigate.ai (root and all other paths)
+      - "traefik.http.routers.ffp-web-combined.rule=Host(`app.frigate.ai`)"
+      - "traefik.http.routers.ffp-web-combined.entrypoints=websecure"
+      - "traefik.http.routers.ffp-web-combined.tls.certresolver=letsencrypt"
+      - "traefik.http.routers.ffp-web-combined.priority=1"
+      - "traefik.http.services.ffp-web.loadbalancer.server.port=3000"
+    networks:
+      - dokploy-network
     restart: unless-stopped
 
-  prometheus:
-    image: prom/prometheus
-    ports:
-      - "9090:9090"
-    volumes:
-      - ./monitoring/prometheus:/etc/prometheus
-      - prometheus_data:/prometheus
-    command:
-      - '--config.file=/etc/prometheus/prometheus.yml'
-      - '--storage.tsdb.path=/prometheus'
-      - '--web.console.libraries=/usr/share/prometheus/console_libraries'
-      - '--web.console.templates=/usr/share/prometheus/consoles'
-
-  grafana:
-    image: grafana/grafana
-    ports:
-      - "3003:3000"
-    volumes:
-      - ./monitoring/grafana:/etc/grafana/provisioning
-      - grafana_data:/var/lib/grafana
-
-  # Step 19: OpenTelemetry Collector
-  otel-collector:
-    image: otel/opentelemetry-collector-contrib:latest
-    ports:
-      - "4317:4317"   # OTLP gRPC receiver
-      - "4318:4318"   # OTLP HTTP receiver
-      - "8889:8889"   # Prometheus exporter
-      - "13133:13133" # Health check
-      - "55679:55679" # zPages for debugging
-    volumes:
-      - ./config/otel-collector-config.yaml:/etc/otel-collector-config.yaml
-    command: ["--config=/etc/otel-collector-config.yaml"]
-    environment:
-      - ENVIRONMENT=${ENVIRONMENT:-development}
-      - TEMPO_ENDPOINT=tempo:4317
-      - LOKI_ENDPOINT=http://loki:3100/loki/api/v1/push
-    depends_on:
-      - tempo
-      - loki
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:13133"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-
-  # Tempo: Distributed tracing backend
-  tempo:
-    image: grafana/tempo:latest
-    ports:
-      - "3200:3200"   # HTTP API
-      - "4317"        # OTLP gRPC (internal)
-    volumes:
-      - tempo_data:/var/tempo
-    command:
-      - "-config.file=/etc/tempo-config.yaml"
-    configs:
-      - source: tempo_config
-        target: /etc/tempo-config.yaml
-    healthcheck:
-      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:3200/ready"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-
-  # Loki: Log aggregation system
-  loki:
-    image: grafana/loki:latest
-    ports:
-      - "3100:3100"   # HTTP API
-    volumes:
-      - loki_data:/loki
-    command: -config.file=/etc/loki/local-config.yaml
-    healthcheck:
-      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:3100/ready"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-
-  # Sentry Error Tracking
-  sentry:
-    image: getsentry/sentry:latest
-    ports:
-      - "9001:9000"
-    environment:
-      - SENTRY_SECRET_KEY=dYW5FM9BGruAlZOClerJu/sO9vNdgpzh
-      - SENTRY_POSTGRES_HOST=db
-      - SENTRY_POSTGRES_PORT=5432
-      - SENTRY_DB_NAME=sentry
-      - SENTRY_DB_USER=sentry
-      - SENTRY_DB_PASSWORD=InYNZ0S7wHmWMmcBD5GeQK3qZnf8JfCrzaNXleU/Wx8=
-      - SENTRY_REDIS_HOST=redis
-      - SENTRY_REDIS_PORT=6379
-      - SENTRY_WEB_HOST=0.0.0.0
-      - SENTRY_WEB_PORT=9000
-      - SENTRY_EMAIL_HOST=mailhog
-      - SENTRY_EMAIL_PORT=1025
-      - SENTRY_SERVER_EMAIL=sentry@app.frigate.ai
-    depends_on:
-      - db
-      - redis
-      - mailhog
-    volumes:
-      - sentry_data:/data
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:9001/_health/"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-
-  # MailHog for email testing
-  mailhog:
-    image: mailhog/mailhog:latest
-    ports:
-      - "1025:1025"
-      - "8025:8025"
-    healthcheck:
-      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:8025"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-
-  # SonarQube Code Quality Analysis
-  sonarqube:
-    image: sonarqube:community
-    ports:
-      - "9000:9000"
-    environment:
-      - SONAR_JDBC_URL=jdbc:postgresql://db:5432/sonarqube
-      - SONAR_JDBC_USERNAME=sonarqube
-      - SONAR_JDBC_PASSWORD=I3Vpgqewff7SV3vqxaAZbQxwZkQ4HhQr1CvOGjAcVUs=
-      - SONAR_WEB_JAVAOPTS=-Xmx512m -Xms128m -XX:+HeapDumpOnOutOfMemoryError
-      - SONAR_CE_JAVAOPTS=-Xmx512m -Xms128m -XX:+HeapDumpOnOutOfMemoryError
-    depends_on:
-      - db
-    volumes:
-      - sonarqube_data:/opt/sonarqube/data
-      - sonarqube_extensions:/opt/sonarqube/extensions
-      - sonarqube_logs:/opt/sonarqube/logs
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:9000/api/system/status"]
-      interval: 60s
-      timeout: 30s
-      retries: 5
-      start_period: 120s
-
-volumes:
-  postgres_data:
-  redis_data:
-  minio_data:
-  prometheus_data:
-  grafana_data:
-  sentry_data:
-  sonarqube_data:
-  sonarqube_extensions:
-  sonarqube_logs:
-  tempo_data:
-  loki_data:
-
-# Step 19: Configuration files for observability
-configs:
-  tempo_config:
-    content: |
-      server:
-        http_listen_port: 3200
-      
-      distributor:
-        receivers:
-          otlp:
-            protocols:
-              grpc:
-                endpoint: 0.0.0.0:4317
-      
-      storage:
-        trace:
-          backend: local
-          local:
-            path: /var/tempo/traces
-          wal:
-            path: /var/tempo/wal
-          pool:
-            max_workers: 100
-            queue_depth: 10000
-
+networks:
+  dokploy-network:
+    external: true
