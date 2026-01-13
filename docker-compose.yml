@@ -8,7 +8,7 @@ services:
     container_name: ffp-api
     environment:
       NODE_ENV: production
-      PORT: 4001  # Changed from 3001 to match INTERNAL_API_URL
+      PORT: 3001
       
       # Required Frontend URL
       FRONTEND_URL: https://app.frigate.ai
@@ -53,7 +53,7 @@ services:
       - "traefik.http.routers.ffp-api-combined.tls.certresolver=letsencrypt"
       - "traefik.http.routers.ffp-api-combined.middlewares=ffp-api-stripprefix"
       - "traefik.http.middlewares.ffp-api-stripprefix.stripprefix.prefixes=/api"
-      - "traefik.http.services.ffp-api.loadbalancer.server.port=4001"  # Changed from 3001
+      - "traefik.http.services.ffp-api.loadbalancer.server.port=3001"
     networks:
       - dokploy-network
     restart: unless-stopped
@@ -96,36 +96,12 @@ services:
       context: https://github.com/seovimalraj/ffp.git#main
       dockerfile: apps/web/Dockerfile
       args:
-        SKIP_ENV_VALIDATION: "true"
+        NEXT_PUBLIC_API_URL: https://app.frigate.ai/api
     container_name: ffp-web
     environment:
       NODE_ENV: production
       PORT: 3000
-      
-      # Client-side API calls (relative paths, proxied by Traefik)
-      NEXT_PUBLIC_API_URL: /api
-      NEXT_PUBLIC_CAD_SERVICE_URL: /cad
-      
-      # Server-side API calls (internal Docker network)
-      INTERNAL_API_URL: http://ffp-api:4001
-      
-      # NextAuth Configuration (CRITICAL - was missing!)
-      NEXTAUTH_URL: https://app.frigate.ai
-      NEXTAUTH_SECRET: W2aR6PONBYcX7hKmMJzrrl4y0U3jf7XSpFfeDu3Gptw
-      
-      # Supabase Configuration (was missing!)
-      NEXT_PUBLIC_SUPABASE_URL: https://supabase.frigate.ai
-      NEXT_PUBLIC_SUPABASE_ANON_KEY: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpYXQiOjE3NjgyNTIxNTksImV4cCI6MTg5MzQ1NjAwMCwicm9sZSI6ImFub24iLCJpc3MiOiJzdXBhYmFzZSJ9.AQGFy8cbWjB53FzmLW3BILn8gxkLHU5RTy13kWt0d2k
-      SUPABASE_SERVICE_ROLE_KEY: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpYXQiOjE3NjgyNTIxNTksImV4cCI6MTg5MzQ1NjAwMCwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlzcyI6InN1cGFiYXNlIn0.TLX_zlAqairJaJqidxgwjJygZXdwVq4XGDYH1srSNHo
-      
-      # JWT Configuration
-      JWT_SECRET: yqoi04dc0cwjzz7pvdd3qnxpxi6vrgea
-      JWT_EXPIRES_IN: 15m
-      
-      # Application URLs
-      NEXT_PUBLIC_WEB_URL: https://app.frigate.ai
-      NEXT_PUBLIC_API_DIRECT_URL: https://ffp-api.frigate.ai
-      NEXT_PUBLIC_CAD_DIRECT_URL: https://ffp-cad.frigate.ai
+      NEXT_PUBLIC_API_URL: https://app.frigate.ai/api
     labels:
       # Subdomain access
       - "traefik.enable=true"
