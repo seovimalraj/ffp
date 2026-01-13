@@ -13,7 +13,10 @@ async function refreshAccessToken(token: any) {
     }
 
     // Use internal API URL for server-side calls
-    const apiUrl = process.env.INTERNAL_API_URL || process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4001';
+    const apiUrl =
+      process.env.NEXT_PUBLIC_API_URL ||
+      process.env.INTERNAL_API_URL ||
+      "http://localhost:4001";
     const res = await fetch(`${apiUrl}/auth/refresh`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -77,19 +80,19 @@ const authOptions: NextAuthOptions = {
 
         try {
           // Use internal API URL for server-side calls
-          const apiUrl = process.env.INTERNAL_API_URL || process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4001';
-          console.log('Auth API URL:', apiUrl);
-          const res = await fetch(
-            `${apiUrl}/auth/login`,
-            {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({
-                email: credentials.email,
-                password: credentials.password,
-              }),
-            },
-          );
+          const apiUrl =
+            process.env.INTERNAL_API_URL ||
+            process.env.NEXT_PUBLIC_API_URL ||
+            "http://localhost:4001";
+          console.log("Auth API URL:", apiUrl);
+          const res = await fetch(`${apiUrl}/auth/login`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              email: credentials.email,
+              password: credentials.password,
+            }),
+          });
 
           if (!res.ok) {
             console.error("Auth failed:", res.status, res.statusText);
@@ -173,7 +176,10 @@ const authOptions: NextAuthOptions = {
       // Clear refresh token on sign out
       if (token?.id) {
         try {
-          const apiUrl = process.env.INTERNAL_API_URL || process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4001';
+          const apiUrl =
+            process.env.INTERNAL_API_URL ||
+            process.env.NEXT_PUBLIC_API_URL ||
+            "http://localhost:4001";
           await fetch(`${apiUrl}/auth/logout`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
@@ -196,7 +202,10 @@ const getSession = () => getServerSession(authOptions);
 
 const AuthService = {
   login: async (email: string, pass: string) => {
-    const apiUrl = process.env.INTERNAL_API_URL || process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4001';
+    const apiUrl =
+      process.env.INTERNAL_API_URL ||
+      process.env.NEXT_PUBLIC_API_URL ||
+      "http://localhost:4001";
     const res = await fetch(`${apiUrl}/auth/login`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -206,15 +215,15 @@ const AuthService = {
     return res.json();
   },
   register: async (data: any) => {
-    const apiUrl = process.env.INTERNAL_API_URL || process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4001';
-    const res = await fetch(
-      `${apiUrl}/auth/register`,
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(data),
-      },
-    );
+    const apiUrl =
+      process.env.INTERNAL_API_URL ||
+      process.env.NEXT_PUBLIC_API_URL ||
+      "http://localhost:4001";
+    const res = await fetch(`${apiUrl}/auth/register`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(data),
+    });
     if (!res.ok) {
       const errorData = await res.json();
       throw new Error(errorData.message || "Registration failed");

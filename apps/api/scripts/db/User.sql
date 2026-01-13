@@ -2,19 +2,21 @@
 -- Users
 -- --
 CREATE TYPE user_type_enum AS ENUM ('admin', 'supplier', 'customer');
-CREATE TABLE IF NOT EXISTS users { id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-email VARCHAR(255) UNIQUE NOT NULL,
-password_hash VARCHAR(255) NOT NULL,
-role user_type_enum NOT NULL DEFAULT 'customer',
-role_id uuid REFERENCES roles(id) ON DELETE
-SET NULL,
-    organization_id uuid REFERENCES organizations(id) ON DELETE
-SET NULL,
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP name VARCHAR(255),
-    phone VARCHAR(20),
-    };
-CREATE INDEX idx_users_email ON users(email);
+create table if not exists users (
+    id uuid primary key default gen_random_uuid (),
+    email VARCHAR(255) unique not null,
+    password_hash VARCHAR(255) not null,
+    role user_type_enum not null default 'customer',
+    role_id uuid references roles (id) on delete
+    set null,
+        organization_id uuid references organizations (id) on delete
+    set null,
+        created_at timestamp with time zone default CURRENT_TIMESTAMP,
+        updated_at timestamp with time zone default CURRENT_TIMESTAMP,
+        name VARCHAR(255),
+        phone VARCHAR(20),
+);
+create index idx_users_email on users (email);
 -- --
 -- Organizationsstock_material_type
 -- --

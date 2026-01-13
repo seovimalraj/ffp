@@ -102,6 +102,7 @@ export enum SQLFunctions {
   markOrderAsFailure = 'mark_order_payment_failed',
 
   getRFQPartsInfinite = 'get_rfq_parts_infinite',
+  getUserRFQsWithPartsCountInfinite = 'get_user_rfqs_with_parts_count_infinite',
 }
 
 /**

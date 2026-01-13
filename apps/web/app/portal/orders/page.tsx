@@ -3,14 +3,19 @@
 import { useMetaStore } from "@/components/store/title-store";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import { Column } from "@/components/ui/data-table";
-import { DataView } from "@/components/ui/data-view";
+import { DataTable, Column } from "@/components/ui/data-table";
 import { Skeleton } from "@/components/ui/skeleton";
 import { StatusCards } from "@/components/ui/status-cards";
 import { apiClient } from "@/lib/api";
 import { formatCurrency, formatDate } from "@/lib/format";
 import { CubeIcon } from "@heroicons/react/24/outline";
-import { EyeIcon } from "lucide-react";
+import {
+  EyeIcon,
+  Package,
+  Clock,
+  CheckCircle2,
+  DollarSign,
+} from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import React, { useState } from "react";
@@ -38,7 +43,6 @@ const Page = () => {
       try {
         setLoading(true);
         const response = await apiClient.get("/orders");
-        console.log(response.data);
         setOrders(response.data || []);
       } catch (error) {
         console.error("Error fetching orders:", error);
@@ -97,28 +101,41 @@ const Page = () => {
   ];
 
   return (
-    <div className="min-h-screen">
+    <div className="min-h-screen space-y-4">
+      <StatusCards
+        isLoading={loading}
+        items={[
+          {
+            label: "Total Orders",
+            value: orders.length,
+            icon: Package,
+            color: "blue",
+          },
+          {
+            label: "Pending Orders",
+            value: orders.filter((order) => order.status === "pending").length,
+            icon: Clock,
+            color: "orange",
+          },
+          {
+            label: "Completed Orders",
+            value: orders.filter((order) => order.status === "completed")
+              .length,
+            icon: CheckCircle2,
+            color: "green",
+          },
+          {
+            label: "Payment Pending",
+            value: orders.filter((order) => order.payment_status === "pending")
+              .length,
+            icon: DollarSign,
+            color: "rose",
+          },
+        ]}
+      />
       <div className="mx-auto">
-        <Card>
-          <CardContent className="mt-4">
-            <StatusCards
-              items={[
-                {
-                  label: "Total Orders",
-                  value: orders.length,
-                },
-                {
-                  label: "Pending Orders",
-                  value: orders.filter((order) => order.status === "pending")
-                    .length,
-                },
-                {
-                  label: "Completed Orders",
-                  value: orders.filter((order) => order.status === "completed")
-                    .length,
-                },
-              ]}
-            />
+        <div>
+          <div className="mt-4">
             {loading ? (
               <div className="space-y-4 mt-5">
                 {Array.from({ length: 5 }).map((_, i) => (
@@ -147,15 +164,12 @@ const Page = () => {
               </div>
             ) : (
               <>
-                <DataView
+                <DataTable
                   columns={columns}
                   data={orders}
-                  searchPlaceholder="Search orders..."
                   keyExtractor={(m) => m.order_code}
                   emptyMessage="No Orders Found"
                   isLoading={loading}
-                  defaultView="table"
-                  showViewToggle={true}
                   numbering={true}
                   actions={[
                     {
@@ -168,8 +182,8 @@ const Page = () => {
                 />
               </>
             )}
-          </CardContent>
-        </Card>
+          </div>
+        </div>
       </div>
     </div>
   );

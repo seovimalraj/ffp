@@ -50,6 +50,7 @@ export class AuthController {
         .single();
 
       if (error || !user) {
+        console.log(error);
         throw new HttpException('Invalid credentials', HttpStatus.UNAUTHORIZED);
       }
 

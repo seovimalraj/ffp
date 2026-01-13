@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
-import { useParams, useSearchParams } from "next/navigation";
+import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { apiClient } from "@/lib/api";
 import { formatCurrencyGeneric } from "@/lib/format";
 import { RFQKanban } from "./components/RFQKanban";
@@ -10,6 +10,7 @@ import CustomLoader from "@/components/ui/loader/CustomLoader";
 import RfqSideDrawer from "./components/rfq-side-drawer";
 import { CommandBlock } from "@/components/ui/command-block";
 import Documents from "./components/documents";
+import { useMetaStore } from "@/components/store/title-store";
 
 /* =======================
    TYPES (FROM API)
@@ -87,6 +88,15 @@ export default function OrderPage() {
   const [selectedPart, setSelectedPart] = useState<any>(null);
   const [data, setData] = useState<IOrderFull>();
   const [loading, setLoading] = useState(true);
+  const { setPageTitle, resetTitle } = useMetaStore();
+  const router = useRouter();
+
+  const setUrlParam = (tab: string) => {
+    const params = new URLSearchParams(searchParams?.toString());
+    params.set("tab", tab);
+    const newUrl = `${window.location.pathname}?${params.toString()}`;
+    return newUrl;
+  };
 
   const fetchData = useCallback(
     async (silent = false) => {
@@ -103,6 +113,13 @@ export default function OrderPage() {
     },
     [orderId],
   );
+
+  useEffect(() => {
+    setPageTitle("Order");
+    return () => {
+      resetTitle();
+    };
+  }, []);
 
   useEffect(() => {
     fetchData();
@@ -138,6 +155,7 @@ export default function OrderPage() {
             key={tab}
             onClick={() => {
               setActiveTab(tab as any);
+              router.push(setUrlParam(tab));
             }}
             className={`pb-3 capitalize ${
               activeTab === tab
