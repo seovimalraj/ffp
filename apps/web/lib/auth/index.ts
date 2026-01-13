@@ -13,10 +13,10 @@ async function refreshAccessToken(token: any) {
     }
 
     // Use internal API URL for server-side calls
+    // IMPORTANT: Use INTERNAL_API_URL first (server-side), not NEXT_PUBLIC_API_URL (client-side relative path)
     const apiUrl =
-      process.env.NEXT_PUBLIC_API_URL ||
       process.env.INTERNAL_API_URL ||
-      "http://localhost:4001";
+      "http://api:4001";
     const res = await fetch(`${apiUrl}/auth/refresh`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -80,10 +80,10 @@ const authOptions: NextAuthOptions = {
 
         try {
           // Use internal API URL for server-side calls
+          // IMPORTANT: INTERNAL_API_URL first (absolute), not NEXT_PUBLIC_API_URL (relative path)
           const apiUrl =
             process.env.INTERNAL_API_URL ||
-            process.env.NEXT_PUBLIC_API_URL ||
-            "http://localhost:4001";
+            "http://api:4001";
           console.log("Auth API URL:", apiUrl);
           const res = await fetch(`${apiUrl}/auth/login`, {
             method: "POST",
@@ -178,8 +178,7 @@ const authOptions: NextAuthOptions = {
         try {
           const apiUrl =
             process.env.INTERNAL_API_URL ||
-            process.env.NEXT_PUBLIC_API_URL ||
-            "http://localhost:4001";
+            "http://api:4001";
           await fetch(`${apiUrl}/auth/logout`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
@@ -205,8 +204,7 @@ const AuthService = {
   login: async (email: string, pass: string) => {
     const apiUrl =
       process.env.INTERNAL_API_URL ||
-      process.env.NEXT_PUBLIC_API_URL ||
-      "http://localhost:4001";
+      "http://api:4001";
     const res = await fetch(`${apiUrl}/auth/login`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -218,8 +216,7 @@ const AuthService = {
   register: async (data: any) => {
     const apiUrl =
       process.env.INTERNAL_API_URL ||
-      process.env.NEXT_PUBLIC_API_URL ||
-      "http://localhost:4001";
+      "http://api:4001";
     const res = await fetch(`${apiUrl}/auth/register`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
