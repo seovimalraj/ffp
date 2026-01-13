@@ -32,13 +32,30 @@ NEXTAUTH_SECRET=W2aR6PONBYcX7hKmMJzrrl4y0U3jf7XSpFfeDu3Gptw
 - [nginx/production.conf](nginx/production.conf)
 - [nginx/app.frigate.ai.conf](nginx/app.frigate.ai.conf)
 
-#### 3. ✅ Added Debug Mode
+#### 3. 🔴 **CRITICAL: Route Conflicts** 
+**Problem:** Custom routes at `/api/auth/login`, `/api/auth/signin`, etc. block NextAuth's catch-all `[...nextauth]` handler
+
+**Error:** `GET /api/auth/error 404 (Not Found)`
+
+**Root Cause:** In Next.js App Router, specific routes take precedence over catch-all routes. When NextAuth tries to call its own internal endpoints like `/api/auth/error`, it hits your custom route handlers instead.
+
+**Solution:** Delete conflicting custom auth routes
+```bash
+# Run the fix script
+./scripts/fix-nextauth-routes.sh
+# or on Windows:
+.\scripts\fix-nextauth-routes.ps1
+```
+
+**See:** [NEXTAUTH_ROUTE_CONFLICT_FIX.md](NEXTAUTH_ROUTE_CONFLICT_FIX.md) for complete details
+
+#### 4. ✅ Added Debug Mode
 **Enhancement:** Enabled debug logging in development
 ```typescript
 debug: process.env.NODE_ENV === "development"
 ```
 
-#### 4. ✅ Created Test Endpoint
+#### 5. ✅ Created Test Endpoint
 **New:** [/api/auth/test](apps/web/app/api/auth/test/route.ts) - Verify NextAuth configuration
 
 ---
