@@ -193,9 +193,10 @@ const authOptions: NextAuthOptions = {
   },
   pages: {
     signIn: "/signin",
-    error: "/auth/error",
+    error: "/auth/error", // Custom error page in app router
   },
   secret: process.env.NEXTAUTH_SECRET,
+  debug: process.env.NODE_ENV === "development", // Enable debug logs in dev
 };
 
 const getSession = () => getServerSession(authOptions);
