@@ -14,12 +14,10 @@ async function refreshAccessToken(token: any) {
 
     // Use internal API URL for server-side calls
     // IMPORTANT: Use INTERNAL_API_URL first (server-side), not NEXT_PUBLIC_API_URL (client-side relative path)
-    const apiUrl =
-      process.env.INTERNAL_API_URL ||
-      "http://api:4001";
-    
+    const apiUrl = process.env.INTERNAL_API_URL || "http://api:4001";
+
     console.log("Refreshing token via API:", apiUrl);
-    
+
     const res = await fetch(`${apiUrl}/auth/refresh`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -45,9 +43,13 @@ async function refreshAccessToken(token: any) {
     };
   } catch (error) {
     console.error("Error refreshing access token:", error);
-    
+
     // Check if it's a network error (API not reachable)
-    if (error instanceof Error && (error.message.includes('ECONNREFUSED') || error.message.includes('fetch failed'))) {
+    if (
+      error instanceof Error &&
+      (error.message.includes("ECONNREFUSED") ||
+        error.message.includes("fetch failed"))
+    ) {
       console.warn("API service not reachable, extending current token");
       // Extend the current token by 5 minutes to avoid constant refresh attempts
       return {
@@ -55,7 +57,7 @@ async function refreshAccessToken(token: any) {
         accessTokenExpires: Date.now() + 5 * 60 * 1000, // 5 more minutes
       };
     }
-    
+
     // For other errors, mark token as expired
     return {
       ...token,
@@ -96,9 +98,7 @@ const authOptions: NextAuthOptions = {
         try {
           // Use internal API URL for server-side calls
           // IMPORTANT: INTERNAL_API_URL first (absolute), not NEXT_PUBLIC_API_URL (relative path)
-          const apiUrl =
-            process.env.INTERNAL_API_URL ||
-            "http://api:4001";
+          const apiUrl = process.env.INTERNAL_API_URL || "http://api:4001";
           console.log("Auth API URL:", apiUrl);
           const res = await fetch(`${apiUrl}/auth/login`, {
             method: "POST",
@@ -191,9 +191,7 @@ const authOptions: NextAuthOptions = {
       // Clear refresh token on sign out
       if (token?.id) {
         try {
-          const apiUrl =
-            process.env.INTERNAL_API_URL ||
-            "http://api:4001";
+          const apiUrl = process.env.INTERNAL_API_URL || "http://api:4001";
           await fetch(`${apiUrl}/auth/logout`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
@@ -217,9 +215,7 @@ const getSession = () => getServerSession(authOptions);
 
 const AuthService = {
   login: async (email: string, pass: string) => {
-    const apiUrl =
-      process.env.INTERNAL_API_URL ||
-      "http://api:4001";
+    const apiUrl = process.env.INTERNAL_API_URL || "http://api:4001";
     const res = await fetch(`${apiUrl}/auth/login`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -229,9 +225,10 @@ const AuthService = {
     return res.json();
   },
   register: async (data: any) => {
-    const apiUrl =
-      process.env.INTERNAL_API_URL ||
-      "http://api:4001";
+    console.log("here");
+    const apiUrl = process.env.INTERNAL_API_URL || "http://api:4001";
+
+    console.log(apiUrl);
     const res = await fetch(`${apiUrl}/auth/register`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
