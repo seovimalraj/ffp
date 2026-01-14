@@ -149,8 +149,12 @@ export const FINISHES: Record<string, FinishOption> = {
 };
 
 const SIZE_LIMITS = { min: 0.5, max: 700 };
-// Lead time multipliers for DAYS calculation (not cost)
-const leadTimeMultiplierMap = { economy: 2.0, standard: 1.5, expedited: 1.0 } as const;
+
+// Lead time type price multipliers (applied to final price)
+const leadTimePriceMultipliers = { economy: 0.8, standard: 1.5, expedited: 2.8 } as const;
+
+// Lead time multipliers for DAYS calculation (expedited is base)
+const leadTimeDaysMultipliers = { expedited: 1, standard: 1.5, economy: 1.9 } as const;
 const shippingDaysByType = { economy: 14, standard: 7, expedited: 3 } as const;
 
 // Enhanced CNC feasibility checks
@@ -222,19 +226,23 @@ export function calculatePricing(input: PricingInput): PricingBreakdown {
     materialCostPerUnit
   );
 
-  // 10. Tolerance Upcharge
-  const toleranceUpchargeRate: Record<PricingInput['tolerance'], number> = {
+  // 10. Tolerance Upcharge (multiplier-based)
+  const toleranceMultipliers: Record<PricingInput['tolerance'], number> = {
     standard: 0,
-    precision: 0.15,
-    tight: 0.30
+    precision: 1.5,
+    tight: 1.9
   };
-  const toleranceUpcharge = subtotalPerUnit * toleranceUpchargeRate[tolerance];
+  const toleranceUpcharge = subtotalPerUnit * toleranceMultipliers[tolerance];
 
   // 11. Dynamic Lead time calculation
   const leadPlan = computeLeadTime(geometry, process, material, quantity, leadTimeType);
 
-  // Final unit price (no cost multiplier for lead time)
-  const unitPrice = subtotalPerUnit - volumeDiscountResult.quantityDiscount + toleranceUpcharge;
+  // 12. Apply lead time type price multiplier
+  const leadTimePriceMultiplier = leadTimePriceMultipliers[leadTimeType];
+  const priceBeforeLeadTimeMultiplier = subtotalPerUnit - volumeDiscountResult.quantityDiscount + toleranceUpcharge;
+  
+  // Final unit price with lead time multiplier
+  const unitPrice = priceBeforeLeadTimeMultiplier * leadTimePriceMultiplier;
   const totalPrice = unitPrice * quantity;
 
   return {
@@ -249,7 +257,7 @@ export function calculatePricing(input: PricingInput): PricingBreakdown {
     subtotal: round2(subtotalPerUnit),
     quantityDiscount: round2(volumeDiscountResult.quantityDiscount),
     toleranceUpcharge: round2(toleranceUpcharge),
-    leadTimeMultiplier: 1.0, // No cost multiplier - only affects lead time
+    leadTimeMultiplier: leadTimePriceMultiplier,
     unitPrice: round2(unitPrice),
     totalPrice: round2(totalPrice),
     leadTimeDays: leadPlan.leadTimeDays,
@@ -577,18 +585,13 @@ function computeLeadTime(
     bufferDays += 1;
   }
 
-  // Adjust production time based on lead time type
-  // Economy: 2x production time, Standard: 1.5x, Expedited: 1x (rush)
-  const leadMultiplier = leadTimeMultiplierMap[leadTimeType];
-  const adjustedProductionDays = Math.ceil(productionDays * leadMultiplier);
+  // Base production time for expedited (fastest), scale up for standard and economy
+  const baseProductionDays = productionDays; // This is the expedited timeline
+  const leadDaysMultiplier = leadTimeDaysMultipliers[leadTimeType];
+  const adjustedProductionDays = Math.ceil(baseProductionDays * leadDaysMultiplier);
   
-  // Adjust buffer based on lead time type
-  let adjustedBufferDays = bufferDays;
-  if (leadTimeType === 'economy') {
-    adjustedBufferDays += 2; // Add extra buffer for economy
-  } else if (leadTimeType === 'expedited') {
-    adjustedBufferDays = Math.max(0, Math.floor(bufferDays * 0.3)); // Minimal buffer for expedited
-  }
+  // Use standard buffer - lead time differences are in production time multiplier
+  const adjustedBufferDays = bufferDays;
 
   // Shipping days
   const shippingDays = shippingDaysByType[leadTimeType];
@@ -599,7 +602,7 @@ function computeLeadTime(
 
   return {
     leadTimeDays,
-    multiplier: 1.0, // No cost multiplier
+    multiplier: leadDaysMultiplier,
     components: { 
       productionDays: adjustedProductionDays, 
       shippingDays, 
