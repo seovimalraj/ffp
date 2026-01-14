@@ -213,8 +213,14 @@ export function calculatePricing(input: PricingInput): PricingBreakdown {
   // Subtotal before adjustments
   const subtotalPerUnit = costBeforeMargin + marginCostPerUnit;
 
-  // 9. Enhanced weight-based discount
-  const { quantityDiscount } = weightDiscount(rawWeightKg, quantity, subtotalPerUnit);
+  // 9. Advanced multi-factor volume discount
+  const volumeDiscountResult = calculateVolumeDiscount(
+    rawWeightKg,
+    quantity,
+    subtotalPerUnit,
+    process.setupCost,
+    materialCostPerUnit
+  );
 
   // 10. Tolerance Upcharge
   const toleranceUpchargeRate: Record<PricingInput['tolerance'], number> = {
@@ -228,7 +234,7 @@ export function calculatePricing(input: PricingInput): PricingBreakdown {
   const leadPlan = computeLeadTime(geometry, process, material, quantity, leadTimeType);
 
   // Final unit price (no cost multiplier for lead time)
-  const unitPrice = subtotalPerUnit - quantityDiscount + toleranceUpcharge;
+  const unitPrice = subtotalPerUnit - volumeDiscountResult.quantityDiscount + toleranceUpcharge;
   const totalPrice = unitPrice * quantity;
 
   return {
@@ -241,7 +247,7 @@ export function calculatePricing(input: PricingInput): PricingBreakdown {
     overheadCost: round2(overheadCostPerUnit),
     marginCost: round2(marginCostPerUnit),
     subtotal: round2(subtotalPerUnit),
-    quantityDiscount: round2(quantityDiscount),
+    quantityDiscount: round2(volumeDiscountResult.quantityDiscount),
     toleranceUpcharge: round2(toleranceUpcharge),
     leadTimeMultiplier: 1.0, // No cost multiplier - only affects lead time
     unitPrice: round2(unitPrice),
@@ -410,7 +416,7 @@ function manualQuoteBreakdown(leadTimeType: PricingInput['leadTimeType'], reason
     subtotal: 0,
     quantityDiscount: 0,
     toleranceUpcharge: 0,
-    leadTimeMultiplier: leadTimeMultiplierMap[leadTimeType],
+    leadTimeMultiplier: 1.0,
     unitPrice: 0,
     totalPrice: 0,
     leadTimeDays: 7,
@@ -427,31 +433,102 @@ function calculateRawStockWeightKg(geometry: GeometryData, material: MaterialSpe
   return rawWeightKg * process.materialWasteFactor;
 }
 
-function weightDiscount(rawWeightKg: number, quantity: number, subtotalPerUnit: number): { quantityDiscountRate: number; quantityDiscount: number } {
-  let rate = 0;
-
-  // Quantity-tier based discounts (matching Xometry's aggressive scaling)
-  if (quantity >= 100) rate = 0.42;      // 42% off for 100+
-  else if (quantity >= 80) rate = 0.38;  // 38% off for 80-99
-  else if (quantity >= 60) rate = 0.34;  // 34% off for 60-79
-  else if (quantity >= 50) rate = 0.30;  // 30% off for 50-59
-  else if (quantity >= 40) rate = 0.26;  // 26% off for 40-49
-  else if (quantity >= 30) rate = 0.22;  // 22% off for 30-39
-  else if (quantity >= 20) rate = 0.18;  // 18% off for 20-29
-  else if (quantity >= 10) rate = 0.14;  // 14% off for 10-19
-  else if (quantity >= 5) rate = 0.08;   // 8% off for 5-9
-  else if (quantity >= 3) rate = 0.04;   // 4% off for 3-4
+/**
+ * Advanced volume discount calculation matching Xometry's multi-factor approach
+ * Considers: quantity tiers, material value, production efficiency, and setup amortization
+ */
+function calculateVolumeDiscount(
+  rawWeightKg: number,
+  quantity: number,
+  subtotalPerUnit: number,
+  setupCost: number,
+  materialCostPerUnit: number
+): { 
+  quantityDiscountRate: number; 
+  quantityDiscount: number;
+  breakdown: {
+    tierDiscount: number;
+    materialDiscount: number;
+    efficiencyDiscount: number;
+    setupAmortization: number;
+  };
+} {
   
-  // Additional weight-based bonus (stackable, max 5%)
+  // 1. BASE QUANTITY-TIER DISCOUNT (Primary Factor)
+  let tierRate = 0;
+  if (quantity >= 1000) tierRate = 0.48;      // 48% - Mass production
+  else if (quantity >= 500) tierRate = 0.44;  // 44%
+  else if (quantity >= 250) tierRate = 0.40;  // 40%
+  else if (quantity >= 100) tierRate = 0.35;  // 35%
+  else if (quantity >= 80) tierRate = 0.31;   // 31%
+  else if (quantity >= 60) tierRate = 0.27;   // 27%
+  else if (quantity >= 50) tierRate = 0.24;   // 24%
+  else if (quantity >= 40) tierRate = 0.21;   // 21%
+  else if (quantity >= 30) tierRate = 0.18;   // 18%
+  else if (quantity >= 25) tierRate = 0.16;   // 16%
+  else if (quantity >= 20) tierRate = 0.14;   // 14%
+  else if (quantity >= 15) tierRate = 0.11;   // 11%
+  else if (quantity >= 10) tierRate = 0.09;   // 9%
+  else if (quantity >= 7) tierRate = 0.06;    // 6%
+  else if (quantity >= 5) tierRate = 0.04;    // 4%
+  else if (quantity >= 3) tierRate = 0.02;    // 2%
+
+  // 2. MATERIAL VALUE DISCOUNT (Bulk Material Purchasing Power)
+  const totalMaterialValue = materialCostPerUnit * quantity;
+  let materialRate = 0;
+  
+  if (totalMaterialValue >= 5000) materialRate = 0.08;      // $5K+ material order
+  else if (totalMaterialValue >= 3000) materialRate = 0.06; // $3K+
+  else if (totalMaterialValue >= 2000) materialRate = 0.04; // $2K+
+  else if (totalMaterialValue >= 1000) materialRate = 0.03; // $1K+
+  else if (totalMaterialValue >= 500) materialRate = 0.02;  // $500+
+  else if (totalMaterialValue >= 250) materialRate = 0.01;  // $250+
+
+  // 3. PRODUCTION EFFICIENCY DISCOUNT (Weight/Volume Economics)
   const totalWeightKg = rawWeightKg * quantity;
-  let weightBonus = 0;
-  if (totalWeightKg >= 200) weightBonus = 0.05;
-  else if (totalWeightKg >= 100) weightBonus = 0.03;
-  else if (totalWeightKg >= 50) weightBonus = 0.02;
+  let efficiencyRate = 0;
+  
+  // Heavy/large orders get better machine utilization
+  if (totalWeightKg >= 500) efficiencyRate = 0.06;      // 500kg+ order
+  else if (totalWeightKg >= 300) efficiencyRate = 0.04; // 300kg+
+  else if (totalWeightKg >= 200) efficiencyRate = 0.03; // 200kg+
+  else if (totalWeightKg >= 100) efficiencyRate = 0.02; // 100kg+
+  else if (totalWeightKg >= 50) efficiencyRate = 0.01;  // 50kg+
 
-  const finalRate = Math.min(rate + weightBonus, 0.50); // Cap at 50% total discount
+  // 4. SETUP COST AMORTIZATION BENEFIT
+  // Higher quantities mean setup cost becomes negligible per part
+  const setupCostPerUnit = setupCost / quantity;
+  const setupAsPercentOfUnit = setupCostPerUnit / subtotalPerUnit;
+  
+  // If setup is < 5% of unit cost, give additional discount
+  let setupAmortizationBonus = 0;
+  if (setupAsPercentOfUnit < 0.02) setupAmortizationBonus = 0.03; // Setup < 2% of cost
+  else if (setupAsPercentOfUnit < 0.05) setupAmortizationBonus = 0.02; // Setup < 5% of cost
+  else if (setupAsPercentOfUnit < 0.10) setupAmortizationBonus = 0.01; // Setup < 10% of cost
 
-  return { quantityDiscountRate: finalRate, quantityDiscount: subtotalPerUnit * finalRate };
+  // 5. COMBINE ALL FACTORS (with diminishing returns logic)
+  // Use logarithmic stacking to prevent over-discounting
+  const rawTotalRate = tierRate + materialRate + efficiencyRate + setupAmortizationBonus;
+  
+  // Apply soft cap using logarithmic curve
+  const softCap = 0.55; // 55% maximum discount
+  const finalRate = Math.min(
+    rawTotalRate,
+    softCap * (1 - Math.exp(-rawTotalRate / 0.3)) // Logarithmic approach to cap
+  );
+
+  const totalDiscount = subtotalPerUnit * finalRate;
+
+  return {
+    quantityDiscountRate: finalRate,
+    quantityDiscount: totalDiscount,
+    breakdown: {
+      tierDiscount: tierRate,
+      materialDiscount: materialRate,
+      efficiencyDiscount: efficiencyRate,
+      setupAmortization: setupAmortizationBonus
+    }
+  };
 }
 
 /**
