@@ -3,6 +3,19 @@
  * Extracts geometry data from CAD files for pricing calculations
  */
 
+export interface SheetMetalFeatures {
+  thickness: number; // mm
+  flatArea: number; // mm²
+  perimeterLength: number; // mm
+  bendCount: number;
+  holeCount: number;
+  totalHoleDiameter: number; // mm (sum of all hole perimeters)
+  cornerCount: number;
+  complexCuts: number; // curves, notches, etc.
+  hasHems: boolean;
+  hasCountersinks: boolean;
+}
+
 export interface GeometryData {
   volume: number; // mm³
   surfaceArea: number; // mm²
@@ -23,6 +36,7 @@ export interface GeometryData {
     hasComplexFeatures: boolean;
     aspectRatio: number;
   };
+  sheetMetalFeatures?: SheetMetalFeatures; // Only present if recommendedProcess is 'sheet-metal'
 }
 
 /**
@@ -211,6 +225,12 @@ function analyzeASCIISTL(text: string): GeometryData {
   const estimatedMachiningTime = calculateMachiningTime(volume, surfaceArea, complexity);
   const materialWeight = (volume / 1000) * 2.7;
   
+  // If sheet metal is recommended, extract sheet metal features
+  let sheetMetalFeatures: SheetMetalFeatures | undefined;
+  if (processRecommendation.process === 'sheet-metal') {
+    sheetMetalFeatures = detectSheetMetalFeatures(boundingBox, volume, surfaceArea, triangleCount);
+  }
+
   return {
     volume,
     surfaceArea,
@@ -220,7 +240,65 @@ function analyzeASCIISTL(text: string): GeometryData {
     materialWeight,
     recommendedProcess: processRecommendation.process,
     processConfidence: processRecommendation.confidence,
-    partCharacteristics
+    partCharacteristics,
+    sheetMetalFeatures
+  };
+}
+
+/**
+ * Detect sheet metal specific features
+ */
+function detectSheetMetalFeatures(
+  boundingBox: { x: number; y: number; z: number },
+  volume: number,
+  surfaceArea: number,
+  triangleCount: number
+): SheetMetalFeatures {
+  const dims = [boundingBox.x, boundingBox.y, boundingBox.z].sort((a, b) => a - b);
+  const thickness = dims[0];
+  const width = dims[1];
+  const length = dims[2];
+  
+  // Flat area (top + bottom surfaces)
+  const flatArea = width * length * 2;
+  
+  // Perimeter length (assuming rectangular profile)
+  const perimeterLength = 2 * (width + length);
+  
+  // Estimate bend count based on complexity
+  // This is simplified - real analysis would detect actual bend lines
+  const bendCount = triangleCount > 5000 ? Math.floor(triangleCount / 1000) : 
+                    triangleCount > 2000 ? Math.floor(triangleCount / 500) : 
+                    triangleCount > 500 ? Math.floor(triangleCount / 250) : 0;
+  
+  // Estimate hole count (very rough - based on surface complexity)
+  const surfaceToVolumeRatio = surfaceArea / (volume / 1000);
+  const holeCount = surfaceToVolumeRatio > 100 ? Math.floor(surfaceToVolumeRatio / 20) : 0;
+  
+  // Estimate total hole diameter
+  const totalHoleDiameter = holeCount * Math.PI * 10; // Assume avg 10mm diameter holes
+  
+  // Corner count (typically 4 for simple parts, more for complex)
+  const cornerCount = triangleCount > 5000 ? Math.floor(triangleCount / 500) : 4;
+  
+  // Complex cuts (curves, notches) - estimate from triangle count
+  const complexCuts = triangleCount > 3000 ? Math.floor((triangleCount - 3000) / 500) : 0;
+  
+  // Hems and countersinks (estimate based on complexity)
+  const hasHems = bendCount > 4;
+  const hasCountersinks = holeCount > 5;
+  
+  return {
+    thickness: Math.max(0.5, Math.min(thickness, 6)), // Clamp to typical sheet metal range
+    flatArea,
+    perimeterLength,
+    bendCount: Math.min(bendCount, 30), // Cap at 30 bends
+    holeCount: Math.min(holeCount, 100), // Cap at 100 holes
+    totalHoleDiameter,
+    cornerCount,
+    complexCuts,
+    hasHems,
+    hasCountersinks
   };
 }
 
@@ -286,6 +364,12 @@ export function estimateSTEPGeometry(file: File): GeometryData {
   const estimatedMachiningTime = calculateMachiningTime(estimatedVolume, estimatedSurfaceArea, complexity);
   const materialWeight = (estimatedVolume / 1000) * 2.7;
   
+  // If sheet metal is recommended, extract sheet metal features
+  let sheetMetalFeatures: SheetMetalFeatures | undefined;
+  if (processRecommendation.process === 'sheet-metal') {
+    sheetMetalFeatures = detectSheetMetalFeatures(boundingBox, estimatedVolume, estimatedSurfaceArea, estimatedTriangleCount);
+  }
+
   return {
     volume: estimatedVolume,
     surfaceArea: estimatedSurfaceArea,
@@ -295,7 +379,8 @@ export function estimateSTEPGeometry(file: File): GeometryData {
     materialWeight,
     recommendedProcess: processRecommendation.process,
     processConfidence: processRecommendation.confidence,
-    partCharacteristics
+    partCharacteristics,
+    sheetMetalFeatures
   };
 }
 

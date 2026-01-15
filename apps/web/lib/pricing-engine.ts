@@ -30,12 +30,49 @@ export interface FinishOption {
 
 export interface PricingInput {
   geometry: GeometryData;
-  material: MaterialSpec;
+  material: MaterialSpec | SheetMetalMaterialSpec;
   process: ProcessConfig;
-  finish: FinishOption;
+  finish: FinishOption | SheetMetalFinish;
   quantity: number;
   tolerance: 'standard' | 'precision' | 'tight';
   leadTimeType: 'economy' | 'standard' | 'expedited';
+  cuttingMethod?: 'laser' | 'plasma' | 'waterjet' | 'turret-punch';
+  hardware?: HardwareOption[];
+}
+
+// Sheet Metal Specific Interfaces
+export interface SheetMetalMaterialSpec {
+  code: string;
+  name: string;
+  density: number; // g/cm³
+  costPerKg: number;
+  thickness: number; // mm
+  category: 'steel' | 'stainless' | 'aluminum' | 'copper' | 'brass';
+  bendability: number; // 1 = easy, higher = harder to bend
+}
+
+export interface SheetMetalFinish {
+  code: string;
+  name: string;
+  baseCost: number;
+  perAreaCost: number; // USD per m²
+  color?: string;
+}
+
+export interface HardwareOption {
+  type: 'rivet-nut' | 'pem-nut' | 'standoff' | 'captive-screw';
+  quantity: number;
+  unitCost: number;
+}
+
+export interface CuttingMethodConfig {
+  name: string;
+  costPerMeter: number; // USD per meter cut
+  speedMmPerMin: number;
+  setupCost: number;
+  minThickness: number; // mm
+  maxThickness: number; // mm
+  materialCompatibility: string[]; // material categories
 }
 
 export interface PricingBreakdown {
@@ -51,6 +88,15 @@ export interface PricingBreakdown {
   quantityDiscount: number;
   toleranceUpcharge: number;
   leadTimeMultiplier: number;
+  // Advanced Xometry-style adjustments
+  demandAdjustment?: number;
+  complexityRiskPremium?: number;
+  materialDifficultyPremium?: number;
+  batchOptimizationBonus?: number;
+  // Sheet metal specific costs (optional)
+  cuttingCost?: number;
+  bendingCost?: number;
+  hardwareCost?: number;
   unitPrice: number;
   totalPrice: number;
   leadTimeDays: number;
@@ -60,6 +106,7 @@ export interface PricingBreakdown {
     productionDays: number;
     shippingDays: number;
     bufferDays: number;
+    materialProcurementDays?: number;
   };
 }
 
@@ -148,6 +195,118 @@ export const FINISHES: Record<string, FinishOption> = {
   'electropolished': { code: 'EPOL', name: 'Electropolished', baseCost: 35, perAreaCost: 0.09 }
 };
 
+// Sheet Metal Material Database - Enterprise Level
+export const SHEET_METAL_MATERIALS: Record<string, SheetMetalMaterialSpec[]> = {
+  'mild-steel': [
+    { code: 'MS-1008-0.5', name: 'Mild Steel 1008 - 0.5mm', density: 7.85, costPerKg: 2.8, thickness: 0.5, category: 'steel', bendability: 1 },
+    { code: 'MS-1008-0.8', name: 'Mild Steel 1008 - 0.8mm', density: 7.85, costPerKg: 2.7, thickness: 0.8, category: 'steel', bendability: 1 },
+    { code: 'MS-1008-1.0', name: 'Mild Steel 1008 - 1.0mm', density: 7.85, costPerKg: 2.6, thickness: 1.0, category: 'steel', bendability: 1 },
+    { code: 'MS-1008-1.5', name: 'Mild Steel 1008 - 1.5mm', density: 7.85, costPerKg: 2.5, thickness: 1.5, category: 'steel', bendability: 1.1 },
+    { code: 'MS-1008-2.0', name: 'Mild Steel 1008 - 2.0mm', density: 7.85, costPerKg: 2.5, thickness: 2.0, category: 'steel', bendability: 1.2 },
+    { code: 'MS-1008-2.5', name: 'Mild Steel 1008 - 2.5mm', density: 7.85, costPerKg: 2.5, thickness: 2.5, category: 'steel', bendability: 1.3 },
+    { code: 'MS-1008-3.0', name: 'Mild Steel 1008 - 3.0mm', density: 7.85, costPerKg: 2.6, thickness: 3.0, category: 'steel', bendability: 1.4 },
+  ],
+  'galvanized-steel': [
+    { code: 'GALV-0.8', name: 'Galvanized Steel - 0.8mm', density: 7.85, costPerKg: 3.2, thickness: 0.8, category: 'steel', bendability: 1.1 },
+    { code: 'GALV-1.0', name: 'Galvanized Steel - 1.0mm', density: 7.85, costPerKg: 3.1, thickness: 1.0, category: 'steel', bendability: 1.1 },
+    { code: 'GALV-1.5', name: 'Galvanized Steel - 1.5mm', density: 7.85, costPerKg: 3.0, thickness: 1.5, category: 'steel', bendability: 1.2 },
+    { code: 'GALV-2.0', name: 'Galvanized Steel - 2.0mm', density: 7.85, costPerKg: 3.0, thickness: 2.0, category: 'steel', bendability: 1.3 },
+  ],
+  'stainless-304': [
+    { code: 'SS304-0.5', name: 'Stainless 304 - 0.5mm', density: 8.0, costPerKg: 8.5, thickness: 0.5, category: 'stainless', bendability: 1.4 },
+    { code: 'SS304-0.8', name: 'Stainless 304 - 0.8mm', density: 8.0, costPerKg: 8.2, thickness: 0.8, category: 'stainless', bendability: 1.4 },
+    { code: 'SS304-1.0', name: 'Stainless 304 - 1.0mm', density: 8.0, costPerKg: 8.0, thickness: 1.0, category: 'stainless', bendability: 1.5 },
+    { code: 'SS304-1.5', name: 'Stainless 304 - 1.5mm', density: 8.0, costPerKg: 7.8, thickness: 1.5, category: 'stainless', bendability: 1.6 },
+    { code: 'SS304-2.0', name: 'Stainless 304 - 2.0mm', density: 8.0, costPerKg: 7.8, thickness: 2.0, category: 'stainless', bendability: 1.7 },
+    { code: 'SS304-3.0', name: 'Stainless 304 - 3.0mm', density: 8.0, costPerKg: 8.0, thickness: 3.0, category: 'stainless', bendability: 1.9 },
+  ],
+  'stainless-316': [
+    { code: 'SS316-0.8', name: 'Stainless 316 - 0.8mm', density: 8.0, costPerKg: 12.5, thickness: 0.8, category: 'stainless', bendability: 1.5 },
+    { code: 'SS316-1.0', name: 'Stainless 316 - 1.0mm', density: 8.0, costPerKg: 12.2, thickness: 1.0, category: 'stainless', bendability: 1.6 },
+    { code: 'SS316-1.5', name: 'Stainless 316 - 1.5mm', density: 8.0, costPerKg: 12.0, thickness: 1.5, category: 'stainless', bendability: 1.7 },
+    { code: 'SS316-2.0', name: 'Stainless 316 - 2.0mm', density: 8.0, costPerKg: 12.0, thickness: 2.0, category: 'stainless', bendability: 1.8 },
+  ],
+  'aluminum-5052': [
+    { code: 'AL5052-0.5', name: 'Aluminum 5052 - 0.5mm', density: 2.68, costPerKg: 7.5, thickness: 0.5, category: 'aluminum', bendability: 0.9 },
+    { code: 'AL5052-0.8', name: 'Aluminum 5052 - 0.8mm', density: 2.68, costPerKg: 7.2, thickness: 0.8, category: 'aluminum', bendability: 0.9 },
+    { code: 'AL5052-1.0', name: 'Aluminum 5052 - 1.0mm', density: 2.68, costPerKg: 7.0, thickness: 1.0, category: 'aluminum', bendability: 1.0 },
+    { code: 'AL5052-1.5', name: 'Aluminum 5052 - 1.5mm', density: 2.68, costPerKg: 6.8, thickness: 1.5, category: 'aluminum', bendability: 1.0 },
+    { code: 'AL5052-2.0', name: 'Aluminum 5052 - 2.0mm', density: 2.68, costPerKg: 6.8, thickness: 2.0, category: 'aluminum', bendability: 1.1 },
+    { code: 'AL5052-3.0', name: 'Aluminum 5052 - 3.0mm', density: 2.68, costPerKg: 7.0, thickness: 3.0, category: 'aluminum', bendability: 1.2 },
+  ],
+  'aluminum-6061': [
+    { code: 'AL6061-1.0', name: 'Aluminum 6061 - 1.0mm', density: 2.7, costPerKg: 8.0, thickness: 1.0, category: 'aluminum', bendability: 1.1 },
+    { code: 'AL6061-1.5', name: 'Aluminum 6061 - 1.5mm', density: 2.7, costPerKg: 7.8, thickness: 1.5, category: 'aluminum', bendability: 1.2 },
+    { code: 'AL6061-2.0', name: 'Aluminum 6061 - 2.0mm', density: 2.7, costPerKg: 7.8, thickness: 2.0, category: 'aluminum', bendability: 1.2 },
+    { code: 'AL6061-3.0', name: 'Aluminum 6061 - 3.0mm', density: 2.7, costPerKg: 8.0, thickness: 3.0, category: 'aluminum', bendability: 1.3 },
+  ],
+  'copper': [
+    { code: 'CU-C110-0.8', name: 'Copper C110 - 0.8mm', density: 8.96, costPerKg: 18.0, thickness: 0.8, category: 'copper', bendability: 0.8 },
+    { code: 'CU-C110-1.0', name: 'Copper C110 - 1.0mm', density: 8.96, costPerKg: 17.5, thickness: 1.0, category: 'copper', bendability: 0.9 },
+    { code: 'CU-C110-1.5', name: 'Copper C110 - 1.5mm', density: 8.96, costPerKg: 17.5, thickness: 1.5, category: 'copper', bendability: 1.0 },
+  ],
+  'brass': [
+    { code: 'BRASS-C260-0.8', name: 'Brass C260 - 0.8mm', density: 8.53, costPerKg: 12.5, thickness: 0.8, category: 'brass', bendability: 0.9 },
+    { code: 'BRASS-C260-1.0', name: 'Brass C260 - 1.0mm', density: 8.53, costPerKg: 12.0, thickness: 1.0, category: 'brass', bendability: 1.0 },
+    { code: 'BRASS-C260-1.5', name: 'Brass C260 - 1.5mm', density: 8.53, costPerKg: 12.0, thickness: 1.5, category: 'brass', bendability: 1.1 },
+  ],
+};
+
+// Sheet Metal Finish Options
+export const SHEET_METAL_FINISHES: Record<string, SheetMetalFinish> = {
+  'as-cut': { code: 'AS-CUT', name: 'As Cut (No Finish)', baseCost: 0, perAreaCost: 0 },
+  'deburred': { code: 'DEBURRED', name: 'Deburred Edges', baseCost: 5, perAreaCost: 2 },
+  'powder-coat-black': { code: 'PC-BLACK', name: 'Powder Coat (Black)', baseCost: 25, perAreaCost: 8, color: 'black' },
+  'powder-coat-white': { code: 'PC-WHITE', name: 'Powder Coat (White)', baseCost: 25, perAreaCost: 8, color: 'white' },
+  'powder-coat-custom': { code: 'PC-CUSTOM', name: 'Powder Coat (Custom Color)', baseCost: 35, perAreaCost: 10 },
+  'zinc-plated': { code: 'ZINC', name: 'Zinc Plating', baseCost: 15, perAreaCost: 5 },
+  'chromate-conversion': { code: 'CHROMATE', name: 'Chromate Conversion (Alodine)', baseCost: 20, perAreaCost: 6 },
+  'anodized-type-2': { code: 'ANOD-T2', name: 'Anodized Type II', baseCost: 22, perAreaCost: 7 },
+  'anodized-type-3': { code: 'ANOD-T3', name: 'Anodized Type III (Hard)', baseCost: 35, perAreaCost: 10 },
+  'electropolish': { code: 'EPOL-SM', name: 'Electropolished', baseCost: 40, perAreaCost: 12 }
+};
+
+// Cutting Method Configurations
+export const CUTTING_METHODS: Record<string, CuttingMethodConfig> = {
+  'laser': {
+    name: 'Laser Cutting',
+    costPerMeter: 0.80,
+    speedMmPerMin: 3000,
+    setupCost: 45,
+    minThickness: 0.5,
+    maxThickness: 20,
+    materialCompatibility: ['steel', 'stainless', 'aluminum', 'copper', 'brass']
+  },
+  'plasma': {
+    name: 'Plasma Cutting',
+    costPerMeter: 0.50,
+    speedMmPerMin: 2500,
+    setupCost: 35,
+    minThickness: 1.0,
+    maxThickness: 50,
+    materialCompatibility: ['steel', 'stainless', 'aluminum']
+  },
+  'waterjet': {
+    name: 'Waterjet Cutting',
+    costPerMeter: 1.20,
+    speedMmPerMin: 800,
+    setupCost: 60,
+    minThickness: 0.5,
+    maxThickness: 150,
+    materialCompatibility: ['steel', 'stainless', 'aluminum', 'copper', 'brass']
+  },
+  'turret-punch': {
+    name: 'Turret Punch',
+    costPerMeter: 0.40,
+    speedMmPerMin: 5000,
+    setupCost: 50,
+    minThickness: 0.5,
+    maxThickness: 6,
+    materialCompatibility: ['steel', 'stainless', 'aluminum']
+  }
+};
+
+
 const SIZE_LIMITS = { min: 0.5, max: 700 };
 
 // Lead time type price multipliers (applied to final price)
@@ -156,6 +315,48 @@ const leadTimePriceMultipliers = { economy: 0.8, standard: 1.5, expedited: 2.8 }
 // Lead time multipliers for DAYS calculation (expedited is base)
 const leadTimeDaysMultipliers = { expedited: 1, standard: 1.5, economy: 1.9 } as const;
 const shippingDaysByType = { economy: 14, standard: 7, expedited: 3 } as const;
+
+// Xometry-style advanced pricing factors
+const ADVANCED_PRICING = {
+  // Shop capacity utilization (simulated - in production, use real-time data)
+  capacityUtilization: 0.72, // 72% capacity = moderate demand
+  
+  // Demand-based price adjustments
+  demandPricing: {
+    low: 0.95,      // <60% capacity: 5% discount
+    moderate: 1.0,  // 60-80% capacity: normal pricing
+    high: 1.08,     // 80-90% capacity: 8% premium
+    veryHigh: 1.15  // >90% capacity: 15% premium
+  },
+  
+  // Material procurement lead time (days)
+  materialLeadTime: {
+    common: 0,      // Aluminum, mild steel (in stock)
+    uncommon: 3,    // Stainless, tool steel (3 days)
+    rare: 7,        // Titanium, Inconel (1 week)
+    exotic: 14      // Specialty alloys (2 weeks)
+  },
+  
+  // Complexity risk premium (% of subtotal)
+  complexityRisk: {
+    simple: 0,
+    moderate: 0.03,   // 3% for moderate complexity
+    complex: 0.08     // 8% for complex parts
+  },
+  
+  // Difficulty material premium (% of material cost)
+  difficultMaterialPremium: {
+    easy: 0,          // Machinability < 1.5
+    moderate: 0.05,   // Machinability 1.5-2.5
+    hard: 0.12        // Machinability > 2.5
+  },
+  
+  // Batch optimization bonus (additional discount for optimal quantities)
+  batchBonus: {
+    optimal: 0.02,    // 2% extra discount for quantities that fill a batch
+    nearOptimal: 0.01 // 1% for near-optimal quantities
+  }
+};
 
 // Enhanced CNC feasibility checks
 const CNC_CONSTRAINTS = {
@@ -167,24 +368,362 @@ const CNC_CONSTRAINTS = {
 };
 
 /**
+ * Sheet Metal Helper Functions
+ */
+function calculateSheetMetalPricingInternal(
+  geometry: GeometryData,
+  material: SheetMetalMaterialSpec,
+  finish: SheetMetalFinish,
+  quantity: number,
+  tolerance: PricingInput['tolerance'],
+  leadTimeType: PricingInput['leadTimeType'],
+  cuttingMethod: 'laser' | 'plasma' | 'waterjet' | 'turret-punch',
+  hardware: HardwareOption[] = []
+): PricingBreakdown {
+  // Check feasibility
+  const feasibility = checkSheetMetalFeasibility(geometry, material, cuttingMethod);
+  if (!feasibility.isFeasible) {
+    return manualQuoteBreakdown(leadTimeType, feasibility.reason);
+  }
+
+  const features = geometry.sheetMetalFeatures;
+  if (!features) {
+    return manualQuoteBreakdown(leadTimeType, 'Sheet metal features not detected');
+  }
+
+  // 1. Material Cost (area-based)
+  const flatAreaM2 = features.flatArea / 1_000_000;
+  const materialWeightKg = flatAreaM2 * material.thickness * material.density / 1000;
+  const materialCostPerUnit = materialWeightKg * material.costPerKg * 1.15; // 15% scrap allowance
+
+  // 2. Cutting Costs
+  const cuttingCosts = calculateCuttingCosts(features, material, cuttingMethod, quantity);
+
+  // 3. Forming/Bending Costs
+  const formingCosts = calculateFormingCosts(features, material, quantity);
+
+  // 4. Deburring
+  const perimeterM = features.perimeterLength / 1000;
+  const deburringCostPerUnit = perimeterM * 0.5 + flatAreaM2 * 2;
+
+  // 5. Finishing Cost
+  const finishingCostPerUnit = finish.baseCost / Math.max(1, quantity) + finish.perAreaCost * flatAreaM2;
+
+  // 6. Hardware Costs
+  const hardwareCostPerUnit = hardware.reduce((sum, hw) => sum + hw.quantity * hw.unitCost, 0);
+  const hardwareInstallationCostPerUnit = hardware.reduce((sum, hw) => sum + hw.quantity * 0.5, 0);
+
+  // 7. Programming Cost
+  const complexityFactor = features.complexCuts + features.cornerCount * 0.1;
+  const programmingCost = 25 + complexityFactor * 2;
+  const programmingCostPerUnit = programmingCost / Math.max(1, quantity);
+
+  // 8. Inspection Cost
+  const inspectionMap = { standard: 0.02, precision: 0.05, tight: 0.08 };
+  const inspectionCostPerUnit = (materialCostPerUnit + cuttingCosts.total + formingCosts.total) * inspectionMap[tolerance];
+
+  // 9. Packaging Cost
+  const packagingCostPerUnit = flatAreaM2 * 1.5 + 0.5;
+
+  // 10. Overhead (12% for sheet metal)
+  const directCosts = materialCostPerUnit + cuttingCosts.total + formingCosts.total +
+                      deburringCostPerUnit + finishingCostPerUnit + hardwareCostPerUnit +
+                      hardwareInstallationCostPerUnit + programmingCostPerUnit +
+                      inspectionCostPerUnit + packagingCostPerUnit;
+  const overheadCostPerUnit = directCosts * 0.12;
+
+  // 11. Margin (10%)
+  const costBeforeMargin = directCosts + overheadCostPerUnit;
+  const marginCostPerUnit = costBeforeMargin * 0.10;
+
+  const subtotalPerUnit = costBeforeMargin + marginCostPerUnit;
+
+  // 12. Quantity Discount
+  const quantityDiscount = calculateSheetMetalQuantityDiscount(subtotalPerUnit, quantity, flatAreaM2);
+
+  // 13. Tolerance Upcharge
+  const toleranceMultipliers = { standard: 0, precision: 1.2, tight: 1.6 };
+  const toleranceUpcharge = subtotalPerUnit * toleranceMultipliers[tolerance];
+
+  // 14. Advanced adjustments
+  const advancedAdjustments = calculateSheetMetalAdvancedAdjustments(subtotalPerUnit, materialCostPerUnit, geometry, material, quantity);
+
+  // 15. Lead time
+  const leadPlan = computeSheetMetalLeadTime(geometry, material, quantity, cuttingMethod, leadTimeType, features.bendCount > 0);
+
+  // 16. Apply lead time multiplier
+  const leadTimePriceMultiplier = leadTimePriceMultipliers[leadTimeType];
+  const priceBeforeLeadTime = subtotalPerUnit - quantityDiscount + toleranceUpcharge + advancedAdjustments.totalAdjustment;
+  const unitPrice = priceBeforeLeadTime * leadTimePriceMultiplier;
+  const totalPrice = unitPrice * quantity;
+
+  return {
+    materialCost: round2(materialCostPerUnit),
+    machiningCost: round2(cuttingCosts.total + formingCosts.total), // Combined for consistency
+    setupCost: round2(cuttingCosts.setup + formingCosts.setup),
+    finishCost: round2(finishingCostPerUnit),
+    toolingCost: round2(formingCosts.tooling + programmingCostPerUnit),
+    inspectionCost: round2(inspectionCostPerUnit),
+    overheadCost: round2(overheadCostPerUnit),
+    marginCost: round2(marginCostPerUnit),
+    subtotal: round2(subtotalPerUnit),
+    quantityDiscount: round2(quantityDiscount),
+    toleranceUpcharge: round2(toleranceUpcharge),
+    leadTimeMultiplier: leadTimePriceMultiplier,
+    demandAdjustment: advancedAdjustments.demandAdjustment,
+    complexityRiskPremium: advancedAdjustments.complexityRiskPremium,
+    materialDifficultyPremium: advancedAdjustments.materialDifficultyPremium,
+    batchOptimizationBonus: advancedAdjustments.batchOptimizationBonus,
+    cuttingCost: round2(cuttingCosts.total),
+    bendingCost: round2(formingCosts.total),
+    hardwareCost: round2(hardwareCostPerUnit + hardwareInstallationCostPerUnit),
+    unitPrice: round2(unitPrice),
+    totalPrice: round2(totalPrice),
+    leadTimeDays: leadPlan.leadTimeDays,
+    requiresManualQuote: false,
+    leadTimeComponents: leadPlan.components
+  };
+}
+
+function calculateCuttingCosts(
+  features: NonNullable<GeometryData['sheetMetalFeatures']>,
+  material: SheetMetalMaterialSpec,
+  method: 'laser' | 'plasma' | 'waterjet' | 'turret-punch',
+  quantity: number
+): { setup: number; perimeter: number; holes: number; complexCuts: number; total: number } {
+  const config = CUTTING_METHODS[method];
+  const setup = config.setupCost / Math.max(1, quantity);
+  const perimeterM = features.perimeterLength / 1000;
+  const perimeter = perimeterM * config.costPerMeter;
+  const holes = features.holeCount * 0.15 + (features.totalHoleDiameter / 1000) * config.costPerMeter;
+  const complexCuts = features.complexCuts * (config.costPerMeter * 0.5);
+  const thicknessMultiplier = 1 + (material.thickness / 10) * 0.3;
+  const total = (setup + perimeter + holes + complexCuts) * thicknessMultiplier;
+  return { setup, perimeter, holes, complexCuts, total };
+}
+
+function calculateFormingCosts(
+  features: NonNullable<GeometryData['sheetMetalFeatures']>,
+  material: SheetMetalMaterialSpec,
+  quantity: number
+): { setup: number; bending: number; tooling: number; total: number } {
+  if (features.bendCount === 0) {
+    return { setup: 0, bending: 0, tooling: 0, total: 0 };
+  }
+  const setup = 20 / Math.max(1, quantity);
+  const costPerBend = 0.8 * material.bendability;
+  const bending = features.bendCount * costPerBend;
+  const hasSpecialFeatures = features.hasHems || features.hasCountersinks;
+  const tooling = hasSpecialFeatures ? 15 / Math.max(1, quantity) : 0;
+  const total = setup + bending + tooling;
+  return { setup, bending, tooling, total };
+}
+
+function calculateSheetMetalQuantityDiscount(subtotal: number, quantity: number, areaM2: number): number {
+  let rate = 0;
+  if (quantity >= 1000) rate = 0.38;
+  else if (quantity >= 500) rate = 0.32;
+  else if (quantity >= 250) rate = 0.26;
+  else if (quantity >= 100) rate = 0.20;
+  else if (quantity >= 50) rate = 0.14;
+  else if (quantity >= 25) rate = 0.10;
+  else if (quantity >= 10) rate = 0.06;
+  else if (quantity >= 5) rate = 0.03;
+  
+  const totalAreaM2 = areaM2 * quantity;
+  let areaBonus = 0;
+  if (totalAreaM2 >= 50) areaBonus = 0.03;
+  else if (totalAreaM2 >= 20) areaBonus = 0.02;
+  else if (totalAreaM2 >= 10) areaBonus = 0.01;
+  
+  const finalRate = Math.min(rate + areaBonus, 0.45);
+  return subtotal * finalRate;
+}
+
+function calculateSheetMetalAdvancedAdjustments(
+  subtotal: number,
+  materialCost: number,
+  geometry: GeometryData,
+  material: SheetMetalMaterialSpec,
+  quantity: number
+): {
+  demandAdjustment: number;
+  complexityRiskPremium: number;
+  materialDifficultyPremium: number;
+  batchOptimizationBonus: number;
+  totalAdjustment: number;
+} {
+  const capacity = ADVANCED_PRICING.capacityUtilization;
+  let demandMultiplier = 1.0;
+  if (capacity < 0.6) demandMultiplier = 0.96;
+  else if (capacity > 0.85) demandMultiplier = 1.12;
+  else if (capacity > 0.75) demandMultiplier = 1.06;
+  const demandAdjustment = subtotal * (demandMultiplier - 1);
+  
+  const features = geometry.sheetMetalFeatures!;
+  let complexityRate = 0;
+  const totalComplexity = features.bendCount + features.complexCuts;
+  if (totalComplexity > 20) complexityRate = 0.06;
+  else if (totalComplexity > 10) complexityRate = 0.03;
+  else if (totalComplexity > 5) complexityRate = 0.01;
+  const complexityRiskPremium = subtotal * complexityRate;
+  
+  let difficultyRate = 0;
+  if (material.category === 'stainless' && material.thickness >= 2.0) difficultyRate = 0.08;
+  else if (material.category === 'stainless') difficultyRate = 0.04;
+  else if (material.thickness >= 3.0) difficultyRate = 0.03;
+  const materialDifficultyPremium = materialCost * difficultyRate;
+  
+  const optimalQuantities = [5, 10, 20, 25, 50, 100, 250, 500];
+  const isOptimal = optimalQuantities.includes(quantity);
+  const batchOptimizationBonus = isOptimal ? subtotal * 0.015 : 0;
+  
+  const totalAdjustment = demandAdjustment + complexityRiskPremium + materialDifficultyPremium - batchOptimizationBonus;
+  
+  return {
+    demandAdjustment: round2(demandAdjustment),
+    complexityRiskPremium: round2(complexityRiskPremium),
+    materialDifficultyPremium: round2(materialDifficultyPremium),
+    batchOptimizationBonus: round2(batchOptimizationBonus),
+    totalAdjustment: round2(totalAdjustment)
+  };
+}
+
+function computeSheetMetalLeadTime(
+  geometry: GeometryData,
+  material: SheetMetalMaterialSpec,
+  quantity: number,
+  cuttingMethod: 'laser' | 'plasma' | 'waterjet' | 'turret-punch',
+  leadTimeType: PricingInput['leadTimeType'],
+  hasBends: boolean
+): {
+  leadTimeDays: number;
+  components: {
+    productionDays: number;
+    shippingDays: number;
+    bufferDays: number;
+    materialProcurementDays: number;
+  };
+} {
+  const features = geometry.sheetMetalFeatures!;
+  const materialProcurementDays = (material.category === 'copper' || material.category === 'brass') ? 2 : 0;
+  const programmingDays = features.complexCuts > 5 ? 1 : 0;
+  
+  const config = CUTTING_METHODS[cuttingMethod];
+  const totalCuttingLength = features.perimeterLength + features.totalHoleDiameter;
+  const cuttingMinutes = totalCuttingLength / config.speedMmPerMin;
+  const cuttingHours = (cuttingMinutes / 60) * quantity;
+  let baseCuttingDays = Math.ceil(cuttingHours / 8);
+  
+  let baseFormingDays = 0;
+  if (hasBends) {
+    const bendsPerHour = 30 / material.bendability;
+    const formingHours = (features.bendCount * quantity) / bendsPerHour;
+    baseFormingDays = Math.ceil(formingHours / 8);
+  }
+  
+  const finishingDays = 1;
+  const multiplier = leadTimeDaysMultipliers[leadTimeType];
+  const cuttingDays = Math.ceil(baseCuttingDays * multiplier);
+  const formingDays = Math.ceil(baseFormingDays * multiplier);
+  const shippingDays = shippingDaysByType[leadTimeType];
+  
+  const productionDays = cuttingDays + formingDays + finishingDays + programmingDays;
+  const totalDays = materialProcurementDays + productionDays + shippingDays;
+  const leadTimeDays = Math.max(5, totalDays);
+  
+  return {
+    leadTimeDays,
+    components: {
+      productionDays,
+      shippingDays,
+      bufferDays: 0,
+      materialProcurementDays
+    }
+  };
+}
+
+function checkSheetMetalFeasibility(
+  geometry: GeometryData,
+  material: SheetMetalMaterialSpec,
+  cuttingMethod: 'laser' | 'plasma' | 'waterjet' | 'turret-punch'
+): { isFeasible: boolean; reason?: string } {
+  const features = geometry.sheetMetalFeatures;
+  if (!features) {
+    return { isFeasible: false, reason: 'Sheet metal features not detected' };
+  }
+  
+  const config = CUTTING_METHODS[cuttingMethod];
+  if (material.thickness < config.minThickness || material.thickness > config.maxThickness) {
+    return {
+      isFeasible: false,
+      reason: `${cuttingMethod} cannot cut ${material.category} at ${material.thickness}mm thickness`
+    };
+  }
+  
+  if (features.bendCount > 0 && material.thickness > 6) {
+    return {
+      isFeasible: false,
+      reason: `Material too thick for standard bending (${material.thickness}mm)`
+    };
+  }
+  
+  if (features.bendCount > 30) {
+    return {
+      isFeasible: false,
+      reason: `Excessive bend count (${features.bendCount})`
+    };
+  }
+  
+  const maxDimension = Math.max(geometry.boundingBox.x, geometry.boundingBox.y);
+  if (maxDimension > 3000) {
+    return {
+      isFeasible: false,
+      reason: `Part too large for standard sheet metal equipment (max dimension: ${maxDimension}mm)`
+    };
+  }
+  
+  return { isFeasible: true };
+}
+
+/**
  * Calculate comprehensive pricing based on real geometry
  * Optimized to be 30% more competitive than market leaders
+ * Supports both CNC and Sheet Metal manufacturing
  */
 export function calculatePricing(input: PricingInput): PricingBreakdown {
   const { geometry, material, process, finish, quantity, tolerance, leadTimeType } = input;
 
+  // Route to sheet metal pricing if process is sheet-metal
+  if (process.type === 'sheet-metal' && 'thickness' in material) {
+    const cuttingMethod = input.cuttingMethod || 'laser'; // Default to laser cutting
+    return calculateSheetMetalPricingInternal(
+      geometry,
+      material as SheetMetalMaterialSpec,
+      finish as SheetMetalFinish,
+      quantity,
+      tolerance,
+      leadTimeType,
+      cuttingMethod,
+      input.hardware
+    );
+  }
+
+  // CNC Pricing Logic (existing)
+  const cncMaterial = material as MaterialSpec;
+
   // Enhanced manual quote check for CNC feasibility
-  const manualGuard = shouldRequestManualQuote(geometry, process, material);
+  const manualGuard = shouldRequestManualQuote(geometry, process, cncMaterial);
   if (manualGuard.requiresManualQuote) {
     return manualQuoteBreakdown(leadTimeType, manualGuard.reason);
   }
 
   // 1. Material Cost (optimized waste calculation)
-  const rawWeightKg = calculateRawStockWeightKg(geometry, material, process);
-  const materialCostPerUnit = rawWeightKg * material.costPerKg;
+  const rawWeightKg = calculateRawStockWeightKg(geometry, cncMaterial, process);
+  const materialCostPerUnit = rawWeightKg * cncMaterial.costPerKg;
 
   // 2. Machining Cost (optimized rates and efficiency)
-  const machiningTimeHours = (geometry.estimatedMachiningTime / 60) * material.machinabilityFactor * 0.85; // 15% efficiency gain
+  const machiningTimeHours = (geometry.estimatedMachiningTime / 60) * cncMaterial.machinabilityFactor * 0.85; // 15% efficiency gain
   const machiningCostPerUnit = machiningTimeHours * process.hourlyRate;
 
   // 3. Setup Cost (amortized over quantity)
@@ -234,12 +773,24 @@ export function calculatePricing(input: PricingInput): PricingBreakdown {
   };
   const toleranceUpcharge = subtotalPerUnit * toleranceMultipliers[tolerance];
 
-  // 11. Dynamic Lead time calculation
-  const leadPlan = computeLeadTime(geometry, process, material, quantity, leadTimeType);
+  // 11. Advanced Xometry-style price adjustments
+  const advancedAdjustments = calculateAdvancedPriceAdjustments(
+    subtotalPerUnit,
+    materialCostPerUnit,
+    geometry,
+    cncMaterial,
+    quantity
+  );
 
-  // 12. Apply lead time type price multiplier
+  // 12. Dynamic Lead time calculation (with material procurement)
+  const leadPlan = computeLeadTime(geometry, process, cncMaterial, quantity, leadTimeType);
+
+  // 13. Apply all adjustments and lead time multiplier
   const leadTimePriceMultiplier = leadTimePriceMultipliers[leadTimeType];
-  const priceBeforeLeadTimeMultiplier = subtotalPerUnit - volumeDiscountResult.quantityDiscount + toleranceUpcharge;
+  const priceBeforeLeadTimeMultiplier = subtotalPerUnit 
+    - volumeDiscountResult.quantityDiscount 
+    + toleranceUpcharge
+    + advancedAdjustments.totalAdjustment;
   
   // Final unit price with lead time multiplier
   const unitPrice = priceBeforeLeadTimeMultiplier * leadTimePriceMultiplier;
@@ -258,6 +809,11 @@ export function calculatePricing(input: PricingInput): PricingBreakdown {
     quantityDiscount: round2(volumeDiscountResult.quantityDiscount),
     toleranceUpcharge: round2(toleranceUpcharge),
     leadTimeMultiplier: leadTimePriceMultiplier,
+    // Advanced adjustments
+    demandAdjustment: advancedAdjustments.demandAdjustment,
+    complexityRiskPremium: advancedAdjustments.complexityRiskPremium,
+    materialDifficultyPremium: advancedAdjustments.materialDifficultyPremium,
+    batchOptimizationBonus: advancedAdjustments.batchOptimizationBonus,
     unitPrice: round2(unitPrice),
     totalPrice: round2(totalPrice),
     leadTimeDays: leadPlan.leadTimeDays,
@@ -285,8 +841,12 @@ export async function calculatePricingWithLiveMaterial(
   input: PricingInput,
   options?: { materialPriceApiUrl?: string; apiKey?: string }
 ): Promise<PricingBreakdown> {
-  const resolvedMaterial = await fetchMaterialPricing(input.material, options);
-  return calculatePricing({ ...input, material: resolvedMaterial });
+  // Only fetch pricing for CNC materials (MaterialSpec), not sheet metal
+  if ('machinabilityFactor' in input.material) {
+    const resolvedMaterial = await fetchMaterialPricing(input.material as MaterialSpec, options);
+    return calculatePricing({ ...input, material: resolvedMaterial });
+  }
+  return calculatePricing(input);
 }
 
 /**
@@ -442,6 +1002,65 @@ function calculateRawStockWeightKg(geometry: GeometryData, material: MaterialSpe
 }
 
 /**
+ * Advanced Xometry-style pricing adjustments
+ * Factors: demand, complexity risk, material difficulty, batch optimization
+ */
+function calculateAdvancedPriceAdjustments(
+  subtotal: number,
+  materialCost: number,
+  geometry: GeometryData,
+  material: MaterialSpec,
+  quantity: number
+): {
+  demandAdjustment: number;
+  complexityRiskPremium: number;
+  materialDifficultyPremium: number;
+  batchOptimizationBonus: number;
+  totalAdjustment: number;
+} {
+  // 1. Demand-based pricing (simulated capacity)
+  const capacity = ADVANCED_PRICING.capacityUtilization;
+  let demandMultiplier = ADVANCED_PRICING.demandPricing.moderate;
+  if (capacity < 0.6) demandMultiplier = ADVANCED_PRICING.demandPricing.low;
+  else if (capacity > 0.9) demandMultiplier = ADVANCED_PRICING.demandPricing.veryHigh;
+  else if (capacity > 0.8) demandMultiplier = ADVANCED_PRICING.demandPricing.high;
+  const demandAdjustment = subtotal * (demandMultiplier - 1);
+
+  // 2. Complexity risk premium
+  const complexityRate = ADVANCED_PRICING.complexityRisk[geometry.complexity];
+  const complexityRiskPremium = subtotal * complexityRate;
+
+  // 3. Material difficulty premium
+  let difficultyRate = ADVANCED_PRICING.difficultMaterialPremium.easy;
+  if (material.machinabilityFactor > 2.5) {
+    difficultyRate = ADVANCED_PRICING.difficultMaterialPremium.hard;
+  } else if (material.machinabilityFactor > 1.5) {
+    difficultyRate = ADVANCED_PRICING.difficultMaterialPremium.moderate;
+  }
+  const materialDifficultyPremium = materialCost * difficultyRate;
+
+  // 4. Batch optimization bonus (quantities that optimize setup)
+  let batchBonus = 0;
+  const optimalBatches = [5, 10, 15, 20, 25, 30, 40, 50, 75, 100];
+  if (optimalBatches.includes(quantity)) {
+    batchBonus = subtotal * ADVANCED_PRICING.batchBonus.optimal;
+  } else if (optimalBatches.some(opt => Math.abs(quantity - opt) <= 2)) {
+    batchBonus = subtotal * ADVANCED_PRICING.batchBonus.nearOptimal;
+  }
+  const batchOptimizationBonus = batchBonus;
+
+  const totalAdjustment = demandAdjustment + complexityRiskPremium + materialDifficultyPremium - batchOptimizationBonus;
+
+  return {
+    demandAdjustment: round2(demandAdjustment),
+    complexityRiskPremium: round2(complexityRiskPremium),
+    materialDifficultyPremium: round2(materialDifficultyPremium),
+    batchOptimizationBonus: round2(batchOptimizationBonus),
+    totalAdjustment: round2(totalAdjustment)
+  };
+}
+
+/**
  * Advanced volume discount calculation matching Xometry's multi-factor approach
  * Considers: quantity tiers, material value, production efficiency, and setup amortization
  */
@@ -540,8 +1159,33 @@ function calculateVolumeDiscount(
 }
 
 /**
+ * Calculate material procurement lead time (Xometry-style)
+ */
+function getMaterialProcurementDays(material: MaterialSpec): number {
+  const code = material.code;
+  
+  // Exotic alloys
+  if (code.includes('INCONEL') || code.includes('HASTELLOY') || code.includes('KOVAR') || code.includes('MONEL')) {
+    return ADVANCED_PRICING.materialLeadTime.exotic;
+  }
+  
+  // Rare materials
+  if (code.includes('TI-') || code.includes('MARAGING')) {
+    return ADVANCED_PRICING.materialLeadTime.rare;
+  }
+  
+  // Uncommon materials
+  if (code.includes('SS-') || code.includes('TS-') || code.includes('BRONZE') || material.machinabilityFactor > 1.5) {
+    return ADVANCED_PRICING.materialLeadTime.uncommon;
+  }
+  
+  // Common materials (aluminum, mild steel, brass, plastics)
+  return ADVANCED_PRICING.materialLeadTime.common;
+}
+
+/**
  * Dynamic lead time calculation based on complexity, quantity, and material
- * Minimum: 7 days | Matches industry standards while being competitive
+ * Minimum: 7 days | Xometry-style with capacity, material procurement, and batching
  */
 function computeLeadTime(
   geometry: GeometryData,
@@ -549,7 +1193,7 @@ function computeLeadTime(
   material: MaterialSpec,
   quantity: number,
   leadTimeType: PricingInput['leadTimeType']
-): { leadTimeDays: number; multiplier: number; components: { productionDays: number; shippingDays: number; bufferDays: number } } {
+): { leadTimeDays: number; multiplier: number; components: { productionDays: number; shippingDays: number; bufferDays: number; materialProcurementDays: number } } {
   // Base machining time per part
   const perPartHours = (geometry.estimatedMachiningTime / 60) * material.machinabilityFactor;
   const totalHours = perPartHours * quantity;
@@ -593,11 +1237,18 @@ function computeLeadTime(
   // Use standard buffer - lead time differences are in production time multiplier
   const adjustedBufferDays = bufferDays;
 
+  // Material procurement lead time (Xometry-style)
+  const materialProcurementDays = getMaterialProcurementDays(material);
+  
+  // Capacity-based adjustment (if shop is busy, add 1-2 days)
+  const capacityDelayDays = ADVANCED_PRICING.capacityUtilization > 0.85 ? 2 : 
+                            ADVANCED_PRICING.capacityUtilization > 0.75 ? 1 : 0;
+
   // Shipping days
   const shippingDays = shippingDaysByType[leadTimeType];
 
   // Total lead time (minimum 7 days)
-  const rawLead = adjustedProductionDays + shippingDays + adjustedBufferDays;
+  const rawLead = adjustedProductionDays + shippingDays + adjustedBufferDays + materialProcurementDays + capacityDelayDays;
   const leadTimeDays = Math.max(7, rawLead);
 
   return {
@@ -606,7 +1257,8 @@ function computeLeadTime(
     components: { 
       productionDays: adjustedProductionDays, 
       shippingDays, 
-      bufferDays: adjustedBufferDays 
+      bufferDays: adjustedBufferDays,
+      materialProcurementDays: materialProcurementDays + capacityDelayDays
     }
   };
 }
@@ -645,4 +1297,34 @@ function getMaterialPriceEndpoint(options?: { materialPriceApiUrl?: string }): s
   }
 
   return undefined;
+}
+
+/**
+ * Helper: Get sheet metal material by code
+ */
+export function getSheetMetalMaterial(materialCode: string): SheetMetalMaterialSpec | null {
+  for (const materials of Object.values(SHEET_METAL_MATERIALS)) {
+    const found = materials.find(m => m.code === materialCode);
+    if (found) return found;
+  }
+  return null;
+}
+
+/**
+ * Helper: Get available thicknesses for a material family
+ */
+export function getAvailableThicknesses(materialFamily: keyof typeof SHEET_METAL_MATERIALS): number[] {
+  return SHEET_METAL_MATERIALS[materialFamily].map(m => m.thickness);
+}
+
+/**
+ * Helper: Get sheet metal finish by code
+ */
+export function getSheetMetalFinish(finishCode: string): SheetMetalFinish | null {
+  for (const [, finish] of Object.entries(SHEET_METAL_FINISHES)) {
+    if (finish.code === finishCode) {
+      return finish;
+    }
+  }
+  return null;
 }
