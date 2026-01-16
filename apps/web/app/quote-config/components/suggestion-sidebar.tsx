@@ -1,10 +1,10 @@
 "use client";
 
-import { X, Cpu } from "lucide-react";
+import { X, Cpu, ChevronDown } from "lucide-react";
 import type { PartConfig } from "@/types/part-config";
 import { cn } from "@/lib/utils";
 import { motion, AnimatePresence } from "framer-motion"; // Added Framer Motion
-import { useState } from "react"; // Added useState import
+import { useState, useMemo } from "react"; // Added useState import
 import { Button } from "@/components/ui/button"; // Added Button import
 import { generateSuggestions } from "@/utils/suggestion-utils"; // Added generateSuggestions import
 
@@ -14,12 +14,19 @@ interface SuggestionSidebarProps {
   onApplySuggestion: (suggestion: any) => void;
 }
 
+// Category types
+type SuggestionCategory = "marketing" | "dfm" | "quality" | "all";
+
 export function SuggestionSidebar({
   parts,
   onApplySuggestion,
 }: SuggestionSidebarProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const [selectedPart, setSelectedPart] = useState<string>("all");
+  const [selectedCategory, setSelectedCategory] = useState<SuggestionCategory>("all");
+  const [isPartDropdownOpen, setIsPartDropdownOpen] = useState(false);
+  const [isCategoryDropdownOpen, setIsCategoryDropdownOpen] = useState(false);
 
   const toggleSidebar = () => {
     if (!isOpen) {
@@ -29,7 +36,78 @@ export function SuggestionSidebar({
     setIsOpen(!isOpen);
   };
 
-  const suggestions = generateSuggestions(parts);
+  const allSuggestions = generateSuggestions(parts);
+  
+  // Categorize suggestions
+  const categorizedSuggestions = useMemo(() => {
+    return {
+      marketing: allSuggestions.filter(s => 
+        s.category === "volume-discount" || 
+        s.category === "premium-service" || 
+        s.category === "performance-upgrade" ||
+        s.type === "volume-discount" ||
+        s.type === "premium-upgrade" ||
+        s.type === "bundle" ||
+        s.type === "express-shipping"
+      ),
+      dfm: allSuggestions.filter(s => 
+        s.type === "dfm" || 
+        s.type === "tolerance" ||
+        s.type === "secondary-ops"
+      ),
+      quality: allSuggestions.filter(s => 
+        s.category === "quality-improvement" ||
+        (!["dfm", "tolerance", "secondary-ops", "volume-discount", "premium-upgrade", "bundle", "express-shipping"].includes(s.type) &&
+         !["volume-discount", "premium-service", "performance-upgrade"].includes(s.category || ""))
+      ),
+    };
+  }, [allSuggestions]);
+
+  // Get unique parts
+  const uniqueParts = useMemo(() => {
+    const partMap = new Map();
+    parts.forEach(part => {
+      if (!partMap.has(part.id)) {
+        partMap.set(part.id, part);
+      }
+    });
+    return Array.from(partMap.values());
+  }, [parts]);
+
+  // Filter suggestions based on selected part and category
+  const filteredSuggestions = useMemo(() => {
+    let filtered = allSuggestions;
+    
+    // Filter by part
+    if (selectedPart !== "all") {
+      filtered = filtered.filter(s => s.partId === selectedPart);
+    }
+    
+    // Filter by category
+    if (selectedCategory !== "all") {
+      filtered = categorizedSuggestions[selectedCategory] || [];
+      if (selectedPart !== "all") {
+        filtered = filtered.filter(s => s.partId === selectedPart);
+      }
+    }
+    
+    // Sort: Marketing first, then DFM, then Quality
+    return filtered.sort((a, b) => {
+      const getOrder = (suggestion: any) => {
+        if (categorizedSuggestions.marketing.includes(suggestion)) return 1;
+        if (categorizedSuggestions.dfm.includes(suggestion)) return 2;
+        if (categorizedSuggestions.quality.includes(suggestion)) return 3;
+        return 4;
+      };
+      return getOrder(a) - getOrder(b);
+    });
+  }, [allSuggestions, selectedPart, selectedCategory, categorizedSuggestions]);
+
+  // Check if suggestion should show apply button (not DFM or quality)
+  const shouldShowApplyButton = (suggestion: any) => {
+    return !categorizedSuggestions.dfm.includes(suggestion) && 
+           !categorizedSuggestions.quality.includes(suggestion);
+  };
 
   return (
     <>
@@ -50,7 +128,7 @@ export function SuggestionSidebar({
               />
               {suggestions.length > 0 && (
                 <span className="absolute -top-2 -right-2 w-5 h-5 bg-white text-blue-600 rounded-full text-[11px] font-black flex items-center justify-center shadow-sm">
-                  {suggestions.length}
+                  {filteredSuggestions.length}
                 </span>
               )}
             </div>
@@ -67,7 +145,7 @@ export function SuggestionSidebar({
               group-hover:opacity-100
             "
             >
-              {suggestions.length > 0 ? "Smart Optimization" : "Analyze Quote"}
+              {filteredSuggestions.length > 0 ? "Smart Optimization" : "Analyze Quote"}
             </span>
           </div>
         </Button>
@@ -148,6 +226,194 @@ export function SuggestionSidebar({
           </div>
         </div>
 
+        {/* Filters */}
+        {!isAnalyzing && (
+          <div className="px-8 py-4 border-b border-zinc-100 space-y-3 bg-white">
+            {/* Part Selector Dropdown */}
+            <div className="relative">
+              <label className="text-xs font-semibold text-zinc-500 uppercase tracking-wide mb-1.5 block">
+                Select Part
+              </label>
+              <button
+                onClick={() => setIsPartDropdownOpen(!isPartDropdownOpen)}
+                className="w-full flex items-center justify-between gap-2 px-4 py-2.5 bg-zinc-50 hover:bg-zinc-100 border border-zinc-200 rounded-lg text-sm font-medium text-zinc-900 transition-colors"
+              >
+                <span className="truncate">
+                  {selectedPart === "all" 
+                    ? `All Parts (${uniqueParts.length})` 
+                    : uniqueParts.find(p => p.id === selectedPart)?.fileName || "Select Part"}
+                </span>
+                <ChevronDown className={cn(
+                  "w-4 h-4 text-zinc-400 transition-transform",
+                  isPartDropdownOpen && "rotate-180"
+                )} />
+              </button>
+              
+              <AnimatePresence>
+                {isPartDropdownOpen && (
+                  <motion.div
+                    initial={{ opacity: 0, y: -10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, y: -10 }}
+                    className="absolute z-10 w-full mt-1 bg-white border border-zinc-200 rounded-lg shadow-lg max-h-60 overflow-y-auto"
+                  >
+                    <button
+                      onClick={() => {
+                        setSelectedPart("all");
+                        setIsPartDropdownOpen(false);
+                      }}
+                      className={cn(
+                        "w-full px-4 py-2.5 text-left text-sm hover:bg-zinc-50 transition-colors",
+                        selectedPart === "all" && "bg-blue-50 text-blue-600 font-semibold"
+                      )}
+                    >
+                      All Parts ({uniqueParts.length})
+                    </button>
+                    {uniqueParts.map(part => (
+                      <button
+                        key={part.id}
+                        onClick={() => {
+                          setSelectedPart(part.id);
+                          setIsPartDropdownOpen(false);
+                        }}
+                        className={cn(
+                          "w-full px-4 py-2.5 text-left text-sm hover:bg-zinc-50 transition-colors truncate",
+                          selectedPart === part.id && "bg-blue-50 text-blue-600 font-semibold"
+                        )}
+                      >
+                        {part.fileName}
+                      </button>
+                    ))}
+                  </motion.div>
+                )}
+              </AnimatePresence>
+            </div>
+
+            {/* Category Filter Dropdown */}
+            <div className="relative">
+              <label className="text-xs font-semibold text-zinc-500 uppercase tracking-wide mb-1.5 block">
+                Category
+              </label>
+              <button
+                onClick={() => setIsCategoryDropdownOpen(!isCategoryDropdownOpen)}
+                className="w-full flex items-center justify-between gap-2 px-4 py-2.5 bg-zinc-50 hover:bg-zinc-100 border border-zinc-200 rounded-lg text-sm font-medium text-zinc-900 transition-colors"
+              >
+                <span className="flex items-center gap-2">
+                  {selectedCategory === "all" && "All Categories"}
+                  {selectedCategory === "marketing" && (
+                    <>
+                      <span className="w-2 h-2 bg-purple-500 rounded-full"></span>
+                      Marketing
+                    </>
+                  )}
+                  {selectedCategory === "dfm" && (
+                    <>
+                      <span className="w-2 h-2 bg-amber-500 rounded-full"></span>
+                      DFM
+                    </>
+                  )}
+                  {selectedCategory === "quality" && (
+                    <>
+                      <span className="w-2 h-2 bg-blue-500 rounded-full"></span>
+                      Quality
+                    </>
+                  )}
+                  <span className="text-xs text-zinc-400">
+                    ({selectedCategory === "all" 
+                      ? filteredSuggestions.length 
+                      : categorizedSuggestions[selectedCategory]?.length || 0})
+                  </span>
+                </span>
+                <ChevronDown className={cn(
+                  "w-4 h-4 text-zinc-400 transition-transform",
+                  isCategoryDropdownOpen && "rotate-180"
+                )} />
+              </button>
+              
+              <AnimatePresence>
+                {isCategoryDropdownOpen && (
+                  <motion.div
+                    initial={{ opacity: 0, y: -10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, y: -10 }}
+                    className="absolute z-10 w-full mt-1 bg-white border border-zinc-200 rounded-lg shadow-lg overflow-hidden"
+                  >
+                    <button
+                      onClick={() => {
+                        setSelectedCategory("all");
+                        setIsCategoryDropdownOpen(false);
+                      }}
+                      className={cn(
+                        "w-full px-4 py-2.5 text-left text-sm hover:bg-zinc-50 transition-colors",
+                        selectedCategory === "all" && "bg-blue-50 text-blue-600 font-semibold"
+                      )}
+                    >
+                      <div className="flex items-center justify-between">
+                        <span>All Categories</span>
+                        <span className="text-xs text-zinc-400">({allSuggestions.length})</span>
+                      </div>
+                    </button>
+                    <button
+                      onClick={() => {
+                        setSelectedCategory("marketing");
+                        setIsCategoryDropdownOpen(false);
+                      }}
+                      className={cn(
+                        "w-full px-4 py-2.5 text-left text-sm hover:bg-zinc-50 transition-colors",
+                        selectedCategory === "marketing" && "bg-purple-50 text-purple-600 font-semibold"
+                      )}
+                    >
+                      <div className="flex items-center justify-between">
+                        <span className="flex items-center gap-2">
+                          <span className="w-2 h-2 bg-purple-500 rounded-full"></span>
+                          Marketing
+                        </span>
+                        <span className="text-xs text-zinc-400">({categorizedSuggestions.marketing.length})</span>
+                      </div>
+                    </button>
+                    <button
+                      onClick={() => {
+                        setSelectedCategory("dfm");
+                        setIsCategoryDropdownOpen(false);
+                      }}
+                      className={cn(
+                        "w-full px-4 py-2.5 text-left text-sm hover:bg-zinc-50 transition-colors",
+                        selectedCategory === "dfm" && "bg-amber-50 text-amber-600 font-semibold"
+                      )}
+                    >
+                      <div className="flex items-center justify-between">
+                        <span className="flex items-center gap-2">
+                          <span className="w-2 h-2 bg-amber-500 rounded-full"></span>
+                          DFM
+                        </span>
+                        <span className="text-xs text-zinc-400">({categorizedSuggestions.dfm.length})</span>
+                      </div>
+                    </button>
+                    <button
+                      onClick={() => {
+                        setSelectedCategory("quality");
+                        setIsCategoryDropdownOpen(false);
+                      }}
+                      className={cn(
+                        "w-full px-4 py-2.5 text-left text-sm hover:bg-zinc-50 transition-colors",
+                        selectedCategory === "quality" && "bg-blue-50 text-blue-600 font-semibold"
+                      )}
+                    >
+                      <div className="flex items-center justify-between">
+                        <span className="flex items-center gap-2">
+                          <span className="w-2 h-2 bg-blue-500 rounded-full"></span>
+                          Quality
+                        </span>
+                        <span className="text-xs text-zinc-400">({categorizedSuggestions.quality.length})</span>
+                      </div>
+                    </button>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+            </div>
+          </div>
+        )}
+
         {/* Content */}
         <div className="flex-1 overflow-y-auto invisible-scrollbar p-8 space-y-6">
           {isAnalyzing ? (
@@ -187,14 +453,14 @@ export function SuggestionSidebar({
                 </div>
               </div>
             </div>
-          ) : suggestions.length === 0 ? (
+          ) : filteredSuggestions.length === 0 ? (
             <div className="p-6 text-center">
               <p className="text-sm text-zinc-400 font-medium">
-                No suggestions available
+                No suggestions available for selected filters
               </p>
             </div>
           ) : (
-            suggestions.map((suggestion, index) => (
+            filteredSuggestions.map((suggestion, index) => (
               <motion.div
                 initial={{ opacity: 0, y: 10 }}
                 animate={{ opacity: 1, y: 0 }}
@@ -349,16 +615,29 @@ export function SuggestionSidebar({
                     </div>
                   )}
 
-                  {/* Action Button */}
-                  <Button
-                    onClick={() => {
-                      onApplySuggestion(suggestion);
-                      setIsOpen(false);
-                    }}
-                    className="w-full bg-blue-600 hover:bg-blue-700 text-white"
-                  >
-                    Apply Suggestion
-                  </Button>
+                  {/* Action Button - Only show for non-DFM/quality suggestions */}
+                  {shouldShowApplyButton(suggestion) && (
+                    <Button
+                      onClick={() => {
+                        onApplySuggestion(suggestion);
+                        setIsOpen(false);
+                      }}
+                      className="w-full bg-blue-600 hover:bg-blue-700 text-white"
+                    >
+                      Apply Suggestion
+                    </Button>
+                  )}
+                  
+                  {/* Info message for DFM/Quality suggestions */}
+                  {!shouldShowApplyButton(suggestion) && (
+                    <div className="pt-3 border-t border-zinc-100">
+                      <p className="text-xs text-zinc-500 italic text-center">
+                        {categorizedSuggestions.dfm.includes(suggestion) 
+                          ? "Design recommendation - requires CAD file modification"
+                          : "Quality improvement suggestion for consideration"}
+                      </p>
+                    </div>
+                  )}
                 </div>
               </motion.div>
             ))

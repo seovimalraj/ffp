@@ -94,6 +94,7 @@ export interface PricingBreakdown {
   complexityRiskPremium?: number;
   materialDifficultyPremium?: number;
   batchOptimizationBonus?: number;
+  qualityPremiumAdjustment?: number;
   // Sheet metal specific costs (optional)
   cuttingCost?: number;
   bendingCost?: number;
@@ -406,6 +407,40 @@ const leadTimePriceMultipliers = { economy: 0.8, standard: 1.5, expedited: 2.8 }
 const leadTimeDaysMultipliers = { expedited: 1, standard: 1.5, economy: 1.9 } as const;
 const shippingDaysByType = { economy: 14, standard: 7, expedited: 3 } as const;
 
+// Sheet Metal Lead Time Configuration (expedited = 15 days, standard = 1.5x, economy = 1.9x)
+const SHEET_METAL_LEAD_TIME = {
+  expedited: 15,      // Base expedited lead time
+  standard: 23,       // 1.5x expedited (22.5 rounded up)
+  economy: 29,        // 1.9x expedited (28.5 rounded up)
+  shippingDays: {
+    expedited: 3,
+    standard: 5,
+    economy: 7
+  }
+} as const;
+
+// Sheet Metal Advanced Cost Multiplier (20% increase for better quality)
+const SHEET_METAL_COST_OPTIMIZATION = {
+  qualityPremium: 1.20,           // 20% increase for quality materials and processes
+  complexityMultiplier: {
+    simple: 1.05,                  // 5% for simple parts
+    moderate: 1.15,                // 15% for moderate complexity
+    complex: 1.25                  // 25% for complex parts
+  },
+  materialCategoryMultiplier: {
+    aluminum: 1.15,                // 15% for aluminum
+    steel: 1.18,                   // 18% for steel
+    stainless: 1.22,               // 22% for stainless
+    copper: 1.20,                  // 20% for copper
+    brass: 1.18                    // 18% for brass
+  },
+  toleranceMultiplier: {
+    standard: 1.00,
+    precision: 1.12,               // 12% for precision
+    tight: 1.25                    // 25% for tight tolerances
+  }
+} as const;
+
 // Xometry-style advanced pricing factors
 const ADVANCED_PRICING = {
   // Shop capacity utilization (simulated - in production, use real-time data)
@@ -564,6 +599,7 @@ function calculateSheetMetalPricingInternal(
     complexityRiskPremium: advancedAdjustments.complexityRiskPremium,
     materialDifficultyPremium: advancedAdjustments.materialDifficultyPremium,
     batchOptimizationBonus: advancedAdjustments.batchOptimizationBonus,
+    qualityPremiumAdjustment: advancedAdjustments.qualityPremiumAdjustment,
     cuttingCost: round2(cuttingCosts.total),
     bendingCost: round2(formingCosts.total),
     hardwareCost: round2(hardwareCostPerUnit + hardwareInstallationCostPerUnit),
@@ -641,6 +677,7 @@ function calculateSheetMetalAdvancedAdjustments(
   complexityRiskPremium: number;
   materialDifficultyPremium: number;
   batchOptimizationBonus: number;
+  qualityPremiumAdjustment: number;
   totalAdjustment: number;
 } {
   const capacity = ADVANCED_PRICING.capacityUtilization;
@@ -651,30 +688,56 @@ function calculateSheetMetalAdvancedAdjustments(
   const demandAdjustment = subtotal * (demandMultiplier - 1);
   
   const features = geometry.sheetMetalFeatures!;
+  
+  // Advanced complexity assessment with higher premiums
+  const totalComplexity = features.bendCount + features.complexCuts + (features.holeCount * 0.1);
+  let complexityLevel: 'simple' | 'moderate' | 'complex';
   let complexityRate = 0;
-  const totalComplexity = features.bendCount + features.complexCuts;
-  if (totalComplexity > 20) complexityRate = 0.06;
-  else if (totalComplexity > 10) complexityRate = 0.03;
-  else if (totalComplexity > 5) complexityRate = 0.01;
-  const complexityRiskPremium = subtotal * complexityRate;
   
+  if (totalComplexity > 25 || features.bendCount > 12) {
+    complexityLevel = 'complex';
+    complexityRate = 0.10;  // Increased from 0.06 to 0.10
+  } else if (totalComplexity > 12 || features.bendCount > 6) {
+    complexityLevel = 'moderate';
+    complexityRate = 0.06;  // Increased from 0.03 to 0.06
+  } else if (totalComplexity > 5) {
+    complexityLevel = 'simple';
+    complexityRate = 0.03;  // Increased from 0.01 to 0.03
+  } else {
+    complexityLevel = 'simple';
+    complexityRate = 0;
+  }
+  
+  const complexityMultiplier = SHEET_METAL_COST_OPTIMIZATION.complexityMultiplier[complexityLevel];
+  const complexityRiskPremium = subtotal * complexityRate * complexityMultiplier;
+  
+  // Advanced material difficulty with category-specific multipliers
   let difficultyRate = 0;
-  if (material.category === 'stainless' && material.thickness >= 2.0) difficultyRate = 0.08;
-  else if (material.category === 'stainless') difficultyRate = 0.04;
-  else if (material.thickness >= 3.0) difficultyRate = 0.03;
-  const materialDifficultyPremium = materialCost * difficultyRate;
+  if (material.category === 'stainless' && material.thickness >= 2.5) difficultyRate = 0.12;
+  else if (material.category === 'stainless' && material.thickness >= 2.0) difficultyRate = 0.10;  // Increased from 0.08
+  else if (material.category === 'stainless') difficultyRate = 0.06;  // Increased from 0.04
+  else if (material.category === 'copper' || material.category === 'brass') difficultyRate = 0.05;
+  else if (material.thickness >= 3.0) difficultyRate = 0.05;  // Increased from 0.03
+  else if (material.thickness >= 2.0) difficultyRate = 0.03;
   
-  const optimalQuantities = [5, 10, 20, 25, 50, 100, 250, 500];
+  const materialCategoryMultiplier = SHEET_METAL_COST_OPTIMIZATION.materialCategoryMultiplier[material.category];
+  const materialDifficultyPremium = materialCost * difficultyRate * materialCategoryMultiplier;
+  
+  const optimalQuantities = [5, 10, 20, 25, 50, 100, 250, 500, 1000];
   const isOptimal = optimalQuantities.includes(quantity);
-  const batchOptimizationBonus = isOptimal ? subtotal * 0.015 : 0;
+  const batchOptimizationBonus = isOptimal ? subtotal * 0.018 : 0;  // Increased from 0.015 to 0.018
   
-  const totalAdjustment = demandAdjustment + complexityRiskPremium + materialDifficultyPremium - batchOptimizationBonus;
+  // Apply 20% quality premium base increase for sheet metal
+  const qualityPremiumAdjustment = subtotal * (SHEET_METAL_COST_OPTIMIZATION.qualityPremium - 1);
+  
+  const totalAdjustment = demandAdjustment + complexityRiskPremium + materialDifficultyPremium + qualityPremiumAdjustment - batchOptimizationBonus;
   
   return {
     demandAdjustment: round2(demandAdjustment),
     complexityRiskPremium: round2(complexityRiskPremium),
     materialDifficultyPremium: round2(materialDifficultyPremium),
     batchOptimizationBonus: round2(batchOptimizationBonus),
+    qualityPremiumAdjustment: round2(qualityPremiumAdjustment),
     totalAdjustment: round2(totalAdjustment)
   };
 }
@@ -696,38 +759,89 @@ function computeSheetMetalLeadTime(
   };
 } {
   const features = geometry.sheetMetalFeatures!;
-  const materialProcurementDays = (material.category === 'copper' || material.category === 'brass') ? 2 : 0;
-  const programmingDays = features.complexCuts > 5 ? 1 : 0;
+  
+  // Advanced material procurement optimization
+  let materialProcurementDays = 0;
+  if (material.category === 'copper' || material.category === 'brass') {
+    materialProcurementDays = leadTimeType === 'expedited' ? 2 : (leadTimeType === 'standard' ? 3 : 5);
+  } else if (material.category === 'stainless' && material.thickness >= 2.5) {
+    materialProcurementDays = leadTimeType === 'expedited' ? 1 : (leadTimeType === 'standard' ? 2 : 3);
+  }
+  
+  // Advanced programming time based on complexity
+  const totalComplexity = features.complexCuts + features.bendCount + (features.holeCount * 0.1);
+  let programmingDays = 0;
+  if (totalComplexity > 25) programmingDays = 2;
+  else if (totalComplexity > 15) programmingDays = 1.5;
+  else if (totalComplexity > 8) programmingDays = 1;
+  else if (totalComplexity > 5) programmingDays = 0.5;
   
   const config = CUTTING_METHODS[cuttingMethod];
   const totalCuttingLength = features.perimeterLength + features.totalHoleDiameter;
   const cuttingMinutes = totalCuttingLength / config.speedMmPerMin;
-  const cuttingHours = (cuttingMinutes / 60) * quantity;
+  
+  // Advanced quantity optimization - better efficiency for larger batches
+  let quantityEfficiencyFactor = 1.0;
+  if (quantity >= 100) quantityEfficiencyFactor = 0.75;
+  else if (quantity >= 50) quantityEfficiencyFactor = 0.80;
+  else if (quantity >= 25) quantityEfficiencyFactor = 0.85;
+  else if (quantity >= 10) quantityEfficiencyFactor = 0.90;
+  
+  const cuttingHours = (cuttingMinutes / 60) * quantity * quantityEfficiencyFactor;
   let baseCuttingDays = Math.ceil(cuttingHours / 8);
   
   let baseFormingDays = 0;
   if (hasBends) {
     const bendsPerHour = 30 / material.bendability;
-    const formingHours = (features.bendCount * quantity) / bendsPerHour;
+    const formingHours = (features.bendCount * quantity * quantityEfficiencyFactor) / bendsPerHour;
     baseFormingDays = Math.ceil(formingHours / 8);
   }
   
-  const finishingDays = 1;
-  const multiplier = leadTimeDaysMultipliers[leadTimeType];
-  const cuttingDays = Math.ceil(baseCuttingDays * multiplier);
-  const formingDays = Math.ceil(baseFormingDays * multiplier);
-  const shippingDays = shippingDaysByType[leadTimeType];
+  // Advanced finishing time based on part complexity and surface area
+  const flatAreaM2 = features.flatArea / 1_000_000;
+  let finishingDays = 0.5;
+  if (flatAreaM2 * quantity > 5) finishingDays = 1.5;
+  else if (flatAreaM2 * quantity > 2) finishingDays = 1;
   
-  const productionDays = cuttingDays + formingDays + finishingDays + programmingDays;
-  const totalDays = materialProcurementDays + productionDays + shippingDays;
-  const leadTimeDays = Math.max(5, totalDays);
+  // Quality inspection time for precision work
+  const inspectionDays = (features.bendCount > 8 || features.complexCuts > 10) ? 0.5 : 0;
+  
+  // Use sheet metal specific lead times (expedited = 15 days base)
+  let targetLeadTime: number;
+  let shippingDays: number;
+  
+  if (leadTimeType === 'expedited') {
+    targetLeadTime = SHEET_METAL_LEAD_TIME.expedited;  // 15 days
+    shippingDays = SHEET_METAL_LEAD_TIME.shippingDays.expedited;  // 3 days
+  } else if (leadTimeType === 'standard') {
+    targetLeadTime = SHEET_METAL_LEAD_TIME.standard;  // 23 days (1.5x)
+    shippingDays = SHEET_METAL_LEAD_TIME.shippingDays.standard;  // 5 days
+  } else {
+    targetLeadTime = SHEET_METAL_LEAD_TIME.economy;  // 29 days (1.9x)
+    shippingDays = SHEET_METAL_LEAD_TIME.shippingDays.economy;  // 7 days
+  }
+  
+  // Calculate actual production time needed
+  const actualProductionDays = Math.ceil(
+    baseCuttingDays + baseFormingDays + finishingDays + programmingDays + inspectionDays
+  );
+  
+  // Use target lead time, adjusting if actual production needs more time
+  const availableProductionTime = targetLeadTime - shippingDays - materialProcurementDays;
+  const productionDays = Math.max(actualProductionDays, availableProductionTime);
+  
+  // Buffer days for expedited orders to ensure on-time delivery
+  const bufferDays = leadTimeType === 'expedited' ? 1 : 0;
+  
+  const totalDays = materialProcurementDays + productionDays + shippingDays + bufferDays;
+  const leadTimeDays = Math.max(targetLeadTime, totalDays);
   
   return {
     leadTimeDays,
     components: {
       productionDays,
       shippingDays,
-      bufferDays: 0,
+      bufferDays,
       materialProcurementDays
     }
   };
