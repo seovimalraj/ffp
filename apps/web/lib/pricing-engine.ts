@@ -578,7 +578,12 @@ function calculateSheetMetalPricingInternal(
   // 16. Apply lead time multiplier
   const leadTimePriceMultiplier = leadTimePriceMultipliers[leadTimeType];
   const priceBeforeLeadTime = subtotalPerUnit - quantityDiscount + toleranceUpcharge + advancedAdjustments.totalAdjustment;
-  const unitPrice = priceBeforeLeadTime * leadTimePriceMultiplier;
+  
+  // Apply 5% markup for sheet metal parts (enclosures, cabinets, housings, etc.)
+  const sheetMetalMarkup = priceBeforeLeadTime * 0.05;
+  const priceWithMarkup = priceBeforeLeadTime + sheetMetalMarkup;
+  
+  const unitPrice = priceWithMarkup * leadTimePriceMultiplier;
   const totalPrice = unitPrice * quantity;
 
   return {

@@ -98,12 +98,12 @@ function generateDFMSuggestions(part: PartConfig): Suggestion[] {
       suggestions.push({
         id: `dfm-undercut-${part.id}`,
         type: "dfm",
-        title: "Eliminate 5-Axis Requirement",
-        description: `Part has ${advancedFeatures.undercuts.count} undercuts requiring expensive 5-axis machining. Redesigning to eliminate undercuts could save significant cost and reduce lead time.`,
+        title: "Enhance Part Reliability",
+        description: `Part has ${advancedFeatures.undercuts.count} undercuts that create stress concentration points and potential weak spots. Redesigning to eliminate these features improves structural integrity and part longevity under load.`,
         partId: part.id,
         partName: part.fileName,
-        currentValue: "5-Axis Required",
-        suggestedValue: "3-Axis Compatible",
+        currentValue: "Complex Geometry",
+        suggestedValue: "Simplified Design",
         impact: {
           savings: 180,
           savingsPercentage: 28
@@ -119,12 +119,12 @@ function generateDFMSuggestions(part: PartConfig): Suggestion[] {
       suggestions.push({
         id: `dfm-deepholes-${part.id}`,
         type: "dfm",
-        title: "Optimize Deep Hole Design",
-        description: `${advancedFeatures.holes.deepHoleCount} deep holes (L/D > 5:1) require specialized tooling and slow peck cycles. Consider reducing hole depth or increasing diameter to improve machinability.`,
+        title: "Improve Hole Precision & Longevity",
+        description: `${advancedFeatures.holes.deepHoleCount} deep holes (L/D > 5:1) may experience wear issues and thread degradation over time. Optimizing hole depth or increasing diameter improves thread engagement and long-term reliability.`,
         partId: part.id,
         partName: part.fileName,
         currentValue: `${advancedFeatures.holes.deepHoleCount} deep holes`,
-        suggestedValue: "Optimized depth/diameter",
+        suggestedValue: "Optimized for durability",
         impact: {
           savings: 65,
           savingsPercentage: 16
@@ -140,8 +140,8 @@ function generateDFMSuggestions(part: PartConfig): Suggestion[] {
       suggestions.push({
         id: `dfm-microholes-${part.id}`,
         type: "dfm",
-        title: "Critical: Micro Holes Detected",
-        description: `${advancedFeatures.holes.microHoleCount} micro holes (<1mm) require specialized micro drills or EDM. If possible, increase to ≥1mm diameter for standard machining. Cost impact: $${50 * advancedFeatures.holes.microHoleCount} for micro tooling.`,
+        title: "Critical: Prevent Thread Stripping",
+        description: `${advancedFeatures.holes.microHoleCount} micro holes (<1mm) are prone to cross-threading and stripped threads during assembly. Increasing to ≥1mm diameter improves fastener reliability and reduces risk of field failures during installation or maintenance.`,
         partId: part.id,
         partName: part.fileName,
         currentValue: `${advancedFeatures.holes.microHoleCount} micro holes`,
@@ -161,8 +161,8 @@ function generateDFMSuggestions(part: PartConfig): Suggestion[] {
       suggestions.push({
         id: `dfm-sharp-corners-${part.id}`,
         type: "dfm",
-        title: "Add Corner Radii to Pockets",
-        description: `${advancedFeatures.pockets.sharpCornersCount} sharp pocket corners detected. Adding minimum ${advancedFeatures.pockets.minCornerRadius.toFixed(1)}mm radii eliminates need for square endmill or EDM corner cutting. Saves time and reduces tool wear.`,
+        title: "Reduce Stress Concentrations",
+        description: `${advancedFeatures.pockets.sharpCornersCount} sharp pocket corners act as stress risers that can initiate cracks under cyclic loading. Adding ${advancedFeatures.pockets.minCornerRadius.toFixed(1)}mm radii distributes stress evenly, extending part service life and preventing fatigue failures.`,
         partId: part.id,
         partName: part.fileName,
         currentValue: "Sharp corners",
@@ -182,8 +182,8 @@ function generateDFMSuggestions(part: PartConfig): Suggestion[] {
       suggestions.push({
         id: `dfm-pocket-${part.id}`,
         type: "dfm",
-        title: "Optimize Pocket Depth",
-        description: `${advancedFeatures.pockets.deepPockets} deep pockets detected with aspect ratio > 3:1. Reducing pocket depth by 30% would improve tool rigidity and reduce machining time by ~25%.`,
+        title: "Enhance Structural Integrity",
+        description: `${advancedFeatures.pockets.deepPockets} deep pockets detected with aspect ratio > 3:1. Deep cavities can reduce part stiffness and create weak points. Reducing pocket depth by 30% improves overall structural rigidity and resistance to bending loads.`,
         partId: part.id,
         partName: part.fileName,
         currentValue: `${advancedFeatures.pockets.avgDepth.toFixed(1)}mm depth`,
@@ -203,8 +203,8 @@ function generateDFMSuggestions(part: PartConfig): Suggestion[] {
       suggestions.push({
         id: `dfm-missing-fillets-${part.id}`,
         type: "dfm",
-        title: "Add Internal Fillets",
-        description: `${advancedFeatures.fillets.missingFilletCount} sharp internal corners detected (stress concentration risk: ${advancedFeatures.fillets.stressConcentrationRisk}/10). Adding R${advancedFeatures.fillets.minRadius.toFixed(1)}mm fillets improves part strength and eliminates sharp corners that can cause cracks under load.`,
+        title: "Prevent Crack Initiation",
+        description: `${advancedFeatures.fillets.missingFilletCount} sharp internal corners detected (stress risk: ${advancedFeatures.fillets.stressConcentrationRisk}/10). Sharp corners are prime locations for fatigue cracks to start. Adding R${advancedFeatures.fillets.minRadius.toFixed(1)}mm fillets significantly improves part longevity under repeated loading and prevents premature failures.`,
         partId: part.id,
         partName: part.fileName,
         currentValue: "Sharp corners",
@@ -226,12 +226,12 @@ function generateDFMSuggestions(part: PartConfig): Suggestion[] {
       suggestions.push({
         id: `dfm-threads-${part.id}`,
         type: "secondary-ops",
-        title: "Optimize Thread Count",
-        description: `Part requires ${advancedFeatures.threads.count} threads (${advancedFeatures.threads.internalThreads} internal, ${advancedFeatures.threads.externalThreads} external). Threading cost: $${internalCost + externalCost}. Consider using fewer, larger fasteners or press-fit inserts where possible.`,
+        title: "Simplify Assembly Process",
+        description: `Part requires ${advancedFeatures.threads.count} fastening points (${advancedFeatures.threads.internalThreads} internal, ${advancedFeatures.threads.externalThreads} external). Excessive fasteners increase assembly time and potential for cross-threading errors. Consolidating to fewer, larger fasteners improves installation reliability and serviceability.`,
         partId: part.id,
         partName: part.fileName,
         currentValue: `${advancedFeatures.threads.count} threads`,
-        suggestedValue: "Reduced thread count",
+        suggestedValue: "Streamlined fastening",
         impact: {
           savings: Math.min(internalCost + externalCost, 80),
           savingsPercentage: Math.round((Math.min(internalCost + externalCost, 80) / (part.final_price || 200)) * 100)
@@ -247,8 +247,8 @@ function generateDFMSuggestions(part: PartConfig): Suggestion[] {
       suggestions.push({
         id: `dfm-bosses-${part.id}`,
         type: "dfm",
-        title: "Reduce Boss Height",
-        description: `${advancedFeatures.bosses.count} tall bosses detected (height/diameter > 4:1). Tall bosses are prone to deflection during machining. Reducing height by 25% improves rigidity and cycle time.`,
+        title: "Improve Mounting Stability",
+        description: `${advancedFeatures.bosses.count} tall bosses detected (height/diameter > 4:1). Tall, slender mounting features can bend or break during assembly torque application. Reducing height by 25% or adding gussets improves mounting robustness and prevents assembly damage.`,
         partId: part.id,
         partName: part.fileName,
         currentValue: `${advancedFeatures.bosses.avgHeight.toFixed(1)}mm height`,
@@ -268,8 +268,8 @@ function generateDFMSuggestions(part: PartConfig): Suggestion[] {
       suggestions.push({
         id: `dfm-ribs-${part.id}`,
         type: "dfm",
-        title: `${advancedFeatures.ribs.deflectionRisk === 'high' ? 'Critical: ' : ''}Increase Rib Thickness`,
-        description: `${advancedFeatures.ribs.thinRibCount} thin ribs detected (${advancedFeatures.ribs.minThickness.toFixed(1)}mm). Ribs thinner than 1.5mm have high deflection risk during machining. Increase to 2mm minimum for better manufacturability.`,
+        title: `${advancedFeatures.ribs.deflectionRisk === 'high' ? 'Critical: ' : ''}Strengthen Load-Bearing Ribs`,
+        description: `${advancedFeatures.ribs.thinRibCount} thin ribs detected (${advancedFeatures.ribs.minThickness.toFixed(1)}mm). Ribs thinner than 1.5mm may deflect or crack under load, compromising structural support. Increasing to 2mm minimum prevents warping and ensures consistent part performance over time.`,
         partId: part.id,
         partName: part.fileName,
         currentValue: `${advancedFeatures.ribs.minThickness.toFixed(1)}mm`,
@@ -289,12 +289,12 @@ function generateDFMSuggestions(part: PartConfig): Suggestion[] {
       suggestions.push({
         id: `dfm-tool-access-${part.id}`,
         type: "dfm",
-        title: "Improve Tool Access",
-        description: `${advancedFeatures.toolAccess.restrictedAreas} restricted tool access areas detected. Requires ${advancedFeatures.toolAccess.estimatedSetupCount} setups${advancedFeatures.toolAccess.requiresMultiAxisMachining ? ' and multi-axis machining' : ''}. Simplifying geometry or adding tool clearance could reduce cost.`,
+        title: "Ensure Feature Consistency",
+        description: `${advancedFeatures.toolAccess.restrictedAreas} restricted access areas require multiple setups${advancedFeatures.toolAccess.requiresMultiAxisMachining ? ' and complex fixturing' : ''}. Multiple setups increase variation risk between features. Simplifying geometry ensures tighter dimensional consistency and better part-to-part repeatability.`,
         partId: part.id,
         partName: part.fileName,
         currentValue: `${advancedFeatures.toolAccess.estimatedSetupCount} setups`,
-        suggestedValue: "Improved accessibility",
+        suggestedValue: "Simplified geometry",
         impact: {
           savings: advancedFeatures.toolAccess.estimatedSetupCount * 35,
           savingsPercentage: Math.round((advancedFeatures.toolAccess.estimatedSetupCount * 35 / (part.final_price || 200)) * 100)

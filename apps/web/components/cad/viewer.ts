@@ -24,6 +24,7 @@ export type Viewer = {
   ) => void;
   setClipping: (value: number | null) => void;
   fitToScreen: (zoom?: number) => void;
+  setHighlight: (triangles: number[] | null, location?: { x: number; y: number; z: number }) => void;
 };
 
 export function createViewer(container: HTMLElement): Viewer {
@@ -706,6 +707,103 @@ export function createViewer(container: HTMLElement): Viewer {
     fitCameraToBox(box, padding);
   }
 
+  // Highlighting for DFM features
+  let highlightMesh: THREE.Mesh | null = null;
+
+  function setHighlight(triangles: number[] | null, location?: { x: number; y: number; z: number }) {
+    // Remove existing highlight
+    if (highlightMesh) {
+      scene.remove(highlightMesh);
+      highlightMesh.geometry.dispose();
+      (highlightMesh.material as THREE.Material).dispose();
+      highlightMesh = null;
+    }
+
+    if (!triangles || triangles.length === 0) return;
+
+    // Find the main mesh in the model
+    const mainMesh = modelRoot.children.find((child): child is THREE.Mesh => 
+      (child as THREE.Mesh).isMesh
+    );
+
+    if (!mainMesh || !mainMesh.geometry) return;
+
+    const srcGeom = mainMesh.geometry;
+    const posAttr = srcGeom.getAttribute('position');
+    if (!posAttr) return;
+
+    // Build highlight geometry from triangle indices
+    const positions: number[] = [];
+    for (const triIdx of triangles) {
+      const i0 = triIdx * 3;
+      const i1 = triIdx * 3 + 1;
+      const i2 = triIdx * 3 + 2;
+
+      // Get positions for the triangle vertices
+      for (const idx of [i0, i1, i2]) {
+        if (idx < posAttr.count) {
+          positions.push(
+            posAttr.getX(idx),
+            posAttr.getY(idx),
+            posAttr.getZ(idx)
+          );
+        }
+      }
+    }
+
+    if (positions.length === 0) return;
+
+    // Create highlight geometry
+    const highlightGeom = new THREE.BufferGeometry();
+    highlightGeom.setAttribute(
+      'position',
+      new THREE.Float32BufferAttribute(positions, 3)
+    );
+    highlightGeom.computeVertexNormals();
+
+    // Create highlight material (semi-transparent blue)
+    const highlightMat = new THREE.MeshBasicMaterial({
+      color: 0x3b82f6,
+      transparent: true,
+      opacity: 0.5,
+      side: THREE.DoubleSide,
+      depthTest: true,
+      depthWrite: false,
+    });
+
+    highlightMesh = new THREE.Mesh(highlightGeom, highlightMat);
+    highlightMesh.position.copy(mainMesh.position);
+    highlightMesh.rotation.copy(mainMesh.rotation);
+    highlightMesh.scale.copy(mainMesh.scale);
+    scene.add(highlightMesh);
+
+    // If location is provided, animate camera to focus on it
+    if (location) {
+      const targetPos = new THREE.Vector3(location.x, location.y, location.z);
+      const currentTarget = controls.target.clone();
+      const targetDistance = activeCamera.position.distanceTo(targetPos);
+      
+      // Smooth transition to the feature
+      const duration = 1000; // ms
+      const startTime = Date.now();
+      
+      function animateCamera() {
+        const elapsed = Date.now() - startTime;
+        const progress = Math.min(elapsed / duration, 1);
+        const eased = 1 - Math.pow(1 - progress, 3); // ease-out cubic
+        
+        controls.target.lerpVectors(currentTarget, targetPos, eased);
+        controls.update();
+        
+        if (progress < 1) {
+          requestAnimationFrame(animateCamera);
+        }
+      }
+      
+      animateCamera();
+    }
+  }
+
   function dispose() {
     window.removeEventListener("resize", onResize);
     renderer.setAnimationLoop(null);
@@ -728,5 +826,6 @@ export function createViewer(container: HTMLElement): Viewer {
     setMaterialProperties,
     setClipping,
     fitToScreen,
+    setHighlight,
   };
 }

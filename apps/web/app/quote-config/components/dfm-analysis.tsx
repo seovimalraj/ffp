@@ -11,6 +11,8 @@ import {
   LayoutDashboard,
   CheckCheck,
   Sparkles,
+  Eye,
+  EyeOff,
 } from "lucide-react";
 import React, { useEffect, useState, useRef } from "react";
 import { cn } from "@/lib/utils";
@@ -31,6 +33,13 @@ interface DFMCheck {
   severity?: "low" | "medium" | "high" | "critical";
   potentialSavings?: number;
   actionable?: boolean;
+  selectionHint?: {
+    type: 'feature' | 'surface' | 'edge' | 'dimension';
+    featureType?: string;
+    location?: { x: number; y: number; z: number };
+    triangles?: number[];
+    description?: string;
+  };
 }
 
 interface DFMAnalysisResult {
@@ -155,6 +164,13 @@ function analyzeDFM(part: PartConfig): DFMAnalysisResult {
         severity: features.holes.microHoleCount > 0 ? "critical" : "medium",
         potentialSavings: features.holes.microHoleCount * 50 + features.holes.deepHoleCount * 20,
         actionable: holeStatus !== "pass",
+        selectionHint: features.holes.count > 0 ? {
+          type: 'feature',
+          featureType: 'holes',
+          location: { x: 0, y: 0, z: 10 },
+          triangles: [10, 11, 12, 13, 14, 15, 16, 17, 18, 19], // Sample triangle indices
+          description: `${features.holes.count} holes requiring machining`
+        } : undefined,
       });
 
       if (features.holes.microHoleCount > 0) {
@@ -187,6 +203,13 @@ function analyzeDFM(part: PartConfig): DFMAnalysisResult {
         severity: pocketStatus === "warning" ? "medium" : "low",
         potentialSavings: features.pockets.sharpCornersCount * 8 + features.pockets.deepPockets * 25,
         actionable: pocketStatus === "warning",
+        selectionHint: features.pockets.count > 0 ? {
+          type: 'feature',
+          featureType: 'pockets',
+          location: { x: 0, y: 0, z: -5 },
+          triangles: [20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31], // Sample triangle indices
+          description: `${features.pockets.count} pockets with ${features.pockets.sharpCornersCount} sharp corners`
+        } : undefined,
       });
 
       if (features.pockets.sharpCornersCount > 3) {
@@ -255,6 +278,11 @@ function analyzeDFM(part: PartConfig): DFMAnalysisResult {
         severity: features.thinWalls.risk === "high" ? "critical" : features.thinWalls.risk === "medium" ? "medium" : "low",
         potentialSavings: features.thinWalls.risk === "high" ? 120 : 45,
         actionable: wallStatus !== "pass",
+        selectionHint: {
+          type: 'surface',
+          featureType: 'thin-wall',
+          description: `Thin walls ${features.thinWalls.minThickness.toFixed(1)}mm requiring special attention`,
+        },
       });
 
       if (features.thinWalls.risk === "high") {
@@ -632,7 +660,21 @@ const StatTile = ({
   </div>
 );
 
-const DFMAnalysis = ({ part }: { part: PartConfig }) => {
+const DFMAnalysis = ({ 
+  part,
+  selectedHighlight = null,
+  onHighlightChange,
+}: { 
+  part: PartConfig;
+  selectedHighlight?: string | null;
+  onHighlightChange?: (checkId: string | null, selectionHint?: {
+    type: 'feature' | 'surface' | 'edge' | 'dimension';
+    featureType?: string;
+    location?: { x: number; y: number; z: number };
+    triangles?: number[];
+    description?: string;
+  }) => void;
+}) => {
   const [analysis, setAnalysis] = useState<DFMAnalysisResult | null>(null);
   const [isAnalyzing, setIsAnalyzing] = useState(true);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -645,6 +687,14 @@ const DFMAnalysis = ({ part }: { part: PartConfig }) => {
     }, 1200);
     return () => clearTimeout(timer);
   }, [part]);
+
+  const toggleHighlight = (checkId: string, check: DFMCheck) => {
+    const newCheckId = selectedHighlight === checkId ? null : checkId;
+    if (onHighlightChange) {
+      onHighlightChange(newCheckId, newCheckId ? check.selectionHint : undefined);
+    }
+    console.log('Highlight feature:', newCheckId, check.selectionHint);
+  };
 
   if (isAnalyzing || !analysis) {
     return (
@@ -930,6 +980,20 @@ const DFMAnalysis = ({ part }: { part: PartConfig }) => {
                               {check.name}
                             </span>
                             <div className="flex items-center gap-2 flex-shrink-0">
+                              {check.selectionHint && (
+                                <button
+                                  onClick={() => toggleHighlight(check.id, check)}
+                                  className={cn(
+                                    "p-1.5 rounded-lg transition-all hover:scale-110 active:scale-95",
+                                    selectedHighlight === check.id
+                                      ? "bg-blue-500 text-white shadow-md"
+                                      : "bg-gray-100 text-gray-600 hover:bg-gray-200"
+                                  )}
+                                  title={selectedHighlight === check.id ? "Hide in 3D" : "Show in 3D"}
+                                >
+                                  <Eye className="w-3.5 h-3.5" />
+                                </button>
+                              )}
                               {check.potentialSavings && check.potentialSavings > 0 && (
                                 <span className="px-2 py-0.5 rounded text-[10px] font-black uppercase tracking-tight bg-green-100 text-green-700">
                                   ${check.potentialSavings}

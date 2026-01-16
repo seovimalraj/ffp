@@ -1254,22 +1254,66 @@ function generateDFMIssues(
 }
 
 /**
- * For STEP files - simplified estimation
+ * For STEP files - parse actual geometry using CAD service
  */
-export function estimateSTEPGeometry(file: File): GeometryData {
-  // STEP files require complex CAD kernel parsing
-  // For demo purposes, estimate based on file size
+export async function estimateSTEPGeometry(file: File): Promise<GeometryData> {
+  try {
+    // Try to get actual geometry from CAD service
+    const formData = new FormData();
+    formData.append('file', file);
+    
+    const response = await fetch('/api/cad/extract-features', {
+      method: 'POST',
+      body: formData,
+    });
+    
+    if (response.ok) {
+      const cadData = await response.json();
+      
+      // Extract actual geometry from CAD service response
+      const actualVolume = cadData.volume || cadData.features?.volume; // mm³
+      const actualSurfaceArea = cadData.surface_area || cadData.features?.surface_area; // mm²
+      const actualBoundingBox = cadData.dimensions || cadData.features?.dimensions;
+      
+      if (actualVolume && actualBoundingBox) {
+        // Use actual CAD data
+        const boundingBox = {
+          x: actualBoundingBox.x,
+          y: actualBoundingBox.y,
+          z: actualBoundingBox.z
+        };
+        
+        const volume = actualVolume;
+        const surfaceArea = actualSurfaceArea || Math.pow(volume, 2/3) * 6.2;
+        
+        return buildGeometryData(file, boundingBox, volume, surfaceArea);
+      }
+    }
+  } catch (error) {
+    console.warn('CAD service unavailable, falling back to estimation:', error);
+  }
+  
+  // Fallback: Improved estimation using file size heuristics
   const fileSizeKB = file.size / 1024;
+  const estimatedVolume = fileSizeKB * 150; // mm³ - improved estimate
+  const estimatedSurfaceArea = Math.pow(estimatedVolume, 2/3) * 6.2;
   
-  // Rough heuristic: larger files = more complex parts
-  const estimatedVolume = fileSizeKB * 100; // Very rough estimate
-  const estimatedSurfaceArea = Math.pow(estimatedVolume, 2/3) * 6;
-  
+  // More realistic bounding box with rectangular proportions (2:1.5:1 ratio)
+  const cubeRoot = Math.pow(estimatedVolume, 1/3);
   const boundingBox = {
-    x: Math.pow(estimatedVolume, 1/3),
-    y: Math.pow(estimatedVolume, 1/3),
-    z: Math.pow(estimatedVolume, 1/3)
+    x: cubeRoot * 1.26,  // Length (longest dimension)
+    y: cubeRoot * 0.95,  // Width (medium dimension)
+    z: cubeRoot * 0.63   // Height (shortest dimension)
   };
+  
+  return buildGeometryData(file, boundingBox, estimatedVolume, estimatedSurfaceArea);
+}
+
+/**
+ * Helper to build GeometryData from volume and bounding box
+ */
+function buildGeometryData(file: File, boundingBox: { x: number; y: number; z: number }, volume: number, surfaceArea: number): GeometryData {
+  const fileSizeKB = file.size / 1024;
   
   const complexity: GeometryData['complexity'] = 
     fileSizeKB < 500 ? 'simple' :
@@ -1280,21 +1324,21 @@ export function estimateSTEPGeometry(file: File): GeometryData {
   const estimatedTriangleCount = fileSizeKB * 10;
   
   // Analyze part characteristics for process identification
-  const partCharacteristics = analyzePartCharacteristics(boundingBox, estimatedVolume, estimatedSurfaceArea, estimatedTriangleCount);
+  const partCharacteristics = analyzePartCharacteristics(boundingBox, volume, surfaceArea, estimatedTriangleCount);
   
   // Determine recommended process
-  const processRecommendation = recommendManufacturingProcess(boundingBox, estimatedVolume, estimatedSurfaceArea, complexity, partCharacteristics);
+  const processRecommendation = recommendManufacturingProcess(boundingBox, volume, surfaceArea, complexity, partCharacteristics);
   
-  const estimatedMachiningTime = calculateMachiningTime(estimatedVolume, estimatedSurfaceArea, complexity);
-  const materialWeight = (estimatedVolume / 1000) * 2.7;
+  const estimatedMachiningTime = calculateMachiningTime(volume, surfaceArea, complexity);
+  const materialWeight = (volume / 1000) * 2.7;
   
   // Detect advanced features
-  const advancedFeatures = detectAdvancedFeatures(boundingBox, estimatedVolume, estimatedSurfaceArea, estimatedTriangleCount, complexity);
+  const advancedFeatures = detectAdvancedFeatures(boundingBox, volume, surfaceArea, estimatedTriangleCount, complexity);
   
   // If sheet metal is recommended, extract sheet metal features
   let sheetMetalFeatures: SheetMetalFeatures | undefined;
   if (processRecommendation.process === 'sheet-metal') {
-    sheetMetalFeatures = detectSheetMetalFeatures(boundingBox, estimatedVolume, estimatedSurfaceArea, estimatedTriangleCount);
+    sheetMetalFeatures = detectSheetMetalFeatures(boundingBox, volume, surfaceArea, estimatedTriangleCount);
   }
   
   // Generate DFM issues and secondary ops
@@ -1303,8 +1347,8 @@ export function estimateSTEPGeometry(file: File): GeometryData {
     complexity, 
     advancedFeatures,
     partCharacteristics,
-    volume: estimatedVolume,
-    surfaceArea: estimatedSurfaceArea,
+    volume: volume,
+    surfaceArea: surfaceArea,
     estimatedMachiningTime,
     materialWeight,
     recommendedProcess: processRecommendation.process,
@@ -1319,8 +1363,8 @@ export function estimateSTEPGeometry(file: File): GeometryData {
     complexity,
     advancedFeatures,
     partCharacteristics,
-    volume: estimatedVolume,
-    surfaceArea: estimatedSurfaceArea,
+    volume: volume,
+    surfaceArea: surfaceArea,
     estimatedMachiningTime,
     materialWeight,
     recommendedProcess: processRecommendation.process,
@@ -1331,8 +1375,8 @@ export function estimateSTEPGeometry(file: File): GeometryData {
   } as GeometryData, 'Aluminum 6061', 'standard');
 
   return {
-    volume: estimatedVolume,
-    surfaceArea: estimatedSurfaceArea,
+    volume: volume,
+    surfaceArea: surfaceArea,
     boundingBox,
     complexity,
     estimatedMachiningTime,
@@ -1470,9 +1514,9 @@ export async function analyzeCADFile(file: File): Promise<GeometryData> {
     case 'stp':
     case 'iges':
     case 'igs':
-      return estimateSTEPGeometry(file);
+      return await estimateSTEPGeometry(file);
     default:
       // Default estimation for unknown formats
-      return estimateSTEPGeometry(file);
+      return await estimateSTEPGeometry(file);
   }
 }

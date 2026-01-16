@@ -43,6 +43,13 @@ interface CadViewerProps {
   zoom?: number;
   previewUrl?: string;
   onSnapshot?: (url: string) => void;
+  selectedHighlight?: {
+    type: 'feature' | 'surface' | 'edge' | 'dimension';
+    featureType?: string;
+    location?: { x: number; y: number; z: number };
+    triangles?: number[];
+    description?: string;
+  };
 }
 
 export interface CadViewerRef {
@@ -60,6 +67,7 @@ export const CadViewer = forwardRef<CadViewerRef, CadViewerProps>(
       zoom = 1,
       previewUrl,
       onSnapshot,
+      selectedHighlight,
     },
     ref,
   ) => {
@@ -193,6 +201,21 @@ export const CadViewer = forwardRef<CadViewerRef, CadViewerProps>(
         viewerRef.current.fitToScreen(zoom);
       }
     }, [zoom, isLoading]);
+
+    // Update highlight when selectedHighlight changes
+    useEffect(() => {
+      if (!viewerRef.current) return;
+      
+      if (selectedHighlight?.triangles && selectedHighlight.triangles.length > 0) {
+        viewerRef.current.setHighlight(
+          selectedHighlight.triangles,
+          selectedHighlight.location
+        );
+      } else {
+        // Clear highlight if no triangles
+        viewerRef.current.setHighlight(null);
+      }
+    }, [selectedHighlight]);
 
     function setDimsFromGeometry(geom: THREE.BufferGeometry) {
       geom.computeBoundingBox();

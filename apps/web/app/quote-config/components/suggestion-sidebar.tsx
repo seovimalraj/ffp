@@ -15,7 +15,7 @@ interface SuggestionSidebarProps {
 }
 
 // Category types
-type SuggestionCategory = "marketing" | "dfm" | "quality" | "all";
+type SuggestionCategory = "cost-optimization" | "dfm" | "quality-optimization" | "all";
 
 export function SuggestionSidebar({
   parts,
@@ -91,22 +91,22 @@ export function SuggestionSidebar({
       }
     }
     
-    // Sort: Marketing first, then DFM, then Quality
+    // Sort: Cost Optimization first, then DFM Suggestions, then Quality Optimization
     return filtered.sort((a, b) => {
       const getOrder = (suggestion: any) => {
-        if (categorizedSuggestions.marketing.includes(suggestion)) return 1;
+        if (categorizedSuggestions["cost-optimization"].includes(suggestion)) return 1;
         if (categorizedSuggestions.dfm.includes(suggestion)) return 2;
-        if (categorizedSuggestions.quality.includes(suggestion)) return 3;
+        if (categorizedSuggestions["quality-optimization"].includes(suggestion)) return 3;
         return 4;
       };
       return getOrder(a) - getOrder(b);
     });
   }, [allSuggestions, selectedPart, selectedCategory, categorizedSuggestions]);
 
-  // Check if suggestion should show apply button (not DFM or quality)
+  // Check if suggestion should show apply button (not DFM or quality optimization)
   const shouldShowApplyButton = (suggestion: any) => {
     return !categorizedSuggestions.dfm.includes(suggestion) && 
-           !categorizedSuggestions.quality.includes(suggestion);
+           !categorizedSuggestions["quality-optimization"].includes(suggestion);
   };
 
   return (
@@ -300,22 +300,22 @@ export function SuggestionSidebar({
               >
                 <span className="flex items-center gap-2">
                   {selectedCategory === "all" && "All Categories"}
-                  {selectedCategory === "marketing" && (
+                  {selectedCategory === "cost-optimization" && (
                     <>
                       <span className="w-2 h-2 bg-purple-500 rounded-full"></span>
-                      Marketing
+                      Cost Optimization
                     </>
                   )}
                   {selectedCategory === "dfm" && (
                     <>
                       <span className="w-2 h-2 bg-amber-500 rounded-full"></span>
-                      DFM
+                      DFM Suggestions
                     </>
                   )}
-                  {selectedCategory === "quality" && (
+                  {selectedCategory === "quality-optimization" && (
                     <>
                       <span className="w-2 h-2 bg-blue-500 rounded-full"></span>
-                      Quality
+                      Quality Optimization
                     </>
                   )}
                   <span className="text-xs text-zinc-400">
@@ -355,20 +355,20 @@ export function SuggestionSidebar({
                     </button>
                     <button
                       onClick={() => {
-                        setSelectedCategory("marketing");
+                        setSelectedCategory("cost-optimization");
                         setIsCategoryDropdownOpen(false);
                       }}
                       className={cn(
                         "w-full px-4 py-2.5 text-left text-sm hover:bg-zinc-50 transition-colors",
-                        selectedCategory === "marketing" && "bg-purple-50 text-purple-600 font-semibold"
+                        selectedCategory === "cost-optimization" && "bg-purple-50 text-purple-600 font-semibold"
                       )}
                     >
                       <div className="flex items-center justify-between">
                         <span className="flex items-center gap-2">
                           <span className="w-2 h-2 bg-purple-500 rounded-full"></span>
-                          Marketing
+                          Cost Optimization
                         </span>
-                        <span className="text-xs text-zinc-400">({categorizedSuggestions.marketing.length})</span>
+                        <span className="text-xs text-zinc-400">({categorizedSuggestions["cost-optimization"].length})</span>
                       </div>
                     </button>
                     <button
@@ -384,27 +384,27 @@ export function SuggestionSidebar({
                       <div className="flex items-center justify-between">
                         <span className="flex items-center gap-2">
                           <span className="w-2 h-2 bg-amber-500 rounded-full"></span>
-                          DFM
+                          DFM Suggestions
                         </span>
                         <span className="text-xs text-zinc-400">({categorizedSuggestions.dfm.length})</span>
                       </div>
                     </button>
                     <button
                       onClick={() => {
-                        setSelectedCategory("quality");
+                        setSelectedCategory("quality-optimization");
                         setIsCategoryDropdownOpen(false);
                       }}
                       className={cn(
                         "w-full px-4 py-2.5 text-left text-sm hover:bg-zinc-50 transition-colors",
-                        selectedCategory === "quality" && "bg-blue-50 text-blue-600 font-semibold"
+                        selectedCategory === "quality-optimization" && "bg-blue-50 text-blue-600 font-semibold"
                       )}
                     >
                       <div className="flex items-center justify-between">
                         <span className="flex items-center gap-2">
                           <span className="w-2 h-2 bg-blue-500 rounded-full"></span>
-                          Quality
+                          Quality Optimization
                         </span>
-                        <span className="text-xs text-zinc-400">({categorizedSuggestions.quality.length})</span>
+                        <span className="text-xs text-zinc-400">({categorizedSuggestions["quality-optimization"].length})</span>
                       </div>
                     </button>
                   </motion.div>
