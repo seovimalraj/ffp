@@ -41,7 +41,7 @@ export function SuggestionSidebar({
   // Categorize suggestions
   const categorizedSuggestions = useMemo(() => {
     return {
-      marketing: allSuggestions.filter(s => 
+      "cost-optimization": allSuggestions.filter(s => 
         s.category === "volume-discount" || 
         s.category === "premium-service" || 
         s.category === "performance-upgrade" ||
@@ -55,7 +55,7 @@ export function SuggestionSidebar({
         s.type === "tolerance" ||
         s.type === "secondary-ops"
       ),
-      quality: allSuggestions.filter(s => 
+      "quality-optimization": allSuggestions.filter(s => 
         s.category === "quality-improvement" ||
         (!["dfm", "tolerance", "secondary-ops", "volume-discount", "premium-upgrade", "bundle", "express-shipping"].includes(s.type) &&
          !["volume-discount", "premium-service", "performance-upgrade"].includes(s.category || ""))
