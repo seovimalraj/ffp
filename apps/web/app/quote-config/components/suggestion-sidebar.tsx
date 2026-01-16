@@ -126,7 +126,7 @@ export function SuggestionSidebar({
                 alt="Logo"
                 className="w-10 grayscale invert"
               />
-              {suggestions.length > 0 && (
+              {allSuggestions.length > 0 && (
                 <span className="absolute -top-2 -right-2 w-5 h-5 bg-white text-blue-600 rounded-full text-[11px] font-black flex items-center justify-center shadow-sm">
                   {filteredSuggestions.length}
                 </span>
