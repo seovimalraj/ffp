@@ -216,18 +216,48 @@ export function SuggestionSidebar({
                           "bg-green-50 text-green-600",
                         suggestion.color === "amber" &&
                           "bg-amber-50 text-amber-600",
+                        suggestion.color === "red" &&
+                          "bg-red-50 text-red-600",
+                        suggestion.color === "orange" &&
+                          "bg-orange-50 text-orange-600",
+                        suggestion.color === "indigo" &&
+                          "bg-indigo-50 text-indigo-600",
+                        suggestion.color === "teal" &&
+                          "bg-teal-50 text-teal-600",
                       )}
                     >
                       {suggestion.icon}
                     </div>
                     <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2 mb-1">
+                      <div className="flex items-center gap-2 mb-1 flex-wrap">
                         <span className="text-xs font-medium text-zinc-500 uppercase">
                           {suggestion.type}
                         </span>
-                        {suggestion.impact.savingsPercentage && (
+                        {suggestion.category && (
+                          <span className={cn(
+                            "text-xs font-semibold px-2 py-0.5 rounded-full",
+                            suggestion.category === "cost-saving" && "bg-green-100 text-green-700",
+                            suggestion.category === "performance-upgrade" && "bg-indigo-100 text-indigo-700",
+                            suggestion.category === "volume-discount" && "bg-teal-100 text-teal-700",
+                            suggestion.category === "premium-service" && "bg-purple-100 text-purple-700",
+                            suggestion.category === "quality-improvement" && "bg-blue-100 text-blue-700",
+                          )}>
+                            {suggestion.category.replace(/-/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}
+                          </span>
+                        )}
+                        {suggestion.priority === "critical" && (
+                          <span className="text-xs font-bold px-2 py-0.5 rounded-full bg-red-100 text-red-700 animate-pulse">
+                            CRITICAL
+                          </span>
+                        )}
+                        {suggestion.impact.savingsPercentage && suggestion.impact.savingsPercentage > 0 && (
                           <span className="text-xs font-semibold text-green-600">
                             {suggestion.impact.savingsPercentage}% savings
+                          </span>
+                        )}
+                        {suggestion.impact.revenueIncrease && suggestion.impact.revenueIncrease > 0 && (
+                          <span className="text-xs font-semibold text-indigo-600">
+                            +${suggestion.impact.revenueIncrease.toFixed(0)} revenue
                           </span>
                         )}
                       </div>
@@ -266,17 +296,56 @@ export function SuggestionSidebar({
                     </div>
                   </div>
 
-                  {/* Savings */}
-                  {suggestion.impact.savings !== undefined && (
-                    <div className="bg-green-50 border border-green-100 rounded-lg px-3 py-2">
-                      <div className="flex items-center justify-between">
-                        <span className="text-xs font-medium text-green-700">
-                          Potential Savings
-                        </span>
-                        <span className="text-sm font-semibold text-green-700">
-                          ${Math.abs(suggestion.impact.savings).toFixed(2)}
-                        </span>
-                      </div>
+                  {/* Savings / Impact */}
+                  {(suggestion.impact.savings !== undefined || suggestion.impact.lifetimeSavings || suggestion.impact.revenueIncrease) && (
+                    <div className="space-y-2">
+                      {suggestion.impact.savings !== undefined && suggestion.impact.savings !== 0 && (
+                        <div className={cn(
+                          "border rounded-lg px-3 py-2",
+                          suggestion.impact.savings > 0 
+                            ? "bg-green-50 border-green-100"
+                            : "bg-indigo-50 border-indigo-100"
+                        )}>
+                          <div className="flex items-center justify-between">
+                            <span className={cn(
+                              "text-xs font-medium",
+                              suggestion.impact.savings > 0 ? "text-green-700" : "text-indigo-700"
+                            )}>
+                              {suggestion.impact.savings > 0 ? "Potential Savings" : "Investment"}
+                            </span>
+                            <span className={cn(
+                              "text-sm font-semibold",
+                              suggestion.impact.savings > 0 ? "text-green-700" : "text-indigo-700"
+                            )}>
+                              ${Math.abs(suggestion.impact.savings).toFixed(2)}
+                            </span>
+                          </div>
+                        </div>
+                      )}
+                      {suggestion.impact.lifetimeSavings && suggestion.impact.lifetimeSavings > 0 && (
+                        <div className="bg-teal-50 border border-teal-100 rounded-lg px-3 py-2">
+                          <div className="flex items-center justify-between">
+                            <span className="text-xs font-medium text-teal-700">
+                              Lifetime Value (3 years)
+                            </span>
+                            <span className="text-sm font-semibold text-teal-700">
+                              ${Math.abs(suggestion.impact.lifetimeSavings).toFixed(2)}
+                            </span>
+                          </div>
+                        </div>
+                      )}
+                      {suggestion.impact.revenueIncrease && suggestion.impact.revenueIncrease > 0 && (
+                        <div className="bg-purple-50 border border-purple-100 rounded-lg px-3 py-2">
+                          <div className="flex items-center justify-between">
+                            <span className="text-xs font-medium text-purple-700">
+                              Revenue Opportunity
+                            </span>
+                            <span className="text-sm font-semibold text-purple-700">
+                              +${suggestion.impact.revenueIncrease.toFixed(2)}
+                            </span>
+                          </div>
+                        </div>
+                      )}
                     </div>
                   )}
 

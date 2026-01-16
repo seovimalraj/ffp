@@ -16,6 +16,7 @@ export interface MaterialSpec {
 
 export interface ProcessConfig {
   type: 'cnc-milling' | 'cnc-turning' | 'sheet-metal' | 'injection-molding';
+  name: string; // Display name
   setupCost: number; // Fixed cost per job
   hourlyRate: number; // USD per machine hour
   materialWasteFactor: number; // 1.2 = 20% waste
@@ -97,6 +98,10 @@ export interface PricingBreakdown {
   cuttingCost?: number;
   bendingCost?: number;
   hardwareCost?: number;
+  // Secondary operations costs
+  secondaryOperationsCost?: number;
+  secondaryOperationsDetail?: string[];
+  toleranceFeasibilityCost?: number;
   unitPrice: number;
   totalPrice: number;
   leadTimeDays: number;
@@ -179,10 +184,10 @@ export const MATERIALS: Record<string, MaterialSpec> = {
 
 // Process Configurations - Optimized for 30% cost reduction
 export const PROCESSES: Record<string, ProcessConfig> = {
-  'cnc-milling': { type: 'cnc-milling', setupCost: 50, hourlyRate: 65, materialWasteFactor: 1.25 },
-  'cnc-turning': { type: 'cnc-turning', setupCost: 35, hourlyRate: 55, materialWasteFactor: 1.15 },
-  'sheet-metal': { type: 'sheet-metal', setupCost: 75, hourlyRate: 50, materialWasteFactor: 1.1 },
-  'injection-molding': { type: 'injection-molding', setupCost: 2000, hourlyRate: 95, materialWasteFactor: 1.05 }
+  'cnc-milling': { type: 'cnc-milling', name: 'CNC Machining', setupCost: 50, hourlyRate: 65, materialWasteFactor: 1.25 },
+  'cnc-turning': { type: 'cnc-turning', name: 'CNC Machining', setupCost: 35, hourlyRate: 55, materialWasteFactor: 1.15 },
+  'sheet-metal': { type: 'sheet-metal', name: 'Sheet Metal', setupCost: 75, hourlyRate: 50, materialWasteFactor: 1.1 },
+  'injection-molding': { type: 'injection-molding', name: 'Injection Molding', setupCost: 2000, hourlyRate: 95, materialWasteFactor: 1.05 }
 };
 
 // Finish Options - Realistic pricing
@@ -195,60 +200,145 @@ export const FINISHES: Record<string, FinishOption> = {
   'electropolished': { code: 'EPOL', name: 'Electropolished', baseCost: 35, perAreaCost: 0.09 }
 };
 
-// Sheet Metal Material Database - Enterprise Level
+// Sheet Metal Material Database - Enterprise Level (Optimized 30% cheaper than Xometry)
 export const SHEET_METAL_MATERIALS: Record<string, SheetMetalMaterialSpec[]> = {
-  'mild-steel': [
-    { code: 'MS-1008-0.5', name: 'Mild Steel 1008 - 0.5mm', density: 7.85, costPerKg: 2.8, thickness: 0.5, category: 'steel', bendability: 1 },
-    { code: 'MS-1008-0.8', name: 'Mild Steel 1008 - 0.8mm', density: 7.85, costPerKg: 2.7, thickness: 0.8, category: 'steel', bendability: 1 },
-    { code: 'MS-1008-1.0', name: 'Mild Steel 1008 - 1.0mm', density: 7.85, costPerKg: 2.6, thickness: 1.0, category: 'steel', bendability: 1 },
-    { code: 'MS-1008-1.5', name: 'Mild Steel 1008 - 1.5mm', density: 7.85, costPerKg: 2.5, thickness: 1.5, category: 'steel', bendability: 1.1 },
-    { code: 'MS-1008-2.0', name: 'Mild Steel 1008 - 2.0mm', density: 7.85, costPerKg: 2.5, thickness: 2.0, category: 'steel', bendability: 1.2 },
-    { code: 'MS-1008-2.5', name: 'Mild Steel 1008 - 2.5mm', density: 7.85, costPerKg: 2.5, thickness: 2.5, category: 'steel', bendability: 1.3 },
-    { code: 'MS-1008-3.0', name: 'Mild Steel 1008 - 3.0mm', density: 7.85, costPerKg: 2.6, thickness: 3.0, category: 'steel', bendability: 1.4 },
+  // Aluminum Alloys - Excellent formability, lightweight
+  'aluminum-1100-h14': [
+    { code: 'AL1100-H14-0.5', name: 'Aluminum 1100-H14 - 0.5mm', density: 2.71, costPerKg: 5.8, thickness: 0.5, category: 'aluminum', bendability: 0.7 },
+    { code: 'AL1100-H14-0.8', name: 'Aluminum 1100-H14 - 0.8mm', density: 2.71, costPerKg: 5.6, thickness: 0.8, category: 'aluminum', bendability: 0.7 },
+    { code: 'AL1100-H14-1.0', name: 'Aluminum 1100-H14 - 1.0mm', density: 2.71, costPerKg: 5.4, thickness: 1, category: 'aluminum', bendability: 0.8 },
+    { code: 'AL1100-H14-1.5', name: 'Aluminum 1100-H14 - 1.5mm', density: 2.71, costPerKg: 5.2, thickness: 1.5, category: 'aluminum', bendability: 0.8 },
+    { code: 'AL1100-H14-2.0', name: 'Aluminum 1100-H14 - 2.0mm', density: 2.71, costPerKg: 5.2, thickness: 2, category: 'aluminum', bendability: 0.9 },
+    { code: 'AL1100-H14-3.0', name: 'Aluminum 1100-H14 - 3.0mm', density: 2.71, costPerKg: 5.4, thickness: 3, category: 'aluminum', bendability: 1 },
   ],
-  'galvanized-steel': [
-    { code: 'GALV-0.8', name: 'Galvanized Steel - 0.8mm', density: 7.85, costPerKg: 3.2, thickness: 0.8, category: 'steel', bendability: 1.1 },
-    { code: 'GALV-1.0', name: 'Galvanized Steel - 1.0mm', density: 7.85, costPerKg: 3.1, thickness: 1.0, category: 'steel', bendability: 1.1 },
-    { code: 'GALV-1.5', name: 'Galvanized Steel - 1.5mm', density: 7.85, costPerKg: 3.0, thickness: 1.5, category: 'steel', bendability: 1.2 },
-    { code: 'GALV-2.0', name: 'Galvanized Steel - 2.0mm', density: 7.85, costPerKg: 3.0, thickness: 2.0, category: 'steel', bendability: 1.3 },
-  ],
-  'stainless-304': [
-    { code: 'SS304-0.5', name: 'Stainless 304 - 0.5mm', density: 8.0, costPerKg: 8.5, thickness: 0.5, category: 'stainless', bendability: 1.4 },
-    { code: 'SS304-0.8', name: 'Stainless 304 - 0.8mm', density: 8.0, costPerKg: 8.2, thickness: 0.8, category: 'stainless', bendability: 1.4 },
-    { code: 'SS304-1.0', name: 'Stainless 304 - 1.0mm', density: 8.0, costPerKg: 8.0, thickness: 1.0, category: 'stainless', bendability: 1.5 },
-    { code: 'SS304-1.5', name: 'Stainless 304 - 1.5mm', density: 8.0, costPerKg: 7.8, thickness: 1.5, category: 'stainless', bendability: 1.6 },
-    { code: 'SS304-2.0', name: 'Stainless 304 - 2.0mm', density: 8.0, costPerKg: 7.8, thickness: 2.0, category: 'stainless', bendability: 1.7 },
-    { code: 'SS304-3.0', name: 'Stainless 304 - 3.0mm', density: 8.0, costPerKg: 8.0, thickness: 3.0, category: 'stainless', bendability: 1.9 },
-  ],
-  'stainless-316': [
-    { code: 'SS316-0.8', name: 'Stainless 316 - 0.8mm', density: 8.0, costPerKg: 12.5, thickness: 0.8, category: 'stainless', bendability: 1.5 },
-    { code: 'SS316-1.0', name: 'Stainless 316 - 1.0mm', density: 8.0, costPerKg: 12.2, thickness: 1.0, category: 'stainless', bendability: 1.6 },
-    { code: 'SS316-1.5', name: 'Stainless 316 - 1.5mm', density: 8.0, costPerKg: 12.0, thickness: 1.5, category: 'stainless', bendability: 1.7 },
-    { code: 'SS316-2.0', name: 'Stainless 316 - 2.0mm', density: 8.0, costPerKg: 12.0, thickness: 2.0, category: 'stainless', bendability: 1.8 },
-  ],
-  'aluminum-5052': [
-    { code: 'AL5052-0.5', name: 'Aluminum 5052 - 0.5mm', density: 2.68, costPerKg: 7.5, thickness: 0.5, category: 'aluminum', bendability: 0.9 },
-    { code: 'AL5052-0.8', name: 'Aluminum 5052 - 0.8mm', density: 2.68, costPerKg: 7.2, thickness: 0.8, category: 'aluminum', bendability: 0.9 },
-    { code: 'AL5052-1.0', name: 'Aluminum 5052 - 1.0mm', density: 2.68, costPerKg: 7.0, thickness: 1.0, category: 'aluminum', bendability: 1.0 },
-    { code: 'AL5052-1.5', name: 'Aluminum 5052 - 1.5mm', density: 2.68, costPerKg: 6.8, thickness: 1.5, category: 'aluminum', bendability: 1.0 },
-    { code: 'AL5052-2.0', name: 'Aluminum 5052 - 2.0mm', density: 2.68, costPerKg: 6.8, thickness: 2.0, category: 'aluminum', bendability: 1.1 },
-    { code: 'AL5052-3.0', name: 'Aluminum 5052 - 3.0mm', density: 2.68, costPerKg: 7.0, thickness: 3.0, category: 'aluminum', bendability: 1.2 },
+  'aluminum-5052-h32': [
+    { code: 'AL5052-H32-0.5', name: 'Aluminum 5052-H32 - 0.5mm', density: 2.68, costPerKg: 6.2, thickness: 0.5, category: 'aluminum', bendability: 0.9 },
+    { code: 'AL5052-H32-0.8', name: 'Aluminum 5052-H32 - 0.8mm', density: 2.68, costPerKg: 6, thickness: 0.8, category: 'aluminum', bendability: 0.9 },
+    { code: 'AL5052-H32-1.0', name: 'Aluminum 5052-H32 - 1.0mm', density: 2.68, costPerKg: 5.8, thickness: 1, category: 'aluminum', bendability: 1 },
+    { code: 'AL5052-H32-1.5', name: 'Aluminum 5052-H32 - 1.5mm', density: 2.68, costPerKg: 5.6, thickness: 1.5, category: 'aluminum', bendability: 1 },
+    { code: 'AL5052-H32-2.0', name: 'Aluminum 5052-H32 - 2.0mm', density: 2.68, costPerKg: 5.6, thickness: 2, category: 'aluminum', bendability: 1.1 },
+    { code: 'AL5052-H32-3.0', name: 'Aluminum 5052-H32 - 3.0mm', density: 2.68, costPerKg: 5.8, thickness: 3, category: 'aluminum', bendability: 1.2 },
   ],
   'aluminum-6061': [
-    { code: 'AL6061-1.0', name: 'Aluminum 6061 - 1.0mm', density: 2.7, costPerKg: 8.0, thickness: 1.0, category: 'aluminum', bendability: 1.1 },
-    { code: 'AL6061-1.5', name: 'Aluminum 6061 - 1.5mm', density: 2.7, costPerKg: 7.8, thickness: 1.5, category: 'aluminum', bendability: 1.2 },
-    { code: 'AL6061-2.0', name: 'Aluminum 6061 - 2.0mm', density: 2.7, costPerKg: 7.8, thickness: 2.0, category: 'aluminum', bendability: 1.2 },
-    { code: 'AL6061-3.0', name: 'Aluminum 6061 - 3.0mm', density: 2.7, costPerKg: 8.0, thickness: 3.0, category: 'aluminum', bendability: 1.3 },
+    { code: 'AL6061-0.8', name: 'Aluminum 6061 - 0.8mm', density: 2.7, costPerKg: 6.8, thickness: 0.8, category: 'aluminum', bendability: 1 },
+    { code: 'AL6061-1.0', name: 'Aluminum 6061 - 1.0mm', density: 2.7, costPerKg: 6.5, thickness: 1, category: 'aluminum', bendability: 1.1 },
+    { code: 'AL6061-1.5', name: 'Aluminum 6061 - 1.5mm', density: 2.7, costPerKg: 6.3, thickness: 1.5, category: 'aluminum', bendability: 1.2 },
+    { code: 'AL6061-2.0', name: 'Aluminum 6061 - 2.0mm', density: 2.7, costPerKg: 6.3, thickness: 2, category: 'aluminum', bendability: 1.2 },
+    { code: 'AL6061-3.0', name: 'Aluminum 6061 - 3.0mm', density: 2.7, costPerKg: 6.5, thickness: 3, category: 'aluminum', bendability: 1.3 },
   ],
-  'copper': [
-    { code: 'CU-C110-0.8', name: 'Copper C110 - 0.8mm', density: 8.96, costPerKg: 18.0, thickness: 0.8, category: 'copper', bendability: 0.8 },
-    { code: 'CU-C110-1.0', name: 'Copper C110 - 1.0mm', density: 8.96, costPerKg: 17.5, thickness: 1.0, category: 'copper', bendability: 0.9 },
-    { code: 'CU-C110-1.5', name: 'Copper C110 - 1.5mm', density: 8.96, costPerKg: 17.5, thickness: 1.5, category: 'copper', bendability: 1.0 },
+  // Carbon / Mild Steel - Low cost, high strength
+  'steel-1018': [
+    { code: 'ST1018-0.8', name: 'Steel 1018 - 0.8mm', density: 7.87, costPerKg: 2.2, thickness: 0.8, category: 'steel', bendability: 1 },
+    { code: 'ST1018-1.0', name: 'Steel 1018 - 1.0mm', density: 7.87, costPerKg: 2.1, thickness: 1, category: 'steel', bendability: 1 },
+    { code: 'ST1018-1.5', name: 'Steel 1018 - 1.5mm', density: 7.87, costPerKg: 2, thickness: 1.5, category: 'steel', bendability: 1.1 },
+    { code: 'ST1018-2.0', name: 'Steel 1018 - 2.0mm', density: 7.87, costPerKg: 2, thickness: 2, category: 'steel', bendability: 1.2 },
+    { code: 'ST1018-2.5', name: 'Steel 1018 - 2.5mm', density: 7.87, costPerKg: 2, thickness: 2.5, category: 'steel', bendability: 1.3 },
+    { code: 'ST1018-3.0', name: 'Steel 1018 - 3.0mm', density: 7.87, costPerKg: 2.1, thickness: 3, category: 'steel', bendability: 1.4 },
   ],
-  'brass': [
-    { code: 'BRASS-C260-0.8', name: 'Brass C260 - 0.8mm', density: 8.53, costPerKg: 12.5, thickness: 0.8, category: 'brass', bendability: 0.9 },
-    { code: 'BRASS-C260-1.0', name: 'Brass C260 - 1.0mm', density: 8.53, costPerKg: 12.0, thickness: 1.0, category: 'brass', bendability: 1.0 },
-    { code: 'BRASS-C260-1.5', name: 'Brass C260 - 1.5mm', density: 8.53, costPerKg: 12.0, thickness: 1.5, category: 'brass', bendability: 1.1 },
+  'steel-1045': [
+    { code: 'ST1045-1.0', name: 'Steel 1045 - 1.0mm', density: 7.85, costPerKg: 2.3, thickness: 1, category: 'steel', bendability: 1.1 },
+    { code: 'ST1045-1.5', name: 'Steel 1045 - 1.5mm', density: 7.85, costPerKg: 2.2, thickness: 1.5, category: 'steel', bendability: 1.2 },
+    { code: 'ST1045-2.0', name: 'Steel 1045 - 2.0mm', density: 7.85, costPerKg: 2.2, thickness: 2, category: 'steel', bendability: 1.3 },
+    { code: 'ST1045-3.0', name: 'Steel 1045 - 3.0mm', density: 7.85, costPerKg: 2.3, thickness: 3, category: 'steel', bendability: 1.4 },
+  ],
+  'steel-a36': [
+    { code: 'STA36-0.8', name: 'Steel A36 - 0.8mm', density: 7.85, costPerKg: 1.9, thickness: 0.8, category: 'steel', bendability: 1 },
+    { code: 'STA36-1.0', name: 'Steel A36 - 1.0mm', density: 7.85, costPerKg: 1.8, thickness: 1, category: 'steel', bendability: 1 },
+    { code: 'STA36-1.5', name: 'Steel A36 - 1.5mm', density: 7.85, costPerKg: 1.7, thickness: 1.5, category: 'steel', bendability: 1.1 },
+    { code: 'STA36-2.0', name: 'Steel A36 - 2.0mm', density: 7.85, costPerKg: 1.7, thickness: 2, category: 'steel', bendability: 1.2 },
+    { code: 'STA36-2.5', name: 'Steel A36 - 2.5mm', density: 7.85, costPerKg: 1.7, thickness: 2.5, category: 'steel', bendability: 1.3 },
+    { code: 'STA36-3.0', name: 'Steel A36 - 3.0mm', density: 7.85, costPerKg: 1.8, thickness: 3, category: 'steel', bendability: 1.4 },
+  ],
+  'steel-a36-pickled-oiled': [
+    { code: 'STA36-PO-1.0', name: 'Steel A36 Pickled & Oiled - 1.0mm', density: 7.85, costPerKg: 2, thickness: 1, category: 'steel', bendability: 1 },
+    { code: 'STA36-PO-1.5', name: 'Steel A36 Pickled & Oiled - 1.5mm', density: 7.85, costPerKg: 1.9, thickness: 1.5, category: 'steel', bendability: 1.1 },
+    { code: 'STA36-PO-2.0', name: 'Steel A36 Pickled & Oiled - 2.0mm', density: 7.85, costPerKg: 1.9, thickness: 2, category: 'steel', bendability: 1.2 },
+    { code: 'STA36-PO-3.0', name: 'Steel A36 Pickled & Oiled - 3.0mm', density: 7.85, costPerKg: 2, thickness: 3, category: 'steel', bendability: 1.3 },
+  ],
+  'steel-a366-1008': [
+    { code: 'STA366-0.8', name: 'Steel A366/1008 - 0.8mm', density: 7.85, costPerKg: 2.1, thickness: 0.8, category: 'steel', bendability: 1 },
+    { code: 'STA366-1.0', name: 'Steel A366/1008 - 1.0mm', density: 7.85, costPerKg: 2, thickness: 1, category: 'steel', bendability: 1 },
+    { code: 'STA366-1.5', name: 'Steel A366/1008 - 1.5mm', density: 7.85, costPerKg: 1.9, thickness: 1.5, category: 'steel', bendability: 1.1 },
+    { code: 'STA366-2.0', name: 'Steel A366/1008 - 2.0mm', density: 7.85, costPerKg: 1.9, thickness: 2, category: 'steel', bendability: 1.2 },
+    { code: 'STA366-3.0', name: 'Steel A366/1008 - 3.0mm', density: 7.85, costPerKg: 2, thickness: 3, category: 'steel', bendability: 1.3 },
+  ],
+  'spring-steel-1095': [
+    { code: 'SPRING1095-0.5', name: '1095 Spring Steel - 0.5mm', density: 7.85, costPerKg: 3.2, thickness: 0.5, category: 'steel', bendability: 1.3 },
+    { code: 'SPRING1095-0.8', name: '1095 Spring Steel - 0.8mm', density: 7.85, costPerKg: 3, thickness: 0.8, category: 'steel', bendability: 1.3 },
+    { code: 'SPRING1095-1.0', name: '1095 Spring Steel - 1.0mm', density: 7.85, costPerKg: 2.9, thickness: 1, category: 'steel', bendability: 1.4 },
+    { code: 'SPRING1095-1.5', name: '1095 Spring Steel - 1.5mm', density: 7.85, costPerKg: 2.8, thickness: 1.5, category: 'steel', bendability: 1.5 },
+  ],
+  'galvanized-steel': [
+    { code: 'GALV-A653-0.8', name: 'Galvanized Steel A653 - 0.8mm', density: 7.85, costPerKg: 2.4, thickness: 0.8, category: 'steel', bendability: 1.1 },
+    { code: 'GALV-A653-1.0', name: 'Galvanized Steel A653 - 1.0mm', density: 7.85, costPerKg: 2.3, thickness: 1, category: 'steel', bendability: 1.1 },
+    { code: 'GALV-A653-1.5', name: 'Galvanized Steel A653 - 1.5mm', density: 7.85, costPerKg: 2.2, thickness: 1.5, category: 'steel', bendability: 1.2 },
+    { code: 'GALV-A653-2.0', name: 'Galvanized Steel A653 - 2.0mm', density: 7.85, costPerKg: 2.2, thickness: 2, category: 'steel', bendability: 1.3 },
+  ],
+  // Copper & Bronze - Conductive, decorative
+  'copper-101': [
+    { code: 'CU101-0.5', name: 'Copper 101 - 0.5mm', density: 8.94, costPerKg: 14.5, thickness: 0.5, category: 'copper', bendability: 0.7 },
+    { code: 'CU101-0.8', name: 'Copper 101 - 0.8mm', density: 8.94, costPerKg: 14, thickness: 0.8, category: 'copper', bendability: 0.7 },
+    { code: 'CU101-1.0', name: 'Copper 101 - 1.0mm', density: 8.94, costPerKg: 13.5, thickness: 1, category: 'copper', bendability: 0.8 },
+    { code: 'CU101-1.5', name: 'Copper 101 - 1.5mm', density: 8.94, costPerKg: 13.5, thickness: 1.5, category: 'copper', bendability: 0.9 },
+  ],
+  'copper-c110': [
+    { code: 'CU-C110-0.8', name: 'Copper C110 - 0.8mm', density: 8.96, costPerKg: 14.2, thickness: 0.8, category: 'copper', bendability: 0.8 },
+    { code: 'CU-C110-1.0', name: 'Copper C110 - 1.0mm', density: 8.96, costPerKg: 13.8, thickness: 1, category: 'copper', bendability: 0.9 },
+    { code: 'CU-C110-1.5', name: 'Copper C110 - 1.5mm', density: 8.96, costPerKg: 13.8, thickness: 1.5, category: 'copper', bendability: 1 },
+  ],
+  'copper-c110-h02': [
+    { code: 'CU-C110-H02-0.8', name: 'Copper C110 H02 - 0.8mm', density: 8.96, costPerKg: 14.8, thickness: 0.8, category: 'copper', bendability: 0.9 },
+    { code: 'CU-C110-H02-1.0', name: 'Copper C110 H02 - 1.0mm', density: 8.96, costPerKg: 14.5, thickness: 1, category: 'copper', bendability: 1 },
+    { code: 'CU-C110-H02-1.5', name: 'Copper C110 H02 - 1.5mm', density: 8.96, costPerKg: 14.5, thickness: 1.5, category: 'copper', bendability: 1.1 },
+  ],
+  'bronze-220': [
+    { code: 'BRZ220-0.8', name: 'Bronze 220 - 0.8mm', density: 8.8, costPerKg: 10.5, thickness: 0.8, category: 'brass', bendability: 0.9 },
+    { code: 'BRZ220-1.0', name: 'Bronze 220 - 1.0mm', density: 8.8, costPerKg: 10.2, thickness: 1, category: 'brass', bendability: 1 },
+    { code: 'BRZ220-1.5', name: 'Bronze 220 - 1.5mm', density: 8.8, costPerKg: 10, thickness: 1.5, category: 'brass', bendability: 1.1 },
+  ],
+  'bronze-510': [
+    { code: 'BRZ510-0.8', name: 'Bronze 510 - 0.8mm', density: 8.75, costPerKg: 11, thickness: 0.8, category: 'brass', bendability: 1 },
+    { code: 'BRZ510-1.0', name: 'Bronze 510 - 1.0mm', density: 8.75, costPerKg: 10.8, thickness: 1, category: 'brass', bendability: 1.1 },
+    { code: 'BRZ510-1.5', name: 'Bronze 510 - 1.5mm', density: 8.75, costPerKg: 10.5, thickness: 1.5, category: 'brass', bendability: 1.2 },
+  ],
+  // Stainless Steel - Corrosion resistant
+  'stainless-301': [
+    { code: 'SS301-0.5', name: 'Stainless Steel 301 - 0.5mm', density: 7.93, costPerKg: 7.2, thickness: 0.5, category: 'stainless', bendability: 1.3 },
+    { code: 'SS301-0.8', name: 'Stainless Steel 301 - 0.8mm', density: 7.93, costPerKg: 7, thickness: 0.8, category: 'stainless', bendability: 1.3 },
+    { code: 'SS301-1.0', name: 'Stainless Steel 301 - 1.0mm', density: 7.93, costPerKg: 6.8, thickness: 1, category: 'stainless', bendability: 1.4 },
+    { code: 'SS301-1.5', name: 'Stainless Steel 301 - 1.5mm', density: 7.93, costPerKg: 6.6, thickness: 1.5, category: 'stainless', bendability: 1.5 },
+    { code: 'SS301-2.0', name: 'Stainless Steel 301 - 2.0mm', density: 7.93, costPerKg: 6.6, thickness: 2, category: 'stainless', bendability: 1.6 },
+  ],
+  'stainless-304': [
+    { code: 'SS304-0.5', name: 'Stainless Steel 304 - 0.5mm', density: 8, costPerKg: 7.5, thickness: 0.5, category: 'stainless', bendability: 1.4 },
+    { code: 'SS304-0.8', name: 'Stainless Steel 304 - 0.8mm', density: 8, costPerKg: 7.3, thickness: 0.8, category: 'stainless', bendability: 1.4 },
+    { code: 'SS304-1.0', name: 'Stainless Steel 304 - 1.0mm', density: 8, costPerKg: 7.1, thickness: 1, category: 'stainless', bendability: 1.5 },
+    { code: 'SS304-1.5', name: 'Stainless Steel 304 - 1.5mm', density: 8, costPerKg: 6.9, thickness: 1.5, category: 'stainless', bendability: 1.6 },
+    { code: 'SS304-2.0', name: 'Stainless Steel 304 - 2.0mm', density: 8, costPerKg: 6.9, thickness: 2, category: 'stainless', bendability: 1.7 },
+    { code: 'SS304-3.0', name: 'Stainless Steel 304 - 3.0mm', density: 8, costPerKg: 7.1, thickness: 3, category: 'stainless', bendability: 1.9 },
+  ],
+  'stainless-304-brushed': [
+    { code: 'SS304-BR-0.8', name: 'Stainless 304 #4 Brushed - 0.8mm', density: 8, costPerKg: 8.2, thickness: 0.8, category: 'stainless', bendability: 1.4 },
+    { code: 'SS304-BR-1.0', name: 'Stainless 304 #4 Brushed - 1.0mm', density: 8, costPerKg: 8, thickness: 1, category: 'stainless', bendability: 1.5 },
+    { code: 'SS304-BR-1.5', name: 'Stainless 304 #4 Brushed - 1.5mm', density: 8, costPerKg: 7.8, thickness: 1.5, category: 'stainless', bendability: 1.6 },
+    { code: 'SS304-BR-2.0', name: 'Stainless 304 #4 Brushed - 2.0mm', density: 8, costPerKg: 7.8, thickness: 2, category: 'stainless', bendability: 1.7 },
+  ],
+  'stainless-304-mirror': [
+    { code: 'SS304-MIR-0.8', name: 'Stainless 304 #8 Mirror - 0.8mm', density: 8, costPerKg: 9.5, thickness: 0.8, category: 'stainless', bendability: 1.5 },
+    { code: 'SS304-MIR-1.0', name: 'Stainless 304 #8 Mirror - 1.0mm', density: 8, costPerKg: 9.2, thickness: 1, category: 'stainless', bendability: 1.6 },
+    { code: 'SS304-MIR-1.5', name: 'Stainless 304 #8 Mirror - 1.5mm', density: 8, costPerKg: 9, thickness: 1.5, category: 'stainless', bendability: 1.7 },
+  ],
+  'stainless-316': [
+    { code: 'SS316-0.8', name: 'Stainless Steel 316 - 0.8mm', density: 8, costPerKg: 10.5, thickness: 0.8, category: 'stainless', bendability: 1.5 },
+    { code: 'SS316-1.0', name: 'Stainless Steel 316 - 1.0mm', density: 8, costPerKg: 10.2, thickness: 1, category: 'stainless', bendability: 1.6 },
+    { code: 'SS316-1.5', name: 'Stainless Steel 316 - 1.5mm', density: 8, costPerKg: 10, thickness: 1.5, category: 'stainless', bendability: 1.7 },
+    { code: 'SS316-2.0', name: 'Stainless Steel 316 - 2.0mm', density: 8, costPerKg: 10, thickness: 2, category: 'stainless', bendability: 1.8 },
+  ],
+  'stainless-316-brushed': [
+    { code: 'SS316-BR-0.8', name: 'Stainless 316 #4 Brushed - 0.8mm', density: 8, costPerKg: 11.5, thickness: 0.8, category: 'stainless', bendability: 1.5 },
+    { code: 'SS316-BR-1.0', name: 'Stainless 316 #4 Brushed - 1.0mm', density: 8, costPerKg: 11.2, thickness: 1, category: 'stainless', bendability: 1.6 },
+    { code: 'SS316-BR-1.5', name: 'Stainless 316 #4 Brushed - 1.5mm', density: 8, costPerKg: 11, thickness: 1.5, category: 'stainless', bendability: 1.7 },
+    { code: 'SS316-BR-2.0', name: 'Stainless 316 #4 Brushed - 2.0mm', density: 8, costPerKg: 11, thickness: 2, category: 'stainless', bendability: 1.8 },
   ],
 };
 
@@ -653,33 +743,41 @@ function checkSheetMetalFeasibility(
     return { isFeasible: false, reason: 'Sheet metal features not detected' };
   }
   
+  // Check size limits (0.5mm min to 700mm max)
+  const dims = [geometry.boundingBox.x, geometry.boundingBox.y, geometry.boundingBox.z];
+  if (dims.some(d => d < SIZE_LIMITS.min)) {
+    return { 
+      isFeasible: false, 
+      reason: `Part dimensions too small for sheet metal fabrication (minimum ${SIZE_LIMITS.min}mm). Please request manual quote.` 
+    };
+  }
+  
+  if (dims.some(d => d > SIZE_LIMITS.max)) {
+    return { 
+      isFeasible: false, 
+      reason: `Part dimensions exceed sheet metal equipment capacity (maximum ${SIZE_LIMITS.max}mm). Please request manual quote.` 
+    };
+  }
+  
   const config = CUTTING_METHODS[cuttingMethod];
   if (material.thickness < config.minThickness || material.thickness > config.maxThickness) {
     return {
       isFeasible: false,
-      reason: `${cuttingMethod} cannot cut ${material.category} at ${material.thickness}mm thickness`
+      reason: `${cuttingMethod} cannot cut ${material.category} at ${material.thickness}mm thickness (range: ${config.minThickness}-${config.maxThickness}mm). Please request manual quote.`
     };
   }
   
   if (features.bendCount > 0 && material.thickness > 6) {
     return {
       isFeasible: false,
-      reason: `Material too thick for standard bending (${material.thickness}mm)`
+      reason: `Material thickness ${material.thickness}mm exceeds standard bending capability (max 6mm). Please request manual quote.`
     };
   }
   
   if (features.bendCount > 30) {
     return {
       isFeasible: false,
-      reason: `Excessive bend count (${features.bendCount})`
-    };
-  }
-  
-  const maxDimension = Math.max(geometry.boundingBox.x, geometry.boundingBox.y);
-  if (maxDimension > 3000) {
-    return {
-      isFeasible: false,
-      reason: `Part too large for standard sheet metal equipment (max dimension: ${maxDimension}mm)`
+      reason: `Excessive bend count (${features.bendCount} bends) exceeds standard fabrication capacity. Please request manual quote.`
     };
   }
   

@@ -3,6 +3,146 @@
  * Extracts geometry data from CAD files for pricing calculations
  */
 
+export interface AdvancedFeatures {
+  // CNC Features
+  undercuts: {
+    count: number;
+    severity: 'minor' | 'moderate' | 'severe';
+    requires5Axis: boolean;
+  };
+  holes: {
+    count: number;
+    throughHoles: number;
+    blindHoles: number;
+    tappedHoles: number;
+    reamedHoles: number;
+    countersunkHoles: number;
+    counterboredHoles: number;
+    avgDiameter: number; // mm
+    minDiameter: number; // mm
+    maxDiameter: number; // mm
+    deepHoleCount: number; // depth > 5x diameter
+    microHoleCount: number; // diameter < 1mm
+    avgDepthRatio: number; // depth/diameter
+    drillingMethod: 'standard-drill' | 'deep-hole-drill' | 'gun-drill' | 'boring';
+    toolAccessIssues: number; // holes with restricted access
+  };
+  pockets: {
+    count: number;
+    openPockets: number; // connected to edge
+    closedPockets: number; // island pockets
+    deepPockets: number; // depth > 3x width
+    avgDepth: number; // mm
+    maxAspectRatio: number; // depth/width
+    minCornerRadius: number; // mm
+    sharpCornersCount: number; // radius < tool radius
+    requiresSquareEndmill: boolean;
+    requiresBallEndmill: boolean;
+  };
+  bosses: {
+    count: number;
+    avgHeight: number; // mm
+    maxAspectRatio: number; // height/diameter
+    requiresThreading: boolean;
+    requiresReaming: boolean;
+  };
+  ribs: {
+    count: number;
+    avgThickness: number; // mm
+    minThickness: number; // mm
+    thinRibCount: number; // thickness < 1.5mm
+    deflectionRisk: 'low' | 'medium' | 'high';
+  };
+  threads: {
+    count: number;
+    internalThreads: number;
+    externalThreads: number;
+    specifications: { type: 'metric' | 'imperial' | 'custom'; size: string; count: number }[];
+    avgDiameter: number; // mm
+    requiresTapping: boolean;
+    requiresThreadMilling: boolean;
+    singlePointThreading: boolean; // for turning
+  };
+  fillets: {
+    count: number;
+    avgRadius: number; // mm
+    minRadius: number; // mm
+    missingFilletCount: number; // sharp internal corners
+    stressConcentrationRisk: number; // 0-10 scale
+    blendRadiusCount: number; // variable radius fillets
+  };
+  chamfers: {
+    count: number;
+    avgSize: number; // mm
+    deburringRequired: boolean;
+  };
+  thinWalls: {
+    count: number;
+    minThickness: number; // mm
+    avgThickness: number; // mm
+    risk: 'low' | 'medium' | 'high'; // deflection risk
+    requiresSupportFixture: boolean;
+  };
+  toolAccess: {
+    restrictedAreas: number;
+    requiresIndexing: boolean;
+    requiresMultiAxisMachining: boolean;
+    estimatedSetupCount: number;
+    axisCounts: { '3-axis': number; '4-axis': number; '5-axis': number };
+    specialFixturingNeeded: boolean;
+  };
+  surfaceFinish: {
+    estimatedRa: number; // μm (micrometers)
+    criticalSurfaces: number; // surfaces requiring <1.6 μm
+    requiresPolishing: boolean;
+    requiresHoning: boolean;
+  };
+}
+
+export interface ToleranceFeasibility {
+  isAchievable: boolean;
+  requiredProcess: 'standard-cnc' | 'precision-cnc' | 'grinding' | 'manual-inspection' | 'edm' | 'lapping';
+  estimatedCapability: number; // Cpk value
+  concerns: string[];
+  recommendations: string[];
+  additionalCost: number; // USD additional cost for tight tolerances
+  processCapabilities: {
+    milling: { min: number; typical: number; max: number }; // mm tolerance ranges
+    turning: { min: number; typical: number; max: number };
+    grinding: { min: number; typical: number; max: number };
+    edm: { min: number; typical: number; max: number };
+  };
+  materialFactor: number; // 1.0 = aluminum baseline, >1.0 = harder materials need looser tolerances
+  featureSpecificTolerances: {
+    holes: { achievable: number; recommended: number; cost: number }; // mm
+    flatSurfaces: { achievable: number; recommended: number; cost: number };
+    threads: { achievable: number; recommended: number; cost: number };
+    pockets: { achievable: number; recommended: number; cost: number };
+  };
+  gdtSupport?: {
+    flatness?: { achievable: number; cost: number }; // mm over area
+    perpendicularity?: { achievable: number; cost: number }; // mm
+    position?: { achievable: number; cost: number }; // mm true position
+    concentricity?: { achievable: number; cost: number }; // mm
+    surfaceFinish?: { achievable: number; cost: number }; // Ra μm
+  };
+  toleranceStackup?: {
+    critical: boolean;
+    chainLength: number; // number of chained dimensions
+    worstCase: number; // mm accumulated tolerance
+    statistical: number; // RSS method
+    recommendation: string;
+  };
+}
+
+export interface SecondaryOperation {
+  type: 'heat-treatment' | 'plating' | 'welding' | 'coating' | 'threading' | 'grinding';
+  required: boolean;
+  cost: number; // USD
+  leadTimeAddition: number; // days
+  description: string;
+}
+
 export interface SheetMetalFeatures {
   thickness: number; // mm
   flatArea: number; // mm²
@@ -14,6 +154,8 @@ export interface SheetMetalFeatures {
   complexCuts: number; // curves, notches, etc.
   hasHems: boolean;
   hasCountersinks: boolean;
+  minBendRadius: number; // mm
+  hasSmallFeatures: boolean; // features < 2mm
 }
 
 export interface GeometryData {
@@ -37,6 +179,15 @@ export interface GeometryData {
     aspectRatio: number;
   };
   sheetMetalFeatures?: SheetMetalFeatures; // Only present if recommendedProcess is 'sheet-metal'
+  advancedFeatures: AdvancedFeatures; // Advanced feature detection for CNC
+  toleranceFeasibility?: ToleranceFeasibility; // Populated when tolerance is specified
+  recommendedSecondaryOps: SecondaryOperation[]; // Required or recommended secondary operations
+  dfmIssues: {
+    severity: 'info' | 'warning' | 'critical';
+    issue: string;
+    recommendation: string;
+    potentialSavings?: number; // USD
+  }[];
 }
 
 /**
@@ -156,6 +307,41 @@ function analyzeBinarySTL(dataView: DataView): GeometryData {
   // Calculate material weight (using default aluminum density: 2.7 g/cm³)
   const materialWeight = (volume / 1000) * 2.7; // Convert mm³ to cm³, then to grams
   
+  // Detect advanced features
+  const advancedFeatures = detectAdvancedFeatures(boundingBox, volume, surfaceArea, triangleCount, complexity);
+  
+  // Generate DFM issues (using default 'standard' tolerance for initial analysis)
+  const dfmIssues = generateDFMIssues({ 
+    boundingBox, 
+    complexity, 
+    advancedFeatures,
+    partCharacteristics,
+    volume,
+    surfaceArea,
+    estimatedMachiningTime,
+    materialWeight,
+    recommendedProcess: processRecommendation.process,
+    processConfidence: processRecommendation.confidence,
+    recommendedSecondaryOps: [],
+    dfmIssues: []
+  } as GeometryData, 'standard');
+  
+  // Recommend secondary operations (using default aluminum material)
+  const recommendedSecondaryOps = recommendSecondaryOperations({
+    boundingBox,
+    complexity,
+    advancedFeatures,
+    partCharacteristics,
+    volume,
+    surfaceArea,
+    estimatedMachiningTime,
+    materialWeight,
+    recommendedProcess: processRecommendation.process,
+    processConfidence: processRecommendation.confidence,
+    recommendedSecondaryOps: [],
+    dfmIssues: []
+  } as GeometryData, 'Aluminum 6061', 'standard');
+  
   return {
     volume,
     surfaceArea,
@@ -165,7 +351,10 @@ function analyzeBinarySTL(dataView: DataView): GeometryData {
     materialWeight,
     recommendedProcess: processRecommendation.process,
     processConfidence: processRecommendation.confidence,
-    partCharacteristics
+    partCharacteristics,
+    advancedFeatures,
+    recommendedSecondaryOps,
+    dfmIssues
   };
 }
 
@@ -225,11 +414,47 @@ function analyzeASCIISTL(text: string): GeometryData {
   const estimatedMachiningTime = calculateMachiningTime(volume, surfaceArea, complexity);
   const materialWeight = (volume / 1000) * 2.7;
   
+  // Detect advanced features
+  const advancedFeatures = detectAdvancedFeatures(boundingBox, volume, surfaceArea, triangleCount, complexity);
+  
   // If sheet metal is recommended, extract sheet metal features
   let sheetMetalFeatures: SheetMetalFeatures | undefined;
   if (processRecommendation.process === 'sheet-metal') {
     sheetMetalFeatures = detectSheetMetalFeatures(boundingBox, volume, surfaceArea, triangleCount);
   }
+  
+  // Generate DFM issues and secondary ops
+  const dfmIssues = generateDFMIssues({ 
+    boundingBox, 
+    complexity, 
+    advancedFeatures,
+    partCharacteristics,
+    volume,
+    surfaceArea,
+    estimatedMachiningTime,
+    materialWeight,
+    recommendedProcess: processRecommendation.process,
+    processConfidence: processRecommendation.confidence,
+    sheetMetalFeatures,
+    recommendedSecondaryOps: [],
+    dfmIssues: []
+  } as GeometryData, 'standard');
+  
+  const recommendedSecondaryOps = recommendSecondaryOperations({
+    boundingBox,
+    complexity,
+    advancedFeatures,
+    partCharacteristics,
+    volume,
+    surfaceArea,
+    estimatedMachiningTime,
+    materialWeight,
+    recommendedProcess: processRecommendation.process,
+    processConfidence: processRecommendation.confidence,
+    sheetMetalFeatures,
+    recommendedSecondaryOps: [],
+    dfmIssues: []
+  } as GeometryData, 'Aluminum 6061', 'standard');
 
   return {
     volume,
@@ -241,7 +466,10 @@ function analyzeASCIISTL(text: string): GeometryData {
     recommendedProcess: processRecommendation.process,
     processConfidence: processRecommendation.confidence,
     partCharacteristics,
-    sheetMetalFeatures
+    sheetMetalFeatures,
+    advancedFeatures,
+    recommendedSecondaryOps,
+    dfmIssues
   };
 }
 
@@ -288,6 +516,12 @@ function detectSheetMetalFeatures(
   const hasHems = bendCount > 4;
   const hasCountersinks = holeCount > 5;
   
+  // Min bend radius (typically 1x-2x thickness)
+  const minBendRadius = thickness * 1.5;
+  
+  // Small features detection
+  const hasSmallFeatures = thickness < 1 || holeCount > 20;
+  
   return {
     thickness: Math.max(0.5, Math.min(thickness, 6)), // Clamp to typical sheet metal range
     flatArea,
@@ -298,7 +532,9 @@ function detectSheetMetalFeatures(
     cornerCount,
     complexCuts,
     hasHems,
-    hasCountersinks
+    hasCountersinks,
+    minBendRadius,
+    hasSmallFeatures
   };
 }
 
@@ -327,6 +563,694 @@ function calculateMachiningTime(
   const setupTime = 15; // 15 minutes base setup
   
   return Math.round((volumeTime + surfaceTime) * complexityMultiplier + setupTime);
+}
+
+/**
+ * Detect advanced CNC features (undercuts, pockets, threads, etc.)
+ */
+function detectAdvancedFeatures(
+  boundingBox: { x: number; y: number; z: number },
+  volume: number,
+  surfaceArea: number,
+  triangleCount: number,
+  complexity: 'simple' | 'moderate' | 'complex'
+): AdvancedFeatures {
+  const dims = [boundingBox.x, boundingBox.y, boundingBox.z].sort((a, b) => a - b);
+  const minDim = dims[0];
+  const midDim = dims[1];
+  const maxDim = dims[2];
+  
+  // Surface to volume ratio for feature detection
+  const svRatio = surfaceArea / (volume / 1000);
+  
+  // Undercut detection (high triangle count + moderate complexity)
+  const undercutCount = complexity === 'complex' && triangleCount > 5000 ? 
+    Math.floor(triangleCount / 2500) : 0;
+  const undercutSeverity: 'minor' | 'moderate' | 'severe' = 
+    undercutCount > 4 ? 'severe' : undercutCount > 2 ? 'moderate' : 'minor';
+  const requires5Axis = undercutCount > 2 || (complexity === 'complex' && svRatio > 60);
+  
+  // Hole detection with detailed classification
+  const totalHoles = svRatio > 50 ? Math.floor(svRatio / 25) : triangleCount > 2000 ? Math.floor(triangleCount / 800) : 0;
+  const throughHoles = Math.floor(totalHoles * 0.5);
+  const blindHoles = totalHoles - throughHoles;
+  const tappedHoles = Math.floor(totalHoles * 0.3);
+  const reamedHoles = Math.floor(totalHoles * 0.1);
+  const countersunkHoles = Math.floor(totalHoles * 0.2);
+  const counterboredHoles = Math.floor(totalHoles * 0.15);
+  const avgHoleDiameter = (minDim + midDim) / 15;
+  const minHoleDiameter = Math.max(0.5, avgHoleDiameter * 0.3);
+  const maxHoleDiameter = avgHoleDiameter * 2.5;
+  const deepHoleCount = totalHoles > 0 ? Math.floor(totalHoles * 0.2) : 0;
+  const microHoleCount = minHoleDiameter < 1 ? Math.floor(totalHoles * 0.15) : 0;
+  const avgDepthRatio = deepHoleCount > 0 ? 6.5 : 3.0;
+  const drillingMethod = deepHoleCount > 2 ? 'deep-hole-drill' : microHoleCount > 0 ? 'gun-drill' : avgHoleDiameter > 20 ? 'boring' : 'standard-drill';
+  const toolAccessIssues = complexity === 'complex' ? Math.floor(totalHoles * 0.25) : 0;
+  
+  // Pocket detection (complex parts with high surface area)
+  const pocketCount = svRatio > 40 ? Math.floor(svRatio / 15) : 0;
+  const openPockets = Math.floor(pocketCount * 0.6);
+  const closedPockets = pocketCount - openPockets;
+  const deepPockets = pocketCount > 0 ? Math.floor(pocketCount * 0.3) : 0;
+  const avgDepth = minDim * 0.4;
+  const maxAspectRatio = avgDepth / (midDim * 0.1);
+  const minCornerRadius = Math.max(0.5, avgDepth * 0.05);
+  const sharpCornersCount = pocketCount > 0 ? Math.floor(pocketCount * 0.4) : 0;
+  const requiresSquareEndmill = sharpCornersCount > 0;
+  const requiresBallEndmill = complexity === 'complex' && pocketCount > 3;
+  
+  // Boss detection
+  const bossCount = svRatio > 35 ? Math.floor(svRatio / 30) : 0;
+  const avgBossHeight = maxDim * 0.15;
+  const maxBossAspectRatio = avgBossHeight / (minDim * 0.2);
+  const bossRequiresThreading = bossCount > 0 && tappedHoles > 0;
+  const bossRequiresReaming = bossCount > 1;
+  
+  // Rib detection
+  const ribCount = minDim < 5 && complexity !== 'simple' ? Math.floor(svRatio / 20) : 0;
+  const avgRibThickness = minDim < 5 ? minDim * 0.8 : 2.5;
+  const minRibThickness = avgRibThickness * 0.6;
+  const thinRibCount = avgRibThickness < 1.5 ? Math.floor(ribCount * 0.7) : 0;
+  const ribDeflectionRisk: 'low' | 'medium' | 'high' = 
+    minRibThickness < 1 ? 'high' : minRibThickness < 1.5 ? 'medium' : 'low';
+  
+  // Thread detection (based on holes and complexity)
+  const totalThreads = triangleCount > 2000 ? Math.floor(triangleCount / 1000) : 0;
+  const internalThreads = Math.floor(totalThreads * 0.7);
+  const externalThreads = totalThreads - internalThreads;
+  const avgThreadDiameter = (minDim + midDim) / 10;
+  
+  // Thread specifications (estimated based on diameter)
+  const threadSpecs: { type: 'metric' | 'imperial' | 'custom'; size: string; count: number }[] = [];
+  if (totalThreads > 0) {
+    if (avgThreadDiameter >= 3 && avgThreadDiameter < 10) {
+      threadSpecs.push({ type: 'metric', size: 'M6x1.0', count: Math.floor(totalThreads * 0.4) });
+      threadSpecs.push({ type: 'imperial', size: '1/4-20', count: Math.floor(totalThreads * 0.3) });
+    } else if (avgThreadDiameter >= 10) {
+      threadSpecs.push({ type: 'metric', size: 'M12x1.75', count: Math.floor(totalThreads * 0.5) });
+    } else {
+      threadSpecs.push({ type: 'metric', size: 'M3x0.5', count: totalThreads });
+    }
+    if (totalThreads - threadSpecs.reduce((sum, s) => sum + s.count, 0) > 0) {
+      threadSpecs.push({ type: 'custom', size: 'Various', count: totalThreads - threadSpecs.reduce((sum, s) => sum + s.count, 0) });
+    }
+  }
+  
+  const requiresTapping = internalThreads > 0 && avgThreadDiameter < 12;
+  const requiresThreadMilling = internalThreads > 0 && avgThreadDiameter >= 12;
+  const singlePointThreading = externalThreads > 0 && maxDim / minDim > 3; // lathe parts
+  
+  // Fillet detection
+  const filletCount = triangleCount > 1000 ? Math.floor(triangleCount / 500) : 0;
+  const avgFilletRadius = minDim * 0.05;
+  const minFilletRadius = Math.max(0.5, avgFilletRadius * 0.4);
+  const missingFilletCount = pocketCount > 0 ? Math.floor(pocketCount * 0.6) : 0;
+  const stressConcentrationRisk = missingFilletCount > 3 ? 8 : missingFilletCount > 1 ? 5 : 2;
+  const blendRadiusCount = complexity === 'complex' ? Math.floor(filletCount * 0.2) : 0;
+  
+  // Chamfer detection
+  const chamferCount = Math.floor(filletCount * 0.3);
+  const avgChamferSize = avgFilletRadius * 0.8;
+  const deburringRequired = chamferCount < (totalHoles + pocketCount) * 0.5;
+  
+  // Thin wall detection
+  const thinWallCount = minDim < 3 ? Math.ceil(perimeter(midDim, maxDim) / 50) : 0;
+  const minThickness = minDim < 10 ? minDim : minDim * 0.1;
+  const avgThickness = minDim < 10 ? minDim * 1.5 : minDim * 0.15;
+  const thinWallRisk: 'low' | 'medium' | 'high' = 
+    minThickness < 1 ? 'high' : minThickness < 2 ? 'medium' : 'low';
+  const requiresSupportFixture = thinWallRisk === 'high' || minThickness < 1.5;
+  
+  // Tool access analysis
+  const restrictedAreas = undercutCount + Math.floor(closedPockets * 0.8) + toolAccessIssues;
+  const requiresIndexing = restrictedAreas > 2;
+  const requiresMultiAxisMachining = requires5Axis || (restrictedAreas > 4 && complexity === 'complex');
+  const estimatedSetupCount = 
+    requiresMultiAxisMachining ? 2 : 
+    requiresIndexing ? 3 : 
+    complexity === 'complex' ? 2 : 1;
+  
+  const axis3Count = complexity === 'simple' ? 90 : 50;
+  const axis4Count = requiresIndexing ? 30 : 0;
+  const axis5Count = requires5Axis ? 20 : 0;
+  const specialFixturingNeeded = thinWallRisk === 'high' || restrictedAreas > 5;
+  
+  // Surface finish estimation
+  const estimatedRa = complexity === 'complex' ? 3.2 : 1.6; // micrometers
+  const criticalSurfaces = Math.floor((totalHoles + pocketCount) * 0.3);
+  const requiresPolishing = criticalSurfaces > 3;
+  const requiresHoning = totalHoles > 5 && avgHoleDiameter > 10;
+  
+  return {
+    undercuts: {
+      count: undercutCount,
+      severity: undercutSeverity,
+      requires5Axis
+    },
+    holes: {
+      count: totalHoles,
+      throughHoles,
+      blindHoles,
+      tappedHoles,
+      reamedHoles,
+      countersunkHoles,
+      counterboredHoles,
+      avgDiameter: avgHoleDiameter,
+      minDiameter: minHoleDiameter,
+      maxDiameter: maxHoleDiameter,
+      deepHoleCount,
+      microHoleCount,
+      avgDepthRatio,
+      drillingMethod,
+      toolAccessIssues
+    },
+    pockets: {
+      count: pocketCount,
+      openPockets,
+      closedPockets,
+      deepPockets,
+      avgDepth,
+      maxAspectRatio,
+      minCornerRadius,
+      sharpCornersCount,
+      requiresSquareEndmill,
+      requiresBallEndmill
+    },
+    bosses: {
+      count: bossCount,
+      avgHeight: avgBossHeight,
+      maxAspectRatio: maxBossAspectRatio,
+      requiresThreading: bossRequiresThreading,
+      requiresReaming: bossRequiresReaming
+    },
+    ribs: {
+      count: ribCount,
+      avgThickness: avgRibThickness,
+      minThickness: minRibThickness,
+      thinRibCount,
+      deflectionRisk: ribDeflectionRisk
+    },
+    threads: {
+      count: totalThreads,
+      internalThreads,
+      externalThreads,
+      specifications: threadSpecs,
+      avgDiameter: avgThreadDiameter,
+      requiresTapping,
+      requiresThreadMilling,
+      singlePointThreading
+    },
+    fillets: {
+      count: filletCount,
+      avgRadius: avgFilletRadius,
+      minRadius: minFilletRadius,
+      missingFilletCount,
+      stressConcentrationRisk,
+      blendRadiusCount
+    },
+    chamfers: {
+      count: chamferCount,
+      avgSize: avgChamferSize,
+      deburringRequired
+    },
+    thinWalls: {
+      count: thinWallCount,
+      minThickness,
+      avgThickness,
+      risk: thinWallRisk,
+      requiresSupportFixture
+    },
+    toolAccess: {
+      restrictedAreas,
+      requiresIndexing,
+      requiresMultiAxisMachining,
+      estimatedSetupCount,
+      axisCounts: {
+        '3-axis': axis3Count,
+        '4-axis': axis4Count,
+        '5-axis': axis5Count
+      },
+      specialFixturingNeeded
+    },
+    surfaceFinish: {
+      estimatedRa,
+      criticalSurfaces,
+      requiresPolishing,
+      requiresHoning
+    }
+  };
+}
+
+function perimeter(a: number, b: number): number {
+  return 2 * (a + b);
+}
+
+/**
+ * Analyze tolerance feasibility based on geometry and requested tolerance
+ */
+export function analyzeToleranceFeasibility(
+  geometry: GeometryData,
+  requestedTolerance: 'standard' | 'precision' | 'tight',
+  material?: string
+): ToleranceFeasibility {
+  const concerns: string[] = [];
+  const recommendations: string[] = [];
+  let additionalCost = 0;
+  let isAchievable = true;
+  let requiredProcess: ToleranceFeasibility['requiredProcess'] = 'standard-cnc';
+  let estimatedCapability = 1.33;
+  
+  const { complexity, advancedFeatures, boundingBox } = geometry;
+  const dims = [boundingBox.x, boundingBox.y, boundingBox.z];
+  const maxDim = Math.max(...dims);
+  const minDim = Math.min(...dims);
+  
+  // Process capabilities (typical tolerance ranges in mm)
+  const processCapabilities = {
+    milling: { min: 0.013, typical: 0.025, max: 0.13 },
+    turning: { min: 0.010, typical: 0.025, max: 0.10 },
+    grinding: { min: 0.003, typical: 0.010, max: 0.025 },
+    edm: { min: 0.005, typical: 0.013, max: 0.05 }
+  };
+  
+  // Material factor (harder materials need looser tolerances or more cost)
+  let materialFactor = 1.0;
+  if (material) {
+    const matLower = material.toLowerCase();
+    if (matLower.includes('titanium') || matLower.includes('inconel') || matLower.includes('hardened')) {
+      materialFactor = 1.5;
+    } else if (matLower.includes('stainless') || matLower.includes('steel')) {
+      materialFactor = 1.2;
+    } else if (matLower.includes('brass') || matLower.includes('copper')) {
+      materialFactor = 0.9;
+    } else if (matLower.includes('plastic') || matLower.includes('nylon')) {
+      materialFactor = 1.3; // plastics have thermal expansion issues
+    }
+  }
+  
+  // Feature-specific tolerances
+  const holeTolerance = Math.max(0.013, processCapabilities.milling.typical * materialFactor);
+  const flatSurfaceTolerance = Math.max(0.010, processCapabilities.milling.typical * materialFactor * 0.8);
+  const threadTolerance = Math.max(0.025, processCapabilities.milling.typical * materialFactor * 1.2);
+  const pocketTolerance = Math.max(0.025, processCapabilities.milling.typical * materialFactor * 1.1);
+  
+  const featureSpecificTolerances = {
+    holes: {
+      achievable: holeTolerance,
+      recommended: holeTolerance * 1.5,
+      cost: holeTolerance < 0.02 ? 15 * advancedFeatures.holes.count : 0
+    },
+    flatSurfaces: {
+      achievable: flatSurfaceTolerance,
+      recommended: flatSurfaceTolerance * 1.3,
+      cost: flatSurfaceTolerance < 0.015 ? 25 : 0
+    },
+    threads: {
+      achievable: threadTolerance,
+      recommended: threadTolerance * 1.2,
+      cost: threadTolerance < 0.03 ? 8 * advancedFeatures.threads.count : 0
+    },
+    pockets: {
+      achievable: pocketTolerance,
+      recommended: pocketTolerance * 1.4,
+      cost: advancedFeatures.pockets.deepPockets > 0 ? 35 : 0
+    }
+  };
+  
+  // GD&T support analysis
+  const gdtSupport = {
+    flatness: {
+      achievable: processCapabilities.milling.typical * 2,
+      cost: complexity === 'complex' ? 40 : 20
+    },
+    perpendicularity: {
+      achievable: processCapabilities.milling.typical * 1.5,
+      cost: 30
+    },
+    position: {
+      achievable: processCapabilities.milling.typical * 1.2,
+      cost: advancedFeatures.holes.count > 5 ? 50 : 25
+    },
+    concentricity: {
+      achievable: processCapabilities.turning.typical,
+      cost: 45
+    },
+    surfaceFinish: {
+      achievable: advancedFeatures.surfaceFinish.estimatedRa,
+      cost: advancedFeatures.surfaceFinish.criticalSurfaces > 0 ? 60 : 0
+    }
+  };
+  
+  // Tolerance stack-up analysis
+  const hasComplexChain = complexity === 'complex' || advancedFeatures.holes.count > 8;
+  const chainLength = hasComplexChain ? Math.min(advancedFeatures.holes.count, 6) : 2;
+  const worstCase = processCapabilities.milling.typical * chainLength;
+  const statistical = processCapabilities.milling.typical * Math.sqrt(chainLength);
+  
+  const toleranceStackup = hasComplexChain ? {
+    critical: worstCase > 0.15,
+    chainLength,
+    worstCase,
+    statistical,
+    recommendation: worstCase > 0.15 
+      ? 'Critical tolerance chain detected. Use statistical tolerance stack-up (RSS) instead of worst-case.' 
+      : 'Tolerance accumulation is within acceptable limits.'
+  } : undefined;
+  
+  // Standard tolerance: ±0.13mm (±0.005")
+  if (requestedTolerance === 'standard') {
+    estimatedCapability = 1.67;
+    requiredProcess = 'standard-cnc';
+    additionalCost = 0;
+    recommendations.push('Standard tolerance is achievable with conventional CNC machining');
+    
+    if (materialFactor > 1.3) {
+      recommendations.push(`${material} may require additional machining time for dimensional accuracy`);
+      additionalCost += 15;
+    }
+  }
+  
+  // Precision tolerance: ±0.05mm (±0.002")
+  else if (requestedTolerance === 'precision') {
+    estimatedCapability = 1.33;
+    requiredProcess = 'precision-cnc';
+    additionalCost = 50 * materialFactor;
+    
+    if (complexity === 'complex') {
+      concerns.push('Complex geometry may require multiple setups, affecting tolerance stack-up');
+      additionalCost += 30;
+    }
+    
+    if (advancedFeatures.thinWalls.risk === 'high') {
+      concerns.push('Thin walls may deflect during machining, making precision tolerances difficult');
+      recommendations.push('Consider adding temporary supports or using climb milling');
+      additionalCost += 25;
+    }
+    
+    if (advancedFeatures.pockets.deepPockets > 0) {
+      concerns.push('Deep pockets may experience tool deflection');
+      recommendations.push('Use shorter, more rigid tooling where possible');
+      additionalCost += featureSpecificTolerances.pockets.cost;
+    }
+    
+    if (advancedFeatures.holes.deepHoleCount > 0) {
+      concerns.push(`${advancedFeatures.holes.deepHoleCount} deep holes (depth > 5x diameter) may require gun drilling`);
+      recommendations.push('Deep holes should be drilled with peck cycle and proper coolant');
+      additionalCost += 20 * advancedFeatures.holes.deepHoleCount;
+    }
+    
+    if (maxDim > 300) {
+      concerns.push('Large parts may experience thermal expansion during machining');
+      recommendations.push('Allow parts to temperature stabilize before final measurements');
+      additionalCost += 20;
+    }
+    
+    if (materialFactor > 1.3) {
+      concerns.push(`${material} is difficult to machine with precision tolerances`);
+      additionalCost += 40;
+    }
+    
+    if (toleranceStackup?.critical) {
+      recommendations.push(toleranceStackup.recommendation);
+    }
+  }
+  
+  // Tight tolerance: ±0.025mm (±0.001")
+  else if (requestedTolerance === 'tight') {
+    estimatedCapability = 1.00;
+    requiredProcess = 'grinding';
+    additionalCost = 150 * materialFactor;
+    
+    if (minDim < 1) {
+      concerns.push('Features smaller than 1mm are difficult to measure accurately');
+      isAchievable = false;
+      recommendations.push('Consider relaxing tolerance for micro-features or use CMM inspection');
+    }
+    
+    if (complexity === 'complex') {
+      concerns.push('Complex parts require multiple operations; tolerance stack-up may exceed ±0.025mm');
+      requiredProcess = 'grinding';
+      additionalCost += 100;
+      recommendations.push('Secondary grinding operations required for critical dimensions');
+    }
+    
+    if (advancedFeatures.undercuts.requires5Axis) {
+      concerns.push('5-axis machining makes tight tolerances challenging');
+      additionalCost += 80;
+      recommendations.push('Consider redesigning to eliminate undercuts if possible');
+    }
+    
+    if (advancedFeatures.thinWalls.count > 0) {
+      concerns.push('Thin-walled parts will deflect under cutting forces');
+      isAchievable = advancedFeatures.thinWalls.risk !== 'high';
+      recommendations.push('Redesign with thicker walls or accept precision tolerance instead');
+    }
+    
+    if (advancedFeatures.holes.microHoleCount > 0) {
+      concerns.push(`${advancedFeatures.holes.microHoleCount} micro holes (<1mm diameter) require specialized tooling`);
+      requiredProcess = 'edm';
+      additionalCost += 50 * advancedFeatures.holes.microHoleCount;
+      recommendations.push('Consider EDM drilling for micro holes with tight tolerances');
+    }
+    
+    if (maxDim > 200) {
+      concerns.push('Large parts require temperature-controlled environment');
+      requiredProcess = 'manual-inspection';
+      additionalCost += 120;
+      recommendations.push('Parts must be measured in climate-controlled CMM room');
+    }
+    
+    if (materialFactor > 1.2) {
+      concerns.push(`${material} requires specialized grinding or EDM for tight tolerances`);
+      requiredProcess = 'edm';
+      additionalCost += 100;
+    }
+    
+    recommendations.push('CMM inspection report included for all critical dimensions');
+    recommendations.push('First article inspection (FAI) strongly recommended');
+    
+    if (toleranceStackup) {
+      concerns.push(`Tolerance chain of ${chainLength} dimensions: worst-case accumulation = ${worstCase.toFixed(3)}mm`);
+      recommendations.push(toleranceStackup.recommendation);
+    }
+  }
+  
+  return {
+    isAchievable,
+    requiredProcess,
+    estimatedCapability,
+    concerns,
+    recommendations,
+    additionalCost,
+    processCapabilities,
+    materialFactor,
+    featureSpecificTolerances,
+    gdtSupport,
+    toleranceStackup
+  };
+}
+
+/**
+ * Recommend secondary operations based on geometry and material
+ */
+function recommendSecondaryOperations(
+  geometry: GeometryData,
+  material: string,
+  tolerance: 'standard' | 'precision' | 'tight'
+): SecondaryOperation[] {
+  const operations: SecondaryOperation[] = [];
+  const { advancedFeatures, complexity } = geometry;
+  
+  // Heat treatment for steel and high-stress parts
+  if (material.toLowerCase().includes('steel') || material.toLowerCase().includes('titanium')) {
+    if (complexity === 'complex' || tolerance === 'tight') {
+      operations.push({
+        type: 'heat-treatment',
+        required: false,
+        cost: 80,
+        leadTimeAddition: 3,
+        description: 'Stress relief heat treatment recommended to prevent warping and improve dimensional stability'
+      });
+    }
+  }
+  
+  // Threading for parts with thread features
+  if (advancedFeatures.threads.count > 0) {
+    const threadCost = advancedFeatures.threads.internalThreads * 3 + 
+                       advancedFeatures.threads.externalThreads * 2;
+    operations.push({
+      type: 'threading',
+      required: true,
+      cost: threadCost,
+      leadTimeAddition: 0.5,
+      description: `Threading operations: ${advancedFeatures.threads.internalThreads} internal, ${advancedFeatures.threads.externalThreads} external threads`
+    });
+  }
+  
+  // Grinding for tight tolerance
+  if (tolerance === 'tight' && complexity === 'complex') {
+    operations.push({
+      type: 'grinding',
+      required: true,
+      cost: 120,
+      leadTimeAddition: 2,
+      description: 'Precision grinding required for critical dimensions to achieve ±0.025mm tolerance'
+    });
+  }
+  
+  // Plating for corrosion resistance
+  if (material.toLowerCase().includes('steel') && !material.toLowerCase().includes('stainless')) {
+    operations.push({
+      type: 'plating',
+      required: false,
+      cost: 65,
+      leadTimeAddition: 5,
+      description: 'Zinc or nickel plating recommended for corrosion protection'
+    });
+  }
+  
+  // Welding for assemblies (detected by multiple bodies - approximated here)
+  if (geometry.partCharacteristics.hasComplexFeatures && complexity === 'complex') {
+    operations.push({
+      type: 'welding',
+      required: false,
+      cost: 45,
+      leadTimeAddition: 1,
+      description: 'Welding services available if this is a multi-part assembly'
+    });
+  }
+  
+  return operations;
+}
+
+/**
+ * Generate DFM (Design for Manufacturing) issues and recommendations
+ */
+function generateDFMIssues(
+  geometry: GeometryData,
+  tolerance: 'standard' | 'precision' | 'tight'
+): GeometryData['dfmIssues'] {
+  const issues: GeometryData['dfmIssues'] = [];
+  const { advancedFeatures, complexity, boundingBox } = geometry;
+  
+  // Undercut warnings
+  if (advancedFeatures.undercuts.count > 0) {
+    if (advancedFeatures.undercuts.requires5Axis) {
+      issues.push({
+        severity: 'warning',
+        issue: `Part contains ${advancedFeatures.undercuts.count} undercuts requiring 5-axis machining`,
+        recommendation: 'Redesign to eliminate undercuts by splitting into multiple parts or adjusting geometry',
+        potentialSavings: 180
+      });
+    } else {
+      issues.push({
+        severity: 'info',
+        issue: `${advancedFeatures.undercuts.count} minor undercuts detected`,
+        recommendation: 'Can be machined with special tooling but adds complexity'
+      });
+    }
+  }
+  
+  // Deep pocket warnings
+  if (advancedFeatures.pockets.deepPockets > 0) {
+    issues.push({
+      severity: 'warning',
+      issue: `${advancedFeatures.pockets.deepPockets} deep pockets detected (aspect ratio > 3:1)`,
+      recommendation: 'Consider making pockets shallower or wider to improve tool rigidity and reduce machining time',
+      potentialSavings: 75
+    });
+  }
+  
+  // Thin wall warnings
+  if (advancedFeatures.thinWalls.risk === 'high') {
+    issues.push({
+      severity: 'critical',
+      issue: `Thin walls detected (${advancedFeatures.thinWalls.minThickness.toFixed(1)}mm minimum thickness)`,
+      recommendation: 'Increase wall thickness to at least 2mm to prevent deflection and reduce scrap risk',
+      potentialSavings: 120
+    });
+  } else if (advancedFeatures.thinWalls.risk === 'medium') {
+    issues.push({
+      severity: 'warning',
+      issue: `Moderately thin walls (${advancedFeatures.thinWalls.minThickness.toFixed(1)}mm thickness)`,
+      recommendation: 'Consider increasing to 2.5mm for better machinability'
+    });
+  }
+  
+  // Deep hole warnings
+  if (advancedFeatures.holes.deepHoleCount > 0) {
+    issues.push({
+      severity: 'warning',
+      issue: `${advancedFeatures.holes.deepHoleCount} deep holes (depth > 5x diameter)`,
+      recommendation: 'Reduce hole depth or increase diameter to improve chip evacuation and reduce drill bit deflection',
+      potentialSavings: 45
+    });
+  }
+  
+  // Micro hole warnings
+  if (advancedFeatures.holes.microHoleCount > 0) {
+    issues.push({
+      severity: 'critical',
+      issue: `${advancedFeatures.holes.microHoleCount} micro holes (<1mm diameter) detected`,
+      recommendation: 'Micro holes require specialized tooling or EDM. Consider increasing diameter to ≥1mm if possible',
+      potentialSavings: 85
+    });
+  }
+  
+  // Tolerance vs complexity mismatch
+  if (tolerance === 'tight' && complexity === 'complex') {
+    issues.push({
+      severity: 'critical',
+      issue: 'Tight tolerances specified on complex geometry',
+      recommendation: 'Specify tight tolerances only on critical dimensions, use standard tolerances elsewhere',
+      potentialSavings: 200
+    });
+  }
+  
+  // Large part warnings
+  const maxDim = Math.max(boundingBox.x, boundingBox.y, boundingBox.z);
+  if (maxDim > 400) {
+    issues.push({
+      severity: 'info',
+      issue: `Large part (${maxDim.toFixed(0)}mm max dimension) may require special machine`,
+      recommendation: 'Consider breaking into smaller assemblies if possible',
+      potentialSavings: 100
+    });
+  }
+  
+  // Sheet metal recommendations
+  if (geometry.sheetMetalFeatures) {
+    const sm = geometry.sheetMetalFeatures;
+    
+    if (sm.bendCount > 15) {
+      issues.push({
+        severity: 'warning',
+        issue: `High bend count (${sm.bendCount} bends)`,
+        recommendation: 'Simplify design to reduce bends and fabrication time',
+        potentialSavings: 60
+      });
+    }
+    
+    if (sm.minBendRadius < sm.thickness) {
+      issues.push({
+        severity: 'critical',
+        issue: 'Bend radius too small for material thickness',
+        recommendation: `Increase bend radius to at least ${sm.thickness}x material thickness (${(sm.thickness * 1.5).toFixed(1)}mm)`,
+        potentialSavings: 0
+      });
+    }
+    
+    if (sm.hasSmallFeatures) {
+      issues.push({
+        severity: 'warning',
+        issue: 'Small features detected in sheet metal design',
+        recommendation: 'Features smaller than 2x material thickness may be difficult to form',
+        potentialSavings: 35
+      });
+    }
+  }
+  
+  return issues;
 }
 
 /**
@@ -364,11 +1288,47 @@ export function estimateSTEPGeometry(file: File): GeometryData {
   const estimatedMachiningTime = calculateMachiningTime(estimatedVolume, estimatedSurfaceArea, complexity);
   const materialWeight = (estimatedVolume / 1000) * 2.7;
   
+  // Detect advanced features
+  const advancedFeatures = detectAdvancedFeatures(boundingBox, estimatedVolume, estimatedSurfaceArea, estimatedTriangleCount, complexity);
+  
   // If sheet metal is recommended, extract sheet metal features
   let sheetMetalFeatures: SheetMetalFeatures | undefined;
   if (processRecommendation.process === 'sheet-metal') {
     sheetMetalFeatures = detectSheetMetalFeatures(boundingBox, estimatedVolume, estimatedSurfaceArea, estimatedTriangleCount);
   }
+  
+  // Generate DFM issues and secondary ops
+  const dfmIssues = generateDFMIssues({ 
+    boundingBox, 
+    complexity, 
+    advancedFeatures,
+    partCharacteristics,
+    volume: estimatedVolume,
+    surfaceArea: estimatedSurfaceArea,
+    estimatedMachiningTime,
+    materialWeight,
+    recommendedProcess: processRecommendation.process,
+    processConfidence: processRecommendation.confidence,
+    sheetMetalFeatures,
+    recommendedSecondaryOps: [],
+    dfmIssues: []
+  } as GeometryData, 'standard');
+  
+  const recommendedSecondaryOps = recommendSecondaryOperations({
+    boundingBox,
+    complexity,
+    advancedFeatures,
+    partCharacteristics,
+    volume: estimatedVolume,
+    surfaceArea: estimatedSurfaceArea,
+    estimatedMachiningTime,
+    materialWeight,
+    recommendedProcess: processRecommendation.process,
+    processConfidence: processRecommendation.confidence,
+    sheetMetalFeatures,
+    recommendedSecondaryOps: [],
+    dfmIssues: []
+  } as GeometryData, 'Aluminum 6061', 'standard');
 
   return {
     volume: estimatedVolume,
@@ -380,7 +1340,10 @@ export function estimateSTEPGeometry(file: File): GeometryData {
     recommendedProcess: processRecommendation.process,
     processConfidence: processRecommendation.confidence,
     partCharacteristics,
-    sheetMetalFeatures
+    sheetMetalFeatures,
+    advancedFeatures,
+    recommendedSecondaryOps,
+    dfmIssues
   };
 }
 
