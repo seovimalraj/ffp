@@ -13,6 +13,7 @@ import {
   Sparkles,
   Eye,
   EyeOff,
+  TrendingDown,
 } from "lucide-react";
 import React, { useEffect, useState, useRef } from "react";
 import { cn } from "@/lib/utils";
@@ -1080,11 +1081,9 @@ const StatTile = ({
 
 const DFMAnalysis = ({ 
   part,
-  selectedHighlight = null,
   onHighlightChange,
 }: { 
   part: PartConfig;
-  selectedHighlight?: string | null;
   onHighlightChange?: (checkId: string | null, selectionHint?: {
     type: 'feature' | 'surface' | 'edge' | 'dimension';
     featureType?: string;
