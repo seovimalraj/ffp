@@ -11,8 +11,6 @@ import {
   LayoutDashboard,
   CheckCheck,
   Sparkles,
-  Eye,
-  EyeOff,
   TrendingDown,
 } from "lucide-react";
 import React, { useEffect, useState, useRef } from "react";
@@ -20,12 +18,6 @@ import { cn } from "@/lib/utils";
 import { PartConfig } from "@/types/part-config";
 import { motion, AnimatePresence } from "framer-motion";
 import { analyzeGeometryFeatures, GeometryFeatureMap } from "@/lib/geometry-feature-locator";
-import * as THREE from 'three';
-import { STLLoader } from 'three/examples/jsm/loaders/STLLoader.js';
-import dynamic from 'next/dynamic';
-
-// Dynamic import for STL viewer to avoid SSR issues
-const STLViewer = dynamic(() => import('@/src/components/STLViewer'), { ssr: false });
 
 // DFM Check Status Types
 type CheckStatus = "pass" | "warning" | "fail" | "critical" | "info" | "loading";
@@ -1081,23 +1073,12 @@ const StatTile = ({
 
 const DFMAnalysis = ({ 
   part,
-  onHighlightChange,
 }: { 
   part: PartConfig;
-  onHighlightChange?: (checkId: string | null, selectionHint?: {
-    type: 'feature' | 'surface' | 'edge' | 'dimension';
-    featureType?: string;
-    location?: { x: number; y: number; z: number };
-    triangles?: number[];
-    description?: string;
-  }) => void;
 }) => {
   const [analysis, setAnalysis] = useState<DFMAnalysisResult | null>(null);
   const [isAnalyzing, setIsAnalyzing] = useState(true);
   const [geometryFeatures, setGeometryFeatures] = useState<GeometryFeatureMap | undefined>(undefined);
-  const [meshUrl, setMeshUrl] = useState<string | null>(null);
-  const [selectedHighlight, setSelectedHighlight] = useState<string | null>(null);
-  const [selectedCheck, setSelectedCheck] = useState<any>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
 
   // Load and analyze geometry for accurate feature detection
@@ -1112,29 +1093,9 @@ const DFMAnalysis = ({
         
         // Only analyze STL files for now (STEP files need backend processing)
         if (fileExt === 'stl') {
-          const arrayBuffer = await (file as Blob).arrayBuffer();
-          const loader = new STLLoader();
-          
-          // Create mesh URL for 3D viewer
-          const blob = new Blob([arrayBuffer], { type: 'application/octet-stream' });
-          const url = URL.createObjectURL(blob);
-          setMeshUrl(url);
-          
-          // Parse STL geometry
-          const geometry = loader.parse(arrayBuffer);
-          geometry.computeVertexNormals();
-          
-          // Analyze features
-          const features = analyzeGeometryFeatures(geometry);
-          setGeometryFeatures(features);
-          
-          console.log('Geometry features detected:', {
-            holes: features.holes.length,
-            pockets: features.pockets.length,
-            thinWalls: features.thinWalls.length,
-            undercuts: features.undercuts.length,
-            sharpCorners: features.sharpCorners.length,
-          });
+          // Geometry analysis will be implemented with backend integration
+          // For now, we skip the 3D viewer functionality
+          setGeometryFeatures(undefined);
         }
       } catch (error) {
         console.warn('Could not analyze geometry features:', error);
@@ -1152,25 +1113,6 @@ const DFMAnalysis = ({
     }, 1200);
     return () => clearTimeout(timer);
   }, [part, geometryFeatures]);
-
-  const toggleHighlight = (checkId: string, check: DFMCheck) => {
-    if (selectedHighlight === checkId) {
-      setSelectedHighlight(null);
-      setSelectedCheck(null);
-    } else {
-      setSelectedHighlight(checkId);
-      setSelectedCheck({
-        id: check.id,
-        label: check.name,
-        selection_hint: check.selectionHint
-      });
-    }
-    
-    if (onHighlightChange) {
-      onHighlightChange(selectedHighlight === checkId ? null : checkId, check.selectionHint);
-    }
-    console.log('Highlight feature:', checkId, check.selectionHint);
-  };
 
   if (isAnalyzing || !analysis) {
     return (
@@ -1456,32 +1398,6 @@ const DFMAnalysis = ({
                               {check.name}
                             </span>
                             <div className="flex items-center gap-2 flex-shrink-0">
-                              {check.selectionHint && (
-                                <motion.button
-                                  onClick={() => toggleHighlight(check.id, check)}
-                                  whileHover={{ scale: 1.1 }}
-                                  whileTap={{ scale: 0.95 }}
-                                  className={cn(
-                                    "relative p-1.5 rounded-lg transition-all shadow-sm",
-                                    selectedHighlight === check.id
-                                      ? "bg-gradient-to-br from-blue-500 to-blue-600 text-white shadow-lg ring-2 ring-blue-300"
-                                      : "bg-white text-gray-600 hover:bg-blue-50 hover:text-blue-600 border border-gray-200"
-                                  )}
-                                  title={selectedHighlight === check.id ? "Hide 3D Highlight" : "View in 3D Model"}
-                                >
-                                  <Eye className={cn(
-                                    "w-3.5 h-3.5 transition-transform",
-                                    selectedHighlight === check.id && "animate-pulse"
-                                  )} />
-                                  {selectedHighlight === check.id && (
-                                    <motion.span
-                                      initial={{ scale: 0 }}
-                                      animate={{ scale: 1 }}
-                                      className="absolute -top-1 -right-1 w-2 h-2 bg-green-500 rounded-full border border-white"
-                                    />
-                                  )}
-                                </motion.button>
-                              )}
                               {check.potentialSavings && check.potentialSavings > 0 && (
                                 <span className="px-2 py-0.5 rounded text-[10px] font-black uppercase tracking-tight bg-green-100 text-green-700">
                                   ${check.potentialSavings}
@@ -1545,61 +1461,6 @@ const DFMAnalysis = ({
             </div>
           </div>
         </div>
-        
-        {/* Right Panel - 3D Viewer */}
-        {meshUrl && (
-          <div className="w-[400px] border-l bg-white hidden xl:block">
-            <div className="h-full flex flex-col">
-              <div className="px-4 py-3 border-b bg-gradient-to-r from-gray-50 to-blue-50">
-                <div className="flex items-center justify-between">
-                  <h4 className="text-xs font-black text-gray-700 uppercase tracking-widest">
-                    3D Model Viewer
-                  </h4>
-                  {geometryFeatures && (
-                    <span className="px-2 py-0.5 bg-blue-100 text-blue-700 text-[10px] font-bold rounded">
-                      {geometryFeatures.holes.length + geometryFeatures.pockets.length + geometryFeatures.threads.length} Features
-                    </span>
-                  )}
-                </div>
-                {selectedCheck && (
-                  <motion.div
-                    initial={{ opacity: 0, y: -5 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    className="flex items-center gap-2 mt-2 p-2 bg-blue-500 rounded-lg"
-                  >
-                    <div className="w-2 h-2 bg-white rounded-full animate-pulse" />
-                    <p className="text-xs text-white font-semibold">
-                      {selectedCheck.label}
-                    </p>
-                  </motion.div>
-                )}
-              </div>
-              <div className="flex-1 relative">
-                <STLViewer
-                  meshUrl={meshUrl}
-                  selectedIssue={selectedCheck}
-                  highlightColor="#3b82f6"
-                  className="w-full h-full"
-                />
-              </div>
-              <div className="px-4 py-2 border-t bg-gray-50">
-                <div className="flex items-center justify-between mb-2">
-                  <span className="text-[10px] text-gray-600 font-medium">🖱️ Drag: Rotate • Scroll: Zoom • Right-click: Pan</span>
-                  <span className="text-[10px] text-gray-700 font-bold">{part.fileName}</span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <div className="flex items-center gap-1">
-                    <Eye className="w-3 h-3 text-blue-600" />
-                    <span className="text-[9px] text-gray-500">Click to highlight features</span>
-                  </div>
-                  {selectedCheck && (
-                    <span className="text-[9px] text-blue-600 font-semibold animate-pulse">● Active Highlight</span>
-                  )}
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
       </div>
     </div>
   );
