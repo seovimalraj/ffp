@@ -972,7 +972,7 @@ const DFMAnalysis = ({
         // Only analyze STL files for now (STEP files need backend processing)
         if (fileExt === 'stl') {
           const arrayBuffer = await (file as Blob).arrayBuffer();
-          const loader = new THREE.STLLoader();
+          const loader = new STLLoader();
           
           // Parse STL geometry
           const geometry = loader.parse(arrayBuffer);
