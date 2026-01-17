@@ -18,6 +18,9 @@ import React, { useEffect, useState, useRef } from "react";
 import { cn } from "@/lib/utils";
 import { PartConfig } from "@/types/part-config";
 import { motion, AnimatePresence } from "framer-motion";
+import { analyzeGeometryFeatures, GeometryFeatureMap } from "@/lib/geometry-feature-locator";
+import * as THREE from 'three';
+import { STLLoader } from 'three/examples/jsm/loaders/STLLoader.js';
 
 // DFM Check Status Types
 type CheckStatus = "pass" | "warning" | "fail" | "critical" | "info" | "loading";
@@ -68,7 +71,7 @@ const SUPPORTED_FILE_TYPES = [
 const MAX_DIMENSIONS = { x: 1000, y: 500, z: 500 };
 const MIN_WALL_THICKNESS = 0.8;
 
-function analyzeDFM(part: PartConfig): DFMAnalysisResult {
+function analyzeDFM(part: PartConfig, geometryFeatures?: GeometryFeatureMap): DFMAnalysisResult {
   const checks: DFMCheck[] = [];
   const recommendations: string[] = [];
   let totalPotentialSavings = 0;
@@ -164,11 +167,17 @@ function analyzeDFM(part: PartConfig): DFMAnalysisResult {
         severity: features.holes.microHoleCount > 0 ? "critical" : "medium",
         potentialSavings: features.holes.microHoleCount * 50 + features.holes.deepHoleCount * 20,
         actionable: holeStatus !== "pass",
-        selectionHint: features.holes.count > 0 ? {
+        selectionHint: geometryFeatures && geometryFeatures.holes.length > 0 ? {
+          type: 'feature',
+          featureType: 'holes',
+          location: geometryFeatures.holes[0].centroid,
+          triangles: geometryFeatures.holes.flatMap(h => h.triangles).slice(0, 100),
+          description: `${geometryFeatures.holes.length} hole locations detected with ${(geometryFeatures.holes[0].confidence * 100).toFixed(0)}% accuracy`
+        } : features.holes.count > 0 ? {
           type: 'feature',
           featureType: 'holes',
           location: { x: 0, y: 0, z: 10 },
-          triangles: [10, 11, 12, 13, 14, 15, 16, 17, 18, 19], // Sample triangle indices
+          triangles: [],
           description: `${features.holes.count} holes requiring machining`
         } : undefined,
       });
@@ -203,11 +212,17 @@ function analyzeDFM(part: PartConfig): DFMAnalysisResult {
         severity: pocketStatus === "warning" ? "medium" : "low",
         potentialSavings: features.pockets.sharpCornersCount * 8 + features.pockets.deepPockets * 25,
         actionable: pocketStatus === "warning",
-        selectionHint: features.pockets.count > 0 ? {
+        selectionHint: geometryFeatures && geometryFeatures.pockets.length > 0 ? {
+          type: 'feature',
+          featureType: 'pockets',
+          location: geometryFeatures.pockets[0].centroid,
+          triangles: geometryFeatures.pockets.flatMap(p => p.triangles).slice(0, 150),
+          description: `${geometryFeatures.pockets.length} pocket areas identified with ${(geometryFeatures.pockets[0].confidence * 100).toFixed(0)}% confidence`
+        } : features.pockets.count > 0 ? {
           type: 'feature',
           featureType: 'pockets',
           location: { x: 0, y: 0, z: -5 },
-          triangles: [20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31], // Sample triangle indices
+          triangles: [],
           description: `${features.pockets.count} pockets with ${features.pockets.sharpCornersCount} sharp corners`
         } : undefined,
       });
@@ -254,9 +269,197 @@ function analyzeDFM(part: PartConfig): DFMAnalysisResult {
         category: "features",
         severity: features.fillets.stressConcentrationRisk > 6 ? "critical" : "medium",
         actionable: true,
+        selectionHint: geometryFeatures && geometryFeatures.fillets.length > 0 ? {
+          type: 'feature',
+          featureType: 'fillets',
+          location: geometryFeatures.fillets[0].centroid,
+          triangles: geometryFeatures.fillets.flatMap(f => f.triangles).slice(0, 80),
+          description: `${geometryFeatures.fillets.length} fillet locations detected (avg confidence: ${(geometryFeatures.fillets.reduce((sum, f) => sum + f.confidence, 0) / geometryFeatures.fillets.length * 100).toFixed(0)}%)`
+        } : undefined,
       });
 
       recommendations.push(`${features.fillets.missingFilletCount} sharp internal corners increase stress concentration (risk: ${features.fillets.stressConcentrationRisk}/10). Add R${features.fillets.minRadius.toFixed(1)}mm fillets to prevent crack initiation.`);
+    }
+
+    // Chamfer analysis (CNC only) - NEW
+    if (isCNC && geometryFeatures && geometryFeatures.chamfers.length > 0) {
+      const chamferCount = geometryFeatures.chamfers.length;
+      const chamferStatus = chamferCount < 5 ? "info" : "pass";
+      
+      checks.push({
+        id: "chamfer-features",
+        name: "Edge Treatment",
+        description: `${chamferCount} chamfers detected`,
+        status: chamferStatus,
+        details: `Deburring and edge finishing requirements`,
+        icon: <Maximize2 className="w-4 h-4" />,
+        category: "features",
+        severity: "low",
+        actionable: false,
+        selectionHint: {
+          type: 'feature',
+          featureType: 'chamfers',
+          location: geometryFeatures.chamfers[0].centroid,
+          triangles: geometryFeatures.chamfers.flatMap(c => c.triangles).slice(0, 60),
+          description: `${chamferCount} chamfer edges identified (avg confidence: ${(geometryFeatures.chamfers.reduce((sum, c) => sum + c.confidence, 0) / chamferCount * 100).toFixed(0)}%)`
+        },
+      });
+    }
+
+    // Thread feature analysis - ENHANCED
+    if (geometryFeatures && geometryFeatures.threads.length > 0) {
+      const threadCount = geometryFeatures.threads.length;
+      const threadStatus = threadCount > 5 ? "warning" : "info";
+      
+      checks.push({
+        id: "thread-features",
+        name: "Threading Operations",
+        description: `${threadCount} threaded features detected`,
+        status: threadStatus,
+        details: `High-precision threading required`,
+        icon: <Circle className="w-4 h-4" />,
+        category: "features",
+        severity: threadCount > 5 ? "medium" : "low",
+        potentialSavings: threadCount * 8,
+        actionable: threadCount > 5,
+        selectionHint: {
+          type: 'feature',
+          featureType: 'threads',
+          location: geometryFeatures.threads[0].centroid,
+          triangles: geometryFeatures.threads.flatMap(t => t.triangles).slice(0, 120),
+          description: `${threadCount} threaded regions (helical patterns) detected with ${(geometryFeatures.threads[0].confidence * 100).toFixed(0)}% confidence`
+        },
+      });
+      
+      if (threadCount > 5) {
+        recommendations.push(`${threadCount} threaded features detected. Consider using press-fit inserts or reducing thread count to lower manufacturing time.`);
+        totalPotentialSavings += threadCount * 8;
+      }
+    }
+
+    // Counterbore/Countersink analysis - NEW
+    if (geometryFeatures && (geometryFeatures.counterbores.length > 0 || geometryFeatures.countersinks.length > 0)) {
+      const cbCount = geometryFeatures.counterbores.length;
+      const cskCount = geometryFeatures.countersinks.length;
+      const total = cbCount + cskCount;
+      
+      checks.push({
+        id: "secondary-hole-ops",
+        name: "Secondary Hole Operations",
+        description: `${cbCount} counterbores, ${cskCount} countersinks`,
+        status: total > 8 ? "warning" : "pass",
+        details: `Additional hole operations required`,
+        icon: <Circle className="w-4 h-4" />,
+        category: "features",
+        severity: total > 8 ? "medium" : "low",
+        potentialSavings: total * 4,
+        actionable: total > 8,
+        selectionHint: cbCount > 0 ? {
+          type: 'feature',
+          featureType: 'counterbores',
+          location: geometryFeatures.counterbores[0].centroid,
+          triangles: [...geometryFeatures.counterbores, ...geometryFeatures.countersinks].flatMap(f => f.triangles).slice(0, 100),
+          description: `${total} secondary hole features (${cbCount} CB, ${cskCount} CSK) with ${((geometryFeatures.counterbores[0]?.confidence || 0.8) * 100).toFixed(0)}% detection accuracy`
+        } : undefined,
+      });
+      
+      if (total > 8) {
+        recommendations.push(`${total} secondary hole operations (counterbores/countersinks) add cycle time. Consider standardizing hole types where possible.`);
+        totalPotentialSavings += total * 4;
+      }
+    }
+
+    // Slot analysis - NEW
+    if (geometryFeatures && geometryFeatures.slots.length > 0) {
+      const slotCount = geometryFeatures.slots.length;
+      const slotStatus = slotCount > 3 ? "warning" : "info";
+      
+      checks.push({
+        id: "slot-features",
+        name: "Slot Machining",
+        description: `${slotCount} elongated slots detected`,
+        status: slotStatus,
+        details: `Require specialized end mill operations`,
+        icon: <Layers className="w-4 h-4" />,
+        category: "features",
+        severity: slotCount > 3 ? "medium" : "low",
+        potentialSavings: slotCount * 15,
+        actionable: slotCount > 3,
+        selectionHint: {
+          type: 'feature',
+          featureType: 'slots',
+          location: geometryFeatures.slots[0].centroid,
+          triangles: geometryFeatures.slots.flatMap(s => s.triangles).slice(0, 150),
+          description: `${slotCount} slot features with elongated geometry (confidence: ${(geometryFeatures.slots[0].confidence * 100).toFixed(0)}%)`
+        },
+      });
+      
+      if (slotCount > 3) {
+        recommendations.push(`${slotCount} slots require multiple passes and tool changes. Consider using simple holes where functionality permits.`);
+        totalPotentialSavings += slotCount * 15;
+      }
+    }
+
+    // Tool access restriction analysis - NEW
+    if (geometryFeatures && geometryFeatures.toolAccessRestricted.length > 0) {
+      const restrictedCount = geometryFeatures.toolAccessRestricted.length;
+      const restrictionStatus = restrictedCount > 2 ? "critical" : restrictedCount > 0 ? "warning" : "pass";
+      
+      checks.push({
+        id: "tool-access-restrictions",
+        name: "Tool Accessibility",
+        description: `${restrictedCount} restricted access areas`,
+        status: restrictionStatus,
+        details: `May require special tooling or multiple setups`,
+        icon: <Zap className="w-4 h-4" />,
+        category: "manufacturability",
+        severity: restrictedCount > 2 ? "high" : "medium",
+        potentialSavings: restrictedCount * 45,
+        actionable: true,
+        selectionHint: {
+          type: 'feature',
+          featureType: 'tool-access',
+          location: geometryFeatures.toolAccessRestricted[0].centroid,
+          triangles: geometryFeatures.toolAccessRestricted.flatMap(r => r.triangles).slice(0, 200),
+          description: `${restrictedCount} confined areas with limited tool access (confinement score: ${(geometryFeatures.toolAccessRestricted[0].confidence * 100).toFixed(0)}%)`
+        },
+      });
+      
+      if (restrictedCount > 0) {
+        recommendations.push(`${restrictedCount} areas have restricted tool access requiring special fixturing or extended reach tooling. Estimated additional cost: $${restrictedCount * 45}.`);
+        totalPotentialSavings += restrictedCount * 45;
+      }
+    }
+
+    // Complex surface analysis - NEW
+    if (geometryFeatures && geometryFeatures.complexSurfaces.length > 0) {
+      const complexCount = geometryFeatures.complexSurfaces.length;
+      const complexStatus = complexCount > 3 ? "warning" : "info";
+      
+      checks.push({
+        id: "complex-surfaces",
+        name: "Complex Surface Machining",
+        description: `${complexCount} complex curved surfaces`,
+        status: complexStatus,
+        details: `Require ball end mills and 3+ axis machining`,
+        icon: <Sparkles className="w-4 h-4" />,
+        category: "manufacturability",
+        severity: complexCount > 3 ? "medium" : "low",
+        potentialSavings: complexCount * 35,
+        actionable: complexCount > 3,
+        selectionHint: {
+          type: 'surface',
+          featureType: 'complex-surface',
+          location: geometryFeatures.complexSurfaces[0].centroid,
+          triangles: geometryFeatures.complexSurfaces.flatMap(cs => cs.triangles).slice(0, 200),
+          description: `${complexCount} regions with multi-directional curvature (complexity: ${(geometryFeatures.complexSurfaces[0].confidence * 100).toFixed(0)}%)`
+        },
+      });
+      
+      if (complexCount > 3) {
+        recommendations.push(`${complexCount} complex surfaces require extensive tool path programming and slower feed rates. Consider simplifying geometry where possible.`);
+        totalPotentialSavings += complexCount * 35;
+      }
     }
 
     // ===== MANUFACTURABILITY CHECKS =====
@@ -278,7 +481,13 @@ function analyzeDFM(part: PartConfig): DFMAnalysisResult {
         severity: features.thinWalls.risk === "high" ? "critical" : features.thinWalls.risk === "medium" ? "medium" : "low",
         potentialSavings: features.thinWalls.risk === "high" ? 120 : 45,
         actionable: wallStatus !== "pass",
-        selectionHint: {
+        selectionHint: geometryFeatures && geometryFeatures.thinWalls.length > 0 ? {
+          type: 'surface',
+          featureType: 'thin-wall',
+          location: geometryFeatures.thinWalls[0].centroid,
+          triangles: geometryFeatures.thinWalls.flatMap(w => w.triangles).slice(0, 200),
+          description: `${geometryFeatures.thinWalls.length} thin wall regions detected (accuracy: ${(geometryFeatures.thinWalls[0].confidence * 100).toFixed(0)}%)`
+        } : {
           type: 'surface',
           featureType: 'thin-wall',
           description: `Thin walls ${features.thinWalls.minThickness.toFixed(1)}mm requiring special attention`,
@@ -298,7 +507,7 @@ function analyzeDFM(part: PartConfig): DFMAnalysisResult {
       }
     }
 
-    // Rib analysis (CNC only)
+    // Rib analysis (CNC only) - ENHANCED
     if (isCNC && features.ribs.thinRibCount > 2) {
       checks.push({
         id: "rib-thickness",
@@ -311,10 +520,73 @@ function analyzeDFM(part: PartConfig): DFMAnalysisResult {
         severity: features.ribs.deflectionRisk === "high" ? "critical" : "medium",
         potentialSavings: features.ribs.deflectionRisk === "high" ? 55 : 30,
         actionable: true,
+        selectionHint: geometryFeatures && geometryFeatures.ribs.length > 0 ? {
+          type: 'feature',
+          featureType: 'ribs',
+          location: geometryFeatures.ribs[0].centroid,
+          triangles: geometryFeatures.ribs.flatMap(r => r.triangles).slice(0, 100),
+          description: `${geometryFeatures.ribs.length} elongated vertical features detected (confidence: ${(geometryFeatures.ribs[0].confidence * 100).toFixed(0)}%)`
+        } : undefined,
       });
 
       recommendations.push(`${features.ribs.thinRibCount} ribs below 1.5mm thickness. Increase to 2mm minimum for manufacturability.`);
       totalPotentialSavings += features.ribs.deflectionRisk === "high" ? 55 : 30;
+    }
+
+    // Boss analysis (CNC only) - NEW
+    if (geometryFeatures && geometryFeatures.bosses.length > 0) {
+      const bossCount = geometryFeatures.bosses.length;
+      const bossStatus = bossCount > 5 ? "info" : "pass";
+      
+      checks.push({
+        id: "boss-features",
+        name: "Boss Features",
+        description: `${bossCount} raised cylindrical bosses`,
+        status: bossStatus,
+        details: `Require additional machining time`,
+        icon: <Circle className="w-4 h-4" />,
+        category: "features",
+        severity: "low",
+        actionable: false,
+        selectionHint: {
+          type: 'feature',
+          featureType: 'bosses',
+          location: geometryFeatures.bosses[0].centroid,
+          triangles: geometryFeatures.bosses.flatMap(b => b.triangles).slice(0, 80),
+          description: `${bossCount} cylindrical protrusions identified (confidence: ${(geometryFeatures.bosses[0].confidence * 100).toFixed(0)}%)`
+        },
+      });
+    }
+
+    // Sharp corner analysis - NEW
+    if (geometryFeatures && geometryFeatures.sharpCorners.length > 5) {
+      const cornerCount = geometryFeatures.sharpCorners.length;
+      const cornerStatus = cornerCount > 15 ? "warning" : "info";
+      
+      checks.push({
+        id: "sharp-corner-analysis",
+        name: "Sharp Corner Detection",
+        description: `${cornerCount} sharp corners detected`,
+        status: cornerStatus,
+        details: `High curvature areas requiring careful tooling`,
+        icon: <Maximize2 className="w-4 h-4" />,
+        category: "features",
+        severity: cornerCount > 15 ? "medium" : "low",
+        potentialSavings: cornerCount > 15 ? Math.min(cornerCount * 2, 50) : 0,
+        actionable: cornerCount > 15,
+        selectionHint: {
+          type: 'feature',
+          featureType: 'sharp-corners',
+          location: geometryFeatures.sharpCorners[0].centroid,
+          triangles: geometryFeatures.sharpCorners.flatMap(c => c.triangles).slice(0, 60),
+          description: `${cornerCount} high-curvature regions (avg confidence: ${(geometryFeatures.sharpCorners.reduce((sum, c) => sum + c.confidence, 0) / cornerCount * 100).toFixed(0)}%)`
+        },
+      });
+      
+      if (cornerCount > 15) {
+        recommendations.push(`${cornerCount} sharp corners detected. Consider adding small radii (0.5mm) to reduce tool wear and improve surface finish.`);
+        totalPotentialSavings += Math.min(cornerCount * 2, 50);
+      }
     }
 
     // SHEET METAL SPECIFIC CHECKS
@@ -430,7 +702,7 @@ function analyzeDFM(part: PartConfig): DFMAnalysisResult {
       }
     }
 
-    // Undercut & multi-axis analysis (CNC only)
+    // Undercut & multi-axis analysis (CNC only) - ENHANCED
     if (isCNC && features.undercuts.count > 0) {
       checks.push({
         id: "undercuts",
@@ -443,6 +715,13 @@ function analyzeDFM(part: PartConfig): DFMAnalysisResult {
         severity: features.undercuts.requires5Axis ? "high" : "low",
         potentialSavings: features.undercuts.requires5Axis ? 180 : 0,
         actionable: features.undercuts.requires5Axis,
+        selectionHint: geometryFeatures && geometryFeatures.undercuts.length > 0 ? {
+          type: 'feature',
+          featureType: 'undercuts',
+          location: geometryFeatures.undercuts[0].centroid,
+          triangles: geometryFeatures.undercuts.flatMap(u => u.triangles).slice(0, 120),
+          description: `${geometryFeatures.undercuts.length} undercut regions with downward-facing geometry (confidence: ${(geometryFeatures.undercuts[0].confidence * 100).toFixed(0)}%)`
+        } : undefined,
       });
 
       if (features.undercuts.requires5Axis) {
@@ -677,16 +956,56 @@ const DFMAnalysis = ({
 }) => {
   const [analysis, setAnalysis] = useState<DFMAnalysisResult | null>(null);
   const [isAnalyzing, setIsAnalyzing] = useState(true);
+  const [geometryFeatures, setGeometryFeatures] = useState<GeometryFeatureMap | undefined>(undefined);
   const scrollRef = useRef<HTMLDivElement>(null);
+
+  // Load and analyze geometry for accurate feature detection
+  useEffect(() => {
+    async function loadAndAnalyzeGeometry() {
+      if (!part.fileObject && !part.filePath) return;
+      
+      try {
+        // Load the file
+        const file = part.fileObject || await fetch(part.filePath!).then(r => r.blob());
+        const fileExt = part.fileName.split('.').pop()?.toLowerCase();
+        
+        // Only analyze STL files for now (STEP files need backend processing)
+        if (fileExt === 'stl') {
+          const arrayBuffer = await (file as Blob).arrayBuffer();
+          const loader = new THREE.STLLoader();
+          
+          // Parse STL geometry
+          const geometry = loader.parse(arrayBuffer);
+          geometry.computeVertexNormals();
+          
+          // Analyze features
+          const features = analyzeGeometryFeatures(geometry);
+          setGeometryFeatures(features);
+          
+          console.log('Geometry features detected:', {
+            holes: features.holes.length,
+            pockets: features.pockets.length,
+            thinWalls: features.thinWalls.length,
+            undercuts: features.undercuts.length,
+            sharpCorners: features.sharpCorners.length,
+          });
+        }
+      } catch (error) {
+        console.warn('Could not analyze geometry features:', error);
+      }
+    }
+    
+    loadAndAnalyzeGeometry();
+  }, [part.fileObject, part.filePath, part.fileName]);
 
   useEffect(() => {
     setIsAnalyzing(true);
     const timer = setTimeout(() => {
-      setAnalysis(analyzeDFM(part));
+      setAnalysis(analyzeDFM(part, geometryFeatures));
       setIsAnalyzing(false);
     }, 1200);
     return () => clearTimeout(timer);
-  }, [part]);
+  }, [part, geometryFeatures]);
 
   const toggleHighlight = (checkId: string, check: DFMCheck) => {
     const newCheckId = selectedHighlight === checkId ? null : checkId;

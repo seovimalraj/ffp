@@ -45,8 +45,33 @@ export class DashboardService {
       spentData?.reduce((sum, order) => sum + Number(order.total_amount), 0) ||
       0;
 
-    // 4. Avg Lead Time (Placeholder)
-    const avgLeadTime = 5.2;
+    // 4. Calculate actual average lead time from completed orders
+    const { data: completedOrders } = await client
+      .from(Tables.OrdersTable)
+      .select('created_at, updated_at, lead_time_days')
+      .eq('organization_id', organizationId)
+      .in('status', ['completed', 'delivered'])
+      .order('updated_at', { ascending: false })
+      .limit(20);
+
+    let avgLeadTime = 5.2; // Default fallback
+    if (completedOrders && completedOrders.length > 0) {
+      // Calculate from lead_time_days if available, otherwise calculate from dates
+      const leadTimes = completedOrders.map(order => {
+        if (order.lead_time_days) {
+          return order.lead_time_days;
+        }
+        // Calculate from date difference
+        const created = new Date(order.created_at);
+        const completed = new Date(order.updated_at);
+        return Math.ceil((completed.getTime() - created.getTime()) / (1000 * 60 * 60 * 24));
+      }).filter(days => days > 0 && days < 60); // Filter outliers
+
+      if (leadTimes.length > 0) {
+        avgLeadTime = leadTimes.reduce((sum, days) => sum + days, 0) / leadTimes.length;
+        avgLeadTime = Math.round(avgLeadTime * 10) / 10; // Round to 1 decimal
+      }
+    }
 
     return {
       activeQuotes: activeQuotes || 0,
