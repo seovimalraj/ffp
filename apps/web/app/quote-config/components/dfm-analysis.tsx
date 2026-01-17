@@ -21,6 +21,10 @@ import { motion, AnimatePresence } from "framer-motion";
 import { analyzeGeometryFeatures, GeometryFeatureMap } from "@/lib/geometry-feature-locator";
 import * as THREE from 'three';
 import { STLLoader } from 'three/examples/jsm/loaders/STLLoader.js';
+import dynamic from 'next/dynamic';
+
+// Dynamic import for STL viewer to avoid SSR issues
+const STLViewer = dynamic(() => import('@/src/components/STLViewer'), { ssr: false });
 
 // DFM Check Status Types
 type CheckStatus = "pass" | "warning" | "fail" | "critical" | "info" | "loading";
@@ -852,6 +856,141 @@ function analyzeDFM(part: PartConfig, geometryFeatures?: GeometryFeatureMap): DF
       }
     });
 
+    // ===== ADVANCED ENTERPRISE-LEVEL CHECKS =====
+    
+    // Surface Roughness Analysis
+    if (isCNC && features.surfaceFinish) {
+      const requiresPolishing = features.surfaceFinish.estimatedRa > 1.6;
+      const criticalSurfaces = features.surfaceFinish.criticalSurfaces || 0;
+      
+      if (requiresPolishing || criticalSurfaces > 0) {
+        checks.push({
+          id: "surface-finish-requirements",
+          name: "Surface Finish Quality",
+          description: `Ra ${features.surfaceFinish.estimatedRa.toFixed(2)}μm estimated`,
+          status: requiresPolishing ? "warning" : "info",
+          details: `${criticalSurfaces} critical surfaces requiring tight finish`,
+          icon: <Sparkles className="w-4 h-4" />,
+          category: "optimization",
+          severity: requiresPolishing ? "medium" : "low",
+          potentialSavings: requiresPolishing ? criticalSurfaces * 15 : 0,
+          actionable: true,
+        });
+        
+        if (requiresPolishing) {
+          recommendations.push(`${criticalSurfaces} surfaces require Ra <1.6μm finish. Consider relaxing to Ra 3.2μm for ${criticalSurfaces * 15}$ savings.`);
+          totalPotentialSavings += criticalSurfaces * 15;
+        }
+      }
+    }
+    
+    // Feature Interaction Analysis
+    if (geometryFeatures) {
+      const holeCount = geometryFeatures.holes.length;
+      const pocketCount = geometryFeatures.pockets.length;
+      const threadCount = geometryFeatures.threads.length;
+      
+      // Check for features that are too close together
+      let proximityIssues = 0;
+      if (holeCount > 1) {
+        for (let i = 0; i < Math.min(holeCount, 50); i++) {
+          for (let j = i + 1; j < Math.min(holeCount, 50); j++) {
+            const hole1 = geometryFeatures.holes[i];
+            const hole2 = geometryFeatures.holes[j];
+            const distance = Math.sqrt(
+              Math.pow(hole1.centroid.x - hole2.centroid.x, 2) +
+              Math.pow(hole1.centroid.y - hole2.centroid.y, 2) +
+              Math.pow(hole1.centroid.z - hole2.centroid.z, 2)
+            );
+            if (distance < 5) proximityIssues++; // Features within 5mm
+          }
+        }
+      }
+      
+      if (proximityIssues > 0) {
+        checks.push({
+          id: "feature-proximity-warning",
+          name: "Feature Spacing Issues",
+          description: `${proximityIssues} features too close together`,
+          status: proximityIssues > 5 ? "warning" : "info",
+          details: `Minimum 5mm spacing recommended for tool clearance`,
+          icon: <Maximize2 className="w-4 h-4" />,
+          category: "manufacturability",
+          severity: proximityIssues > 5 ? "medium" : "low",
+          potentialSavings: proximityIssues > 5 ? 40 : 0,
+          actionable: true,
+        });
+        
+        if (proximityIssues > 5) {
+          recommendations.push(`${proximityIssues} features have insufficient spacing (<5mm). Increase spacing to avoid tool interference.`);
+        }
+      }
+    }
+    
+    // Material Utilization Analysis
+    if (geometry.volume && geometry.boundingBox) {
+      const boxVolume = geometry.boundingBox.x * geometry.boundingBox.y * geometry.boundingBox.z;
+      const materialUtilization = (geometry.volume / boxVolume) * 100;
+      
+      if (materialUtilization < 30) {
+        checks.push({
+          id: "material-efficiency",
+          name: "Material Utilization",
+          description: `${materialUtilization.toFixed(1)}% material usage`,
+          status: materialUtilization < 20 ? "warning" : "info",
+          details: `${(100 - materialUtilization).toFixed(1)}% material will be removed`,
+          icon: <TrendingDown className="w-4 h-4" />,
+          category: "optimization",
+          severity: materialUtilization < 20 ? "medium" : "low",
+          potentialSavings: materialUtilization < 20 ? 80 : 0,
+          actionable: true,
+        });
+        
+        if (materialUtilization < 20) {
+          recommendations.push(`Low material utilization (${materialUtilization.toFixed(1)}%). Consider design optimization or alternative manufacturing process.`);
+          totalPotentialSavings += 80;
+        }
+      }
+    }
+    
+    // Assembly Considerations
+    if (geometryFeatures && (geometryFeatures.holes.length > 10 || geometryFeatures.threads.length > 5)) {
+      const fastenerCount = geometryFeatures.threads.length + Math.floor(geometryFeatures.holes.length * 0.4);
+      
+      checks.push({
+        id: "assembly-complexity",
+        name: "Assembly Features",
+        description: `${fastenerCount} estimated fastener locations`,
+        status: fastenerCount > 20 ? "info" : "pass",
+        details: `May require assembly fixtures and torque specifications`,
+        icon: <CheckCheck className="w-4 h-4" />,
+        category: "features",
+        severity: "low",
+      });
+    }
+    
+    // Manufacturability Score (Enterprise KPI)
+    const manufacturabilityFactors = {
+      simpleGeometry: geometry.complexity === 'simple' ? 25 : geometry.complexity === 'moderate' ? 15 : 5,
+      standardFeatures: (features.holes.count < 15 && features.pockets.count < 8) ? 20 : 10,
+      noUndercuts: !features.undercuts.requires5Axis ? 20 : 5,
+      goodTolerance: part.tolerance === 'standard' ? 15 : part.tolerance === 'precision' ? 10 : 5,
+      wallThickness: features.thinWalls.risk === 'low' ? 20 : features.thinWalls.risk === 'medium' ? 10 : 5,
+    };
+    
+    const manufacturabilityScore = Object.values(manufacturabilityFactors).reduce((sum, val) => sum + val, 0);
+    
+    checks.push({
+      id: "manufacturability-index",
+      name: "DFM Score",
+      description: `${manufacturabilityScore}/100 manufacturability rating`,
+      status: manufacturabilityScore >= 80 ? "pass" : manufacturabilityScore >= 60 ? "info" : "warning",
+      details: `${manufacturabilityScore >= 80 ? 'Excellent' : manufacturabilityScore >= 60 ? 'Good' : 'Challenging'} design for manufacturing`,
+      icon: <Shield className="w-4 h-4" />,
+      category: "optimization",
+      severity: manufacturabilityScore < 60 ? "medium" : "low",
+    });
+
     // Process complexity
     let complexityScore = 0;
     
@@ -957,6 +1096,9 @@ const DFMAnalysis = ({
   const [analysis, setAnalysis] = useState<DFMAnalysisResult | null>(null);
   const [isAnalyzing, setIsAnalyzing] = useState(true);
   const [geometryFeatures, setGeometryFeatures] = useState<GeometryFeatureMap | undefined>(undefined);
+  const [meshUrl, setMeshUrl] = useState<string | null>(null);
+  const [selectedHighlight, setSelectedHighlight] = useState<string | null>(null);
+  const [selectedCheck, setSelectedCheck] = useState<any>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
 
   // Load and analyze geometry for accurate feature detection
@@ -973,6 +1115,11 @@ const DFMAnalysis = ({
         if (fileExt === 'stl') {
           const arrayBuffer = await (file as Blob).arrayBuffer();
           const loader = new STLLoader();
+          
+          // Create mesh URL for 3D viewer
+          const blob = new Blob([arrayBuffer], { type: 'application/octet-stream' });
+          const url = URL.createObjectURL(blob);
+          setMeshUrl(url);
           
           // Parse STL geometry
           const geometry = loader.parse(arrayBuffer);
@@ -1008,11 +1155,22 @@ const DFMAnalysis = ({
   }, [part, geometryFeatures]);
 
   const toggleHighlight = (checkId: string, check: DFMCheck) => {
-    const newCheckId = selectedHighlight === checkId ? null : checkId;
-    if (onHighlightChange) {
-      onHighlightChange(newCheckId, newCheckId ? check.selectionHint : undefined);
+    if (selectedHighlight === checkId) {
+      setSelectedHighlight(null);
+      setSelectedCheck(null);
+    } else {
+      setSelectedHighlight(checkId);
+      setSelectedCheck({
+        id: check.id,
+        label: check.name,
+        selection_hint: check.selectionHint
+      });
     }
-    console.log('Highlight feature:', newCheckId, check.selectionHint);
+    
+    if (onHighlightChange) {
+      onHighlightChange(selectedHighlight === checkId ? null : checkId, check.selectionHint);
+    }
+    console.log('Highlight feature:', checkId, check.selectionHint);
   };
 
   if (isAnalyzing || !analysis) {
@@ -1300,18 +1458,30 @@ const DFMAnalysis = ({
                             </span>
                             <div className="flex items-center gap-2 flex-shrink-0">
                               {check.selectionHint && (
-                                <button
+                                <motion.button
                                   onClick={() => toggleHighlight(check.id, check)}
+                                  whileHover={{ scale: 1.1 }}
+                                  whileTap={{ scale: 0.95 }}
                                   className={cn(
-                                    "p-1.5 rounded-lg transition-all hover:scale-110 active:scale-95",
+                                    "relative p-1.5 rounded-lg transition-all shadow-sm",
                                     selectedHighlight === check.id
-                                      ? "bg-blue-500 text-white shadow-md"
-                                      : "bg-gray-100 text-gray-600 hover:bg-gray-200"
+                                      ? "bg-gradient-to-br from-blue-500 to-blue-600 text-white shadow-lg ring-2 ring-blue-300"
+                                      : "bg-white text-gray-600 hover:bg-blue-50 hover:text-blue-600 border border-gray-200"
                                   )}
-                                  title={selectedHighlight === check.id ? "Hide in 3D" : "Show in 3D"}
+                                  title={selectedHighlight === check.id ? "Hide 3D Highlight" : "View in 3D Model"}
                                 >
-                                  <Eye className="w-3.5 h-3.5" />
-                                </button>
+                                  <Eye className={cn(
+                                    "w-3.5 h-3.5 transition-transform",
+                                    selectedHighlight === check.id && "animate-pulse"
+                                  )} />
+                                  {selectedHighlight === check.id && (
+                                    <motion.span
+                                      initial={{ scale: 0 }}
+                                      animate={{ scale: 1 }}
+                                      className="absolute -top-1 -right-1 w-2 h-2 bg-green-500 rounded-full border border-white"
+                                    />
+                                  )}
+                                </motion.button>
                               )}
                               {check.potentialSavings && check.potentialSavings > 0 && (
                                 <span className="px-2 py-0.5 rounded text-[10px] font-black uppercase tracking-tight bg-green-100 text-green-700">
@@ -1376,6 +1546,61 @@ const DFMAnalysis = ({
             </div>
           </div>
         </div>
+        
+        {/* Right Panel - 3D Viewer */}
+        {meshUrl && (
+          <div className="w-[400px] border-l bg-white hidden xl:block">
+            <div className="h-full flex flex-col">
+              <div className="px-4 py-3 border-b bg-gradient-to-r from-gray-50 to-blue-50">
+                <div className="flex items-center justify-between">
+                  <h4 className="text-xs font-black text-gray-700 uppercase tracking-widest">
+                    3D Model Viewer
+                  </h4>
+                  {geometryFeatures && (
+                    <span className="px-2 py-0.5 bg-blue-100 text-blue-700 text-[10px] font-bold rounded">
+                      {geometryFeatures.holes.length + geometryFeatures.pockets.length + geometryFeatures.threads.length} Features
+                    </span>
+                  )}
+                </div>
+                {selectedCheck && (
+                  <motion.div
+                    initial={{ opacity: 0, y: -5 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    className="flex items-center gap-2 mt-2 p-2 bg-blue-500 rounded-lg"
+                  >
+                    <div className="w-2 h-2 bg-white rounded-full animate-pulse" />
+                    <p className="text-xs text-white font-semibold">
+                      {selectedCheck.label}
+                    </p>
+                  </motion.div>
+                )}
+              </div>
+              <div className="flex-1 relative">
+                <STLViewer
+                  meshUrl={meshUrl}
+                  selectedIssue={selectedCheck}
+                  highlightColor="#3b82f6"
+                  className="w-full h-full"
+                />
+              </div>
+              <div className="px-4 py-2 border-t bg-gray-50">
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-[10px] text-gray-600 font-medium">🖱️ Drag: Rotate • Scroll: Zoom • Right-click: Pan</span>
+                  <span className="text-[10px] text-gray-700 font-bold">{part.fileName}</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-1">
+                    <Eye className="w-3 h-3 text-blue-600" />
+                    <span className="text-[9px] text-gray-500">Click to highlight features</span>
+                  </div>
+                  {selectedCheck && (
+                    <span className="text-[9px] text-blue-600 font-semibold animate-pulse">● Active Highlight</span>
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
