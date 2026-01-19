@@ -1888,17 +1888,6 @@ function getMaterialPriceEndpoint(options?: { materialPriceApiUrl?: string }): s
 }
 
 /**
- * Helper: Get sheet metal material by code
- */
-export function getSheetMetalMaterial(materialCode: string): SheetMetalMaterialSpec | null {
-  for (const materials of Object.values(SHEET_METAL_MATERIALS)) {
-    const found = materials.find(m => m.code === materialCode);
-    if (found) return found;
-  }
-  return null;
-}
-
-/**
  * Helper: Get available thicknesses for a material family
  */
 export function getAvailableThicknesses(materialFamily: keyof typeof SHEET_METAL_MATERIALS): number[] {
