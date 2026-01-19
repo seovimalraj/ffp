@@ -141,6 +141,54 @@ def health():
     return {"status": "healthy", "opencascade_available": HAS_OCP}
 
 
+@app.post("/extract-step-features")
+async def extract_step_geometry(
+    file: UploadFile = File(...),
+):
+    """
+    Extract basic geometry from STEP file (volume, surface area, dimensions)
+    Simplified endpoint for quick geometry extraction
+    """
+    if not HAS_OCP:
+        raise HTTPException(status_code=500, detail="OpenCascade not installed")
+    
+    # Determine format
+    format = file.filename.split('.')[-1].lower() if file.filename else 'step'
+    
+    if format not in ['step', 'stp', 'iges', 'igs']:
+        raise HTTPException(status_code=400, detail=f"Unsupported format: {format}")
+    
+    # Save uploaded file temporarily
+    with tempfile.NamedTemporaryFile(delete=False, suffix=f'.{format}') as tmp:
+        content = await file.read()
+        tmp.write(content)
+        tmp_path = tmp.name
+    
+    try:
+        # Extract basic geometry
+        features = extract_step_features(tmp_path)
+        
+        return JSONResponse(content={
+            "volume": features['volume'],
+            "surface_area": features['surface_area'],
+            "dimensions": {
+                'x': features['dim_x'],
+                'y': features['dim_y'],
+                'z': features['dim_z']
+            },
+            "complexity": 'simple' if features['complexity_score'] < 0.3 else ('moderate' if features['complexity_score'] < 0.7 else 'complex'),
+            "features": features
+        })
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Geometry extraction failed: {str(e)}")
+    
+    finally:
+        # Cleanup
+        if os.path.exists(tmp_path):
+            os.unlink(tmp_path)
+
+
 @app.post("/extract-features")
 async def extract_features(
     file: UploadFile = File(...),

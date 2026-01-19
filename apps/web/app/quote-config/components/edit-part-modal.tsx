@@ -128,11 +128,22 @@ export function EditPartModal({
 }: EditPartModalProps) {
   const [activeTab, setActiveTab] = useState("config");
   const [localPart, setLocalPart] = useState<PartConfig>(part);
+  const [selectedHighlight, setSelectedHighlight] = useState<{
+    checkId: string;
+    selectionHint?: {
+      type: 'feature' | 'surface' | 'edge' | 'dimension';
+      featureType?: string;
+      location?: { x: number; y: number; z: number };
+      triangles?: number[];
+      description?: string;
+    };
+  } | null>(null);
 
   useEffect(() => {
     if (isOpen) {
       setLocalPart(part);
       setActiveTab("config"); // Reset to config tab when modal opens
+      setSelectedHighlight(null); // Clear highlight when modal opens
     }
   }, [isOpen, part]);
 
@@ -201,6 +212,7 @@ export function EditPartModal({
                 className="w-full rounded-2xl"
                 showControls={false}
                 zoom={0.8}
+                selectedHighlight={selectedHighlight?.selectionHint}
               />
             </div>
 
@@ -657,7 +669,17 @@ export function EditPartModal({
                 className="flex-1 overflow-hidden outline-none bg-gray-50/50 h-full"
               >
                 <div className="h-full w-full">
-                  <DFMAnalysis part={localPart} />
+                  <DFMAnalysis 
+                    part={localPart}
+                    selectedHighlight={selectedHighlight?.checkId || null}
+                    onHighlightChange={(checkId, selectionHint) => {
+                      if (checkId) {
+                        setSelectedHighlight({ checkId, selectionHint });
+                      } else {
+                        setSelectedHighlight(null);
+                      }
+                    }}
+                  />
                 </div>
               </TabsContent>
             </Tabs>
