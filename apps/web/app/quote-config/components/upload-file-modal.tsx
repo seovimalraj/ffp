@@ -69,6 +69,9 @@ const UploadFileModal = ({
               const { url } = await upload(file);
               uploadedPath = url;
               
+              console.log(`📤 File uploaded to: ${url}`);
+              console.log(`🔍 Calling backend API: /api/cad/analyze-geometry`);
+              
               // Call backend API for accurate analysis with ray-casting
               const analysisResponse = await fetch('/api/cad/analyze-geometry', {
                 method: 'POST',
@@ -79,6 +82,8 @@ const UploadFileModal = ({
                 })
               });
               
+              console.log(`📡 Backend API response status: ${analysisResponse.status}`);
+              
               if (analysisResponse.ok) {
                 const backendGeometry = await analysisResponse.json();
                 geometry = backendGeometry;
@@ -86,15 +91,18 @@ const UploadFileModal = ({
                   process: geometry.recommendedProcess,
                   thickness: geometry.detectedWallThickness,
                   confidence: geometry.thicknessConfidence,
-                  method: geometry.thicknessDetectionMethod
+                  method: geometry.thicknessDetectionMethod,
+                  sheetMetalScore: geometry.sheetMetalScore
                 });
               } else {
-                console.warn('⚠️ Backend analysis failed, using client-side fallback');
+                const errorText = await analysisResponse.text();
+                console.error('❌ Backend analysis failed:', analysisResponse.status, errorText);
+                console.warn('⚠️ Falling back to client-side analysis');
                 geometry = await analyzeCADFile(file);
               }
             } catch (error) {
-              console.error('Backend analysis error:', error);
-              console.log('Falling back to client-side analysis');
+              console.error('❌ Backend analysis error:', error);
+              console.log('⚠️ Falling back to client-side analysis');
               geometry = await analyzeCADFile(file);
             }
           } else {

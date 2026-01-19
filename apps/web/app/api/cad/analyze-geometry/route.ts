@@ -17,20 +17,24 @@ export async function POST(request: NextRequest) {
     }
 
     // Connect to Python CAD service for advanced analysis
-    const cadServiceUrl = process.env.CAD_SERVICE_URL || 'http://localhost:10001';
+    const cadServiceUrl = process.env.CAD_SERVICE_URL || 'https://ffp-cad.frigate.ai';
+    const analyzeEndpoint = `${cadServiceUrl}/analyze/sync`;
     
     console.log(`🔬 Requesting backend analysis for ${fileName}`);
     console.log(`   CAD Service: ${cadServiceUrl}`);
+    console.log(`   Full endpoint: ${analyzeEndpoint}`);
+    console.log(`   File URL: ${fileUrl}`);
 
     try {
-      const cadResponse = await fetch(`${cadServiceUrl}/api/analyze`, {
+      // Use synchronous endpoint for immediate results
+      const cadResponse = await fetch(analyzeEndpoint, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
+          file_id: `temp_${Date.now()}`,
           file_url: fileUrl,
-          file_name: fileName,
           units_hint: 'mm'
         }),
         // 60 second timeout for complex files
@@ -52,14 +56,23 @@ export async function POST(request: NextRequest) {
 
       const cadResult = await cadResponse.json();
       
+      // Check if we got metrics
+      if (!cadResult.metrics) {
+        console.error('❌ No metrics in response:', cadResult);
+        return NextResponse.json(
+          { error: 'Invalid response from CAD service', fallback: true },
+          { status: 500 }
+        );
+      }
+      
       console.log('✅ Backend analysis successful:', {
-        process: cadResult.process_type,
-        thickness: cadResult.thickness,
-        confidence: cadResult.advanced_metrics?.thickness_confidence
+        process: cadResult.metrics.process_type,
+        thickness: cadResult.metrics.thickness,
+        confidence: cadResult.metrics.advanced_metrics?.thickness_confidence
       });
 
       // Transform backend response to frontend GeometryData format
-      const geometry = transformBackendGeometry(cadResult, fileName);
+      const geometry = transformBackendGeometry(cadResult.metrics, fileName);
 
       return NextResponse.json(geometry);
 
