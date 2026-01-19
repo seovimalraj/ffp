@@ -1881,7 +1881,8 @@ function analyzeProcessFeatures(
   const isRotationalSymmetric = characteristics.isRotationalSymmetric;
   if (isRotationalSymmetric) cncTurningScore += 40;
   
-  const hasCylindrical = isRotationalSymmetric && characteristics.aspectRatio > 1.5 && characteristics.aspectRatio < 12;
+  const hasCylindrical = isRotationalSymmetric && characteristics.aspectRatio && 
+                         characteristics.aspectRatio > 1.5 && characteristics.aspectRatio < 12;
   if (hasCylindrical) cncTurningScore += 30;
   
   const hasGrooves = isRotationalSymmetric && triangleCount > 1000;
