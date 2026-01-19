@@ -208,6 +208,13 @@ export interface GeometryData {
   processConfidence: number; // 0-1, confidence in the recommendation
   processReasoning?: string; // Explanation for process recommendation
   sheetMetalScore?: number; // 0-100, likelihood of being sheet metal
+  
+  // ENTERPRISE-LEVEL: Advanced thickness detection metadata
+  detectedWallThickness?: number; // mm - actual material thickness from ray-casting (not bbox)
+  thicknessConfidence?: number; // 0-1, confidence in thickness detection
+  thicknessDetectionMethod?: 'bbox_approximation' | 'ray_casting_statistical' | 'backend_analysis';
+  thicknessWarning?: string; // Warning if bbox approximation used for bent sheet metal
+  
   partCharacteristics: {
     isRotationalSymmetric: boolean;
     isThinWalled: boolean;
@@ -424,6 +431,17 @@ function analyzeBinarySTL(dataView: DataView): GeometryData {
     dfmIssues: []
   } as GeometryData, 'Aluminum 6061', 'standard');
   
+  // ENTERPRISE-LEVEL: Add thickness detection metadata for transparency
+  const dims = [boundingBox.x, boundingBox.y, boundingBox.z].sort((a, b) => a - b);
+  const bboxMinDim = dims[0];
+  const aspectRatio = dims[2] / Math.max(dims[0], 0.1);
+  
+  // Warn if using bbox approximation on potentially bent sheet metal
+  let thicknessWarning: string | undefined;
+  if (aspectRatio > 5 && bboxMinDim < 25) {
+    thicknessWarning = 'Using bounding box approximation for thickness. For accurate bent sheet metal detection, backend analysis with ray-casting is recommended.';
+  }
+  
   return {
     volume,
     surfaceArea,
@@ -435,6 +453,13 @@ function analyzeBinarySTL(dataView: DataView): GeometryData {
     processConfidence: processRecommendation.confidence,
     processReasoning: processRecommendation.reasoning,
     sheetMetalScore: calculateSheetMetalScore(boundingBox, volume, surfaceArea, partCharacteristics),
+    
+    // Thickness detection metadata
+    detectedWallThickness: bboxMinDim,
+    thicknessConfidence: 0.5, // Low confidence - bbox approximation
+    thicknessDetectionMethod: 'bbox_approximation',
+    thicknessWarning,
+    
     partCharacteristics,
     advancedFeatures,
     recommendedSecondaryOps,
@@ -2049,15 +2074,21 @@ function recommendManufacturingProcess(
   enhancedSheetMetalScore = Math.max(0, Math.min(100, enhancedSheetMetalScore));
   
   // Debug logging for sheet metal detection
+  // NOTE: minDim is bounding box minimum, NOT actual wall thickness!
+  // For bent sheet metal (e.g., U-bracket), minDim might be 20mm (height), but actual material thickness is 2mm
+  // Backend (Python) uses ray-casting to detect actual wall thickness for accurate classification
+  const thicknessSource = minDim < 10 && aspectRatio > 10 ? '⚠️ BBOX (may be inaccurate for bent parts)' : 'bbox min';
   console.log('🔍 Sheet Metal Analysis:', {
-    minDim: minDim.toFixed(2),
+    minDim: minDim.toFixed(2) + 'mm (' + thicknessSource + ')',
+    aspectRatio: aspectRatio.toFixed(1),
     baseScore: baseSheetMetalScore.toFixed(1),
     enhancedScore: enhancedSheetMetalScore.toFixed(1),
     wallConsistency: (advancedAnalysis.wallThicknessConsistency * 100).toFixed(0) + '%',
     planarity: (advancedAnalysis.planarityScore * 100).toFixed(0) + '%',
     volumeDist: (advancedAnalysis.volumeDistribution * 100).toFixed(0) + '%',
     sheetMetalFeatures: processFeatures.sheetMetalFeatures.score.toFixed(0),
-    cncFeatures: processFeatures.cncMillingFeatures.score.toFixed(0)
+    cncFeatures: processFeatures.cncMillingFeatures.score.toFixed(0),
+    recommendation: aspectRatio > 10 && minDim < 25 ? '💡 Consider backend analysis for accurate thickness' : ''
   });
   
   // === CNC TURNING DETECTION ===
@@ -2075,6 +2106,10 @@ function recommendManufacturingProcess(
   // === SHEET METAL DETECTION ===
   // CRITICAL: Sheet metal can have holes, bends, and complex features - these are SECONDARY operations
   // Primary indicators: thickness (0.5-6mm), uniform wall thickness, high surface-to-volume ratio, planar surfaces
+  
+  // IMPORTANT LIMITATION: Frontend uses bounding box minimum as thickness approximation
+  // For accurate sheet metal detection on bent parts, backend analysis (Python) uses ray-casting
+  // to detect actual wall thickness. Frontend minDim may represent part height, not material thickness.
   
   // Check for PRIMARY sheet metal characteristics that should override everything else
   const isPrimarySheetMetal = minDim >= 0.5 && minDim <= 6.0 && advancedAnalysis.wallThicknessConsistency > 0.65;
@@ -2152,8 +2187,28 @@ function recommendManufacturingProcess(
                    (advancedAnalysis.volumeDistribution * 30) +
                    ((1 - advancedAnalysis.materialRemovalRatio) * 20);
   
+  // CRITICAL: Parts thicker than 6mm are NOT sheet metal (unless very specific geometry)
+  const isTooThickForSheetMetal = minDim > 6.0;
+  
+  // If part is too thick for sheet metal AND has any CNC features, it's CNC
+  if (isTooThickForSheetMetal && enhancedSheetMetalScore < 50) {
+    let confidence = 0.90;
+    
+    // Very high confidence if it has machining features
+    if (characteristics.hasComplexFeatures || processFeatures.cncMillingFeatures.score > 40) {
+      confidence = 0.95;
+    }
+    
+    console.log(`✅ DETECTED: CNC Milling (Thickness ${minDim.toFixed(1)}mm > 6mm sheet metal limit)`);
+    return { 
+      process: 'cnc-milling', 
+      confidence,
+      reasoning: `Part thickness ${minDim.toFixed(1)}mm exceeds sheet metal range (0.5-6mm) with machining features`
+    };
+  }
+  
   // High confidence CNC (not thin, solid volume, CNC features)
-  if (enhancedSheetMetalScore < 35 && cncScore > 60) {
+  if (enhancedSheetMetalScore <= 40 && cncScore > 60) {
     let confidence = 0.85;
     
     // Increase confidence for solid parts with volume
@@ -2179,7 +2234,7 @@ function recommendManufacturingProcess(
   }
   
   // Medium confidence CNC (within size limits, not sheet metal)
-  if (enhancedSheetMetalScore < 35 && minDim >= 0.5 && maxDim <= 700) {
+  if (enhancedSheetMetalScore <= 40 && minDim >= 0.5 && maxDim <= 700) {
     console.log('✅ DETECTED: CNC Milling (Medium Confidence)');
     return { 
       process: 'cnc-milling', 
@@ -2189,7 +2244,7 @@ function recommendManufacturingProcess(
   }
   
   // Thin-walled CNC parts (low sheet metal score but thin)
-  if (characteristics.isThinWalled && enhancedSheetMetalScore < 35 && minDim >= 0.5 && maxDim <= 700) {
+  if (characteristics.isThinWalled && enhancedSheetMetalScore <= 40 && minDim >= 0.5 && maxDim <= 700) {
     console.log('✅ DETECTED: CNC Milling (Thin-Walled)');
     return { 
       process: 'cnc-milling', 

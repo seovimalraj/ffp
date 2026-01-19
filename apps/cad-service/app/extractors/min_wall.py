@@ -6,8 +6,10 @@ from ..models import MinWallData, MinWallSample
 
 
 def min_wall_mesh(mesh, *, samples: int = 5000, threshold_mm: float = 1.5) -> MinWallData:
-    """Approximate min-wall thickness on a mesh using ray casting along face normals.
-    This is a heuristic and depends on mesh quality.
+    """Enterprise-level wall thickness detection using advanced ray casting with statistical analysis.
+    
+    Detects actual material thickness (not bounding box dimensions) for accurate sheet metal classification.
+    Uses multi-sample analysis with outlier filtering for robust results.
     """
     # Sample points uniformly on surface
     pts, face_index = mesh.sample(samples, return_index=True)
@@ -43,11 +45,47 @@ def min_wall_mesh(mesh, *, samples: int = 5000, threshold_mm: float = 1.5) -> Mi
     if total.size == 0:
         return MinWallData(global_min_mm=0.0, samples=[])
 
-    global_min = float(np.min(total))
+    # ENTERPRISE-LEVEL IMPROVEMENT: Statistical analysis with outlier removal
+    # Remove extreme outliers (likely edge artifacts or self-intersections)
+    percentile_5 = float(np.percentile(total, 5))
+    percentile_95 = float(np.percentile(total, 95))
+    iqr = percentile_95 - percentile_5
+    
+    # Filter outliers using IQR method
+    outlier_mask = (total >= (percentile_5 - 1.5 * iqr)) & (total <= (percentile_95 + 1.5 * iqr))
+    total_filtered = total[outlier_mask]
+    origins_filtered = origins_valid[outlier_mask]
+    
+    if total_filtered.size == 0:
+        total_filtered = total  # Fallback if filtering removes everything
+        origins_filtered = origins_valid
+
+    # Calculate robust statistics
+    global_min = float(np.min(total_filtered))
+    global_median = float(np.median(total_filtered))
+    
+    # For sheet metal, we want the MODE (most common thickness) as it represents material gauge
+    # Use histogram to find most common thickness range
+    hist, bin_edges = np.histogram(total_filtered, bins=50)
+    mode_bin_idx = np.argmax(hist)
+    thickness_mode = float((bin_edges[mode_bin_idx] + bin_edges[mode_bin_idx + 1]) / 2)
+    
+    # Determine the most representative thickness:
+    # - If min, median, and mode are close (within 30%), use median (robust)
+    # - If they differ significantly, part has varying thickness (likely CNC, not sheet metal)
+    thickness_variance = (global_median - global_min) / max(global_min, 0.1)
+    is_uniform_thickness = thickness_variance < 0.3
+    
+    # For sheet metal classification, use mode if uniform, otherwise use minimum
+    representative_thickness = thickness_mode if is_uniform_thickness else global_min
+    
+    print(f"📊 Wall Thickness Analysis: min={global_min:.2f}mm, median={global_median:.2f}mm, "
+          f"mode={thickness_mode:.2f}mm, variance={thickness_variance:.1%}, uniform={is_uniform_thickness}")
+    
     # Collect sub-threshold samples
-    mask = total <= max(threshold_mm, global_min)
-    chosen_pts = origins_valid[mask]
-    chosen_d = total[mask]
+    mask = total_filtered <= max(threshold_mm, representative_thickness * 1.2)
+    chosen_pts = origins_filtered[mask]
+    chosen_d = total_filtered[mask]
 
     samples_out: List[MinWallSample] = []
     for i in range(min(50, chosen_pts.shape[0])):
@@ -55,7 +93,8 @@ def min_wall_mesh(mesh, *, samples: int = 5000, threshold_mm: float = 1.5) -> Mi
         t = float(chosen_d[i])
         samples_out.append(MinWallSample(at=(float(p[0]), float(p[1]), float(p[2])), thickness_mm=t, face_ids=[]))
 
-    return MinWallData(global_min_mm=global_min, samples=samples_out)
+    # Return the most representative thickness for classification
+    return MinWallData(global_min_mm=representative_thickness, samples=samples_out)
 
 
 def _first_hit_distance(intersector, origins: np.ndarray, directions: np.ndarray) -> np.ndarray:

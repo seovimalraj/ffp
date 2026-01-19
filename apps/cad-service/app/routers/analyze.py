@@ -152,15 +152,36 @@ def calculate_advanced_metrics(bbox_dims: list, vol_mm3: float, area_mm2: float)
         'surface_to_volume_ratio': surface_to_volume_ratio
     }
 
-def determine_process_type(bbox_dims: list, vol_mm3: float, area_mm2: float, thickness: Optional[float] = None) -> str:
-    """Determine manufacturing process type based on advanced geometric analysis.
-    CRITICAL: Sheet metal can have holes, bends, complex features - these are secondary operations.
-    Primary indicators: thickness (0.5-6mm), uniform wall thickness, high surface-to-volume ratio, planar surfaces.
+def determine_process_type(bbox_dims: list, vol_mm3: float, area_mm2: float, thickness: Optional[float] = None, thickness_confidence: float = 0.0) -> str:
+    """Enterprise-level manufacturing process classification using multi-criteria analysis.
+    
+    CRITICAL DISTINCTION:
+    - Sheet Metal: Formed from flat sheet (0.5-6mm thick), bent/cut/punched, uniform material thickness
+    - CNC Milling: Machined from solid block, varying wall thickness, pockets/bosses carved out
+    
+    Advanced Detection:
+    - Uses ray-casting to detect actual material thickness (not bounding box dimensions)
+    - Statistical analysis with outlier filtering for robust classification
+    - Confidence-weighted scoring for uncertain cases
     """
     sheet_metal_score = calculate_sheet_metal_score(bbox_dims, vol_mm3, area_mm2)
     advanced_metrics = calculate_advanced_metrics(bbox_dims, vol_mm3, area_mm2)
     
-    min_dim = bbox_dims[0]
+    # ENTERPRISE-LEVEL: Use detected wall thickness with confidence weighting
+    # If we have high-confidence thickness detection, strongly prefer it over bbox approximation
+    has_reliable_thickness = thickness is not None and thickness > 0 and thickness_confidence > 0.6
+    
+    if has_reliable_thickness:
+        min_dim = thickness
+        print(f"✅ Using detected thickness: {min_dim:.2f}mm (confidence: {thickness_confidence:.0%})")
+    else:
+        min_dim = bbox_dims[0]
+        if thickness is not None and thickness > 0:
+            print(f"⚠️ Low confidence thickness ({thickness:.2f}mm, conf: {thickness_confidence:.0%}), "
+                  f"using bbox: {min_dim:.2f}mm")
+        else:
+            print(f"ℹ️ No thickness detection, using bbox approximation: {min_dim:.2f}mm")
+    
     mid_dim = bbox_dims[1]
     max_dim = bbox_dims[2]
     
@@ -213,9 +234,24 @@ def determine_process_type(bbox_dims: list, vol_mm3: float, area_mm2: float, thi
     if 0.5 <= min_dim <= 4.0 and advanced_metrics.get('planarity_score', 0) > 0.50:
         return "sheet_metal"
     
+    # CRITICAL: Parts thicker than 6mm are NOT sheet metal (unless very specific geometry)
+    is_too_thick_for_sheet_metal = min_dim > 6.0
+    
+    # If part is too thick for sheet metal AND has low sheet metal score, it's CNC
+    if is_too_thick_for_sheet_metal and enhanced_sm_score < 50:
+        return "cnc_milling"
+    
     # CNC milling score
     cnc_score = (advanced_metrics.get('volume_distribution', 0) * 30) + \
                 ((1 - advanced_metrics.get('material_removal_ratio', 0)) * 20)
+    
+    # High confidence CNC (low sheet metal score and decent CNC characteristics)
+    if enhanced_sm_score <= 40 and cnc_score > 60:
+        return "cnc_milling"
+    
+    # Medium confidence CNC
+    if enhanced_sm_score <= 40 and 0.5 <= min_dim <= 700:
+        return "cnc_milling"
     
     # Default to CNC milling
     return "cnc_milling"
@@ -232,8 +268,23 @@ def analyze_file_path(file_path: str, units_hint: Optional[str] = None) -> dict:
         vol_mm3, area_mm2 = mesh_mass_props(mesh)
         bbox_min = mesh.bounds[0]
         bbox_max = mesh.bounds[1]
-        # Approximate min wall via ray casting
-        mw = min_wall_mesh(mesh)
+        # Approximate min wall via ray casting with advanced statistical analysis
+        mw = min_wall_mesh(mesh, samples=8000, threshold_mm=10.0)
+        
+        # Calculate thickness confidence based on detection quality
+        thickness_confidence = 0.0
+        if mw.global_min_mm > 0:
+            min_bbox_dim = min(bbox_dims)
+            thickness_to_bbox_ratio = mw.global_min_mm / max(min_bbox_dim, 0.1)
+            
+            if thickness_to_bbox_ratio < 0.3:
+                thickness_confidence = 0.95
+            elif thickness_to_bbox_ratio < 0.5:
+                thickness_confidence = 0.80
+            elif thickness_to_bbox_ratio < 0.7:
+                thickness_confidence = 0.60
+            else:
+                thickness_confidence = 0.40
         
         # Calculate bounding box dimensions
         bbox_dims = [
@@ -244,8 +295,14 @@ def analyze_file_path(file_path: str, units_hint: Optional[str] = None) -> dict:
         bbox_dims.sort()
         
         # Determine process type based on geometry
-        process_type = determine_process_type(bbox_dims, vol_mm3, area_mm2, mw.global_min_mm)
+        process_type = determine_process_type(bbox_dims, vol_mm3, area_mm2, mw.global_min_mm, thickness_confidence)
         advanced_metrics = calculate_advanced_metrics(bbox_dims, vol_mm3, area_mm2)
+        
+        # Add thickness analysis to metrics
+        if mw.global_min_mm > 0:
+            advanced_metrics['detected_thickness_mm'] = mw.global_min_mm
+            advanced_metrics['thickness_confidence'] = thickness_confidence
+            advanced_metrics['thickness_detection_method'] = 'ray_casting_statistical'
         
         metrics = {
             "volume": vol_mm3 / 1000.0,  # convert to cm^3 to keep parity with previous mock fields
@@ -277,9 +334,76 @@ def analyze_file_path(file_path: str, units_hint: Optional[str] = None) -> dict:
         bbox_dims = [xmax - xmin, ymax - ymin, zmax - zmin]
         bbox_dims.sort()
         
-        # Determine process type
-        process_type = determine_process_type(bbox_dims, vol_mm3, area_mm2, None)
+        # ENTERPRISE-LEVEL: Extract actual material thickness using advanced ray-casting analysis
+        # This detects real wall thickness (e.g., 2mm sheet metal) vs bounding box dimensions (e.g., 20mm part height)
+        actual_thickness = None
+        thickness_confidence = 0.0
+        try:
+            from OCC.Core.BRepMesh import BRepMesh_IncrementalMesh
+            import tempfile
+            import os
+            
+            # Fine meshing for accurate wall thickness detection
+            # Smaller deflection = more accurate but slower
+            BRepMesh_IncrementalMesh(shape, 0.05, True, 0.1, True)
+            
+            # Export to STL temporarily for trimesh analysis
+            from OCC.Extend.DataExchange import write_stl_file
+            tmp_stl_fd, tmp_stl_path = tempfile.mkstemp(suffix='.stl')
+            os.close(tmp_stl_fd)
+            
+            try:
+                write_stl_file(shape, tmp_stl_path, mode="binary", linear_deflection=0.05, angular_deflection=0.1)
+                temp_mesh = load_stl(tmp_stl_path, scale=1.0)
+                
+                # Advanced ray-casting with statistical analysis (increased samples for accuracy)
+                mw = min_wall_mesh(temp_mesh, samples=8000, threshold_mm=10.0)
+                
+                if mw.global_min_mm > 0:
+                    actual_thickness = mw.global_min_mm
+                    
+                    # Calculate confidence based on relationship between thickness and bbox
+                    min_bbox_dim = min(bbox_dims)
+                    thickness_to_bbox_ratio = actual_thickness / max(min_bbox_dim, 0.1)
+                    
+                    # High confidence if detected thickness is much smaller than bbox (typical for bent sheet metal)
+                    # Low confidence if thickness ≈ bbox dimension (likely solid part)
+                    if thickness_to_bbox_ratio < 0.3:
+                        thickness_confidence = 0.95  # High confidence - clear sheet metal signature
+                    elif thickness_to_bbox_ratio < 0.5:
+                        thickness_confidence = 0.80  # Good confidence
+                    elif thickness_to_bbox_ratio < 0.7:
+                        thickness_confidence = 0.60  # Moderate confidence
+                    else:
+                        thickness_confidence = 0.40  # Low confidence - thickness ≈ bbox
+                    
+                    print(f"✅ Detected wall thickness: {actual_thickness:.2f}mm "
+                          f"(bbox min: {min_bbox_dim:.2f}mm, ratio: {thickness_to_bbox_ratio:.1%}, "
+                          f"confidence: {thickness_confidence:.0%})")
+                else:
+                    print("⚠️ Wall thickness detection returned 0, using bbox approximation")
+                    
+            finally:
+                # Clean up temp file
+                if os.path.exists(tmp_stl_path):
+                    os.unlink(tmp_stl_path)
+                    
+        except Exception as e:
+            # Graceful fallback - log error but continue with bbox-based classification
+            print(f"⚠️ Wall thickness detection failed: {str(e)[:100]}")
+            print("   Falling back to bounding box approximation (may misclassify bent sheet metal)")
+            actual_thickness = None
+            thickness_confidence = 0.0
+        
+        # Determine process type using actual wall thickness with confidence scoring
+        process_type = determine_process_type(bbox_dims, vol_mm3, area_mm2, actual_thickness, thickness_confidence)
         advanced_metrics = calculate_advanced_metrics(bbox_dims, vol_mm3, area_mm2)
+        
+        # Add thickness analysis to metrics
+        if actual_thickness:
+            advanced_metrics['detected_thickness_mm'] = actual_thickness
+            advanced_metrics['thickness_confidence'] = thickness_confidence
+            advanced_metrics['thickness_detection_method'] = 'ray_casting_statistical'
         
         holes = extract_holes_from_shape(shape)
         pockets = extract_pockets_from_shape(shape)
@@ -287,7 +411,7 @@ def analyze_file_path(file_path: str, units_hint: Optional[str] = None) -> dict:
             "volume": vol_mm3 / 1000.0,
             "surface_area": area_mm2 / 100.0,
             "bbox": {"min": {"x": xmin, "y": ymin, "z": zmin}, "max": {"x": xmax, "y": ymax, "z": zmax}},
-            "thickness": None,
+            "thickness": actual_thickness,
             "primitive_features": {"holes": len(holes), "pockets": len(pockets)},
             "material_usage": None,
             "process_type": process_type,
