@@ -206,6 +206,8 @@ export interface GeometryData {
   materialWeight: number; // grams
   recommendedProcess: 'cnc-milling' | 'cnc-turning' | 'sheet-metal' | 'injection-molding' | 'manual-quote';
   processConfidence: number; // 0-1, confidence in the recommendation
+  processReasoning?: string; // Explanation for process recommendation
+  sheetMetalScore?: number; // 0-100, likelihood of being sheet metal
   partCharacteristics: {
     isRotationalSymmetric: boolean;
     isThinWalled: boolean;
@@ -416,6 +418,8 @@ function analyzeBinarySTL(dataView: DataView): GeometryData {
     materialWeight,
     recommendedProcess: processRecommendation.process,
     processConfidence: processRecommendation.confidence,
+    processReasoning: processRecommendation.reasoning,
+    sheetMetalScore: calculateSheetMetalScore(boundingBox, volume, surfaceArea, partCharacteristics),
     recommendedSecondaryOps: [],
     dfmIssues: []
   } as GeometryData, 'Aluminum 6061', 'standard');
@@ -429,6 +433,8 @@ function analyzeBinarySTL(dataView: DataView): GeometryData {
     materialWeight,
     recommendedProcess: processRecommendation.process,
     processConfidence: processRecommendation.confidence,
+    processReasoning: processRecommendation.reasoning,
+    sheetMetalScore: calculateSheetMetalScore(boundingBox, volume, surfaceArea, partCharacteristics),
     partCharacteristics,
     advancedFeatures,
     recommendedSecondaryOps,
@@ -543,6 +549,8 @@ function analyzeASCIISTL(text: string): GeometryData {
     materialWeight,
     recommendedProcess: processRecommendation.process,
     processConfidence: processRecommendation.confidence,
+    processReasoning: processRecommendation.reasoning,
+    sheetMetalScore: calculateSheetMetalScore(boundingBox, volume, surfaceArea, partCharacteristics),
     partCharacteristics,
     sheetMetalFeatures,
     advancedFeatures,
@@ -1651,6 +1659,8 @@ function buildGeometryData(file: File, boundingBox: { x: number; y: number; z: n
     materialWeight,
     recommendedProcess: processRecommendation.process,
     processConfidence: processRecommendation.confidence,
+    processReasoning: processRecommendation.reasoning,
+    sheetMetalScore: calculateSheetMetalScore(boundingBox, volume, surfaceArea, partCharacteristics),
     partCharacteristics,
     sheetMetalFeatures,
     advancedFeatures,

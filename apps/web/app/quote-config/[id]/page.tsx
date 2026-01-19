@@ -360,10 +360,19 @@ export default function QuoteConfigPage() {
             ? processMap[geometry.recommendedProcess] || 'cnc-milling'
             : 'cnc-milling';
 
+          console.log(`Process detection for ${file.name}:`, {
+            recommendedProcess: geometry?.recommendedProcess,
+            detectedProcess,
+            confidence: geometry?.processConfidence,
+            reasoning: geometry?.processReasoning,
+            sheetMetalScore: geometry?.sheetMetalScore
+          });
+
           // Use process-specific defaults
           const defaultMaterial = getDefaultMaterialForProcess(detectedProcess);
           const defaultFinish = getDefaultFinishForProcess(detectedProcess);
           const defaultTolerance = getDefaultToleranceForProcess(detectedProcess);
+          const defaultThickness = detectedProcess.includes('sheet') ? getDefaultThickness() : undefined;
 
           const newPart: any = {
             file_name: file.name,
@@ -375,6 +384,7 @@ export default function QuoteConfigPage() {
             status: "draft",
             tolerance: defaultTolerance,
             finish: defaultFinish, // Process-specific default finish
+            thickness: defaultThickness, // Sheet metal thickness if applicable
             threads: "none",
             inspection: "standard",
             notes: "",

@@ -665,24 +665,6 @@ export function EditPartModal({
 
                   {/* General Config Section */}
                   <div className="space-y-10">
-                    {/* Process Type - Auto-Detected (Read-Only) */}
-                    <div className="grid lg:grid-cols-[240px_1fr] gap-8 items-start">
-                      <div>
-                        <Label className="text-base font-semibold text-gray-900">
-                          Manufacturing Process
-                        </Label>
-                        <p className="text-sm text-gray-500 mt-1.5 leading-relaxed">
-                          Automatically detected from CAD file geometry. Cannot be changed manually.
-                        </p>
-                      </div>
-                      <div className="w-full h-12 border border-gray-200 bg-gray-50 rounded-lg shadow-sm flex items-center px-4">
-                        <span className="text-sm font-medium text-gray-700">
-                          {getProcessDisplayName(localPart.process || 'cnc-milling')}
-                        </span>
-                        <span className="ml-2 text-xs text-gray-500">(Auto-detected)</span>
-                      </div>
-                    </div>
-
                     {/* Material - Categorized Dropdown */}
                     <div className="grid lg:grid-cols-[240px_1fr] gap-8 items-start">
                       <div>

@@ -18,6 +18,12 @@ import { analyzeCADFile } from "@/lib/cad-analysis";
 import { useFileUpload } from "@/lib/hooks/use-file-upload";
 import { notify } from "@/lib/toast";
 import { apiClient } from "@/lib/api";
+import { 
+  getDefaultMaterialForProcess,
+  getDefaultFinishForProcess,
+  getDefaultToleranceForProcess,
+  getDefaultThickness 
+} from "@/lib/pricing-engine";
 
 type UploadFileModalProps = {
   open: boolean;
@@ -70,20 +76,34 @@ const UploadFileModal = ({
             ? processMap[geometry.recommendedProcess] || 'cnc-milling'
             : 'cnc-milling';
 
+          console.log(`Process detection for ${file.name}:`, {
+            recommendedProcess: geometry?.recommendedProcess,
+            detectedProcess,
+            confidence: geometry?.processConfidence,
+            reasoning: geometry?.processReasoning
+          });
+
+          // Use process-specific defaults
+          const defaultMaterial = getDefaultMaterialForProcess(detectedProcess);
+          const defaultFinish = getDefaultFinishForProcess(detectedProcess);
+          const defaultTolerance = getDefaultToleranceForProcess(detectedProcess);
+          const defaultThickness = detectedProcess.includes('sheet') ? getDefaultThickness() : undefined;
+
           uploadResults.push({
             file_name: file.name,
             cad_file_url: uploadedPath,
             cad_file_type: file.name.split(".").pop() || "unknown",
             process: detectedProcess, // Set process based on geometry analysis
-            material: "aluminum-6061",
+            material: defaultMaterial,
             quantity: 1,
-            tolerance: "standard",
-            finish: "as-machined",
+            tolerance: defaultTolerance,
+            finish: defaultFinish,
             threads: "none",
             inspection: "standard",
             notes: "",
             lead_time_type: "standard",
             lead_time: 7,
+            thickness: defaultThickness,
             geometry,
             certificates: [],
           });
