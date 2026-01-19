@@ -370,7 +370,7 @@ function analyzeBinarySTL(dataView: DataView): GeometryData {
   const partCharacteristics = analyzePartCharacteristics(boundingBox, volume, surfaceArea, triangleCount);
   
   // Determine recommended process
-  const processRecommendation = recommendManufacturingProcess(boundingBox, volume, surfaceArea, complexity, partCharacteristics);
+  const processRecommendation = recommendManufacturingProcess(boundingBox, volume, surfaceArea, complexity, partCharacteristics, triangleCount);
   
   // Estimate machining time (simplified)
   const estimatedMachiningTime = calculateMachiningTime(volume, surfaceArea, complexity);
@@ -487,7 +487,7 @@ function analyzeASCIISTL(text: string): GeometryData {
   const partCharacteristics = analyzePartCharacteristics(boundingBox, volume, surfaceArea, triangleCount);
   
   // Determine recommended process
-  const processRecommendation = recommendManufacturingProcess(boundingBox, volume, surfaceArea, complexity, partCharacteristics);
+  const processRecommendation = recommendManufacturingProcess(boundingBox, volume, surfaceArea, complexity, partCharacteristics, triangleCount, triangleCount);
   
   const estimatedMachiningTime = calculateMachiningTime(volume, surfaceArea, complexity);
   const materialWeight = (volume / 1000) * 2.7;
@@ -1683,7 +1683,8 @@ function analyzePartCharacteristics(
   // Check if thin-walled (sheet metal candidate)
   // Sheet metal typically: thickness 0.5-6mm, and much larger in other dimensions
   const thicknessRatio = midDim / Math.max(minDim, 0.1);
-  const isThinWalled = minDim >= 0.5 && minDim <= 6 && thicknessRatio > 8;
+  // Enhanced sheet metal detection: consider uniform thickness + high aspect ratio
+  const isThinWalled = minDim >= 0.5 && minDim <= 6 && thicknessRatio > 8 && aspectRatio > 5;
   
   // Check for curved surfaces (high triangle count relative to size)
   const surfaceComplexity = triangleCount / (surfaceArea / 100);
@@ -1703,72 +1704,502 @@ function analyzePartCharacteristics(
 }
 
 /**
- * Recommend manufacturing process based on part characteristics
+ * Advanced geometric analysis for process identification
+ */
+interface AdvancedGeometricAnalysis {
+  volumeDistribution: number; // 0-1: how evenly distributed is volume
+  materialRemovalRatio: number; // 0-1: ratio of material that would be removed in CNC
+  wallThicknessConsistency: number; // 0-1: how uniform is wall thickness
+  planarityScore: number; // 0-1: how planar/flat is the part
+  edgeSharpnessScore: number; // 0-1: sharp edges suggest sheet metal
+  dimensionBalance: number; // 0-1: balance of X/Y/Z dimensions
+}
+
+/**
+ * Perform advanced geometric analysis for better process classification
+ */
+function performAdvancedGeometricAnalysis(
+  boundingBox: { x: number; y: number; z: number },
+  volume: number,
+  surfaceArea: number,
+  triangleCount: number
+): AdvancedGeometricAnalysis {
+  const dims = [boundingBox.x, boundingBox.y, boundingBox.z].sort((a, b) => a - b);
+  const minDim = dims[0];
+  const midDim = dims[1];
+  const maxDim = dims[2];
+  
+  // 1. Volume Distribution Analysis
+  // Sheet metal: volume concentrated in thin layer
+  // CNC: volume more evenly distributed
+  const envelopeVolume = minDim * midDim * maxDim;
+  const volumeEfficiency = volume / envelopeVolume;
+  const volumeDistribution = volumeEfficiency > 0.7 ? 0.9 : // Solid block (CNC)
+                             volumeEfficiency > 0.5 ? 0.6 : // Medium density
+                             volumeEfficiency > 0.3 ? 0.3 : // Hollow/bent (sheet metal)
+                             0.1; // Very hollow (sheet metal)
+  
+  // 2. Material Removal Ratio
+  // If this were CNC machined from a block, how much material would be wasted?
+  const materialRemovalRatio = 1 - volumeEfficiency;
+  
+  // 3. Wall Thickness Consistency
+  // Sheet metal: consistent thickness throughout
+  // CNC: often varying wall thickness
+  const surfaceToVolumeRatio = surfaceArea / Math.max(volume / 1000, 0.1);
+  // High S/V ratio suggests uniform thin walls (sheet metal)
+  // Low S/V ratio suggests varying thickness (CNC)
+  const wallThicknessConsistency = surfaceToVolumeRatio > 80 ? 0.95 :
+                                   surfaceToVolumeRatio > 60 ? 0.85 :
+                                   surfaceToVolumeRatio > 40 ? 0.65 :
+                                   surfaceToVolumeRatio > 25 ? 0.40 :
+                                   0.20;
+  
+  // 4. Planarity Score
+  // Sheet metal: composed of planar surfaces even when bent
+  // CNC: often has curved/sculptured surfaces
+  const aspectRatio = maxDim / Math.max(minDim, 0.1);
+  const flatnessIndicator = (midDim * maxDim) / Math.max(volume / minDim, 1);
+  const planarityScore = aspectRatio > 20 ? 0.95 :
+                         aspectRatio > 15 ? 0.85 :
+                         aspectRatio > 10 ? 0.70 :
+                         aspectRatio > 5 ? 0.50 :
+                         0.25;
+  
+  // 5. Edge Sharpness Score
+  // Sheet metal: many sharp edges and corners
+  // CNC: often has filleted edges
+  // Approximate from triangle count and surface area
+  const edgeComplexity = triangleCount / (surfaceArea / 100);
+  const edgeSharpnessScore = edgeComplexity > 120 ? 0.70 : // Many edges (sheet metal)
+                             edgeComplexity > 80 ? 0.55 :
+                             edgeComplexity > 50 ? 0.40 :
+                             0.25; // Smooth surfaces (CNC)
+  
+  // 6. Dimension Balance
+  // CNC Turning: two dimensions similar
+  // CNC Milling: all dimensions relatively balanced
+  // Sheet Metal: one dimension much smaller
+  const xyRatio = Math.abs(dims[0] - dims[1]) / Math.max(dims[0], dims[1]);
+  const xzRatio = Math.abs(dims[0] - dims[2]) / Math.max(dims[0], dims[2]);
+  const yzRatio = Math.abs(dims[1] - dims[2]) / Math.max(dims[1], dims[2]);
+  
+  // Low dimensionBalance = unbalanced (sheet metal), high = balanced (CNC)
+  const dimensionBalance = 1 - Math.max(xyRatio, xzRatio, yzRatio);
+  
+  return {
+    volumeDistribution,
+    materialRemovalRatio,
+    wallThicknessConsistency,
+    planarityScore,
+    edgeSharpnessScore,
+    dimensionBalance
+  };
+}
+
+/**
+ * Detect process-specific features that are characteristic or impossible for each process
+ */
+interface ProcessFeatureAnalysis {
+  sheetMetalFeatures: {
+    hasBendLines: boolean;
+    hasFlanges: boolean;
+    hasReliefCuts: boolean;
+    hasHemmedEdges: boolean;
+    score: number; // 0-100
+  };
+  cncMillingFeatures: {
+    hasPockets: boolean;
+    hasBosses: boolean;
+    hasFillets: boolean;
+    has3DCurves: boolean;
+    score: number; // 0-100
+  };
+  cncTurningFeatures: {
+    isRotationalSymmetric: boolean;
+    hasCylindrical: boolean;
+    hasGrooves: boolean;
+    hasThreads: boolean;
+    score: number; // 0-100
+  };
+}
+
+/**
+ * Analyze features specific to each manufacturing process
+ */
+function analyzeProcessFeatures(
+  boundingBox: { x: number; y: number; z: number },
+  volume: number,
+  surfaceArea: number,
+  triangleCount: number,
+  characteristics: GeometryData['partCharacteristics'],
+  advancedAnalysis: AdvancedGeometricAnalysis
+): ProcessFeatureAnalysis {
+  const dims = [boundingBox.x, boundingBox.y, boundingBox.z].sort((a, b) => a - b);
+  const minDim = dims[0];
+  
+  // Sheet Metal Features
+  let sheetMetalScore = 0;
+  const hasBendLines = advancedAnalysis.planarityScore > 0.6 && triangleCount > 500;
+  if (hasBendLines) sheetMetalScore += 25;
+  
+  const hasFlanges = minDim < 6 && advancedAnalysis.edgeSharpnessScore > 0.5;
+  if (hasFlanges) sheetMetalScore += 20;
+  
+  const hasReliefCuts = triangleCount > 1000 && advancedAnalysis.wallThicknessConsistency > 0.7;
+  if (hasReliefCuts) sheetMetalScore += 15;
+  
+  const hasHemmedEdges = minDim < 4 && advancedAnalysis.planarityScore > 0.7;
+  if (hasHemmedEdges) sheetMetalScore += 10;
+  
+  // Bonus for uniform thickness
+  if (advancedAnalysis.wallThicknessConsistency > 0.8) sheetMetalScore += 30;
+  
+  // CNC Milling Features
+  let cncMillingScore = 0;
+  const hasPockets = characteristics.hasComplexFeatures && advancedAnalysis.volumeDistribution > 0.5;
+  if (hasPockets) cncMillingScore += 25;
+  
+  const hasBosses = advancedAnalysis.volumeDistribution > 0.6 && triangleCount > 2000;
+  if (hasBosses) cncMillingScore += 20;
+  
+  const hasFillets = advancedAnalysis.edgeSharpnessScore < 0.5 && triangleCount > 1000;
+  if (hasFillets) cncMillingScore += 20;
+  
+  const has3DCurves = characteristics.hasCurvedSurfaces && advancedAnalysis.planarityScore < 0.5;
+  if (has3DCurves) cncMillingScore += 25;
+  
+  // Bonus for solid volume
+  if (advancedAnalysis.volumeDistribution > 0.7) cncMillingScore += 10;
+  
+  // CNC Turning Features
+  let cncTurningScore = 0;
+  const isRotationalSymmetric = characteristics.isRotationalSymmetric;
+  if (isRotationalSymmetric) cncTurningScore += 40;
+  
+  const hasCylindrical = isRotationalSymmetric && characteristics.aspectRatio > 1.5 && characteristics.aspectRatio < 12;
+  if (hasCylindrical) cncTurningScore += 30;
+  
+  const hasGrooves = isRotationalSymmetric && triangleCount > 1000;
+  if (hasGrooves) cncTurningScore += 15;
+  
+  const hasThreads = isRotationalSymmetric && surfaceArea / volume > 20;
+  if (hasThreads) cncTurningScore += 15;
+  
+  return {
+    sheetMetalFeatures: {
+      hasBendLines,
+      hasFlanges,
+      hasReliefCuts,
+      hasHemmedEdges,
+      score: Math.min(100, sheetMetalScore)
+    },
+    cncMillingFeatures: {
+      hasPockets,
+      hasBosses,
+      hasFillets,
+      has3DCurves,
+      score: Math.min(100, cncMillingScore)
+    },
+    cncTurningFeatures: {
+      isRotationalSymmetric,
+      hasCylindrical,
+      hasGrooves,
+      hasThreads,
+      score: Math.min(100, cncTurningScore)
+    }
+  };
+}
+
+/**
+ * Calculate sheet metal likelihood score based on multiple geometric factors
+ * Enhanced with advanced analysis
+ */
+function calculateSheetMetalScore(
+  boundingBox: { x: number; y: number; z: number },
+  volume: number,
+  surfaceArea: number,
+  characteristics: GeometryData['partCharacteristics']
+): number {
+  const dims = [boundingBox.x, boundingBox.y, boundingBox.z].sort((a, b) => a - b);
+  const minDim = dims[0];
+  const midDim = dims[1];
+  const maxDim = dims[2];
+  
+  let score = 0;
+  
+  // 1. Thickness check (30 points) - Critical for sheet metal
+  if (minDim >= 0.5 && minDim <= 6) {
+    score += 30;
+    // Bonus for typical sheet metal thicknesses
+    if ([0.8, 1.0, 1.2, 1.5, 2.0, 2.5, 3.0, 4.0, 5.0, 6.0].some(t => Math.abs(minDim - t) < 0.3)) {
+      score += 10;
+    }
+  }
+  
+  // 2. Aspect ratio check (25 points) - Sheet metal is much longer/wider than thick
+  const aspectRatio = maxDim / Math.max(minDim, 0.1);
+  if (aspectRatio > 20) score += 25;
+  else if (aspectRatio > 15) score += 20;
+  else if (aspectRatio > 10) score += 15;
+  else if (aspectRatio > 5) score += 8;
+  
+  // 3. Surface-to-volume ratio (20 points) - Sheet metal has high ratio
+  const surfaceToVolumeRatio = surfaceArea / Math.max(volume / 1000, 0.1);
+  if (surfaceToVolumeRatio > 80) score += 20;
+  else if (surfaceToVolumeRatio > 60) score += 15;
+  else if (surfaceToVolumeRatio > 40) score += 10;
+  else if (surfaceToVolumeRatio > 25) score += 5;
+  
+  // 4. Flatness check (15 points) - Sheet metal parts are relatively flat
+  const flatnessRatio = (midDim * maxDim) / Math.max(volume / minDim, 1);
+  if (flatnessRatio > 0.7) score += 15;
+  else if (flatnessRatio > 0.5) score += 10;
+  else if (flatnessRatio > 0.3) score += 5;
+  
+  // 5. Volume check (10 points) - Sheet metal parts typically have lower volume relative to envelope
+  const envelopeVolume = minDim * midDim * maxDim;
+  const volumeEfficiency = volume / envelopeVolume;
+  if (volumeEfficiency < 0.4) score += 10; // Low efficiency = hollow/bent sheet
+  else if (volumeEfficiency < 0.6) score += 5;
+  
+  // Penalty for characteristics that suggest CNC machining
+  if (characteristics.hasComplexFeatures && surfaceToVolumeRatio < 30) {
+    score -= 15; // Complex features + low S/V ratio = likely CNC
+  }
+  
+  if (characteristics.isRotationalSymmetric) {
+    score -= 20; // Rotational symmetry suggests turning
+  }
+  
+  return Math.max(0, Math.min(100, score));
+}
+
+/**
+ * Multi-criteria decision system for process recommendation
+ * Combines geometric, feature, and material analysis for accurate classification
  */
 function recommendManufacturingProcess(
   boundingBox: { x: number; y: number; z: number },
   volume: number,
   surfaceArea: number,
   complexity: 'simple' | 'moderate' | 'complex',
-  characteristics: GeometryData['partCharacteristics']
-): { process: GeometryData['recommendedProcess']; confidence: number } {
+  characteristics: GeometryData['partCharacteristics'],
+  triangleCount: number = 1000
+): { process: GeometryData['recommendedProcess']; confidence: number; reasoning?: string } {
   const dims = [boundingBox.x, boundingBox.y, boundingBox.z].sort((a, b) => a - b);
   const minDim = dims[0];
   const maxDim = dims[2];
   
-  // Sheet Metal: Thin, flat parts
-  if (characteristics.isThinWalled && !characteristics.hasCurvedSurfaces) {
-    const confidence = characteristics.aspectRatio > 10 ? 0.85 : 0.70;
-    return { process: 'sheet-metal', confidence };
+  // Perform advanced geometric analysis
+  const advancedAnalysis = performAdvancedGeometricAnalysis(boundingBox, volume, surfaceArea, triangleCount);
+  
+  // Analyze process-specific features
+  const processFeatures = analyzeProcessFeatures(
+    boundingBox, 
+    volume, 
+    surfaceArea, 
+    triangleCount, 
+    characteristics, 
+    advancedAnalysis
+  );
+  
+  // Calculate base sheet metal score
+  const baseSheetMetalScore = calculateSheetMetalScore(boundingBox, volume, surfaceArea, characteristics);
+  
+  // Enhanced sheet metal score with advanced analysis
+  let enhancedSheetMetalScore = baseSheetMetalScore;
+  
+  // Boost for sheet metal features
+  enhancedSheetMetalScore += processFeatures.sheetMetalFeatures.score * 0.3;
+  
+  // Boost for consistent wall thickness
+  enhancedSheetMetalScore += advancedAnalysis.wallThicknessConsistency * 20;
+  
+  // Boost for high planarity
+  enhancedSheetMetalScore += advancedAnalysis.planarityScore * 15;
+  
+  // Penalty for high volume distribution (solid parts)
+  if (advancedAnalysis.volumeDistribution > 0.7) {
+    enhancedSheetMetalScore -= 25;
   }
   
-  // CNC Turning: Rotational symmetric parts
-  if (characteristics.isRotationalSymmetric && !characteristics.hasComplexFeatures) {
-    const confidence = characteristics.aspectRatio > 2 && characteristics.aspectRatio < 12 ? 0.90 : 0.75;
-    return { process: 'cnc-turning', confidence };
+  // Penalty for CNC milling features
+  enhancedSheetMetalScore -= processFeatures.cncMillingFeatures.score * 0.2;
+  
+  // Normalize to 0-100
+  enhancedSheetMetalScore = Math.max(0, Math.min(100, enhancedSheetMetalScore));
+  
+  // === CNC TURNING DETECTION ===
+  // High confidence if rotational symmetric with good characteristics
+  if (processFeatures.cncTurningFeatures.score > 60) {
+    const confidence = processFeatures.cncTurningFeatures.score / 100;
+    return { 
+      process: 'cnc-turning', 
+      confidence: Math.min(0.95, confidence),
+      reasoning: 'Rotational symmetry detected with cylindrical features'
+    };
   }
   
-  // Injection Molding: High complexity plastic parts (note: requires material check)
-  if (complexity === 'complex' && volume > 5000 && volume < 500000) {
-    // This is a guess - would need material info to confirm
-    return { process: 'injection-molding', confidence: 0.50 };
+  // === SHEET METAL DETECTION ===
+  // Enhanced scoring system with multiple thresholds
+  
+  // Very high confidence (score >= 85): Obvious sheet metal
+  if (enhancedSheetMetalScore >= 85) {
+    return { 
+      process: 'sheet-metal', 
+      confidence: 0.95,
+      reasoning: 'High score: thin, uniform thickness, planar surfaces'
+    };
   }
   
-  // CNC Milling: Standard 3-axis or 5-axis machining
-  if (!characteristics.isThinWalled && minDim >= 0.5 && maxDim <= 700) {
-    let confidence = 0.80;
+  // High confidence (score 70-84): Likely sheet metal with some complexity
+  if (enhancedSheetMetalScore >= 70) {
+    return { 
+      process: 'sheet-metal', 
+      confidence: 0.88,
+      reasoning: 'Sheet metal characteristics with possible bends/forms'
+    };
+  }
+  
+  // Medium-high confidence (score 55-69): Sheet metal with bends or complex forms
+  if (enhancedSheetMetalScore >= 55 && advancedAnalysis.wallThicknessConsistency > 0.6) {
+    return { 
+      process: 'sheet-metal', 
+      confidence: 0.75,
+      reasoning: 'Consistent wall thickness suggests sheet metal fabrication'
+    };
+  }
+  
+  // Medium confidence (score 45-54): Could be sheet metal or thin CNC
+  if (enhancedSheetMetalScore >= 45 && characteristics.isThinWalled) {
+    // Additional check: material removal ratio
+    if (advancedAnalysis.materialRemovalRatio < 0.5) {
+      return { 
+        process: 'sheet-metal', 
+        confidence: 0.65,
+        reasoning: 'Low material waste suggests sheet metal over CNC'
+      };
+    }
+  }
+  
+  // Low-medium confidence (score 35-44): Thin part, check additional factors
+  if (enhancedSheetMetalScore >= 35 && minDim >= 0.5 && minDim <= 6) {
+    // Check for sheet metal specific features
+    if (processFeatures.sheetMetalFeatures.score > 40) {
+      return { 
+        process: 'sheet-metal', 
+        confidence: 0.60,
+        reasoning: 'Sheet metal features detected despite mixed signals'
+      };
+    }
+  }
+  
+  // === CNC MILLING DETECTION ===
+  
+  // Strong CNC indicators
+  const cncScore = processFeatures.cncMillingFeatures.score + 
+                   (advancedAnalysis.volumeDistribution * 30) +
+                   ((1 - advancedAnalysis.materialRemovalRatio) * 20);
+  
+  // High confidence CNC (not thin, solid volume, CNC features)
+  if (enhancedSheetMetalScore < 35 && cncScore > 60) {
+    let confidence = 0.85;
     
-    // Reduce confidence for very complex parts
+    // Increase confidence for solid parts with volume
+    if (!characteristics.isThinWalled && volume > 1000 && advancedAnalysis.volumeDistribution > 0.6) {
+      confidence = 0.92;
+    }
+    
+    // Adjust for complexity
     if (complexity === 'complex' && characteristics.hasComplexFeatures) {
-      confidence = 0.60;
-    }
-    
-    // High confidence for moderate complexity
-    if (complexity === 'moderate') {
-      confidence = 0.85;
-    }
-    
-    // Very high confidence for simple parts
-    if (complexity === 'simple') {
+      confidence = Math.min(confidence, 0.75);
+    } else if (complexity === 'moderate' && !characteristics.isThinWalled) {
+      confidence = Math.max(confidence, 0.90);
+    } else if (complexity === 'simple' && !characteristics.isThinWalled && advancedAnalysis.volumeDistribution > 0.7) {
       confidence = 0.95;
     }
     
-    return { process: 'cnc-milling', confidence };
+    return { 
+      process: 'cnc-milling', 
+      confidence,
+      reasoning: 'Solid volume with CNC-typical features'
+    };
   }
   
-  // Manual Quote: Parts that don't fit standard processes
-  // - Too small (< 0.5mm)
-  // - Too large (> 700mm)
-  // - Extremely complex with thin features
-  // - Very high aspect ratios that might need special setups
-  if (minDim < 0.5 || maxDim > 700 || 
-      (complexity === 'complex' && characteristics.hasComplexFeatures && characteristics.isThinWalled) ||
-      characteristics.aspectRatio > 30) {
-    return { process: 'manual-quote', confidence: 0.95 };
+  // Medium confidence CNC (within size limits, not sheet metal)
+  if (enhancedSheetMetalScore < 35 && minDim >= 0.5 && maxDim <= 700) {
+    return { 
+      process: 'cnc-milling', 
+      confidence: 0.75,
+      reasoning: 'Standard CNC-machinable dimensions'
+    };
   }
   
-  // Default to CNC milling with low confidence
-  return { process: 'cnc-milling', confidence: 0.50 };
+  // Thin-walled CNC parts (low sheet metal score but thin)
+  if (characteristics.isThinWalled && enhancedSheetMetalScore < 35 && minDim >= 0.5 && maxDim <= 700) {
+    return { 
+      process: 'cnc-milling', 
+      confidence: 0.65,
+      reasoning: 'Thin-walled CNC machining (e.g., structural part)'
+    };
+  }
+  
+  // === INJECTION MOLDING HINT ===
+  // High complexity plastic parts (note: requires material check)
+  if (complexity === 'complex' && volume > 5000 && volume < 500000 && 
+      advancedAnalysis.volumeDistribution < 0.6 && processFeatures.cncMillingFeatures.has3DCurves) {
+    return { 
+      process: 'injection-molding', 
+      confidence: 0.55,
+      reasoning: 'Complex hollow part suggests injection molding (verify material)'
+    };
+  }
+  
+  // === MANUAL QUOTE CASES ===
+  // Parts that don't fit standard processes
+  if (minDim < 0.5 || maxDim > 700) {
+    return { 
+      process: 'manual-quote', 
+      confidence: 0.95,
+      reasoning: minDim < 0.5 ? 'Too small for standard processes' : 'Exceeds standard machine capacity'
+    };
+  }
+  
+  // Extremely complex with thin features
+  if (complexity === 'complex' && characteristics.hasComplexFeatures && 
+      characteristics.isThinWalled && enhancedSheetMetalScore < 50 && cncScore < 50) {
+    return { 
+      process: 'manual-quote', 
+      confidence: 0.88,
+      reasoning: 'Complex thin-walled part requires engineering review'
+    };
+  }
+  
+  // Very high aspect ratios
+  if (characteristics.aspectRatio > 30) {
+    return { 
+      process: 'manual-quote', 
+      confidence: 0.90,
+      reasoning: 'Extreme aspect ratio requires special setup'
+    };
+  }
+  
+  // === DEFAULT FALLBACK ===
+  // If we get here, make best guess based on sheet metal score
+  if (enhancedSheetMetalScore > cncScore) {
+    return { 
+      process: 'sheet-metal', 
+      confidence: 0.50,
+      reasoning: 'Insufficient data - defaulting to sheet metal based on geometry'
+    };
+  } else {
+    return { 
+      process: 'cnc-milling', 
+      confidence: 0.50,
+      reasoning: 'Insufficient data - defaulting to CNC milling'
+    };
+  }
 }
 
 /**
