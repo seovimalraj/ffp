@@ -1556,43 +1556,12 @@ function generateDFMIssues(
 
 /**
  * For STEP files - parse actual geometry using CAD service
+ * NOTE: Backend analysis with ray-casting happens in upload modals which have fileUrl.
+ * This function provides fallback estimation for when file hasn't been uploaded yet.
  */
 export async function estimateSTEPGeometry(file: File): Promise<GeometryData> {
-  try {
-    // Try to get actual geometry from CAD service
-    const formData = new FormData();
-    formData.append('file', file);
-    
-    const response = await fetch('/api/cad/extract-features', {
-      method: 'POST',
-      body: formData,
-    });
-    
-    if (response.ok) {
-      const cadData = await response.json();
-      
-      // Extract actual geometry from CAD service response
-      const actualVolume = cadData.volume || cadData.features?.volume; // mm³
-      const actualSurfaceArea = cadData.surface_area || cadData.features?.surface_area; // mm²
-      const actualBoundingBox = cadData.dimensions || cadData.features?.dimensions;
-      
-      if (actualVolume && actualBoundingBox) {
-        // Use actual CAD data
-        const boundingBox = {
-          x: actualBoundingBox.x,
-          y: actualBoundingBox.y,
-          z: actualBoundingBox.z
-        };
-        
-        const volume = actualVolume;
-        const surfaceArea = actualSurfaceArea || Math.pow(volume, 2/3) * 6.2;
-        
-        return buildGeometryData(file, boundingBox, volume, surfaceArea);
-      }
-    }
-  } catch (error) {
-    console.warn('CAD service unavailable, falling back to estimation:', error);
-  }
+  console.log('⚠️ Using estimation fallback for STEP file:', file.name);
+  console.log('   💡 For accurate analysis, backend integration happens during file upload');
   
   // Fallback: Improved estimation using file size heuristics
   const fileSizeKB = file.size / 1024;
@@ -2287,7 +2256,7 @@ function recommendManufacturingProcess(
   }
   
   // Very high aspect ratios
-  if (characteristics.aspectRatio > 30) {
+  if (characteristics.aspectRatio && characteristics.aspectRatio > 30) {
     return { 
       process: 'manual-quote', 
       confidence: 0.90,

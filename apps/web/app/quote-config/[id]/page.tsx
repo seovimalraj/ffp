@@ -346,7 +346,54 @@ export default function QuoteConfigPage() {
           }
 
           console.log(`Analyzing CAD file: ${file.name}`);
-          const geometry = await analyzeCADFile(file);
+          
+          // ENTERPRISE-LEVEL: Use backend analysis for STEP files (advanced ray-casting thickness detection)
+          const extension = file.name.toLowerCase().split('.').pop();
+          const useBackendAnalysis = ['step', 'stp', 'iges', 'igs'].includes(extension || '');
+          
+          let geometry;
+          if (useBackendAnalysis && uploadedPath) {
+            console.log(`🔬 Using backend analysis for ${file.name} (advanced thickness detection)`);
+            console.log(`📤 File uploaded to: ${uploadedPath}`);
+            console.log(`🔍 Calling backend API: /api/cad/analyze-geometry`);
+            
+            try {
+              const analysisResponse = await fetch('/api/cad/analyze-geometry', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ 
+                  fileUrl: uploadedPath,
+                  fileName: file.name
+                })
+              });
+              
+              console.log(`📡 Backend API response status: ${analysisResponse.status}`);
+              
+              if (analysisResponse.ok) {
+                geometry = await analysisResponse.json();
+                console.log('✅ Backend analysis complete:', {
+                  process: geometry.recommendedProcess,
+                  thickness: geometry.detectedWallThickness,
+                  confidence: geometry.thicknessConfidence,
+                  method: geometry.thicknessDetectionMethod,
+                  sheetMetalScore: geometry.sheetMetalScore
+                });
+              } else {
+                const errorText = await analysisResponse.text();
+                console.error('❌ Backend analysis failed:', analysisResponse.status, errorText);
+                console.warn('⚠️ Falling back to client-side analysis');
+                geometry = await analyzeCADFile(file);
+              }
+            } catch (error) {
+              console.error('❌ Backend analysis error:', error);
+              console.warn('⚠️ Falling back to client-side analysis');
+              geometry = await analyzeCADFile(file);
+            }
+          } else {
+            console.log(`⚡ Using client-side analysis for ${file.name}`);
+            geometry = await analyzeCADFile(file);
+          }
+          
           console.log(`Geometry analysis complete:`, geometry);
 
           // Map recommendedProcess to process field
