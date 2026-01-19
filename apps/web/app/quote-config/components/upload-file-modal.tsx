@@ -53,16 +53,64 @@ const UploadFileModal = ({
 
         for (const file of acceptedFiles) {
           console.log(`Analyzing CAD file: ${file.name}`);
-          const geometry = await analyzeCADFile(file);
-
+          
+          // ENTERPRISE-LEVEL: Use backend analysis for STEP files (advanced ray-casting thickness detection)
+          // Use client-side analysis for STL files (faster, no thickness detection needed)
+          const extension = file.name.toLowerCase().split('.').pop();
+          const useBackendAnalysis = ['step', 'stp', 'iges', 'igs'].includes(extension || '');
+          
+          let geometry;
           let uploadedPath = `quotes/temp-${Date.now()}/${file.name}`;
-          try {
-            const { url } = await upload(file);
-            uploadedPath = url;
-          } catch (error) {
-            console.error(`Failed to upload ${file.name}:`, error);
-            notify.error(`Failed to upload ${file.name}`);
-            continue; // Skip if upload fails
+          
+          if (useBackendAnalysis) {
+            console.log(`🔬 Using backend analysis for ${file.name} (advanced thickness detection)`);
+            try {
+              // Upload file first to get URL
+              const { url } = await upload(file);
+              uploadedPath = url;
+              
+              // Call backend API for accurate analysis with ray-casting
+              const analysisResponse = await fetch('/api/cad/analyze-geometry', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ 
+                  fileUrl: url,
+                  fileName: file.name
+                })
+              });
+              
+              if (analysisResponse.ok) {
+                const backendGeometry = await analysisResponse.json();
+                geometry = backendGeometry;
+                console.log('✅ Backend analysis complete:', {
+                  process: geometry.recommendedProcess,
+                  thickness: geometry.detectedWallThickness,
+                  confidence: geometry.thicknessConfidence,
+                  method: geometry.thicknessDetectionMethod
+                });
+              } else {
+                console.warn('⚠️ Backend analysis failed, using client-side fallback');
+                geometry = await analyzeCADFile(file);
+              }
+            } catch (error) {
+              console.error('Backend analysis error:', error);
+              console.log('Falling back to client-side analysis');
+              geometry = await analyzeCADFile(file);
+            }
+          } else {
+            // STL files - use fast client-side analysis
+            console.log(`⚡ Using client-side analysis for ${file.name}`);
+            geometry = await analyzeCADFile(file);
+            
+            // Upload after analysis for STL
+            try {
+              const { url } = await upload(file);
+              uploadedPath = url;
+            } catch (error) {
+              console.error(`Failed to upload ${file.name}:`, error);
+              notify.error(`Failed to upload ${file.name}`);
+              continue; // Skip if upload fails
+            }
           }
 
           // Map recommendedProcess to process field
