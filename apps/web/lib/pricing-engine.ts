@@ -952,8 +952,7 @@ function computeSheetMetalLeadTime(
   // ===== 7. DEBURRING & FINISHING =====
   let finishingDays = 0.5; // Minimum for deburring
   
-  // Area-based finishing time
-  const totalAreaM2 = flatAreaM2 * quantity;
+  // Area-based finishing time (reuse totalAreaM2 from earlier)
   if (totalAreaM2 > 10) {
     finishingDays = 2;
   } else if (totalAreaM2 > 5) {
