@@ -33,6 +33,7 @@ export interface PartConfig {
   is_archived?: boolean;
   
   // Sheet Metal Specific Fields
+  thickness?: string; // Sheet metal thickness (e.g., "1.5" for 1.5mm)
   sheet_thickness_mm?: number;
   sheet_material_grade?: string;
   cutting_method?: "laser" | "plasma" | "waterjet" | "turret-punch";

@@ -36,7 +36,8 @@ import { notify } from "@/lib/toast";
 import { calculateLeadTime } from "../[id]/page";
 import { 
   getProcessDisplayName, 
-  requiresManualReview,
+  isCNCProcess,
+  isSheetMetalProcess,
   getDefaultMaterialForProcess,
   getDefaultFinishForProcess,
   getDefaultToleranceForProcess,
@@ -468,14 +469,6 @@ export function PartCardItem({
                         {getProcessDisplayName(part.process)}
                       </div>
 
-                      {/* Manual Review Badge - Show if material requires manual review */}
-                      {requiresManualReview(part.material, part.process || '') && (
-                        <div className="inline-flex items-center gap-1.5 rounded-md bg-orange-50 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider text-orange-700 ring-1 ring-inset ring-orange-200">
-                          <Wrench className="h-3.5 w-3.5 text-orange-500" />
-                          Manual Review
-                        </div>
-                      )}
-
                       {/* Custom */}
                       <div className="inline-flex items-center gap-1.5 rounded-md bg-slate-100 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider text-slate-700 ring-1 ring-inset ring-slate-200">
                         <Wrench className="h-3.5 w-3.5 text-slate-500" />
@@ -687,26 +680,7 @@ export function PartCardItem({
             </div>
             {/* Row 2: Lead Time Pricing Options */}
             <div className="w-full xl:w-[240px] shrink-0">
-              {/* Check if material requires manual review */}
-              {requiresManualReview(part.material, part.process || '') ? (
-                <div className="p-6 rounded-xl border-2 border-dashed border-orange-300 bg-orange-50/50">
-                  <div className="flex flex-col items-center text-center gap-3">
-                    <div className="p-3 bg-orange-100 rounded-full">
-                      <Wrench className="w-6 h-6 text-orange-600" />
-                    </div>
-                    <div>
-                      <h3 className="font-bold text-lg text-orange-900 mb-1">Manual Review Required</h3>
-                      <p className="text-sm text-orange-700 mb-3">
-                        This material requires a custom quote from our engineering team.
-                      </p>
-                      <p className="text-xs text-orange-600">
-                        We'll review your design and provide a detailed quote within 24 hours.
-                      </p>
-                    </div>
-                  </div>
-                </div>
-              ) : (
-                <div className="grid grid-cols-1 gap-3">
+              <div className="grid grid-cols-1 gap-3">
                   {(["economy", "standard", "expedited"] as const).map(
                     (leadTimeType) => {
                       const realPrice =
@@ -796,8 +770,7 @@ export function PartCardItem({
                     );
                   },
                 )}
-                </div>
-              )}
+              </div>
             </div>
           </div>
           

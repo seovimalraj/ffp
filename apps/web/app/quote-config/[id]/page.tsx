@@ -33,10 +33,12 @@ import {
   PROCESSES,
   MATERIALS,
   FINISHES,
-  SHEET_METAL_MATERIALS_LIST,
+  CNC_MATERIALS,
+  SHEET_METAL_MATERIALS,
   getProcessDisplayName,
-  requiresManualReview,
-  getSheetMetalMaterial,
+  isCNCProcess,
+  isSheetMetalProcess,
+  getMaterialByValue,
   getMaterialForProcess,
   getDefaultMaterialForProcess,
   getDefaultFinishForProcess,
@@ -72,32 +74,44 @@ import { SuggestionSidebar } from "../components/suggestion-sidebar";
 // --- Constants (Moved Outside) ---
 // Helper function to get materials based on process
 const getMaterialsForProcess = (process: string | undefined) => {
-  if (process === 'sheet-metal' || process?.includes('sheet')) {
-    return SHEET_METAL_MATERIALS_LIST.map(mat => ({
-      value: mat.value,
-      label: mat.requiresManualReview ? `${mat.label} [Manual review]` : mat.label,
-      multiplier: mat.costPerKg / 8.5,
-      requiresManualReview: mat.requiresManualReview,
-      icon: mat.category === 'aluminum' ? "🔷" :
-            mat.category === 'stainless' ? "⚙️" :
-            mat.category === 'copper' ? "🟠" :
-            mat.category === 'bronze' ? "🟤" :
-            mat.category === 'titanium' ? "🔵" :
-            mat.category === 'nickel-alloy' ? "⚪" : "⚫",
-    }));
+  if (isSheetMetalProcess(process)) {
+    // Flatten sheet metal materials for dropdown
+    const materials: { value: string; label: string; multiplier: number; icon: string }[] = [];
+    for (const [category, mats] of Object.entries(SHEET_METAL_MATERIALS)) {
+      for (const mat of mats) {
+        materials.push({
+          value: mat.value,
+          label: mat.label,
+          multiplier: mat.costPerKg / 8.5,
+          icon: category === 'aluminum' ? "🔷" :
+                category === 'stainless' ? "⚙️" :
+                category === 'copper' ? "🟠" :
+                category === 'galvanized' ? "🔩" :
+                category === 'brass' ? "🟤" : "⚫",
+        });
+      }
+    }
+    return materials;
   }
   
-  // CNC Machining materials
-  return Object.entries(MATERIALS).map(([key, mat]) => ({
-    value: key,
-    label: mat.name,
-    multiplier: mat.costPerKg / 8.5,
-    requiresManualReview: false,
-    icon: key.includes("aluminum") ? "🔷" :
-          key.includes("stainless") ? "⚙️" :
-          key.includes("titanium") ? "🔵" :
-          key.includes("plastic") ? "🟢" : "",
-  }));
+  // CNC Machining materials - flatten from categorized structure
+  const materials: { value: string; label: string; multiplier: number; icon: string }[] = [];
+  for (const [category, mats] of Object.entries(CNC_MATERIALS)) {
+    for (const mat of mats) {
+      materials.push({
+        value: mat.value,
+        label: mat.label,
+        multiplier: mat.costPerKg / 8.5,
+        icon: category === 'aluminum' ? "🔷" :
+              category === 'steel' ? "⚙️" :
+              category === 'stainless' ? "⚙️" :
+              category === 'titanium' ? "🔵" :
+              category === 'brass' ? "🟤" :
+              category === 'plastics' ? "🟢" : "⚫",
+      });
+    }
+  }
+  return materials;
 };
 
 const MATERIALS_LIST = Object.entries(MATERIALS).map(([key, mat]) => ({
@@ -203,28 +217,57 @@ const calculatePrice = (
 ): number => {
   if (!part.geometry) return 0;
 
-  // Skip pricing calculation for manual review materials
+  // Determine process type from CAD analysis
   const processType = part.process || part.geometry?.recommendedProcess || 'cnc-milling';
-  if (requiresManualReview(part.material, processType)) {
-    return 0; // Return 0 for manual review, will be quoted separately
-  }
 
   // Get material based on process type
-  const material = getMaterialForProcess(part.material, processType);
-  if (!material) return 0;
+  const material = getMaterialByValue(part.material, processType);
+  if (!material) {
+    // Fallback to legacy getMaterial for backward compatibility
+    const legacyMaterial = getMaterial(part.material);
+    if (!legacyMaterial) return 0;
+    
+    // Use legacy pricing
+    const process = PROCESSES[processType as keyof typeof PROCESSES] || PROCESSES["cnc-milling"];
+    const finish = getFinish(part.finish);
+    const pricing = calculatePricing({
+      geometry: part.geometry,
+      material: legacyMaterial,
+      process,
+      finish,
+      quantity: part.quantity,
+      tolerance: part.tolerance as "standard" | "precision" | "tight",
+      leadTimeType: tier,
+    });
+    return pricing.totalPrice;
+  }
 
   // Get correct process config
   const process = PROCESSES[processType as keyof typeof PROCESSES] || PROCESSES["cnc-milling"];
   const finish = getFinish(part.finish);
 
+  // Create material spec for pricing engine
+  const materialSpec = {
+    code: material.value.toUpperCase(),
+    name: material.label,
+    density: material.density,
+    costPerKg: material.costPerKg,
+    machinabilityFactor: 'machinabilityFactor' in material ? material.machinabilityFactor : 1.0,
+  };
+
+  // Calculate pricing with thickness support for sheet metal
   const pricing = calculatePricing({
     geometry: part.geometry,
-    material,
+    material: materialSpec,
     process,
     finish,
     quantity: part.quantity,
-    tolerance: part.tolerance as "standard" | "precision" | "tight",
+    tolerance: isCNCProcess(processType) ? (part.tolerance as "standard" | "precision" | "tight") : 'standard',
     leadTimeType: tier,
+    // Pass thickness for sheet metal calculations
+    ...(isSheetMetalProcess(processType) && part.thickness && {
+      sheetThickness: parseFloat(part.thickness),
+    }),
   });
 
   return pricing.totalPrice;
@@ -635,7 +678,7 @@ export default function QuoteConfigPage() {
                 if (part.geometry) {
                   const processType = p.process || part.geometry?.recommendedProcess || 'cnc-milling';
                   const material = getMaterialForProcess(part.material, processType);
-                  if (material && !requiresManualReview(part.material, processType)) {
+                  if (material) {
                     const process = PROCESSES[processType as keyof typeof PROCESSES] || PROCESSES["cnc-milling"];
                     const finish = getFinish(part.finish);
 
@@ -769,24 +812,19 @@ export default function QuoteConfigPage() {
         const process = PROCESSES[processType as keyof typeof PROCESSES] || PROCESSES["cnc-milling"];
         const finish = getFinish(updatedPart.finish);
 
-        // Only calculate pricing if not manual review
-        if (!requiresManualReview(updatedPart.material, processType)) {
-          updatedPart.pricing = calculatePricing({
-            geometry: updatedPart.geometry,
-            material,
-            process,
-            finish,
-            quantity: updatedPart.quantity,
-            tolerance: updatedPart.tolerance as
-              | "standard"
-              | "precision"
-              | "tight",
-            leadTimeType: "standard", // Always use standard as base
-          });
-        } else {
-          // Set pricing to undefined for manual review
-          updatedPart.pricing = undefined;
-        }
+        // Calculate pricing
+        updatedPart.pricing = calculatePricing({
+          geometry: updatedPart.geometry,
+          material,
+          process,
+          finish,
+          quantity: updatedPart.quantity,
+          tolerance: updatedPart.tolerance as
+            | "standard"
+            | "precision"
+            | "tight",
+          leadTimeType: "standard", // Always use standard as base
+        });
 
         // Recalculate derived fields
         updatedPart.final_price = calculatePrice(

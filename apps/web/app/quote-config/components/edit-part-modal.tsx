@@ -5,7 +5,9 @@ import { Label } from "@/components/ui/label";
 import {
   Select,
   SelectContent,
+  SelectGroup,
   SelectItem,
+  SelectLabel,
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
@@ -30,6 +32,21 @@ import {
   getDefaultMaterialForProcess,
   getDefaultFinishForProcess,
   getDefaultToleranceForProcess,
+  getDefaultThickness,
+  isCNCProcess,
+  isSheetMetalProcess,
+  CNC_MATERIALS,
+  SHEET_METAL_MATERIALS,
+  CNC_FINISHES,
+  SHEET_METAL_FINISHES,
+  CNC_TOLERANCES,
+  SHEET_METAL_THICKNESSES,
+  recommendOptimalMaterial,
+  recommendTolerance,
+  recommendFinish,
+  calculateManufacturabilityScore,
+  generateCostOptimizations,
+  optimizeSheetMetalSetup,
 } from "@/lib/pricing-engine";
 import { notify } from "@/lib/toast";
 
@@ -151,6 +168,65 @@ export function EditPartModal({
       setLocalPart(part);
       setActiveTab("config"); // Reset to config tab when modal opens
       setSelectedHighlight(null); // Clear highlight when modal opens
+      
+      // Auto-apply intelligent recommendations for new parts
+      const applySmartDefaults = () => {
+        const process = part.process || 'cnc-milling';
+        const geometry = {
+          volume: part.volume || 1000,
+          surfaceArea: part.surfaceArea || 5000,
+          complexity: part.complexity || 'moderate',
+          features: part.features || {},
+        };
+        
+        // Only auto-apply if part has no custom settings yet (using default material)
+        const isNewPart = part.material === (isCNCProcess(process) ? 'aluminum-6061' : 'sm-aluminum-5052');
+        
+        if (isNewPart) {
+          const updates: Partial<PartConfig> = {};
+          
+          // 1. Auto-select best material
+          const materialRecs = recommendOptimalMaterial(process, geometry, 'general');
+          if (materialRecs.length > 0 && materialRecs[0].score > 85) {
+            updates.material = materialRecs[0].material;
+          }
+          
+          // 2. Auto-select best finish
+          const finishRecs = recommendFinish(
+            updates.material || part.material || (isCNCProcess(process) ? 'aluminum-6061' : 'sm-aluminum-5052'),
+            'general'
+          );
+          if (finishRecs.length > 0 && finishRecs[0].score > 85) {
+            updates.finish = finishRecs[0].finish;
+          }
+          
+          // 3. Auto-select tolerance for CNC
+          if (isCNCProcess(process)) {
+            const toleranceRec = recommendTolerance(geometry, updates.material || part.material || 'aluminum-6061');
+            if (toleranceRec.confidence > 80) {
+              updates.tolerance = toleranceRec.recommendation;
+            }
+          }
+          
+          // 4. Auto-select optimal quantity
+          const quantityAnalysis = analyzeQuantityBreakpoints(part, geometry);
+          const bestValue = quantityAnalysis.reduce((best, curr) => 
+            curr.savingsPercent > best.savingsPercent ? curr : best,
+            quantityAnalysis[0] || { quantity: part.quantity, savingsPercent: 0 }
+          );
+          if (bestValue.savingsPercent > 20 && bestValue.quantity <= 50) {
+            updates.quantity = bestValue.quantity;
+          }
+          
+          // Apply all updates
+          if (Object.keys(updates).length > 0) {
+            setLocalPart(prev => ({ ...prev, ...updates }));
+          }
+        }
+      };
+      
+      // Small delay to ensure component is mounted
+      setTimeout(applySmartDefaults, 100);
     }
   }, [isOpen, part]);
 
@@ -340,7 +416,7 @@ export function EditPartModal({
                 className="flex-1 overflow-y-auto outline-none"
               >
                 <div className="px-8 py-8 max-w-4xl">
-                  {/* Quantity & Pricing */}
+                  {/* Quantity & Pricing with Smart Breakpoints */}
                   <div className="space-y-10 mb-10">
                     <div className="grid lg:grid-cols-[240px_1fr] gap-8 items-start">
                       <div>
@@ -391,89 +467,281 @@ export function EditPartModal({
                             </p>
                           </div>
                         )}
+                        
+                        {/* Smart Quantity Breakpoints */}
+                        {(() => {
+                          const geometry = {
+                            volume: localPart.volume || 1000,
+                            surfaceArea: localPart.surfaceArea || 5000,
+                            complexity: localPart.complexity || 'moderate',
+                            features: localPart.features || {},
+                          };
+                          const quantityAnalysis = analyzeQuantityBreakpoints(localPart, geometry);
+                          const bestValue = quantityAnalysis.reduce((best, curr) => 
+                            curr.savingsPercent > best.savingsPercent ? curr : best
+                          );
+                          
+                          if (quantityAnalysis.length > 0) {
+                            return (
+                              <div className="pl-20 mt-4">
+                                <div className="bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200 rounded-lg p-4">
+                                  <div className="flex items-center gap-2 mb-2">
+                                    <span className="text-xs font-bold text-blue-700">BEST VALUE:</span>
+                                    <span className="text-xs text-blue-600">Order {bestValue.quantity} units</span>
+                                  </div>
+                                  <div className="flex items-center gap-4">
+                                    <div className="text-sm font-bold text-blue-900">
+                                      ${bestValue.unitPrice.toFixed(2)}/unit
+                                    </div>
+                                    <div className="text-xs text-blue-600">
+                                      Save {bestValue.savingsPercent.toFixed(0)}% vs single unit
+                                    </div>
+                                    <button
+                                      onClick={() => updateLocalPart("quantity", bestValue.quantity)}
+                                      className="ml-auto px-3 py-1 bg-blue-600 text-white text-xs font-bold rounded-full hover:bg-blue-700 transition-colors"
+                                    >
+                                      Apply
+                                    </button>
+                                  </div>
+                                </div>
+                              </div>
+                            );
+                          }
+                          return null;
+                        })()}
                       </div>
                     </div>
                   </div>
 
                   <div className="h-px bg-gray-100 w-full mb-10" />
 
+                  {/* Intelligent Recommendations Section */}
+                  {(() => {
+                    const process = localPart.process || 'cnc-milling';
+                    const geometry = {
+                      volume: localPart.volume || 1000,
+                      surfaceArea: localPart.surfaceArea || 5000,
+                      complexity: localPart.complexity || 'moderate',
+                      features: localPart.features || {},
+                    };
+                    
+                    const materialRecs = recommendOptimalMaterial(process, geometry, 'general');
+                    const manufacturabilityScore = calculateManufacturabilityScore(geometry, process);
+                    const costOptimizations = generateCostOptimizations(localPart, geometry);
+                    const leadTimePrediction = predictLeadTime(process, localPart.quantity, geometry.complexity);
+                    
+                    return (
+                      <div className="mb-10">
+                        <div className="grid lg:grid-cols-[240px_1fr] gap-8 items-start">
+                          <div>
+                            <Label className="text-base font-semibold text-gray-900">
+                              AI-Level Recommendations
+                            </Label>
+                            <p className="text-sm text-gray-500 mt-1.5 leading-relaxed">
+                              Intelligent insights based on your part geometry and requirements.
+                            </p>
+                          </div>
+                          
+                          <div className="space-y-4">
+                            {/* Manufacturability Score */}
+                            <div className="bg-gradient-to-br from-blue-50 to-indigo-50 border border-blue-200 rounded-xl p-5 shadow-sm">
+                              <div className="flex items-center justify-between mb-3">
+                                <h3 className="text-sm font-semibold text-gray-900">Manufacturability Score</h3>
+                                <div className={`px-3 py-1 rounded-full text-xs font-bold ${
+                                  manufacturabilityScore.grade === 'A' ? 'bg-green-500 text-white' :
+                                  manufacturabilityScore.grade === 'B' ? 'bg-blue-500 text-white' :
+                                  manufacturabilityScore.grade === 'C' ? 'bg-yellow-500 text-white' :
+                                  manufacturabilityScore.grade === 'D' ? 'bg-orange-500 text-white' :
+                                  'bg-red-500 text-white'
+                                }`}>
+                                  Grade {manufacturabilityScore.grade}
+                                </div>
+                              </div>
+                              <div className="flex items-center gap-3 mb-3">
+                                <div className="text-3xl font-bold text-gray-900">{manufacturabilityScore.score}</div>
+                                <div className="text-sm text-gray-600">/100</div>
+                              </div>
+                              {manufacturabilityScore.suggestions.length > 0 && (
+                                <div className="space-y-2 mt-3 pt-3 border-t border-blue-200">
+                                  {manufacturabilityScore.suggestions.map((suggestion, idx) => (
+                                    <p key={idx} className="text-xs text-gray-700 flex items-start gap-2">
+                                      <span className="text-blue-500 mt-0.5">•</span>
+                                      <span>{suggestion}</span>
+                                    </p>
+                                  ))}
+                                </div>
+                              )}
+                            </div>
+
+                            {/* Material Recommendations */}
+                            {materialRecs.length > 0 && (
+                              <div className="bg-gradient-to-br from-green-50 to-emerald-50 border border-green-200 rounded-xl p-5 shadow-sm">
+                                <h3 className="text-sm font-semibold text-gray-900 mb-3">Recommended Materials</h3>
+                                <div className="space-y-3">
+                                  {materialRecs.slice(0, 3).map((rec, idx) => (
+                                    <div 
+                                      key={idx} 
+                                      className="bg-white rounded-lg p-3 border border-green-100 hover:border-green-300 transition-colors cursor-pointer"
+                                      onClick={() => updateLocalPart("material", rec.material)}
+                                    >
+                                      <div className="flex items-center justify-between mb-2">
+                                        <span className="text-sm font-medium text-gray-900">
+                                          {getMaterialByValue(rec.material)?.label || rec.material}
+                                        </span>
+                                        <div className="flex items-center gap-2">
+                                          <div className="text-xs font-bold text-green-600">
+                                            Score: {rec.score}
+                                          </div>
+                                          {idx === 0 && (
+                                            <span className="px-2 py-0.5 bg-green-500 text-white text-xs font-bold rounded-full">
+                                              BEST
+                                            </span>
+                                          )}
+                                        </div>
+                                      </div>
+                                      <p className="text-xs text-gray-600 mb-2">{rec.reason}</p>
+                                      {rec.costImpact !== 0 && (
+                                        <p className={`text-xs font-medium ${rec.costImpact < 0 ? 'text-green-600' : 'text-red-600'}`}>
+                                          {rec.costImpact < 0 ? 'Saves' : 'Adds'} ${Math.abs(rec.costImpact).toFixed(2)}
+                                        </p>
+                                      )}
+                                    </div>
+                                  ))}
+                                </div>
+                              </div>
+                            )}
+
+                            {/* Cost Optimizations */}
+                            {costOptimizations.length > 0 && (
+                              <div className="bg-gradient-to-br from-purple-50 to-pink-50 border border-purple-200 rounded-xl p-5 shadow-sm">
+                                <h3 className="text-sm font-semibold text-gray-900 mb-3">Cost Optimization Opportunities</h3>
+                                <div className="space-y-3">
+                                  {costOptimizations.slice(0, 4).map((opt, idx) => (
+                                    <div key={idx} className="bg-white rounded-lg p-3 border border-purple-100">
+                                      <div className="flex items-start justify-between mb-2">
+                                        <span className="text-xs font-medium text-gray-900 flex-1">{opt.suggestion}</span>
+                                        <span className={`ml-2 px-2 py-0.5 rounded text-xs font-bold ${
+                                          opt.effort === 'easy' ? 'bg-green-100 text-green-700' :
+                                          opt.effort === 'moderate' ? 'bg-yellow-100 text-yellow-700' :
+                                          'bg-orange-100 text-orange-700'
+                                        }`}>
+                                          {opt.effort}
+                                        </span>
+                                      </div>
+                                      <div className="flex items-center gap-3">
+                                        <span className="text-sm font-bold text-green-600">
+                                          Save ${opt.potentialSavings.toFixed(2)}
+                                        </span>
+                                        <span className="text-xs text-gray-500">({opt.savingsPercent}% reduction)</span>
+                                      </div>
+                                    </div>
+                                  ))}
+                                </div>
+                              </div>
+                            )}
+
+                            {/* Lead Time Prediction */}
+                            <div className="bg-gradient-to-br from-orange-50 to-amber-50 border border-orange-200 rounded-xl p-5 shadow-sm">
+                              <h3 className="text-sm font-semibold text-gray-900 mb-3">Predicted Lead Time</h3>
+                              <div className="flex items-center gap-3 mb-3">
+                                <div className="text-2xl font-bold text-gray-900">{leadTimePrediction.days} days</div>
+                                <div className="text-xs text-gray-600">
+                                  {leadTimePrediction.confidence}% confidence
+                                </div>
+                              </div>
+                              <div className="space-y-2 mt-3 pt-3 border-t border-orange-200">
+                                {leadTimePrediction.breakdown.map((phase, idx) => (
+                                  <div key={idx} className="flex items-center justify-between text-xs">
+                                    <span className="text-gray-700">{phase.phase}</span>
+                                    <span className="font-medium text-gray-900">{phase.days} days</span>
+                                  </div>
+                                ))}
+                              </div>
+                              {leadTimePrediction.alternatives.length > 0 && (
+                                <div className="mt-3 pt-3 border-t border-orange-200">
+                                  <p className="text-xs font-medium text-gray-700 mb-2">Expedited Option:</p>
+                                  {leadTimePrediction.alternatives.map((alt, idx) => (
+                                    <div key={idx} className="text-xs text-gray-600">
+                                      {alt.days} days for {alt.costMultiplier}× cost
+                                    </div>
+                                  ))}
+                                </div>
+                              )}
+                            </div>
+
+                            {/* Sheet Metal Nesting Optimization */}
+                            {isSheetMetalProcess(process) && (() => {
+                              const nestingOpt = optimizeSheetMetalSetup(
+                                geometry,
+                                localPart.thickness || '1.0',
+                                localPart.quantity
+                              );
+                              return (
+                                <div className="bg-gradient-to-br from-teal-50 to-cyan-50 border border-teal-200 rounded-xl p-5 shadow-sm">
+                                  <h3 className="text-sm font-semibold text-gray-900 mb-3">Nesting Efficiency</h3>
+                                  <div className="grid grid-cols-2 gap-3 mb-3">
+                                    <div className="bg-white rounded-lg p-3 border border-teal-100">
+                                      <div className="text-xs text-gray-600 mb-1">Material Utilization</div>
+                                      <div className="text-lg font-bold text-teal-600">
+                                        {nestingOpt.materialUtilization.toFixed(1)}%
+                                      </div>
+                                    </div>
+                                    <div className="bg-white rounded-lg p-3 border border-teal-100">
+                                      <div className="text-xs text-gray-600 mb-1">Parts per Sheet</div>
+                                      <div className="text-lg font-bold text-teal-600">
+                                        {nestingOpt.partsPerSheet}
+                                      </div>
+                                    </div>
+                                  </div>
+                                  <div className="space-y-2 pt-3 border-t border-teal-200">
+                                    {nestingOpt.recommendations.map((rec, idx) => (
+                                      <p key={idx} className="text-xs text-gray-700 flex items-start gap-2">
+                                        <span className="text-teal-500 mt-0.5">•</span>
+                                        <span>{rec}</span>
+                                      </p>
+                                    ))}
+                                  </div>
+                                </div>
+                              );
+                            })()}
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })()}
+
+                  <div className="h-px bg-gray-100 w-full mb-10" />
+
                   {/* General Config Section */}
                   <div className="space-y-10">
-                    {/* Process Type */}
+                    {/* Process Type - Auto-Detected (Read-Only) */}
                     <div className="grid lg:grid-cols-[240px_1fr] gap-8 items-start">
                       <div>
                         <Label className="text-base font-semibold text-gray-900">
                           Manufacturing Process
                         </Label>
                         <p className="text-sm text-gray-500 mt-1.5 leading-relaxed">
-                          Select the manufacturing process. Changing this will reset material and finish to process-specific defaults.
+                          Automatically detected from CAD file geometry. Cannot be changed manually.
                         </p>
                       </div>
-                      <Select
-                        value={localPart.process || 'cnc-milling'}
-                        onValueChange={(value) => {
-                          // When process changes, reset to appropriate defaults
-                          const newMaterial = getDefaultMaterialForProcess(value);
-                          const newFinish = getDefaultFinishForProcess(value);
-                          const newTolerance = getDefaultToleranceForProcess(value);
-                          
-                          setLocalPart(prev => ({
-                            ...prev,
-                            process: value,
-                            material: newMaterial,
-                            finish: newFinish,
-                            tolerance: newTolerance,
-                          }));
-                          
-                          notify.info(`Process changed to ${getProcessDisplayName(value)}. Material and options reset to defaults.`);
-                        }}
-                      >
-                        <SelectTrigger className="w-full h-12 border-gray-200 bg-white rounded-lg shadow-sm text-sm">
-                          <SelectValue>
-                            {getProcessDisplayName(localPart.process || 'cnc-milling')}
-                          </SelectValue>
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="cnc-milling">
-                            <div className="flex items-center gap-2">
-                              <span>⚡</span>
-                              <div>
-                                <div className="font-semibold">CNC Milling</div>
-                                <div className="text-xs text-gray-500">3-axis, 5-axis machining</div>
-                              </div>
-                            </div>
-                          </SelectItem>
-                          <SelectItem value="cnc-turning">
-                            <div className="flex items-center gap-2">
-                              <span>⚡</span>
-                              <div>
-                                <div className="font-semibold">CNC Turning</div>
-                                <div className="text-xs text-gray-500">Lathe operations</div>
-                              </div>
-                            </div>
-                          </SelectItem>
-                          <SelectItem value="sheet-metal">
-                            <div className="flex items-center gap-2">
-                              <span>📋</span>
-                              <div>
-                                <div className="font-semibold">Sheet Metal</div>
-                                <div className="text-xs text-gray-500">Laser cutting, bending, forming</div>
-                              </div>
-                            </div>
-                          </SelectItem>
-                        </SelectContent>
-                      </Select>
+                      <div className="w-full h-12 border border-gray-200 bg-gray-50 rounded-lg shadow-sm flex items-center px-4">
+                        <span className="text-sm font-medium text-gray-700">
+                          {getProcessDisplayName(localPart.process || 'cnc-milling')}
+                        </span>
+                        <span className="ml-2 text-xs text-gray-500">(Auto-detected)</span>
+                      </div>
                     </div>
 
-                    {/* Material */}
+                    {/* Material - Categorized Dropdown */}
                     <div className="grid lg:grid-cols-[240px_1fr] gap-8 items-start">
                       <div>
                         <Label className="text-base font-semibold text-gray-900">
                           Material
                         </Label>
                         <p className="text-sm text-gray-500 mt-1.5 leading-relaxed">
-                          Select the specific material grade required for this
-                          part's manufacturing.
+                          {isSheetMetalProcess(localPart.process)
+                            ? "Select sheet metal material for fabrication."
+                            : "Select the specific material grade for CNC machining."}
                         </p>
                       </div>
                       <Select
@@ -483,118 +751,212 @@ export function EditPartModal({
                         <SelectTrigger className="h-12 border-gray-200 bg-white hover:border-gray-300 transition-colors rounded-xl shadow-sm text-base">
                           <SelectValue placeholder="Select Material" />
                         </SelectTrigger>
-                        <SelectContent>
-                          {MATERIALS_LIST.map((m) => (
-                            <SelectItem key={m.value} value={m.value}>
-                              {m.label}
-                            </SelectItem>
-                          ))}
+                        <SelectContent className="max-h-[400px]">
+                          {isSheetMetalProcess(localPart.process) ? (
+                            // Sheet Metal Materials - Categorized
+                            <>
+                              {Object.entries(SHEET_METAL_MATERIALS).map(([category, materials]) => (
+                                <SelectGroup key={category}>
+                                  <SelectLabel className="text-xs font-bold uppercase tracking-wider text-gray-500 bg-gray-50 px-2 py-1.5">
+                                    {category.replace(/-/g, ' ')}
+                                  </SelectLabel>
+                                  {materials.map((m) => (
+                                    <SelectItem key={m.value} value={m.value}>
+                                      {m.label}
+                                    </SelectItem>
+                                  ))}
+                                </SelectGroup>
+                              ))}
+                            </>
+                          ) : (
+                            // CNC Materials - Categorized
+                            <>
+                              {Object.entries(CNC_MATERIALS).map(([category, materials]) => (
+                                <SelectGroup key={category}>
+                                  <SelectLabel className="text-xs font-bold uppercase tracking-wider text-gray-500 bg-gray-50 px-2 py-1.5">
+                                    {category.charAt(0).toUpperCase() + category.slice(1)}
+                                  </SelectLabel>
+                                  {materials.map((m) => (
+                                    <SelectItem key={m.value} value={m.value}>
+                                      {m.label}
+                                    </SelectItem>
+                                  ))}
+                                </SelectGroup>
+                              ))}
+                            </>
+                          )}
                         </SelectContent>
                       </Select>
                     </div>
 
                     <div className="h-px bg-gray-100 w-full" />
 
-                    {/* Finish */}
-                    <div className="grid lg:grid-cols-[240px_1fr] gap-8 items-start">
-                      <div>
-                        <Label className="text-base font-semibold text-gray-900">
-                          Surface Finish
-                        </Label>
-                        <p className="text-sm text-gray-500 mt-1.5 leading-relaxed">
-                          Choose the post-processing surface finish or coating.
-                        </p>
-                      </div>
-                      <Select
-                        value={localPart.finish}
-                        onValueChange={(v) => updateLocalPart("finish", v)}
-                      >
-                        <SelectTrigger className="h-12 border-gray-200 bg-white hover:border-gray-300 transition-colors rounded-xl shadow-sm text-base">
-                          <SelectValue placeholder="Select Finish" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {FINISHES_LIST.map((f) => (
-                            <SelectItem key={f.value} value={f.value}>
-                              <div className="flex justify-between items-center w-full min-w-[200px]">
-                                <span>{f.label}</span>
-                                {f.cost > 0 && (
-                                  <span className="text-xs text-gray-500">
-                                    +${f.cost}
-                                  </span>
-                                )}
+                    {/* Surface Finish - Process Aware with AI Recommendations */}
+                    {(() => {
+                      const finishRecs = recommendFinish(
+                        localPart.material || (isSheetMetalProcess(localPart.process) ? 'sm-aluminum-5052' : 'aluminum-6061'),
+                        'general'
+                      );
+                      
+                      return (
+                        <div className="grid lg:grid-cols-[240px_1fr] gap-8 items-start">
+                          <div>
+                            <Label className="text-base font-semibold text-gray-900">
+                              Surface Finish
+                            </Label>
+                            <p className="text-sm text-gray-500 mt-1.5 leading-relaxed">
+                              {isSheetMetalProcess(localPart.process)
+                                ? "Select post-fabrication finish or coating."
+                                : "Choose the post-machining surface treatment."}
+                            </p>
+                            {finishRecs.length > 0 && (
+                              <div className="mt-2 text-xs bg-green-50 border border-green-200 rounded-lg p-2">
+                                <span className="font-semibold text-green-700">Top Pick:</span>
+                                <span className="text-green-600"> {finishRecs[0].reason}</span>
                               </div>
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
-
-                    <div className="h-px bg-gray-100 w-full" />
-
-                    {/* Treads & Inserts */}
-                    <div className="grid lg:grid-cols-[240px_1fr] gap-8 items-start">
-                      <div>
-                        <Label className="text-base font-semibold text-gray-900">
-                          Threads & Inserts
-                        </Label>
-                        <p className="text-sm text-gray-500 mt-1.5 leading-relaxed">
-                          Specify if standard or custom threading inserts are
-                          required.
-                        </p>
-                      </div>
-                      <Select
-                        value={localPart.threads}
-                        onValueChange={(v) => updateLocalPart("threads", v)}
-                      >
-                        <SelectTrigger className="h-12 border-gray-200 bg-white hover:border-gray-300 transition-colors rounded-xl shadow-sm text-base">
-                          <SelectValue placeholder="None" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {THREAD_OPTIONS.map((t) => (
-                            <SelectItem key={t.value} value={t.value}>
-                              {t.label}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
-
-                    <div className="h-px bg-gray-100 w-full" />
-
-                    {/* Tolerances */}
-                    <div className="grid lg:grid-cols-[240px_1fr] gap-8 items-start">
-                      <div>
-                        <Label className="text-base font-semibold text-gray-900">
-                          Tolerance Standard
-                        </Label>
-                        <p className="text-sm text-gray-500 mt-1.5 leading-relaxed">
-                          Define the required dimensional accuracy for this
-                          part.
-                        </p>
-                      </div>
-                      <div className="grid lg:grid-cols-3 gap-3">
-                        {TOLERANCES_LIST.map((t) => (
-                          <div
-                            key={t.value}
-                            onClick={() =>
-                              updateLocalPart("tolerance", t.value)
-                            }
-                            className={`
-                              cursor-pointer rounded-xl p-4 border transition-all text-center
-                              ${
-                                localPart.tolerance === t.value
-                                  ? "border-blue-600 bg-blue-600 text-white shadow-lg"
-                                  : "border-gray-200 bg-white text-gray-600 hover:border-gray-300 hover:bg-gray-50"
-                              }
-                            `}
+                            )}
+                          </div>
+                          <Select
+                            value={localPart.finish}
+                            onValueChange={(v) => updateLocalPart("finish", v)}
                           >
-                            <span className="font-semibold last:col-span-2 lg:last:col-span-1 text-sm">
-                              {t.label}
+                            <SelectTrigger className="h-12 border-gray-200 bg-white hover:border-gray-300 transition-colors rounded-xl shadow-sm text-base">
+                              <SelectValue placeholder="Select Finish" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {(isSheetMetalProcess(localPart.process) ? SHEET_METAL_FINISHES : CNC_FINISHES).map((f) => {
+                                const isRecommended = finishRecs.some(rec => rec.finish === f.value);
+                                return (
+                                  <SelectItem key={f.value} value={f.value}>
+                                    <div className="flex items-center gap-2">
+                                      <span>{f.label}</span>
+                                      {isRecommended && (
+                                        <span className="px-1.5 py-0.5 bg-green-500 text-white text-xs font-bold rounded">
+                                          AI ✓
+                                        </span>
+                                      )}
+                                    </div>
+                                  </SelectItem>
+                                );
+                              })}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                      );
+                    })()}
+
+                    <div className="h-px bg-gray-100 w-full" />
+
+                    {/* CNC ONLY: Threads & Inserts - Auto-calculated info display */}
+                    {isCNCProcess(localPart.process) && (
+                      <>
+                        <div className="grid lg:grid-cols-[240px_1fr] gap-8 items-start">
+                          <div>
+                            <Label className="text-base font-semibold text-gray-900">
+                              Threads & Inserts
+                            </Label>
+                            <p className="text-sm text-gray-500 mt-1.5 leading-relaxed">
+                              Auto-detected from CAD geometry. Included in pricing.
+                            </p>
+                          </div>
+                          <div className="h-12 border border-gray-200 bg-gray-50 rounded-xl flex items-center px-4">
+                            <span className="text-sm text-gray-600">
+                              {localPart.geometry?.holes?.length > 0
+                                ? `${localPart.geometry.holes.length} holes detected (threads auto-calculated)`
+                                : "No threaded holes detected"}
                             </span>
                           </div>
-                        ))}
+                        </div>
+                        <div className="h-px bg-gray-100 w-full" />
+                      </>
+                    )}
+
+                    {/* CNC ONLY: Tolerances with AI Recommendation */}
+                    {isCNCProcess(localPart.process) && (() => {
+                      const geometry = {
+                        volume: localPart.volume || 1000,
+                        surfaceArea: localPart.surfaceArea || 5000,
+                        complexity: localPart.complexity || 'moderate',
+                        features: localPart.features || {},
+                      };
+                      const recommendedTolerance = recommendTolerance(geometry, localPart.material || 'aluminum-6061');
+                      
+                      return (
+                        <div className="grid lg:grid-cols-[240px_1fr] gap-8 items-start">
+                          <div>
+                            <Label className="text-base font-semibold text-gray-900">
+                              Tolerance Standard
+                            </Label>
+                            <p className="text-sm text-gray-500 mt-1.5 leading-relaxed">
+                              Define the required dimensional accuracy for CNC machining.
+                            </p>
+                            {recommendedTolerance.recommendation !== 'standard' && (
+                              <div className="mt-2 text-xs bg-blue-50 border border-blue-200 rounded-lg p-2">
+                                <span className="font-semibold text-blue-700">AI Suggestion:</span>
+                                <span className="text-blue-600"> {recommendedTolerance.reason}</span>
+                              </div>
+                            )}
+                          </div>
+                          <div className="grid lg:grid-cols-3 gap-3">
+                            {CNC_TOLERANCES.map((t) => {
+                              const isRecommended = t.value === recommendedTolerance.recommendation;
+                              return (
+                                <div
+                                  key={t.value}
+                                  onClick={() => updateLocalPart("tolerance", t.value)}
+                                  className={`
+                                    cursor-pointer rounded-xl p-4 border transition-all text-center relative
+                                    ${
+                                      localPart.tolerance === t.value
+                                        ? "border-blue-600 bg-blue-600 text-white shadow-lg"
+                                        : isRecommended
+                                        ? "border-green-400 bg-green-50 text-green-700 hover:bg-green-100 ring-2 ring-green-200"
+                                        : "border-gray-200 bg-white text-gray-600 hover:border-gray-300 hover:bg-gray-50"
+                                    }
+                                  `}
+                                >
+                                  <span className="font-semibold text-sm">{t.label}</span>
+                                  {isRecommended && localPart.tolerance !== t.value && (
+                                    <span className="absolute -top-2 -right-2 px-2 py-0.5 bg-green-500 text-white text-xs font-bold rounded-full shadow-lg">
+                                      AI ✓
+                                    </span>
+                                  )}
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      );
+                    })()}
+
+                    {/* SHEET METAL ONLY: Thickness */}
+                    {isSheetMetalProcess(localPart.process) && (
+                      <div className="grid lg:grid-cols-[240px_1fr] gap-8 items-start">
+                        <div>
+                          <Label className="text-base font-semibold text-gray-900">
+                            Material Thickness
+                          </Label>
+                          <p className="text-sm text-gray-500 mt-1.5 leading-relaxed">
+                            Select the sheet metal thickness for fabrication.
+                          </p>
+                        </div>
+                        <Select
+                          value={localPart.thickness || getDefaultThickness()}
+                          onValueChange={(v) => updateLocalPart("thickness", v)}
+                        >
+                          <SelectTrigger className="h-12 border-gray-200 bg-white hover:border-gray-300 transition-colors rounded-xl shadow-sm text-base">
+                            <SelectValue placeholder="Select Thickness" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {SHEET_METAL_THICKNESSES.map((t) => (
+                              <SelectItem key={t.value} value={t.value}>
+                                {t.label}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
                       </div>
-                    </div>
+                    )}
 
                     <div className="h-px bg-gray-100 w-full" />
 
