@@ -9,6 +9,7 @@ import {
   ArrowUpRight,
   ArrowRight,
   ShoppingCart,
+  Hourglass,
 } from "lucide-react";
 import Link from "next/link";
 import { useEffect, useState } from "react";
@@ -73,7 +74,7 @@ export default function CustomerDashboardPage() {
       change: "Active now",
       trend: "neutral",
       icon: FileText,
-      color: "blue",
+      color: "black",
       href: "/portal/quotes",
     },
     {
@@ -81,8 +82,10 @@ export default function CustomerDashboardPage() {
       value: stats.openOrders.toString(),
       change: "In progress",
       trend: "neutral",
-      icon: Package,
-      color: "green",
+      icon: (props: any) => (
+        <img src="/icons/package.png" className="w-8 h-8" {...props} />
+      ),
+      color: "black",
       href: "/portal/orders",
     },
     {
@@ -90,7 +93,9 @@ export default function CustomerDashboardPage() {
       value: stats.totalSpent,
       change: "Lifetime",
       trend: "up",
-      icon: DollarSign,
+      icon: (props: any) => (
+        <img src="/icons/spending.png" className="w-8 h-8" {...props} />
+      ),
       color: "purple",
       href: "/portal/orders",
     },
@@ -99,8 +104,10 @@ export default function CustomerDashboardPage() {
       value: stats.avgLeadTime,
       change: "Target: 5 days",
       trend: "neutral",
-      icon: Clock,
-      color: "orange",
+      icon: (props: any) => (
+        <img src="/icons/lead-time.png" className="w-8 h-8" {...props} />
+      ),
+      color: "black",
       href: "/portal/analytics",
     },
   ];
@@ -168,7 +175,7 @@ export default function CustomerDashboardPage() {
             >
               <div className="flex items-start justify-between mb-4">
                 <div className={`${colors.bg} ${colors.text} p-2.5 rounded-lg`}>
-                  <Icon size={20} />
+                  <Icon stroke="black" size={20} />
                 </div>
                 {stat.trend === "up" && (
                   <span className="text-xs font-medium text-green-600 bg-green-50 px-2 py-1 rounded-full flex items-center gap-1">

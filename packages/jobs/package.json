@@ -1,0 +1,42 @@
+{
+  "name": "@cnc-quote/jobs",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Shared BullMQ queues, job names, and job contracts",
+  "type": "commonjs",
+  "main": "./dist/index.js",
+  "module": "./dist/index.mjs",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "sideEffects": false,
+  "scripts": {
+    "build": "tsup && tsc -p tsconfig.build.json",
+    "dev": "tsup --watch",
+    "lint": "eslint \"src/**/*.ts\"",
+    "type-check": "tsc --noEmit",
+    "test": "tsx --test src/__tests__/quote.vnext.spec.ts"
+  },
+  "dependencies": {
+    "bullmq": "^5.0.0",
+    "uuid": "^13.0.0",
+    "zod": "^4.1.9"
+  },
+  "devDependencies": {
+    "@swc/core": "^1.13.5",
+    "@types/node": "^24.5.2",
+    "@typescript-eslint/eslint-plugin": "^8.44.0",
+    "@typescript-eslint/parser": "^8.44.0",
+    "eslint": "^9.35.0",
+    "tsup": "^8.5.0",
+    "tsx": "^4.20.6",
+    "typescript": "^5.3.0"
+  }
+}

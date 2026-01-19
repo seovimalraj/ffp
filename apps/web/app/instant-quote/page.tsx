@@ -195,8 +195,10 @@ export default function InstantQuotePage() {
         console.log(response, "response");
         if (response.data?.success && response.data?.rfq_id) {
           console.log("RFQ Created:", response.data.rfq_id);
+          notify.success("Quote created successfully");
           router.push(`/quote-config/${response.data.rfq_id}`);
         } else {
+          notify.error("Failed to create quote");
           throw new Error("Failed to create quote");
         }
       } catch (apiError) {

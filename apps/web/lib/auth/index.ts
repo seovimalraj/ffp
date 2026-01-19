@@ -225,10 +225,8 @@ const AuthService = {
     return res.json();
   },
   register: async (data: any) => {
-    console.log("here");
     const apiUrl = process.env.INTERNAL_API_URL || "http://api:4001";
 
-    console.log(apiUrl);
     const res = await fetch(`${apiUrl}/auth/register`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },

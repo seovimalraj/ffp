@@ -23,7 +23,17 @@ import { OrgModule } from './org/org.module';
     }),
     ConfigModule.forRoot({
       isGlobal: true,
-      envFilePath: '.env',
+      envFilePath: (() => {
+        switch (process.env.NODE_ENV) {
+          case 'production':
+            return '.env';
+          case 'test':
+            return '.env.test';
+          case 'development':
+          default:
+            return '.env.development';
+        }
+      })(),
       validate,
       cache: true,
     }),

@@ -18,6 +18,61 @@ export enum StockMaterial {
   Plate = "plate",
 }
 
+export enum Tables {
+  /** Table storing user account information */
+  UserTable = "users",
+  /** Table storing organization details */
+  OrganizationTable = "organizations",
+  /** Table storing role definitions */
+  RolesTable = "roles",
+  /** Table storing permission definitions */
+  PermissionsTable = "permissions",
+  /** Junction table linking organizations with their general roles */
+  GeneralOrganizationRolesTable = "general_organization_roles",
+  /** Junction table linking roles with their permissions */
+  RolePermissionsTable = "role_permissions",
+  /** Table storing refresh tokens for authentication */
+  RefreshTokensTable = "refresh_tokens",
+
+  GeneralMaterialsTable = "general_materials",
+
+  MaterialCategories = "material_categories",
+
+  SupplierMaterials = "supplier_materials",
+
+  Warehouses = "warehouses",
+
+  MaterialTable = "material",
+
+  GeneralTolerancesTable = "general_tolerances",
+
+  RFQTable = "rfq",
+
+  RFQPartsTable = "rfq_parts",
+
+  RFQPartDrawing2DTable = "part_drawing_2d",
+
+  AbandonedRFQPartsTable = "abandoned_rfq_parts",
+
+  AbandonedPartDrawing2DTable = "abandoned_part_drawing_2d",
+
+  ShippingAddressTable = "shipping_addresses",
+
+  OrdersTable = "orders",
+
+  OrderPartsTable = "order_parts",
+
+  OrderPartStatusHistoryTable = "order_part_status_history",
+
+  OrderShippingTable = "order_shipping",
+
+  OrderPaymentsTable = "order_payments",
+
+  organizationAgreementsTable = "organization_agreements",
+
+  OrderDocumentsTable = "order_documents",
+}
+
 export const LOGO_URL =
   "https://frigate.ai/wp-content/uploads/2024/03/frigate_whitelogo.svg";
 
