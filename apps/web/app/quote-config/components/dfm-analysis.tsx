@@ -76,10 +76,12 @@ function analyzeDFM(part: PartConfig, geometryFeatures?: GeometryFeatureMap): DF
   const geometry = part.geometry;
   const hasGeometry = !!geometry;
   
-  // Detect process type - check part config or geometry
+  // Detect process type - check part config first, then geometry recommendation
   const processType: "cnc" | "sheet-metal" | "unknown" = 
     part.process === "sheet-metal" ? "sheet-metal" :
     part.process === "cnc" || part.process === "cnc-milling" || part.process === "cnc-turning" ? "cnc" :
+    geometry?.recommendedProcess === "sheet-metal" ? "sheet-metal" :
+    geometry?.recommendedProcess === "cnc-milling" || geometry?.recommendedProcess === "cnc-turning" ? "cnc" :
     geometry?.sheetMetalFeatures ? "sheet-metal" :
     "cnc"; // Default to CNC
   
@@ -583,6 +585,167 @@ function analyzeDFM(part: PartConfig, geometryFeatures?: GeometryFeatureMap): DF
       if (cornerCount > 15) {
         recommendations.push(`${cornerCount} sharp corners detected. Consider adding small radii (0.5mm) to reduce tool wear and improve surface finish.`);
         totalPotentialSavings += Math.min(cornerCount * 2, 50);
+      }
+    }
+
+    // ===== ENTERPRISE-LEVEL SHEET METAL CHECKS =====
+    if (isSheetMetal && geometry.sheetMetalFeatures) {
+      const smFeatures = geometry.sheetMetalFeatures;
+      
+      // Material Thickness Validation
+      checks.push({
+        id: "sheet-thickness-enterprise",
+        name: "Material Thickness",
+        description: "Sheet metal thickness validation",
+        status: smFeatures.thickness >= 0.5 && smFeatures.thickness <= 25 ? "pass" : "warning",
+        details: `${smFeatures.thickness.toFixed(2)}mm${smFeatures.partType ? ` • ${smFeatures.partType.replace(/-/g, ' ').toUpperCase()}` : ''}`,
+        icon: <Layers className="w-4 h-4" />,
+        category: "geometry",
+        severity: smFeatures.thickness < 0.5 || smFeatures.thickness > 25 ? "high" : "low",
+      });
+      
+      // Bend Radius Check (Enhanced)
+      if (smFeatures.bendCount > 0) {
+        const idealMinRadius = smFeatures.thickness * 1.0;
+        const isBendRadiusOk = smFeatures.minBendRadius >= idealMinRadius;
+        
+        checks.push({
+          id: "bend-radius-enterprise",
+          name: "Bend Radius",
+          description: "Minimum bend radius validation",
+          status: isBendRadiusOk ? "pass" : smFeatures.hasSharptBends ? "critical" : "warning",
+          details: `${smFeatures.minBendRadius.toFixed(2)}mm (${(smFeatures.minBendRadius / smFeatures.thickness).toFixed(1)}x material)`,
+          icon: <Activity className="w-4 h-4" />,
+          category: "feasibility",
+          severity: smFeatures.hasSharptBends ? "critical" : isBendRadiusOk ? "low" : "medium",
+          potentialSavings: !isBendRadiusOk ? 40 : 0,
+        });
+        
+        if (!isBendRadiusOk) {
+          recommendations.push(`⚠️ Increase bend radius to ${idealMinRadius.toFixed(1)}mm minimum to prevent cracking ($40 rework risk).`);
+          totalPotentialSavings += 40;
+        }
+      }
+      
+      // Cutting Method & Efficiency
+      if (smFeatures.recommendedCuttingMethod) {
+        checks.push({
+          id: "cutting-method-enterprise",
+          name: "Cutting Process",
+          description: "Optimal cutting method selection",
+          status: "pass",
+          details: `${smFeatures.recommendedCuttingMethod.replace('-', ' ').toUpperCase()} • ${smFeatures.estimatedCuttingTime?.toFixed(1)}min`,
+          icon: <Zap className="w-4 h-4" />,
+          category: "optimization",
+          severity: "low",
+        });
+      }
+      
+      // Nesting Efficiency
+      if (smFeatures.nestingEfficiency) {
+        const isEfficient = smFeatures.nestingEfficiency > 0.75;
+        const wasteSavings = !isEfficient ? Math.round((1 - smFeatures.nestingEfficiency) * smFeatures.flatArea / 1000 * 0.5) : 0;
+        
+        checks.push({
+          id: "nesting-efficiency-enterprise",
+          name: "Material Utilization",
+          description: "Sheet nesting efficiency",
+          status: isEfficient ? "pass" : "warning",
+          details: `${(smFeatures.nestingEfficiency * 100).toFixed(0)}% utilization • ${((1 - smFeatures.nestingEfficiency) * 100).toFixed(0)}% scrap`,
+          icon: <TrendingDown className="w-4 h-4" />,
+          category: "optimization",
+          severity: isEfficient ? "low" : "medium",
+          potentialSavings: wasteSavings,
+        });
+        
+        if (!isEfficient && wasteSavings > 10) {
+          recommendations.push(`📊 Material waste at ${((1 - smFeatures.nestingEfficiency) * 100).toFixed(0)}%. Optimize part shape for $${wasteSavings} savings.`);
+          totalPotentialSavings += wasteSavings;
+        }
+      }
+      
+      // Complexity & Setup Analysis
+      const complexity = smFeatures.complexity || 'moderate';
+      const requiresMultipleSetups = smFeatures.requiresMultipleSetups || false;
+      
+      if (complexity === 'complex' || complexity === 'very-complex' || requiresMultipleSetups) {
+        const setupCost = requiresMultipleSetups ? 45 : 0;
+        checks.push({
+          id: "manufacturing-complexity-enterprise",
+          name: "Manufacturing Complexity",
+          description: `${complexity.toUpperCase()} part${requiresMultipleSetups ? ', multiple setups' : ''}`,
+          status: complexity === 'very-complex' || requiresMultipleSetups ? "warning" : "info",
+          details: `${smFeatures.bendCount} bends • ${smFeatures.holeCount} holes • ${smFeatures.estimatedCuttingTime?.toFixed(0)}+${smFeatures.estimatedFormingTime?.toFixed(0)}min`,
+          icon: <LayoutDashboard className="w-4 h-4" />,
+          category: "feasibility",
+          severity: requiresMultipleSetups ? "high" : complexity === 'very-complex' ? "medium" : "low",
+          potentialSavings: setupCost,
+        });
+        
+        if (requiresMultipleSetups) {
+          recommendations.push(`🔧 Multiple setups required add $${setupCost}. Consider single-setup redesign.`);
+          totalPotentialSavings += setupCost;
+        }
+      }
+      
+      // Small Features Warning
+      if (smFeatures.hasSmallFeatures) {
+        checks.push({
+          id: "small-features-enterprise",
+          name: "Small Features",
+          description: "Features smaller than recommended",
+          status: "warning",
+          details: "Features <2mm may be difficult to form accurately",
+          icon: <Ruler className="w-4 h-4" />,
+          category: "manufacturability",
+          severity: "medium",
+          potentialSavings: 20,
+        });
+        
+        recommendations.push(`⚠️ Small features (<2mm) detected. Increase to ≥2mm for better quality ($20 rework savings).`);
+        totalPotentialSavings += 20;
+      }
+      
+      // Tolerance Feasibility
+      if (smFeatures.hasTightTolerance) {
+        checks.push({
+          id: "tolerance-feasibility-enterprise",
+          name: "Tolerance Requirements",
+          description: "Tight tolerances on sheet metal",
+          status: "warning",
+          details: "Tolerances <±0.1mm require secondary operations (grinding/milling)",
+          icon: <Ruler className="w-4 h-4" />,
+          category: "tolerances",
+          severity: "medium",
+          potentialSavings: 35,
+        });
+        
+        recommendations.push(`📏 Tight tolerances add $35. Relax to ±0.2mm if acceptable.`);
+        totalPotentialSavings += 35;
+      }
+      
+      // Cut Path Optimization
+      if (smFeatures.straightCutLength && smFeatures.curvedCutLength) {
+        const totalCutLength = smFeatures.straightCutLength + smFeatures.curvedCutLength;
+        const complexCutRatio = smFeatures.curvedCutLength / totalCutLength;
+        
+        if (complexCutRatio > 0.3) {
+          const savings = Math.round(smFeatures.curvedCutLength / 100);
+          checks.push({
+            id: "cut-path-optimization-enterprise",
+            name: "Cutting Path Complexity",
+            description: "High ratio of complex cuts",
+            status: "warning",
+            details: `${(complexCutRatio * 100).toFixed(0)}% curved cuts (${(smFeatures.curvedCutLength / 1000).toFixed(1)}m)`,
+            icon: <Zap className="w-4 h-4" />,
+            category: "optimization",
+            severity: "medium",
+            potentialSavings: savings,
+          });
+          
+          recommendations.push(`✂️ ${(complexCutRatio * 100).toFixed(0)}% curved cuts slow production. Simplify for $${savings} savings.`);
+          totalPotentialSavings += savings;
+        }
       }
     }
 

@@ -238,10 +238,22 @@ export default function QuoteConfigPage() {
           const geometry = await analyzeCADFile(file);
           console.log(`Geometry analysis complete:`, geometry);
 
+          // Map recommendedProcess to process field
+          const processMap: Record<string, string> = {
+            'sheet-metal': 'sheet-metal',
+            'cnc-milling': 'cnc-milling',
+            'cnc-turning': 'cnc-turning',
+            'injection-molding': 'injection-molding',
+          };
+          const detectedProcess = geometry?.recommendedProcess 
+            ? processMap[geometry.recommendedProcess] || 'cnc-milling'
+            : 'cnc-milling';
+
           const newPart: any = {
             file_name: file.name,
             cad_file_url: uploadedPath,
             cad_file_type: file.type,
+            process: detectedProcess, // Set process based on geometry analysis
             material: "aluminum-6061",
             quantity: 1,
             status: "draft",

@@ -29,6 +29,8 @@ import { CubeIcon } from "@heroicons/react/24/outline";
 import { CadViewer } from "@/components/cad/cad-viewer";
 import ExpandFileModal from "./expand-file-modal";
 import { EditPartModal } from "./edit-part-modal";
+import { SheetMetalFields } from "./sheet-metal-fields";
+import { SheetMetalLeadTimeBreakdown } from "./sheet-metal-lead-time-breakdown";
 import { useFileUpload } from "@/lib/hooks/use-file-upload";
 import { notify } from "@/lib/toast";
 import { calculateLeadTime } from "../[id]/page";
@@ -755,6 +757,17 @@ export function PartCardItem({
               </div>
             </div>
           </div>
+          
+          {/* Sheet Metal Lead Time Breakdown */}
+          {(part.process === "sheet-metal" || part.geometry?.recommendedProcess === "sheet-metal") && 
+           part.geometry?.sheetMetalFeatures && part.leadTimeType && (
+            <div className="mt-6 px-6">
+              <SheetMetalLeadTimeBreakdown 
+                part={part}
+                leadTimeType={part.leadTimeType}
+              />
+            </div>
+          )}
         </div>
       </div>
       {/* Image Viewer for image files */}

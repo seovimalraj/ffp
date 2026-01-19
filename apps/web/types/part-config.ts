@@ -14,6 +14,7 @@ export interface PartConfig {
   fileName: string;
   filePath: string;
   fileObject?: File;
+  process?: "cnc" | "cnc-milling" | "cnc-turning" | "sheet-metal" | "injection-molding";
   material: string;
   quantity: number;
   tolerance: string;
@@ -30,6 +31,16 @@ export interface PartConfig {
   leadTime?: number;
   snapshot_2d_url?: string;
   is_archived?: boolean;
+  
+  // Sheet Metal Specific Fields
+  sheet_thickness_mm?: number;
+  sheet_material_grade?: string;
+  cutting_method?: "laser" | "plasma" | "waterjet" | "turret-punch";
+  bend_count?: number;
+  forming_operations?: string[];
+  hardware_inserts?: { type: string; quantity: number }[];
+  welding_required?: boolean;
+  powder_coating_color?: string;
 }
 
 export type MaterialItem = {

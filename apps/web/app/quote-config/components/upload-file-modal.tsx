@@ -59,10 +59,22 @@ const UploadFileModal = ({
             continue; // Skip if upload fails
           }
 
+          // Map recommendedProcess to process field
+          const processMap: Record<string, string> = {
+            'sheet-metal': 'sheet-metal',
+            'cnc-milling': 'cnc-milling',
+            'cnc-turning': 'cnc-turning',
+            'injection-molding': 'injection-molding',
+          };
+          const detectedProcess = geometry?.recommendedProcess 
+            ? processMap[geometry.recommendedProcess] || 'cnc-milling'
+            : 'cnc-milling';
+
           uploadResults.push({
             file_name: file.name,
             cad_file_url: uploadedPath,
             cad_file_type: file.name.split(".").pop() || "unknown",
+            process: detectedProcess, // Set process based on geometry analysis
             material: "aluminum-6061",
             quantity: 1,
             tolerance: "standard",

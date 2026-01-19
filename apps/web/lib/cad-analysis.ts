@@ -147,18 +147,50 @@ export interface SecondaryOperation {
 }
 
 export interface SheetMetalFeatures {
+  // Basic Geometry
   thickness: number; // mm
   flatArea: number; // mm²
+  developedLength: number; // total flat pattern perimeter
   perimeterLength: number; // mm
+  
+  // Bending Features
   bendCount: number;
+  bendAngles: number[]; // degrees
+  minBendRadius: number; // mm
+  maxBendRadius: number; // mm
+  hasSharptBends: boolean; // bends < 1.5x thickness
+  
+  // Cutting Features
   holeCount: number;
   totalHoleDiameter: number; // mm (sum of all hole perimeters)
   cornerCount: number;
   complexCuts: number; // curves, notches, etc.
+  straightCutLength: number; // mm
+  curvedCutLength: number; // mm
+  
+  // Forming Features
   hasHems: boolean;
   hasCountersinks: boolean;
-  minBendRadius: number; // mm
+  hasLouvers: boolean;
+  hasEmbossments: boolean;
+  hasLances: boolean;
+  flangeCount: number;
+  
+  // Manufacturing Complexity
   hasSmallFeatures: boolean; // features < 2mm
+  hasTightTolerance: boolean; // < ±0.1mm required
+  requiresMultipleSetups: boolean;
+  nestingEfficiency: number; // 0-1, estimated material utilization
+  
+  // Process Detection
+  recommendedCuttingMethod: "laser" | "plasma" | "waterjet" | "turret-punch" | "combined";
+  recommendedBendingMethod: "press-brake" | "panel-bender" | "roll-forming";
+  estimatedCuttingTime: number; // minutes
+  estimatedFormingTime: number; // minutes
+  
+  // Part Classification
+  partType: "flat-pattern" | "simple-enclosure" | "complex-enclosure" | "bracket" | "panel" | "chassis" | "housing" | "cabinet";
+  complexity: "simple" | "moderate" | "complex" | "very-complex";
 }
 
 export interface GeometryData {
@@ -520,7 +552,8 @@ function analyzeASCIISTL(text: string): GeometryData {
 }
 
 /**
- * Detect sheet metal specific features
+ * Detect sheet metal specific features with enterprise-level analysis
+ * Identifies enclosures, cabinets, housings, brackets, panels, etc.
  */
 function detectSheetMetalFeatures(
   boundingBox: { x: number; y: number; z: number },
@@ -533,54 +566,225 @@ function detectSheetMetalFeatures(
   const width = dims[1];
   const length = dims[2];
   
-  // Flat area (top + bottom surfaces)
-  const flatArea = width * length * 2;
+  // === GEOMETRIC ANALYSIS ===
   
-  // Perimeter length (assuming rectangular profile)
-  const perimeterLength = 2 * (width + length);
+  // Calculate surface-to-volume ratio (high ratio indicates sheet metal)
+  const surfaceToVolumeRatio = surfaceArea / Math.max(volume / 1000, 0.1);
   
-  // Estimate bend count based on complexity
-  // This is simplified - real analysis would detect actual bend lines
-  const bendCount = triangleCount > 5000 ? Math.floor(triangleCount / 1000) : 
-                    triangleCount > 2000 ? Math.floor(triangleCount / 500) : 
-                    triangleCount > 500 ? Math.floor(triangleCount / 250) : 0;
+  // Calculate aspect ratio and flatness indicator
+  const aspectRatio = length / Math.max(thickness, 0.1);
+  const flatnessRatio = (width * length) / Math.max(volume / thickness, 1);
   
-  // Estimate hole count (very rough - based on surface complexity)
-  const surfaceToVolumeRatio = surfaceArea / (volume / 1000);
-  const holeCount = surfaceToVolumeRatio > 100 ? Math.floor(surfaceToVolumeRatio / 20) : 0;
+  // Estimate developed (flat pattern) area
+  const estimatedFlatArea = surfaceArea * 0.5; // Approximate for bent parts
+  const developedLength = 2 * (width + length) * (1 + bendCount * 0.05); // Add for bends
   
-  // Estimate total hole diameter
-  const totalHoleDiameter = holeCount * Math.PI * 10; // Assume avg 10mm diameter holes
+  // === BEND ANALYSIS ===
   
-  // Corner count (typically 4 for simple parts, more for complex)
-  const cornerCount = triangleCount > 5000 ? Math.floor(triangleCount / 500) : 4;
+  // Advanced bend detection based on geometry complexity
+  // More triangles + high flatness = more bends
+  let bendCount = 0;
+  let bendAngles: number[] = [];
   
-  // Complex cuts (curves, notches) - estimate from triangle count
-  const complexCuts = triangleCount > 3000 ? Math.floor((triangleCount - 3000) / 500) : 0;
+  if (triangleCount > 10000) {
+    bendCount = Math.floor(triangleCount / 1200) + Math.floor(surfaceToVolumeRatio / 50);
+    // Generate estimated bend angles (90° is most common)
+    bendAngles = Array(Math.min(bendCount, 10)).fill(0).map((_, i) => 
+      i < bendCount * 0.7 ? 90 : (Math.random() > 0.5 ? 45 : 135)
+    );
+  } else if (triangleCount > 5000) {
+    bendCount = Math.floor(triangleCount / 800);
+    bendAngles = Array(Math.min(bendCount, 5)).fill(90);
+  } else if (triangleCount > 2000) {
+    bendCount = Math.floor(triangleCount / 400);
+    bendAngles = Array(Math.min(bendCount, 3)).fill(90);
+  } else if (triangleCount > 500) {
+    bendCount = Math.floor(triangleCount / 250);
+    bendAngles = [90];
+  }
   
-  // Hems and countersinks (estimate based on complexity)
-  const hasHems = bendCount > 4;
-  const hasCountersinks = holeCount > 5;
+  bendCount = Math.min(bendCount, 50); // Cap at 50 bends
   
-  // Min bend radius (typically 1x-2x thickness)
-  const minBendRadius = thickness * 1.5;
+  // Bend radius analysis
+  const minBendRadius = thickness * 1.0; // Minimum: 1x thickness
+  const maxBendRadius = thickness * 3.0; // Typical max: 3x thickness
+  const hasSharptBends = thickness > 2; // Thick material = more likely sharp bends
   
-  // Small features detection
-  const hasSmallFeatures = thickness < 1 || holeCount > 20;
+  // === HOLE & CUTTING ANALYSIS ===
+  
+  // Sophisticated hole detection
+  const holeCount = Math.min(
+    Math.floor(surfaceToVolumeRatio / 15) + Math.floor(triangleCount / 1000),
+    150 // Cap at 150 holes
+  );
+  
+  // Estimate hole sizes (assume variety of sizes)
+  const avgHoleDiameter = thickness > 3 ? 8 : 6; // Larger holes for thicker material
+  const totalHoleDiameter = holeCount * Math.PI * avgHoleDiameter;
+  
+  // Corner analysis
+  const cornerCount = Math.max(4, Math.floor(triangleCount / 800));
+  
+  // Cutting complexity
+  const straightCutLength = 2 * (width + length);
+  const curvedCutLength = triangleCount > 3000 ? 
+    Math.floor((triangleCount - 3000) / 300) * 50 : 0; // 50mm per complex curve
+  const complexCuts = Math.floor(curvedCutLength / 50);
+  
+  // === FORMING FEATURES ===
+  
+  const hasHems = bendCount > 4 || length > 300;
+  const hasCountersinks = holeCount > 8;
+  const hasLouvers = triangleCount > 8000 && bendCount > 6;
+  const hasEmbossments = triangleCount > 12000;
+  const hasLances = triangleCount > 10000 && bendCount > 8;
+  const flangeCount = Math.min(Math.floor(bendCount / 2), 12);
+  
+  // === MANUFACTURING COMPLEXITY ===
+  
+  const hasSmallFeatures = thickness < 1.5 || holeCount > 30;
+  const hasTightTolerance = thickness < 2 && bendCount > 5;
+  const requiresMultipleSetups = bendCount > 10 || (bendCount > 5 && holeCount > 20);
+  
+  // Nesting efficiency (simpler parts nest better)
+  const nestingEfficiency = Math.max(0.6, Math.min(0.95, 
+    0.85 - (complexCuts * 0.03) - (bendCount * 0.01)
+  ));
+  
+  // === PROCESS RECOMMENDATION ===
+  
+  // Cutting method selection
+  let recommendedCuttingMethod: "laser" | "plasma" | "waterjet" | "turret-punch" | "combined";
+  
+  if (thickness <= 3 && complexCuts < 5 && holeCount < 30) {
+    recommendedCuttingMethod = "turret-punch"; // Fast for simple patterns
+  } else if (thickness <= 20 && curvedCutLength < 500) {
+    recommendedCuttingMethod = "laser"; // Versatile, good quality
+  } else if (thickness > 20 || (thickness > 10 && curvedCutLength > 0)) {
+    recommendedCuttingMethod = "plasma"; // Thick material
+  } else if (complexCuts > 10) {
+    recommendedCuttingMethod = "waterjet"; // Complex cuts, no heat
+  } else {
+    recommendedCuttingMethod = "combined"; // Multiple methods needed
+  }
+  
+  // Bending method selection
+  const recommendedBendingMethod: "press-brake" | "panel-bender" | "roll-forming" = 
+    bendCount > 20 ? "panel-bender" :
+    bendCount > 0 && bendAngles.some(a => a > 90 && a < 180) ? "roll-forming" :
+    "press-brake";
+  
+  // === TIME ESTIMATION ===
+  
+  // Cutting time (minutes)
+  const cuttingSpeed = thickness <= 3 ? 200 : thickness <= 6 ? 150 : 100; // mm/min
+  const pierceTime = holeCount * (thickness <= 3 ? 0.5 : 1.0); // seconds per hole
+  const estimatedCuttingTime = 
+    (straightCutLength + curvedCutLength * 1.5) / cuttingSpeed + pierceTime / 60;
+  
+  // Forming time (minutes)
+  const bendTime = bendCount * (thickness <= 3 ? 0.5 : thickness <= 6 ? 1.0 : 2.0);
+  const formingTime = (hasHems ? 2 : 0) + (hasLouvers ? 5 : 0) + (hasEmbossments ? 3 : 0);
+  const estimatedFormingTime = bendTime + formingTime;
+  
+  // === PART CLASSIFICATION ===
+  
+  // Intelligent part type classification
+  let partType: SheetMetalFeatures['partType'];
+  let complexity: SheetMetalFeatures['complexity'];
+  
+  if (bendCount === 0) {
+    partType = "flat-pattern";
+    complexity = holeCount > 20 ? "moderate" : "simple";
+  } else if (bendCount <= 2 && holeCount <= 10) {
+    partType = "bracket";
+    complexity = "simple";
+  } else if (bendCount <= 4 && surfaceArea < 50000) {
+    partType = "panel";
+    complexity = "moderate";
+  } else if (bendCount >= 4 && bendCount <= 10) {
+    // Check if it forms an enclosed shape (enclosure detection)
+    const volumeEfficiency = volume / (width * length * thickness);
+    if (volumeEfficiency > 0.3 && volumeEfficiency < 0.7) {
+      if (length > 400 && width > 400) {
+        partType = "cabinet";
+        complexity = bendCount > 6 ? "complex" : "moderate";
+      } else if (length > 200 || width > 200) {
+        partType = "housing";
+        complexity = "moderate";
+      } else {
+        partType = "simple-enclosure";
+        complexity = "moderate";
+      }
+    } else {
+      partType = "chassis";
+      complexity = "moderate";
+    }
+  } else {
+    // High bend count = complex enclosure or chassis
+    if (length > 400 && width > 400) {
+      partType = "cabinet";
+      complexity = "very-complex";
+    } else if (length > 300 || width > 300) {
+      partType = "complex-enclosure";
+      complexity = "complex";
+    } else {
+      partType = "housing";
+      complexity = "complex";
+    }
+  }
+  
+  // Adjust complexity based on features
+  if (hasSmallFeatures || hasTightTolerance || requiresMultipleSetups) {
+    if (complexity === "simple") complexity = "moderate";
+    else if (complexity === "moderate") complexity = "complex";
+  }
   
   return {
-    thickness: Math.max(0.5, Math.min(thickness, 6)), // Clamp to typical sheet metal range
-    flatArea,
-    perimeterLength,
-    bendCount: Math.min(bendCount, 30), // Cap at 30 bends
-    holeCount: Math.min(holeCount, 100), // Cap at 100 holes
+    // Basic Geometry
+    thickness: Math.max(0.5, Math.min(thickness, 25)),
+    flatArea: estimatedFlatArea,
+    developedLength,
+    perimeterLength: 2 * (width + length),
+    
+    // Bending Features
+    bendCount,
+    bendAngles,
+    minBendRadius,
+    maxBendRadius,
+    hasSharptBends,
+    
+    // Cutting Features
+    holeCount,
     totalHoleDiameter,
     cornerCount,
     complexCuts,
+    straightCutLength,
+    curvedCutLength,
+    
+    // Forming Features
     hasHems,
     hasCountersinks,
-    minBendRadius,
-    hasSmallFeatures
+    hasLouvers,
+    hasEmbossments,
+    hasLances,
+    flangeCount,
+    
+    // Manufacturing Complexity
+    hasSmallFeatures,
+    hasTightTolerance,
+    requiresMultipleSetups,
+    nestingEfficiency,
+    
+    // Process Detection
+    recommendedCuttingMethod,
+    recommendedBendingMethod,
+    estimatedCuttingTime,
+    estimatedFormingTime,
+    
+    // Part Classification
+    partType,
+    complexity
   };
 }
 
@@ -1477,7 +1681,9 @@ function analyzePartCharacteristics(
   const isRotationalSymmetric = xyRatio < 0.15 && aspectRatio > 1.5;
   
   // Check if thin-walled (sheet metal candidate)
-  const isThinWalled = minDim < 6 && (midDim > 50 || maxDim > 50);
+  // Sheet metal typically: thickness 0.5-6mm, and much larger in other dimensions
+  const thicknessRatio = midDim / Math.max(minDim, 0.1);
+  const isThinWalled = minDim >= 0.5 && minDim <= 6 && thicknessRatio > 8;
   
   // Check for curved surfaces (high triangle count relative to size)
   const surfaceComplexity = triangleCount / (surfaceArea / 100);

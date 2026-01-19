@@ -745,6 +745,10 @@ function calculateSheetMetalAdvancedAdjustments(
   };
 }
 
+/**
+ * Advanced Sheet Metal Lead Time Calculation
+ * Enterprise-level lead time estimation with detailed breakdown
+ */
 function computeSheetMetalLeadTime(
   geometry: GeometryData,
   material: SheetMetalMaterialSpec,
@@ -763,93 +767,323 @@ function computeSheetMetalLeadTime(
 } {
   const features = geometry.sheetMetalFeatures!;
   
-  // Advanced material procurement optimization
+  // ===== 1. MATERIAL PROCUREMENT TIME =====
+  // Based on material type, thickness, and availability
   let materialProcurementDays = 0;
+  
+  // Exotic materials have longer lead times
   if (material.category === 'copper' || material.category === 'brass') {
-    if (leadTimeType === 'expedited') materialProcurementDays = 2;
-    else if (leadTimeType === 'standard') materialProcurementDays = 3;
-    else materialProcurementDays = 5;
-  } else if (material.category === 'stainless' && material.thickness >= 2.5) {
-    if (leadTimeType === 'expedited') materialProcurementDays = 1;
-    else if (leadTimeType === 'standard') materialProcurementDays = 2;
-    else materialProcurementDays = 3;
+    materialProcurementDays = leadTimeType === 'expedited' ? 2 : 
+                              leadTimeType === 'standard' ? 3 : 5;
+  } 
+  // Thick stainless steel requires special ordering
+  else if (material.category === 'stainless' && material.thickness >= 3) {
+    materialProcurementDays = leadTimeType === 'expedited' ? 1.5 : 
+                              leadTimeType === 'standard' ? 2 : 3;
+  }
+  // Thick material (>6mm) from any category
+  else if (material.thickness > 6) {
+    materialProcurementDays = leadTimeType === 'expedited' ? 1 : 
+                              leadTimeType === 'standard' ? 1.5 : 2;
+  }
+  // Standard materials usually in stock
+  else {
+    materialProcurementDays = leadTimeType === 'expedited' ? 0 : 
+                              leadTimeType === 'standard' ? 0.5 : 1;
   }
   
-  // Advanced programming time based on complexity
+  // Large sheet requirement increases procurement time
+  const flatAreaM2 = features.flatArea / 1_000_000;
+  const totalAreaM2 = flatAreaM2 * quantity / (features.nestingEfficiency || 0.8);
+  if (totalAreaM2 > 50) {
+    materialProcurementDays += leadTimeType === 'expedited' ? 1 : 2;
+  }
+  
+  // ===== 2. PROGRAMMING & SETUP TIME =====
+  // CAM programming based on complexity
   const totalComplexity = features.complexCuts + features.bendCount + (features.holeCount * 0.1);
   let programmingDays = 0;
-  if (totalComplexity > 25) programmingDays = 2;
-  else if (totalComplexity > 15) programmingDays = 1.5;
-  else if (totalComplexity > 8) programmingDays = 1;
-  else if (totalComplexity > 5) programmingDays = 0.5;
   
-  const config = CUTTING_METHODS[cuttingMethod];
-  const totalCuttingLength = features.perimeterLength + features.totalHoleDiameter;
-  const cuttingMinutes = totalCuttingLength / config.speedMmPerMin;
-  
-  // Advanced quantity optimization - better efficiency for larger batches
-  let quantityEfficiencyFactor = 1;
-  if (quantity >= 100) quantityEfficiencyFactor = 0.75;
-  else if (quantity >= 50) quantityEfficiencyFactor = 0.8;
-  else if (quantity >= 25) quantityEfficiencyFactor = 0.85;
-  else if (quantity >= 10) quantityEfficiencyFactor = 0.9;
-  
-  const cuttingHours = (cuttingMinutes / 60) * quantity * quantityEfficiencyFactor;
-  let baseCuttingDays = Math.ceil(cuttingHours / 8);
-  
-  let baseFormingDays = 0;
-  if (hasBends) {
-    const bendsPerHour = 30 / material.bendability;
-    const formingHours = (features.bendCount * quantity * quantityEfficiencyFactor) / bendsPerHour;
-    baseFormingDays = Math.ceil(formingHours / 8);
+  // Very complex (enclosures, cabinets)
+  if (features.complexity === 'very-complex' || totalComplexity > 30) {
+    programmingDays = leadTimeType === 'expedited' ? 1 : 1.5;
+  }
+  // Complex (housings, complex brackets)
+  else if (features.complexity === 'complex' || totalComplexity > 20) {
+    programmingDays = leadTimeType === 'expedited' ? 0.75 : 1;
+  }
+  // Moderate (panels, simple enclosures)
+  else if (features.complexity === 'moderate' || totalComplexity > 10) {
+    programmingDays = 0.5;
+  }
+  // Simple (flat patterns, simple brackets)
+  else {
+    programmingDays = 0.25;
   }
   
-  // Advanced finishing time based on part complexity and surface area
-  const flatAreaM2 = features.flatArea / 1_000_000;
-  let finishingDays = 0.5;
-  if (flatAreaM2 * quantity > 5) finishingDays = 1.5;
-  else if (flatAreaM2 * quantity > 2) finishingDays = 1;
+  // Multiple setups add programming time
+  if (features.requiresMultipleSetups) {
+    programmingDays += 0.5;
+  }
   
-  // Quality inspection time for precision work
-  const inspectionDays = (features.bendCount > 8 || features.complexCuts > 10) ? 0.5 : 0;
+  // ===== 3. CUTTING TIME =====
+  const config = CUTTING_METHODS[cuttingMethod];
   
-  // Use sheet metal specific lead times (expedited = 15 days base)
-  let targetLeadTime: number;
-  let shippingDays: number;
+  // Calculate total cut length including perimeter, holes, and complex cuts
+  const straightCutLength = features.straightCutLength || features.perimeterLength;
+  const curvedCutLength = features.curvedCutLength || 0;
+  const holeCutLength = features.totalHoleDiameter || 0;
+  const totalCuttingLength = straightCutLength + curvedCutLength * 1.5 + holeCutLength;
+  
+  // Cutting speed varies by thickness and material
+  let effectiveSpeed = config.speedMmPerMin;
+  
+  // Thickness penalty
+  if (material.thickness > 6) {
+    effectiveSpeed *= 0.6; // 40% slower for thick material
+  } else if (material.thickness > 3) {
+    effectiveSpeed *= 0.75; // 25% slower
+  } else if (material.thickness < 1) {
+    effectiveSpeed *= 1.2; // 20% faster for thin material
+  }
+  
+  // Material hardness penalty
+  if (material.category === 'stainless') {
+    effectiveSpeed *= 0.8; // Stainless is slower to cut
+  } else if (material.category === 'aluminum') {
+    effectiveSpeed *= 1.15; // Aluminum cuts faster
+  }
+  
+  // Pierce time for holes (depends on thickness)
+  const pierceTimePerHole = material.thickness <= 3 ? 0.5 : 
+                            material.thickness <= 6 ? 1.0 : 1.5; // minutes
+  const totalPierceMinutes = features.holeCount * pierceTimePerHole;
+  
+  // Calculate cutting time per part
+  const cuttingMinutesPerPart = (totalCuttingLength / effectiveSpeed) + totalPierceMinutes;
+  
+  // Quantity efficiency - batch production is more efficient
+  let quantityEfficiencyFactor = 1;
+  if (quantity >= 500) quantityEfficiencyFactor = 0.65;      // 35% efficiency gain
+  else if (quantity >= 250) quantityEfficiencyFactor = 0.70; // 30% efficiency gain
+  else if (quantity >= 100) quantityEfficiencyFactor = 0.75; // 25% efficiency gain
+  else if (quantity >= 50) quantityEfficiencyFactor = 0.80;  // 20% efficiency gain
+  else if (quantity >= 25) quantityEfficiencyFactor = 0.85;  // 15% efficiency gain
+  else if (quantity >= 10) quantityEfficiencyFactor = 0.90;  // 10% efficiency gain
+  
+  const totalCuttingMinutes = cuttingMinutesPerPart * quantity * quantityEfficiencyFactor;
+  const cuttingHours = totalCuttingMinutes / 60;
+  
+  // Setup time for cutting
+  const cuttingSetupHours = features.requiresMultipleSetups ? 2 : 0.5;
+  
+  const totalCuttingHours = cuttingHours + cuttingSetupHours;
+  const cuttingDays = Math.ceil(totalCuttingHours / 16); // 2 shifts = 16 hours/day
+  
+  // ===== 4. FORMING/BENDING TIME =====
+  let formingDays = 0;
+  
+  if (hasBends && features.bendCount > 0) {
+    // Bending speed depends on material thickness and bendability
+    let bendsPerHour = 30; // Baseline
+    
+    // Adjust for material
+    if (material.bendability > 1.5) {
+      bendsPerHour = 20; // Harder materials (stainless) bend slower
+    } else if (material.bendability < 0.8) {
+      bendsPerHour = 40; // Easy materials (aluminum) bend faster
+    }
+    
+    // Adjust for thickness
+    if (material.thickness > 3) {
+      bendsPerHour *= 0.6; // Thick material bends much slower
+    } else if (material.thickness > 2) {
+      bendsPerHour *= 0.8;
+    }
+    
+    // Complex bends (angles other than 90°) take longer
+    const complexBendRatio = features.bendAngles ? 
+      features.bendAngles.filter(a => a !== 90).length / features.bendAngles.length : 0.2;
+    if (complexBendRatio > 0.3) {
+      bendsPerHour *= 0.85; // 15% slower for complex angles
+    }
+    
+    // Calculate total bending time
+    const totalBends = features.bendCount * quantity * quantityEfficiencyFactor;
+    const bendingHours = totalBends / bendsPerHour;
+    
+    // Setup time for press brake
+    const bendingSetupHours = features.requiresMultipleSetups ? 1.5 : 0.5;
+    
+    // Special forming operations
+    let specialFormingHours = 0;
+    if (features.hasHems) specialFormingHours += quantity * 0.05;
+    if (features.hasLouvers) specialFormingHours += quantity * 0.1;
+    if (features.hasEmbossments) specialFormingHours += quantity * 0.08;
+    if (features.hasLances) specialFormingHours += quantity * 0.05;
+    
+    const totalFormingHours = bendingHours + bendingSetupHours + specialFormingHours;
+    formingDays = Math.ceil(totalFormingHours / 16); // 2 shifts
+  }
+  
+  // ===== 5. HARDWARE INSERTION TIME =====
+  let hardwareInstallationDays = 0;
+  
+  // If part has many holes, assume some hardware may be needed
+  if (features.holeCount > 10) {
+    // Estimate 2 minutes per hardware insert
+    const estimatedInserts = Math.min(features.holeCount * 0.3, 50); // Max 50 inserts
+    const insertionHours = (estimatedInserts * quantity * 2) / 60; // 2 min each
+    hardwareInstallationDays = Math.ceil(insertionHours / 16);
+  }
+  
+  // ===== 6. WELDING TIME =====
+  let weldingDays = 0;
+  
+  // Complex enclosures and cabinets often need welding
+  if (features.partType === 'cabinet' || features.partType === 'complex-enclosure' || 
+      features.partType === 'chassis') {
+    // Estimate welding need based on complexity
+    const weldingMinutesPerPart = features.bendCount * 5; // 5 min per weld seam
+    const totalWeldingHours = (weldingMinutesPerPart * quantity) / 60;
+    weldingDays = Math.ceil(totalWeldingHours / 8); // Single shift for welding
+  }
+  
+  // ===== 7. DEBURRING & FINISHING =====
+  let finishingDays = 0.5; // Minimum for deburring
+  
+  // Area-based finishing time
+  const totalAreaM2 = flatAreaM2 * quantity;
+  if (totalAreaM2 > 10) {
+    finishingDays = 2;
+  } else if (totalAreaM2 > 5) {
+    finishingDays = 1.5;
+  } else if (totalAreaM2 > 2) {
+    finishingDays = 1;
+  }
+  
+  // Powder coating adds time
+  if (features.partType !== 'flat-pattern') {
+    finishingDays += 1; // Assume powder coating for enclosures
+  }
+  
+  // Complex geometries need more finishing
+  if (features.complexity === 'very-complex') {
+    finishingDays *= 1.3;
+  } else if (features.complexity === 'complex') {
+    finishingDays *= 1.15;
+  }
+  
+  // ===== 8. QUALITY INSPECTION =====
+  let inspectionDays = 0;
+  
+  // Tight tolerances require careful inspection
+  if (features.hasTightTolerance) {
+    inspectionDays = 0.5;
+  }
+  // Complex parts need inspection
+  else if (features.bendCount > 10 || features.complexity === 'very-complex') {
+    inspectionDays = 0.5;
+  }
+  // Large quantities need sampling inspection
+  else if (quantity > 100) {
+    inspectionDays = 0.25;
+  }
+  
+  // ===== 9. QUEUE TIME (SHOP LOAD) =====
+  // Based on part complexity and current demand
+  let queueDays = 0;
   
   if (leadTimeType === 'expedited') {
-    targetLeadTime = SHEET_METAL_LEAD_TIME.expedited;
-    shippingDays = SHEET_METAL_LEAD_TIME.shippingDays.expedited;
+    queueDays = 0.5; // Rush orders skip queue mostly
   } else if (leadTimeType === 'standard') {
-    targetLeadTime = SHEET_METAL_LEAD_TIME.standard;
-    shippingDays = SHEET_METAL_LEAD_TIME.shippingDays.standard;
-  } else {
-    targetLeadTime = SHEET_METAL_LEAD_TIME.economy;
-    shippingDays = SHEET_METAL_LEAD_TIME.shippingDays.economy;
+    if (features.complexity === 'very-complex') {
+      queueDays = 2; // Complex parts wait for specialized equipment
+    } else if (features.complexity === 'complex') {
+      queueDays = 1.5;
+    } else {
+      queueDays = 1;
+    }
+  } else { // economy
+    if (features.complexity === 'very-complex') {
+      queueDays = 4;
+    } else if (features.complexity === 'complex') {
+      queueDays = 3;
+    } else {
+      queueDays = 2;
+    }
   }
   
-  // Calculate actual production time needed
+  // ===== 10. CALCULATE TOTAL PRODUCTION DAYS =====
   const actualProductionDays = Math.ceil(
-    baseCuttingDays + baseFormingDays + finishingDays + programmingDays + inspectionDays
+    programmingDays +
+    cuttingDays +
+    formingDays +
+    hardwareInstallationDays +
+    weldingDays +
+    finishingDays +
+    inspectionDays +
+    queueDays
   );
   
-  // Use target lead time, adjusting if actual production needs more time
-  const availableProductionTime = targetLeadTime - shippingDays - materialProcurementDays;
-  const productionDays = Math.max(actualProductionDays, availableProductionTime);
+  // ===== 11. SHIPPING TIME =====
+  let shippingDays: number;
+  if (leadTimeType === 'expedited') {
+    shippingDays = 2; // Express shipping
+  } else if (leadTimeType === 'standard') {
+    shippingDays = 4; // Standard ground
+  } else {
+    shippingDays = 6; // Economy shipping
+  }
   
-  // Buffer days for expedited orders to ensure on-time delivery
-  const bufferDays = leadTimeType === 'expedited' ? 1 : 0;
+  // ===== 12. BUFFER TIME =====
+  // Safety buffer to ensure on-time delivery
+  let bufferDays = 0;
+  if (leadTimeType === 'expedited') {
+    bufferDays = 1; // Small buffer for rush orders
+  } else if (leadTimeType === 'standard') {
+    bufferDays = features.complexity === 'very-complex' ? 2 : 1;
+  } else {
+    bufferDays = features.complexity === 'very-complex' ? 3 : 2;
+  }
   
-  const totalDays = materialProcurementDays + productionDays + shippingDays + bufferDays;
-  const leadTimeDays = Math.max(targetLeadTime, totalDays);
+  // ===== 13. APPLY TARGET LEAD TIMES =====
+  let targetLeadTime: number;
+  
+  if (leadTimeType === 'expedited') {
+    targetLeadTime = SHEET_METAL_LEAD_TIME.expedited; // 5-7 days target
+  } else if (leadTimeType === 'standard') {
+    targetLeadTime = SHEET_METAL_LEAD_TIME.standard; // 10-15 days target
+  } else {
+    targetLeadTime = SHEET_METAL_LEAD_TIME.economy; // 20-25 days target
+  }
+  
+  // ===== 14. FINAL LEAD TIME CALCULATION =====
+  const totalCalculatedDays = 
+    materialProcurementDays + 
+    actualProductionDays + 
+    shippingDays + 
+    bufferDays;
+  
+  // Use the longer of: calculated time or target time
+  const leadTimeDays = Math.max(
+    Math.ceil(totalCalculatedDays),
+    targetLeadTime
+  );
+  
+  // Ensure minimum lead times are met
+  const minimumLeadTime = leadTimeType === 'expedited' ? 5 :
+                         leadTimeType === 'standard' ? 10 : 20;
+  
+  const finalLeadTimeDays = Math.max(leadTimeDays, minimumLeadTime);
   
   return {
-    leadTimeDays,
+    leadTimeDays: finalLeadTimeDays,
     components: {
-      productionDays,
+      productionDays: actualProductionDays,
       shippingDays,
       bufferDays,
-      materialProcurementDays
+      materialProcurementDays: Math.ceil(materialProcurementDays)
     }
   };
 }
