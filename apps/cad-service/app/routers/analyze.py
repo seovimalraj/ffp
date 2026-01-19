@@ -45,13 +45,18 @@ def calculate_sheet_metal_score(bbox_dims: list, vol_mm3: float, area_mm2: float
     
     score = 0.0
     
-    # 1. Thickness check (30 points) - Critical for sheet metal
+    # 1. Thickness check (35-50 points) - MOST CRITICAL for sheet metal
+    # If thickness is in sheet metal range, this is the strongest signal
     if 0.5 <= min_dim <= 6.0:
-        score += 30
+        score += 35  # Increased from 30
         # Bonus for typical sheet metal thicknesses
         typical_thicknesses = [0.8, 1.0, 1.2, 1.5, 2.0, 2.5, 3.0, 4.0, 5.0, 6.0]
         if any(abs(min_dim - t) < 0.3 for t in typical_thicknesses):
-            score += 10
+            score += 15  # Increased from 10, total 50
+        elif min_dim <= 4.0:
+            score += 8  # Extra bonus for very thin parts
+    elif 0.3 <= min_dim < 0.5:
+        score += 25  # Very thin, likely sheet metal but non-standard
     
     # 2. Aspect ratio check (25 points) - Sheet metal is much longer/wider than thick
     aspect_ratio = max_dim / max(min_dim, 0.1)
@@ -148,7 +153,10 @@ def calculate_advanced_metrics(bbox_dims: list, vol_mm3: float, area_mm2: float)
     }
 
 def determine_process_type(bbox_dims: list, vol_mm3: float, area_mm2: float, thickness: Optional[float] = None) -> str:
-    """Determine manufacturing process type based on advanced geometric analysis."""
+    """Determine manufacturing process type based on advanced geometric analysis.
+    CRITICAL: Sheet metal can have holes, bends, complex features - these are secondary operations.
+    Primary indicators: thickness (0.5-6mm), uniform wall thickness, high surface-to-volume ratio, planar surfaces.
+    """
     sheet_metal_score = calculate_sheet_metal_score(bbox_dims, vol_mm3, area_mm2)
     advanced_metrics = calculate_advanced_metrics(bbox_dims, vol_mm3, area_mm2)
     
@@ -159,11 +167,11 @@ def determine_process_type(bbox_dims: list, vol_mm3: float, area_mm2: float, thi
     # Enhanced sheet metal score with advanced metrics
     enhanced_sm_score = sheet_metal_score
     enhanced_sm_score += advanced_metrics.get('wall_thickness_consistency', 0) * 20
-    enhanced_sm_score += advanced_metrics.get('planarity_score', 0) * 15
+    enhanced_sm_score += advanced_metrics.get('planarity_score', 0) * 18  # Increased from 15
     
-    # Penalty for high volume distribution (solid parts)
-    if advanced_metrics.get('volume_distribution', 0) > 0.7:
-        enhanced_sm_score -= 25
+    # Penalty for high volume distribution (solid parts) - only if REALLY solid
+    if advanced_metrics.get('volume_distribution', 0) > 0.75:  # Increased threshold from 0.7
+        enhanced_sm_score -= 20  # Reduced penalty from 25
     
     enhanced_sm_score = max(0.0, min(100.0, enhanced_sm_score))
     
@@ -175,25 +183,34 @@ def determine_process_type(bbox_dims: list, vol_mm3: float, area_mm2: float, thi
     if is_rotational and advanced_metrics.get('dimension_balance', 0) < 0.5:
         return "cnc_turning"
     
-    # Very high confidence sheet metal
-    if enhanced_sm_score >= 85:
+    # PRIMARY sheet metal check - thickness + wall consistency override everything
+    is_primary_sheet_metal = (0.5 <= min_dim <= 6.0 and 
+                             advanced_metrics.get('wall_thickness_consistency', 0) > 0.65)
+    
+    # Very high confidence sheet metal (LOWERED thresholds)
+    if enhanced_sm_score >= 75 or (is_primary_sheet_metal and enhanced_sm_score >= 60):
         return "sheet_metal"
     
     # High confidence sheet metal
-    if enhanced_sm_score >= 70:
+    if enhanced_sm_score >= 60 or (is_primary_sheet_metal and enhanced_sm_score >= 50):
         return "sheet_metal"
     
     # Medium-high confidence sheet metal (with consistent wall thickness)
-    if enhanced_sm_score >= 55 and advanced_metrics.get('wall_thickness_consistency', 0) > 0.6:
+    if enhanced_sm_score >= 50 and advanced_metrics.get('wall_thickness_consistency', 0) > 0.55:
         return "sheet_metal"
     
     # Medium confidence (check material removal ratio)
-    if enhanced_sm_score >= 45 and 0.5 <= min_dim <= 6.0:
-        if advanced_metrics.get('material_removal_ratio', 1) < 0.5:
+    if enhanced_sm_score >= 40 and 0.5 <= min_dim <= 6.0:
+        if advanced_metrics.get('material_removal_ratio', 1) < 0.6:  # Increased from 0.5
             return "sheet_metal"
     
-    # Low-medium confidence (check thickness)
-    if enhanced_sm_score >= 35 and thickness and 0.5 <= thickness <= 6.0:
+    # Low-medium confidence (direct thickness check)
+    if enhanced_sm_score >= 30 and 0.5 <= min_dim <= 6.0:
+        if advanced_metrics.get('wall_thickness_consistency', 0) > 0.60:
+            return "sheet_metal"
+    
+    # Backup check: Very thin parts with planarity are sheet metal
+    if 0.5 <= min_dim <= 4.0 and advanced_metrics.get('planarity_score', 0) > 0.50:
         return "sheet_metal"
     
     # CNC milling score
