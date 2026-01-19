@@ -25,6 +25,13 @@ import { useCallback, useEffect, useState } from "react";
 import { formatCurrency } from "@/lib/format";
 import { Checkbox } from "@/components/ui/checkbox";
 import DFMAnalysis from "./dfm-analysis";
+import { 
+  getProcessDisplayName,
+  getDefaultMaterialForProcess,
+  getDefaultFinishForProcess,
+  getDefaultToleranceForProcess,
+} from "@/lib/pricing-engine";
+import { notify } from "@/lib/toast";
 
 interface EditPartModalProps {
   isOpen: boolean;
@@ -392,6 +399,72 @@ export function EditPartModal({
 
                   {/* General Config Section */}
                   <div className="space-y-10">
+                    {/* Process Type */}
+                    <div className="grid lg:grid-cols-[240px_1fr] gap-8 items-start">
+                      <div>
+                        <Label className="text-base font-semibold text-gray-900">
+                          Manufacturing Process
+                        </Label>
+                        <p className="text-sm text-gray-500 mt-1.5 leading-relaxed">
+                          Select the manufacturing process. Changing this will reset material and finish to process-specific defaults.
+                        </p>
+                      </div>
+                      <Select
+                        value={localPart.process || 'cnc-milling'}
+                        onValueChange={(value) => {
+                          // When process changes, reset to appropriate defaults
+                          const newMaterial = getDefaultMaterialForProcess(value);
+                          const newFinish = getDefaultFinishForProcess(value);
+                          const newTolerance = getDefaultToleranceForProcess(value);
+                          
+                          setLocalPart(prev => ({
+                            ...prev,
+                            process: value,
+                            material: newMaterial,
+                            finish: newFinish,
+                            tolerance: newTolerance,
+                          }));
+                          
+                          notify.info(`Process changed to ${getProcessDisplayName(value)}. Material and options reset to defaults.`);
+                        }}
+                      >
+                        <SelectTrigger className="w-full h-12 border-gray-200 bg-white rounded-lg shadow-sm text-sm">
+                          <SelectValue>
+                            {getProcessDisplayName(localPart.process || 'cnc-milling')}
+                          </SelectValue>
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="cnc-milling">
+                            <div className="flex items-center gap-2">
+                              <span>⚡</span>
+                              <div>
+                                <div className="font-semibold">CNC Milling</div>
+                                <div className="text-xs text-gray-500">3-axis, 5-axis machining</div>
+                              </div>
+                            </div>
+                          </SelectItem>
+                          <SelectItem value="cnc-turning">
+                            <div className="flex items-center gap-2">
+                              <span>⚡</span>
+                              <div>
+                                <div className="font-semibold">CNC Turning</div>
+                                <div className="text-xs text-gray-500">Lathe operations</div>
+                              </div>
+                            </div>
+                          </SelectItem>
+                          <SelectItem value="sheet-metal">
+                            <div className="flex items-center gap-2">
+                              <span>📋</span>
+                              <div>
+                                <div className="font-semibold">Sheet Metal</div>
+                                <div className="text-xs text-gray-500">Laser cutting, bending, forming</div>
+                              </div>
+                            </div>
+                          </SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+
                     {/* Material */}
                     <div className="grid lg:grid-cols-[240px_1fr] gap-8 items-start">
                       <div>

@@ -190,6 +190,81 @@ export const PROCESSES: Record<string, ProcessConfig> = {
   'injection-molding': { type: 'injection-molding', name: 'Injection Molding', setupCost: 2000, hourlyRate: 95, materialWasteFactor: 1.05 }
 };
 
+// Helper function to get display name for process
+export function getProcessDisplayName(process: string | undefined): string {
+  if (!process) return 'CNC Machining';
+  
+  // Both CNC milling and turning show as "CNC Machining"
+  if (process === 'cnc-milling' || process === 'cnc-turning') {
+    return 'CNC Machining';
+  }
+  
+  // All sheet metal variations show as "Sheet Metal"
+  if (process.includes('sheet') || process === 'laser' || process === 'drilling' || process === 'plasma' || process === 'waterjet') {
+    return 'Sheet Metal';
+  }
+  
+  return PROCESSES[process]?.name || 'CNC Machining';
+}
+
+// Helper function to check if material requires manual review
+export function requiresManualReview(materialValue: string, process: string): boolean {
+  if (process === 'sheet-metal' || process.includes('sheet')) {
+    const material = SHEET_METAL_MATERIALS_LIST.find(m => m.value === materialValue);
+    return material?.requiresManualReview || false;
+  }
+  return false;
+}
+
+// Helper function to get sheet metal material by value
+export function getSheetMetalMaterial(value: string) {
+  return SHEET_METAL_MATERIALS_LIST.find(m => m.value === value);
+}
+
+// Enhanced getMaterial to handle both CNC and sheet metal materials
+export function getMaterialForProcess(materialValue: string, process: string): MaterialSpec | null {
+  // For sheet metal, create MaterialSpec from sheet metal material
+  if (process === 'sheet-metal' || process?.includes('sheet')) {
+    const sheetMat = getSheetMetalMaterial(materialValue);
+    if (sheetMat) {
+      return {
+        code: sheetMat.value.toUpperCase(),
+        name: sheetMat.label,
+        density: sheetMat.density,
+        costPerKg: sheetMat.costPerKg,
+        machinabilityFactor: 1.0 // Sheet metal doesn't use machinability factor
+      };
+    }
+  }
+  
+  // For CNC, use standard materials
+  return getMaterial(materialValue);
+}
+
+// Get default material for a process
+export function getDefaultMaterialForProcess(process: string): string {
+  if (process === 'sheet-metal' || process?.includes('sheet')) {
+    // Default to Aluminum 5052 (no manual review)
+    return 'aluminum-5052';
+  }
+  // Default for CNC
+  return 'aluminum-6061';
+}
+
+// Get default finish for a process
+export function getDefaultFinishForProcess(process: string): string {
+  if (process === 'sheet-metal' || process?.includes('sheet')) {
+    return 'as-cut';
+  }
+  return 'as-machined';
+}
+
+// Get default tolerance for a process
+export function getDefaultToleranceForProcess(process: string): string {
+  // Same for both
+  return 'standard';
+}
+
 // Finish Options - Realistic pricing
 export const FINISHES: Record<string, FinishOption> = {
   'as-machined': { code: 'AS-MACH', name: 'As Machined', baseCost: 0, perAreaCost: 0 },
@@ -200,7 +275,68 @@ export const FINISHES: Record<string, FinishOption> = {
   'electropolished': { code: 'EPOL', name: 'Electropolished', baseCost: 35, perAreaCost: 0.09 }
 };
 
-// Sheet Metal Material Database - Enterprise Level (Optimized 30% cheaper than Xometry)
+// Sheet Metal Material Database - Enterprise Level with Manual Review Flags
+export const SHEET_METAL_MATERIALS_LIST = [
+  // Aluminum
+  { value: 'aluminum-5052', label: 'Aluminum 5052', category: 'aluminum', requiresManualReview: false, costPerKg: 6.2, density: 2.68 },
+  { value: 'aluminum-3003', label: 'Aluminum 3003', category: 'aluminum', requiresManualReview: false, costPerKg: 5.8, density: 2.73 },
+  { value: 'aluminum-6061', label: 'Aluminum 6061', category: 'aluminum', requiresManualReview: true, costPerKg: 7.5, density: 2.7 },
+  { value: 'aluminum-5005', label: 'Aluminum 5005', category: 'aluminum', requiresManualReview: false, costPerKg: 5.9, density: 2.7 },
+  { value: 'aluminum-1100', label: 'Aluminum 1100', category: 'aluminum', requiresManualReview: false, costPerKg: 5.2, density: 2.71 },
+  { value: 'aluminum-5083', label: 'Aluminum 5083', category: 'aluminum', requiresManualReview: true, costPerKg: 7.2, density: 2.66 },
+  { value: 'aluminum-2024', label: 'Aluminum 2024', category: 'aluminum', requiresManualReview: true, costPerKg: 11.5, density: 2.78 },
+  { value: 'aluminum-7075', label: 'Aluminum 7075', category: 'aluminum', requiresManualReview: true, costPerKg: 14.0, density: 2.81 },
+  
+  // Stainless Steel
+  { value: 'stainless-304', label: 'Stainless Steel 304', category: 'stainless', requiresManualReview: false, costPerKg: 12.0, density: 8.0 },
+  { value: 'stainless-316', label: 'Stainless Steel 316', category: 'stainless', requiresManualReview: false, costPerKg: 18.0, density: 8.0 },
+  { value: 'stainless-316l', label: 'Stainless Steel 316L', category: 'stainless', requiresManualReview: false, costPerKg: 19.0, density: 8.0 },
+  { value: 'stainless-430', label: 'Stainless Steel 430', category: 'stainless', requiresManualReview: false, costPerKg: 10.0, density: 7.7 },
+  { value: 'stainless-409', label: 'Stainless Steel 409', category: 'stainless', requiresManualReview: true, costPerKg: 9.5, density: 7.8 },
+  { value: 'stainless-301', label: 'Stainless Steel 301', category: 'stainless', requiresManualReview: true, costPerKg: 13.5, density: 8.0 },
+  { value: 'stainless-17-4ph', label: 'Stainless Steel 17-4PH', category: 'stainless', requiresManualReview: true, costPerKg: 13.5, density: 7.75 },
+  
+  // Carbon Steel
+  { value: 'carbon-steel-a1018', label: 'Carbon Steel A1018 (CRS)', category: 'carbon-steel', requiresManualReview: false, costPerKg: 4.2, density: 7.87 },
+  { value: 'carbon-steel-a1008', label: 'Carbon Steel A1008 (CRS)', category: 'carbon-steel', requiresManualReview: false, costPerKg: 4.0, density: 7.85 },
+  { value: 'carbon-steel-a1011', label: 'Carbon Steel A1011 (HRPO)', category: 'carbon-steel', requiresManualReview: false, costPerKg: 3.9, density: 7.85 },
+  { value: 'carbon-steel-a36', label: 'Carbon Steel A36 (HR/HRPO)', category: 'carbon-steel', requiresManualReview: false, costPerKg: 3.8, density: 7.85 },
+  { value: 'carbon-steel-a572', label: 'Carbon Steel A572 G50', category: 'carbon-steel', requiresManualReview: true, costPerKg: 4.5, density: 7.85 },
+  { value: 'carbon-steel-1075', label: 'Carbon Steel 1075', category: 'carbon-steel', requiresManualReview: true, costPerKg: 5.8, density: 7.85 },
+  { value: 'carbon-steel-1095', label: 'Carbon Steel 1095', category: 'carbon-steel', requiresManualReview: true, costPerKg: 6.2, density: 7.85 },
+  { value: 'carbon-steel-4130', label: 'Carbon Steel 4130', category: 'carbon-steel', requiresManualReview: true, costPerKg: 5.6, density: 7.85 },
+  { value: 'carbon-steel-4140', label: 'Carbon Steel 4140', category: 'carbon-steel', requiresManualReview: true, costPerKg: 5.9, density: 7.85 },
+  
+  // Zinc-coated Steel
+  { value: 'galvanized-g90', label: 'Zinc-coated Steel Galvanized G90', category: 'zinc-coated', requiresManualReview: false, costPerKg: 4.8, density: 7.85 },
+  { value: 'galvanized-g60', label: 'Zinc-coated Steel Galvanized G60', category: 'zinc-coated', requiresManualReview: false, costPerKg: 4.6, density: 7.85 },
+  { value: 'galvanneal-a60', label: 'Zinc-coated Steel Galvanneal A60', category: 'zinc-coated', requiresManualReview: false, costPerKg: 4.7, density: 7.85 },
+  { value: 'galvanneal-a40', label: 'Zinc-coated Steel Galvanneal A40', category: 'zinc-coated', requiresManualReview: false, costPerKg: 4.5, density: 7.85 },
+  { value: 'electro-galvanized', label: 'Zinc-coated Steel Electro-galvanized (EG)', category: 'zinc-coated', requiresManualReview: false, costPerKg: 4.9, density: 7.85 },
+  { value: 'aluminized-type1', label: 'Zinc-coated Steel Aluminized Type 1', category: 'zinc-coated', requiresManualReview: true, costPerKg: 5.2, density: 7.85 },
+  { value: 'prepainted-coil', label: 'Zinc-coated Steel Pre-painted coil', category: 'zinc-coated', requiresManualReview: true, costPerKg: 6.5, density: 7.85 },
+  
+  // Copper
+  { value: 'copper-c260', label: 'Copper C260', category: 'copper', requiresManualReview: false, costPerKg: 9.6, density: 8.53 },
+  { value: 'copper-c110', label: 'Copper C110', category: 'copper', requiresManualReview: false, costPerKg: 14.0, density: 8.96 },
+  { value: 'copper-c122', label: 'Copper C122', category: 'copper', requiresManualReview: false, costPerKg: 14.5, density: 8.94 },
+  
+  // Bronze
+  { value: 'bronze-c510', label: 'Bronze C510', category: 'bronze', requiresManualReview: true, costPerKg: 12.5, density: 8.8 },
+  { value: 'bronze-c521', label: 'Bronze C521', category: 'bronze', requiresManualReview: true, costPerKg: 13.0, density: 8.75 },
+  { value: 'bronze-c172', label: 'Bronze C172 (Be-Cu)', category: 'bronze', requiresManualReview: true, costPerKg: 45.0, density: 8.26 },
+  
+  // Titanium
+  { value: 'titanium-grade-2', label: 'Titanium Grade 2', category: 'titanium', requiresManualReview: true, costPerKg: 55.0, density: 4.51 },
+  { value: 'titanium-grade-5', label: 'Titanium Grade 5', category: 'titanium', requiresManualReview: true, costPerKg: 70.0, density: 4.43 },
+  
+  // Nickel Alloy
+  { value: 'inconel-625', label: 'Nickel Alloy Inconel 625', category: 'nickel-alloy', requiresManualReview: true, costPerKg: 48.0, density: 8.44 },
+  { value: 'inconel-718', label: 'Nickel Alloy Inconel 718', category: 'nickel-alloy', requiresManualReview: true, costPerKg: 55.0, density: 8.19 },
+  { value: 'monel-400', label: 'Nickel Alloy Monel 400', category: 'nickel-alloy', requiresManualReview: true, costPerKg: 32.0, density: 8.8 },
+] as const;
+
+// Legacy sheet metal materials (keep for backward compatibility)
 export const SHEET_METAL_MATERIALS: Record<string, SheetMetalMaterialSpec[]> = {
   // Aluminum Alloys - Excellent formability, lightweight
   'aluminum-1100-h14': [

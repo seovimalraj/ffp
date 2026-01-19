@@ -12,6 +12,8 @@ import {
   CheckCheck,
   Sparkles,
   TrendingDown,
+  Activity,
+  Droplet,
 } from "lucide-react";
 import React, { useEffect, useState, useRef } from "react";
 import { cn } from "@/lib/utils";
@@ -76,17 +78,30 @@ function analyzeDFM(part: PartConfig, geometryFeatures?: GeometryFeatureMap): DF
   const geometry = part.geometry;
   const hasGeometry = !!geometry;
   
-  // Detect process type - check part config first, then geometry recommendation
+  // ENTERPRISE: Process detection with explicit part.process priority
   const processType: "cnc" | "sheet-metal" | "unknown" = 
-    part.process === "sheet-metal" ? "sheet-metal" :
-    part.process === "cnc" || part.process === "cnc-milling" || part.process === "cnc-turning" ? "cnc" :
+    part.process === "sheet-metal" || part.process?.includes('sheet') ? "sheet-metal" :
+    part.process === "cnc-milling" || part.process === "cnc-turning" || part.process === "cnc" ? "cnc" :
     geometry?.recommendedProcess === "sheet-metal" ? "sheet-metal" :
+    geometry?.recommendedProcess?.includes('sheet') ? "sheet-metal" :
     geometry?.recommendedProcess === "cnc-milling" || geometry?.recommendedProcess === "cnc-turning" ? "cnc" :
     geometry?.sheetMetalFeatures ? "sheet-metal" :
     "cnc"; // Default to CNC
   
   const isCNC = processType === "cnc";
   const isSheetMetal = processType === "sheet-metal";
+  
+  // Process type indicator
+  checks.push({
+    id: "process-type",
+    name: "Manufacturing Process",
+    description: `Detected as ${processType === 'sheet-metal' ? 'Sheet Metal Fabrication' : 'CNC Machining'}`,
+    status: "pass",
+    details: isSheetMetal ? 'Laser cutting, bending, forming operations' : 'Milling, turning, drilling operations',
+    icon: isSheetMetal ? <Layers className="w-4 h-4" /> : <Zap className="w-4 h-4" />,
+    category: "geometry",
+    severity: "low",
+  });
 
   // ===== GEOMETRY VALIDATION =====
   const fileExt = part.fileName.split(".").pop()?.toLowerCase() || "";
@@ -591,6 +606,270 @@ function analyzeDFM(part: PartConfig, geometryFeatures?: GeometryFeatureMap): DF
     // ===== ENTERPRISE-LEVEL SHEET METAL CHECKS =====
     if (isSheetMetal && geometry.sheetMetalFeatures) {
       const smFeatures = geometry.sheetMetalFeatures;
+      
+      // SM-ENT-1: Bend Allowance & K-Factor Analysis
+      if (smFeatures.bendCount > 0) {
+        const kFactor = 0.4; // Standard for mild steel
+        const hasBendAllowanceIssues = smFeatures.minBendRadius < smFeatures.thickness * 0.8;
+        
+        checks.push({
+          id: "bend-allowance-enterprise",
+          name: "Bend Allowance Calculation",
+          description: "K-factor and material compensation",
+          status: hasBendAllowanceIssues ? "warning" : "pass",
+          details: `K=${kFactor} • ${smFeatures.bendCount} bends require flat pattern compensation`,
+          icon: <Ruler className="w-4 h-4" />,
+          category: "bending",
+          severity: hasBendAllowanceIssues ? "medium" : "low",
+          potentialSavings: hasBendAllowanceIssues ? 30 : 0,
+        });
+        
+        if (hasBendAllowanceIssues) {
+          recommendations.push(`⚠️ Tight bend radii detected. Verify flat pattern calculations account for springback and k-factor ($30 rework risk).`);
+          totalPotentialSavings += 30;
+        }
+      }
+      
+      // SM-ENT-2: Springback Compensation
+      if (smFeatures.bendCount > 5 || smFeatures.thickness < 1.0) {
+        checks.push({
+          id: "springback-analysis",
+          name: "Springback Compensation",
+          description: "Angular deviation after forming",
+          status: "warning",
+          details: `${smFeatures.thickness}mm material requires overbend compensation`,
+          icon: <Activity className="w-4 h-4" />,
+          category: "forming",
+          severity: "medium",
+          potentialSavings: 25,
+        });
+        
+        recommendations.push(`📐 Material will springback 2-4° after bending. Verify tooling compensates for elastic recovery ($25 adjustment cost).`);
+        totalPotentialSavings += 25;
+      }
+      
+      // SM-ENT-3: Edge Distance to Bend Line
+      if (smFeatures.bendCount > 0 && smFeatures.hasSmallFeatures) {
+        const minEdgeDistance = smFeatures.thickness * 2.5;
+        checks.push({
+          id: "edge-distance-check",
+          name: "Edge Distance to Bends",
+          description: "Minimum flange length validation",
+          status: "warning",
+          details: `Features <${minEdgeDistance.toFixed(1)}mm from bend line risk distortion`,
+          icon: <Ruler className="w-4 h-4" />,
+          category: "bending",
+          severity: "high",
+          potentialSavings: 40,
+        });
+        
+        recommendations.push(`⚠️ Holes/features too close to bend lines. Move to ≥${minEdgeDistance.toFixed(1)}mm to prevent warping ($40 scrap risk).`);
+        totalPotentialSavings += 40;
+      }
+      
+      // SM-ENT-4: Relief Notches & Corners
+      if (smFeatures.bendCount > 2) {
+        checks.push({
+          id: "relief-notches",
+          name: "Corner Relief Design",
+          description: "Stress concentration at bend intersections",
+          status: "info",
+          details: "Relief notches recommended for intersecting bends",
+          icon: <Maximize2 className="w-4 h-4" />,
+          category: "bending",
+          severity: "medium",
+          potentialSavings: 15,
+        });
+        
+        recommendations.push(`🔧 Add corner relief notches at bend intersections to prevent tearing. Standard: R=${(smFeatures.thickness * 1.5).toFixed(1)}mm ($15 rework prevention).`);
+        totalPotentialSavings += 15;
+      }
+      
+      // SM-ENT-5: Hemming Operations
+      if (smFeatures.complexity === 'complex' || smFeatures.complexity === 'very-complex') {
+        const hasHemmingOps = smFeatures.bendCount > 8;
+        if (hasHemmingOps) {
+          checks.push({
+            id: "hemming-operations",
+            name: "Hemming & Edge Sealing",
+            description: "Complex edge finishing detected",
+            status: "warning",
+            details: "Hemming adds 2-3 operations per edge",
+            icon: <Layers className="w-4 h-4" />,
+            category: "forming",
+            severity: "medium",
+            potentialSavings: 50,
+          });
+          
+          recommendations.push(`🔄 Complex hemming operations detected. Consider simplified edge design for $50 cost reduction.`);
+          totalPotentialSavings += 50;
+        }
+      }
+      
+      // SM-ENT-6: Material Grain Direction
+      if (smFeatures.bendCount > 0) {
+        checks.push({
+          id: "grain-direction",
+          name: "Material Grain Orientation",
+          description: "Bending relative to rolling direction",
+          status: "info",
+          details: "Bending across grain reduces cracking risk by 40%",
+          icon: <LayoutDashboard className="w-4 h-4" />,
+          category: "bending",
+          severity: "low",
+        });
+        
+        recommendations.push(`📋 Ensure major bends are perpendicular to material grain direction for best results.`);
+      }
+      
+      // SM-ENT-7: Hole-to-Edge Distance
+      if (smFeatures.holeCount > 5) {
+        const minHoleEdgeDistance = smFeatures.thickness * 2;
+        checks.push({
+          id: "hole-edge-distance",
+          name: "Hole Edge Clearance",
+          description: "Minimum distance from holes to edges",
+          status: "warning",
+          details: `${smFeatures.holeCount} holes require ≥${minHoleEdgeDistance.toFixed(1)}mm edge clearance`,
+          icon: <Circle className="w-4 h-4" />,
+          category: "manufacturability",
+          severity: "medium",
+          potentialSavings: 20,
+        });
+        
+        recommendations.push(`🔵 Move holes ≥${minHoleEdgeDistance.toFixed(1)}mm from edges to prevent deformation during cutting/punching ($20 savings).`);
+        totalPotentialSavings += 20;
+      }
+      
+      // SM-ENT-8: Minimum Hole Size
+      if (smFeatures.holeCount > 0) {
+        const minHoleDiameter = smFeatures.thickness * 1.5;
+        checks.push({
+          id: "min-hole-size-sheet",
+          name: "Minimum Hole Diameter",
+          description: "Sheet metal hole size limits",
+          status: "info",
+          details: `Minimum: ${minHoleDiameter.toFixed(1)}mm (1.5× material thickness)`,
+          icon: <Circle className="w-4 h-4" />,
+          category: "manufacturability",
+          severity: "low",
+        });
+      }
+      
+      // SM-ENT-9: Laser Cutting Kerf Width
+      if (smFeatures.recommendedCuttingMethod === 'laser') {
+        const kerfWidth = smFeatures.thickness <= 3 ? 0.2 : 0.3;
+        checks.push({
+          id: "laser-kerf-width",
+          name: "Laser Cutting Kerf",
+          description: "Material removal width compensation",
+          status: "pass",
+          details: `${kerfWidth}mm kerf width for ${smFeatures.thickness}mm material`,
+          icon: <Zap className="w-4 h-4" />,
+          category: "geometry",
+          severity: "low",
+        });
+      }
+      
+      // SM-ENT-10: Weldment Preparation
+      if (smFeatures.complexity === 'very-complex') {
+        checks.push({
+          id: "weldment-prep",
+          name: "Welding & Assembly",
+          description: "Part requires welding or multi-piece assembly",
+          status: "warning",
+          details: "Complex geometry may need sub-assemblies",
+          icon: <Layers className="w-4 h-4" />,
+          category: "feasibility",
+          severity: "high",
+          potentialSavings: 80,
+        });
+        
+        recommendations.push(`🔥 Complex design may require welded assembly. Consider single-piece redesign for $80 savings.`);
+        totalPotentialSavings += 80;
+      }
+      
+      // SM-ENT-11: Powder Coating Considerations
+      if (part.finish === 'powder-coated' || part.finish === 'powder-coated-custom') {
+        checks.push({
+          id: "powder-coating-prep",
+          name: "Powder Coating Design",
+          description: "Coating thickness and drainage holes",
+          status: "info",
+          details: "0.08-0.12mm coating thickness, drainage holes required",
+          icon: <Droplet className="w-4 h-4" />,
+          category: "manufacturability",
+          severity: "low",
+        });
+        
+        recommendations.push(`🎨 For powder coating: Add drainage holes in pockets to prevent fluid trapping.`);
+      }
+      
+      // SM-ENT-12: Tab & Breakout Features
+      if (smFeatures.flatArea > 10000) { // Large parts
+        checks.push({
+          id: "micro-joints",
+          name: "Micro-Joints & Tabs",
+          description: "Part retention during cutting",
+          status: "info",
+          details: "Large part requires 4-6 micro-joints",
+          icon: <Layers className="w-4 h-4" />,
+          category: "manufacturability",
+          severity: "low",
+        });
+      }
+      
+      // SM-ENT-13: Bend Sequence Optimization
+      if (smFeatures.bendCount > 4) {
+        const requiresSpecialFixturing = smFeatures.requiresMultipleSetups || smFeatures.bendCount > 8;
+        checks.push({
+          id: "bend-sequence",
+          name: "Bend Sequence Analysis",
+          description: "Optimal bending order and tooling",
+          status: requiresSpecialFixturing ? "warning" : "pass",
+          details: `${smFeatures.bendCount} bends${requiresSpecialFixturing ? ' require special sequencing' : ''}`,
+          icon: <Activity className="w-4 h-4" />,
+          category: "bending",
+          severity: requiresSpecialFixturing ? "medium" : "low",
+          potentialSavings: requiresSpecialFixturing ? 35 : 0,
+        });
+        
+        if (requiresSpecialFixturing) {
+          recommendations.push(`🔧 Complex bend sequence requires specialized fixtures. Simplify to save $35.`);
+          totalPotentialSavings += 35;
+        }
+      }
+      
+      // SM-ENT-14: Countersinking for Sheet Metal
+      if (smFeatures.holeCount > 10) {
+        checks.push({
+          id: "countersink-sheet",
+          name: "Countersink Operations",
+          description: "Secondary hole operations on sheet metal",
+          status: "info",
+          details: `${smFeatures.holeCount} holes may require countersinking for flush fasteners`,
+          icon: <Circle className="w-4 h-4" />,
+          category: "features",
+          severity: "low",
+          potentialSavings: smFeatures.holeCount * 0.5,
+        });
+      }
+      
+      // SM-ENT-15: Notch & Cutout Design
+      if (smFeatures.complexity !== 'simple') {
+        checks.push({
+          id: "notch-design",
+          name: "Notches & Cutouts",
+          description: "Internal cutout geometry validation",
+          status: "info",
+          details: "Corner radii should match material thickness",
+          icon: <Maximize2 className="w-4 h-4" />,
+          category: "manufacturability",
+          severity: "low",
+        });
+        
+        recommendations.push(`✂️ Ensure internal cutout corners have R≥${smFeatures.thickness.toFixed(1)}mm radii.`);
+      }
       
       // Material Thickness Validation
       checks.push({

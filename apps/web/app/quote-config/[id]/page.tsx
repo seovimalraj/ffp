@@ -33,6 +33,14 @@ import {
   PROCESSES,
   MATERIALS,
   FINISHES,
+  SHEET_METAL_MATERIALS_LIST,
+  getProcessDisplayName,
+  requiresManualReview,
+  getSheetMetalMaterial,
+  getMaterialForProcess,
+  getDefaultMaterialForProcess,
+  getDefaultFinishForProcess,
+  getDefaultToleranceForProcess,
 } from "../../../lib/pricing-engine";
 import { PartCardItem } from "../components/part-card-item";
 import { useDropzone } from "react-dropzone";
@@ -62,6 +70,36 @@ import ArchiveModal from "../components/archive-modal";
 import { SuggestionSidebar } from "../components/suggestion-sidebar";
 
 // --- Constants (Moved Outside) ---
+// Helper function to get materials based on process
+const getMaterialsForProcess = (process: string | undefined) => {
+  if (process === 'sheet-metal' || process?.includes('sheet')) {
+    return SHEET_METAL_MATERIALS_LIST.map(mat => ({
+      value: mat.value,
+      label: mat.requiresManualReview ? `${mat.label} [Manual review]` : mat.label,
+      multiplier: mat.costPerKg / 8.5,
+      requiresManualReview: mat.requiresManualReview,
+      icon: mat.category === 'aluminum' ? "🔷" :
+            mat.category === 'stainless' ? "⚙️" :
+            mat.category === 'copper' ? "🟠" :
+            mat.category === 'bronze' ? "🟤" :
+            mat.category === 'titanium' ? "🔵" :
+            mat.category === 'nickel-alloy' ? "⚪" : "⚫",
+    }));
+  }
+  
+  // CNC Machining materials
+  return Object.entries(MATERIALS).map(([key, mat]) => ({
+    value: key,
+    label: mat.name,
+    multiplier: mat.costPerKg / 8.5,
+    requiresManualReview: false,
+    icon: key.includes("aluminum") ? "🔷" :
+          key.includes("stainless") ? "⚙️" :
+          key.includes("titanium") ? "🔵" :
+          key.includes("plastic") ? "🟢" : "",
+  }));
+};
+
 const MATERIALS_LIST = Object.entries(MATERIALS).map(([key, mat]) => ({
   value: key,
   label: mat.name,
@@ -77,10 +115,29 @@ const MATERIALS_LIST = Object.entries(MATERIALS).map(([key, mat]) => ({
           : "",
 }));
 
+// Sheet metal specific tolerances
+const SHEET_METAL_TOLERANCES_LIST = [
+  { value: "standard", label: 'Standard (±0.010")', multiplier: 1.0 },
+  { value: "precision", label: 'Precision (±0.005")', multiplier: 1.15 },
+  { value: "tight", label: 'Tight (±0.002")', multiplier: 1.3 },
+];
+
 const TOLERANCES_LIST = [
   { value: "standard", label: 'Standard (±0.005")', multiplier: 1.0 },
   { value: "precision", label: 'Precision (±0.002")', multiplier: 1.15 },
   { value: "tight", label: 'Tight (±0.001")', multiplier: 1.3 },
+];
+
+// Sheet metal specific finishes
+const SHEET_METAL_FINISHES_LIST = [
+  { value: "as-cut", label: "As Cut (Unfinished)", cost: 0 },
+  { value: "deburring", label: "Deburred Edges", cost: 8 },
+  { value: "powder-coated", label: "Powder Coated", cost: 22 },
+  { value: "powder-coated-custom", label: "Powder Coated (Custom Color)", cost: 35 },
+  { value: "anodized-clear", label: "Anodized Clear (Aluminum only)", cost: 18 },
+  { value: "anodized-color", label: "Anodized Color (Aluminum only)", cost: 25 },
+  { value: "zinc-plated", label: "Zinc Plated", cost: 15 },
+  { value: "electropolished", label: "Electropolished", cost: 35 },
 ];
 
 const FINISHES_LIST = Object.entries(FINISHES).map(([key, fin]) => ({
@@ -118,10 +175,13 @@ export const calculateLeadTime = (
 ) => {
   if (!part.geometry) return 7;
 
-  const material = getMaterial(part.material);
+  // Get material based on process type
+  const processType = part.process || part.geometry?.recommendedProcess || 'cnc-milling';
+  const material = getMaterialForProcess(part.material, processType);
   if (!material) return 7;
 
-  const process = PROCESSES["cnc-milling"];
+  // Get correct process config
+  const process = PROCESSES[processType as keyof typeof PROCESSES] || PROCESSES["cnc-milling"];
   const finish = getFinish(part.finish);
 
   const pricing = calculatePricing({
@@ -143,10 +203,18 @@ const calculatePrice = (
 ): number => {
   if (!part.geometry) return 0;
 
-  const material = getMaterial(part.material);
+  // Skip pricing calculation for manual review materials
+  const processType = part.process || part.geometry?.recommendedProcess || 'cnc-milling';
+  if (requiresManualReview(part.material, processType)) {
+    return 0; // Return 0 for manual review, will be quoted separately
+  }
+
+  // Get material based on process type
+  const material = getMaterialForProcess(part.material, processType);
   if (!material) return 0;
 
-  const process = PROCESSES["cnc-milling"];
+  // Get correct process config
+  const process = PROCESSES[processType as keyof typeof PROCESSES] || PROCESSES["cnc-milling"];
   const finish = getFinish(part.finish);
 
   const pricing = calculatePricing({
@@ -249,16 +317,21 @@ export default function QuoteConfigPage() {
             ? processMap[geometry.recommendedProcess] || 'cnc-milling'
             : 'cnc-milling';
 
+          // Use process-specific defaults
+          const defaultMaterial = getDefaultMaterialForProcess(detectedProcess);
+          const defaultFinish = getDefaultFinishForProcess(detectedProcess);
+          const defaultTolerance = getDefaultToleranceForProcess(detectedProcess);
+
           const newPart: any = {
             file_name: file.name,
             cad_file_url: uploadedPath,
             cad_file_type: file.type,
             process: detectedProcess, // Set process based on geometry analysis
-            material: "aluminum-6061",
+            material: defaultMaterial, // Process-specific default material
             quantity: 1,
             status: "draft",
-            tolerance: "standard",
-            finish: "as-machined",
+            tolerance: defaultTolerance,
+            finish: defaultFinish, // Process-specific default finish
             threads: "none",
             inspection: "standard",
             notes: "",
@@ -560,9 +633,10 @@ export default function QuoteConfigPage() {
 
                 // Recalculate Pricing Object
                 if (part.geometry) {
-                  const material = getMaterial(part.material);
-                  if (material) {
-                    const process = PROCESSES["cnc-milling"];
+                  const processType = p.process || part.geometry?.recommendedProcess || 'cnc-milling';
+                  const material = getMaterialForProcess(part.material, processType);
+                  if (material && !requiresManualReview(part.material, processType)) {
+                    const process = PROCESSES[processType as keyof typeof PROCESSES] || PROCESSES["cnc-milling"];
                     const finish = getFinish(part.finish);
 
                     part.pricing = calculatePricing({
@@ -678,25 +752,41 @@ export default function QuoteConfigPage() {
     // Calculate new state logic
     const updatedPart = { ...currentPart, ...updates };
 
+    // If process changed, reset material/finish/tolerance to process-appropriate defaults
+    if (updates.process && updates.process !== currentPart.process) {
+      updatedPart.material = getDefaultMaterialForProcess(updates.process);
+      updatedPart.finish = getDefaultFinishForProcess(updates.process);
+      updatedPart.tolerance = getDefaultToleranceForProcess(updates.process);
+      notify.info(`Process changed. Material and finish reset to ${getProcessDisplayName(updates.process)} defaults.`);
+    }
+
     // Recalculate pricing if geometry exists
     if (updatedPart.geometry) {
-      const material = getMaterial(updatedPart.material);
+      const processType = updatedPart.process || updatedPart.geometry?.recommendedProcess || 'cnc-milling';
+      const material = getMaterialForProcess(updatedPart.material, processType);
+      
       if (material) {
-        const process = PROCESSES["cnc-milling"];
+        const process = PROCESSES[processType as keyof typeof PROCESSES] || PROCESSES["cnc-milling"];
         const finish = getFinish(updatedPart.finish);
 
-        updatedPart.pricing = calculatePricing({
-          geometry: updatedPart.geometry,
-          material,
-          process,
-          finish,
-          quantity: updatedPart.quantity,
-          tolerance: updatedPart.tolerance as
-            | "standard"
-            | "precision"
-            | "tight",
-          leadTimeType: "standard", // Always use standard as base
-        });
+        // Only calculate pricing if not manual review
+        if (!requiresManualReview(updatedPart.material, processType)) {
+          updatedPart.pricing = calculatePricing({
+            geometry: updatedPart.geometry,
+            material,
+            process,
+            finish,
+            quantity: updatedPart.quantity,
+            tolerance: updatedPart.tolerance as
+              | "standard"
+              | "precision"
+              | "tight",
+            leadTimeType: "standard", // Always use standard as base
+          });
+        } else {
+          // Set pricing to undefined for manual review
+          updatedPart.pricing = undefined;
+        }
 
         // Recalculate derived fields
         updatedPart.final_price = calculatePrice(
@@ -1128,25 +1218,36 @@ export default function QuoteConfigPage() {
           ref={partsContainerRef}
           className="flex-1 p-4 sm:p-6 md:p-8 lg:p-10 overflow-scroll invisible-scrollbar space-y-6 md:space-y-8 pb-32"
         >
-          {parts.map((part, index) => (
-            <PartCardItem
-              key={index}
-              part={part}
-              index={index}
-              updatePart={updatePart}
-              updatePartFields={updatePartFields}
-              handleDeletePart={handleDeletePart}
-              handleArchivePart={handleArchivePart}
-              calculatePrice={calculatePrice}
-              MATERIALS_LIST={MATERIALS_LIST}
-              TOLERANCES_LIST={TOLERANCES_LIST}
-              FINISHES_LIST={FINISHES_LIST}
-              THREAD_OPTIONS={THREAD_OPTIONS}
-              INSPECTIONS_OPTIONS={INSPECTION_OPTIONS}
-              isSelected={selectedParts.has(part.id)}
-              onToggleSelection={() => togglePartSelection(part.id)}
-            />
-          ))}
+          {parts.map((part, index) => {
+            // Get process-specific materials, tolerances, and finishes
+            const processMaterials = getMaterialsForProcess(part.process);
+            const processTolerances = (part.process === 'sheet-metal' || part.process?.includes('sheet')) 
+              ? SHEET_METAL_TOLERANCES_LIST 
+              : TOLERANCES_LIST;
+            const processFinishes = (part.process === 'sheet-metal' || part.process?.includes('sheet')) 
+              ? SHEET_METAL_FINISHES_LIST 
+              : FINISHES_LIST;
+            
+            return (
+              <PartCardItem
+                key={index}
+                part={part}
+                index={index}
+                updatePart={updatePart}
+                updatePartFields={updatePartFields}
+                handleDeletePart={handleDeletePart}
+                handleArchivePart={handleArchivePart}
+                calculatePrice={calculatePrice}
+                MATERIALS_LIST={processMaterials}
+                TOLERANCES_LIST={processTolerances}
+                FINISHES_LIST={processFinishes}
+                THREAD_OPTIONS={THREAD_OPTIONS}
+                INSPECTIONS_OPTIONS={INSPECTION_OPTIONS}
+                isSelected={selectedParts.has(part.id)}
+                onToggleSelection={() => togglePartSelection(part.id)}
+              />
+            );
+          })}
 
           {/* Add Part Button */}
           <div className="pt-6 md:pt-8 w-full">
