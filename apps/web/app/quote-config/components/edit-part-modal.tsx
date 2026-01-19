@@ -168,65 +168,6 @@ export function EditPartModal({
       setLocalPart(part);
       setActiveTab("config"); // Reset to config tab when modal opens
       setSelectedHighlight(null); // Clear highlight when modal opens
-      
-      // Auto-apply intelligent recommendations for new parts
-      const applySmartDefaults = () => {
-        const process = part.process || 'cnc-milling';
-        const geometry = {
-          volume: part.volume || 1000,
-          surfaceArea: part.surfaceArea || 5000,
-          complexity: part.complexity || 'moderate',
-          features: part.features || {},
-        };
-        
-        // Only auto-apply if part has no custom settings yet (using default material)
-        const isNewPart = part.material === (isCNCProcess(process) ? 'aluminum-6061' : 'sm-aluminum-5052');
-        
-        if (isNewPart) {
-          const updates: Partial<PartConfig> = {};
-          
-          // 1. Auto-select best material
-          const materialRecs = recommendOptimalMaterial(process, geometry, 'general');
-          if (materialRecs.length > 0 && materialRecs[0].score > 85) {
-            updates.material = materialRecs[0].material;
-          }
-          
-          // 2. Auto-select best finish
-          const finishRecs = recommendFinish(
-            updates.material || part.material || (isCNCProcess(process) ? 'aluminum-6061' : 'sm-aluminum-5052'),
-            'general'
-          );
-          if (finishRecs.length > 0 && finishRecs[0].score > 85) {
-            updates.finish = finishRecs[0].finish;
-          }
-          
-          // 3. Auto-select tolerance for CNC
-          if (isCNCProcess(process)) {
-            const toleranceRec = recommendTolerance(geometry, updates.material || part.material || 'aluminum-6061');
-            if (toleranceRec.confidence > 80) {
-              updates.tolerance = toleranceRec.recommendation;
-            }
-          }
-          
-          // 4. Auto-select optimal quantity
-          const quantityAnalysis = analyzeQuantityBreakpoints(part, geometry);
-          const bestValue = quantityAnalysis.reduce((best, curr) => 
-            curr.savingsPercent > best.savingsPercent ? curr : best,
-            quantityAnalysis[0] || { quantity: part.quantity, savingsPercent: 0 }
-          );
-          if (bestValue.savingsPercent > 20 && bestValue.quantity <= 50) {
-            updates.quantity = bestValue.quantity;
-          }
-          
-          // Apply all updates
-          if (Object.keys(updates).length > 0) {
-            setLocalPart(prev => ({ ...prev, ...updates }));
-          }
-        }
-      };
-      
-      // Small delay to ensure component is mounted
-      setTimeout(applySmartDefaults, 100);
     }
   }, [isOpen, part]);
 
@@ -470,13 +411,14 @@ export function EditPartModal({
                         
                         {/* Smart Quantity Breakpoints */}
                         {(() => {
-                          const geometry = {
-                            volume: localPart.volume || 1000,
-                            surfaceArea: localPart.surfaceArea || 5000,
-                            complexity: localPart.complexity || 'moderate',
-                            features: localPart.features || {},
-                          };
-                          const quantityAnalysis = analyzeQuantityBreakpoints(localPart, geometry);
+                          try {
+                            const geometry = {
+                              volume: localPart.volume || 1000,
+                              surfaceArea: localPart.surfaceArea || 5000,
+                              complexity: localPart.complexity || 'moderate',
+                              features: localPart.features || {},
+                            };
+                            const quantityAnalysis = analyzeQuantityBreakpoints(localPart, geometry);
                           const bestValue = quantityAnalysis.reduce((best, curr) => 
                             curr.savingsPercent > best.savingsPercent ? curr : best
                           );
@@ -508,6 +450,10 @@ export function EditPartModal({
                             );
                           }
                           return null;
+                          } catch (error) {
+                            console.error('Error rendering quantity analysis:', error);
+                            return null;
+                          }
                         })()}
                       </div>
                     </div>
@@ -517,26 +463,27 @@ export function EditPartModal({
 
                   {/* Intelligent Recommendations Section */}
                   {(() => {
-                    const process = localPart.process || 'cnc-milling';
-                    const geometry = {
-                      volume: localPart.volume || 1000,
-                      surfaceArea: localPart.surfaceArea || 5000,
-                      complexity: localPart.complexity || 'moderate',
-                      features: localPart.features || {},
-                    };
-                    
-                    const materialRecs = recommendOptimalMaterial(process, geometry, 'general');
-                    const manufacturabilityScore = calculateManufacturabilityScore(geometry, process);
-                    const costOptimizations = generateCostOptimizations(localPart, geometry);
-                    const leadTimePrediction = predictLeadTime(process, localPart.quantity, geometry.complexity);
-                    
-                    return (
-                      <div className="mb-10">
-                        <div className="grid lg:grid-cols-[240px_1fr] gap-8 items-start">
-                          <div>
-                            <Label className="text-base font-semibold text-gray-900">
-                              AI-Level Recommendations
-                            </Label>
+                    try {
+                      const process = localPart.process || 'cnc-milling';
+                      const geometry = {
+                        volume: localPart.volume || 1000,
+                        surfaceArea: localPart.surfaceArea || 5000,
+                        complexity: localPart.complexity || 'moderate',
+                        features: localPart.features || {},
+                      };
+                      
+                      const materialRecs = recommendOptimalMaterial(process, geometry, 'general');
+                      const manufacturabilityScore = calculateManufacturabilityScore(geometry, process);
+                      const costOptimizations = generateCostOptimizations(localPart, geometry);
+                      const leadTimePrediction = predictLeadTime(process, localPart.quantity || 1, geometry.complexity);
+                      
+                      return (
+                        <div className="mb-10">
+                          <div className="grid lg:grid-cols-[240px_1fr] gap-8 items-start">
+                            <div>
+                              <Label className="text-base font-semibold text-gray-900">
+                                AI-Level Recommendations
+                              </Label>
                             <p className="text-sm text-gray-500 mt-1.5 leading-relaxed">
                               Intelligent insights based on your part geometry and requirements.
                             </p>
@@ -674,7 +621,7 @@ export function EditPartModal({
                               const nestingOpt = optimizeSheetMetalSetup(
                                 geometry,
                                 localPart.thickness || '1.0',
-                                localPart.quantity
+                                localPart.quantity || 1
                               );
                               return (
                                 <div className="bg-gradient-to-br from-teal-50 to-cyan-50 border border-teal-200 rounded-xl p-5 shadow-sm">
@@ -708,6 +655,10 @@ export function EditPartModal({
                         </div>
                       </div>
                     );
+                    } catch (error) {
+                      console.error('Error rendering recommendations:', error);
+                      return null; // Fail silently, don't crash the modal
+                    }
                   })()}
 
                   <div className="h-px bg-gray-100 w-full mb-10" />
@@ -793,13 +744,14 @@ export function EditPartModal({
 
                     {/* Surface Finish - Process Aware with AI Recommendations */}
                     {(() => {
-                      const finishRecs = recommendFinish(
-                        localPart.material || (isSheetMetalProcess(localPart.process) ? 'sm-aluminum-5052' : 'aluminum-6061'),
-                        'general'
-                      );
-                      
-                      return (
-                        <div className="grid lg:grid-cols-[240px_1fr] gap-8 items-start">
+                      try {
+                        const finishRecs = recommendFinish(
+                          localPart.material || (isSheetMetalProcess(localPart.process) ? 'sm-aluminum-5052' : 'aluminum-6061'),
+                          'general'
+                        );
+                        
+                        return (
+                          <div className="grid lg:grid-cols-[240px_1fr] gap-8 items-start">
                           <div>
                             <Label className="text-base font-semibold text-gray-900">
                               Surface Finish
@@ -843,6 +795,26 @@ export function EditPartModal({
                           </Select>
                         </div>
                       );
+                      } catch (error) {
+                        console.error('Error rendering finish recommendations:', error);
+                        return (
+                          <div className="grid lg:grid-cols-[240px_1fr] gap-8 items-start">
+                            <div>
+                              <Label className="text-base font-semibold text-gray-900">Surface Finish</Label>
+                            </div>
+                            <Select value={localPart.finish} onValueChange={(v) => updateLocalPart("finish", v)}>
+                              <SelectTrigger className="h-12 border-gray-200 bg-white hover:border-gray-300 transition-colors rounded-xl shadow-sm text-base">
+                                <SelectValue placeholder="Select Finish" />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {(isSheetMetalProcess(localPart.process) ? SHEET_METAL_FINISHES : CNC_FINISHES).map((f) => (
+                                  <SelectItem key={f.value} value={f.value}><span>{f.label}</span></SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                          </div>
+                        );
+                      }
                     })()}
 
                     <div className="h-px bg-gray-100 w-full" />
@@ -873,15 +845,16 @@ export function EditPartModal({
 
                     {/* CNC ONLY: Tolerances with AI Recommendation */}
                     {isCNCProcess(localPart.process) && (() => {
-                      const geometry = {
-                        volume: localPart.volume || 1000,
-                        surfaceArea: localPart.surfaceArea || 5000,
-                        complexity: localPart.complexity || 'moderate',
-                        features: localPart.features || {},
-                      };
-                      const recommendedTolerance = recommendTolerance(geometry, localPart.material || 'aluminum-6061');
-                      
-                      return (
+                      try {
+                        const geometry = {
+                          volume: localPart.volume || 1000,
+                          surfaceArea: localPart.surfaceArea || 5000,
+                          complexity: localPart.complexity || 'moderate',
+                          features: localPart.features || {},
+                        };
+                        const recommendedTolerance = recommendTolerance(geometry, localPart.material || 'aluminum-6061');
+                        
+                        return (
                         <div className="grid lg:grid-cols-[240px_1fr] gap-8 items-start">
                           <div>
                             <Label className="text-base font-semibold text-gray-900">
@@ -927,6 +900,10 @@ export function EditPartModal({
                           </div>
                         </div>
                       );
+                      } catch (error) {
+                        console.error('Error rendering tolerance recommendations:', error);
+                        return null;
+                      }
                     })()}
 
                     {/* SHEET METAL ONLY: Thickness */}
