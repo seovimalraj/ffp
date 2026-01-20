@@ -254,6 +254,7 @@ export default function QuoteConfigPage() {
             lead_time: 0,
             geometry,
             pricing: undefined,
+            process: geometry.recommendedProcess || "cnc-milling",
             final_price: 0,
             certificates: [],
           };
@@ -512,9 +513,9 @@ export default function QuoteConfigPage() {
             let syncNeeded = false;
 
             const processedParts: PartConfig[] = apiPartsRaw.map(
-              (p: any, index: number) => {
+              (p: any) => {
                 const part: PartConfig = {
-                  id: p.id || `part-${index + 1}`,
+                  id: p.id,
                   rfqId: p.rfq_id,
                   status: p.status || "active",
                   fileName: p.file_name,
@@ -535,6 +536,7 @@ export default function QuoteConfigPage() {
                   leadTime: undefined,
                   is_archived: p.is_archived,
                   snapshot_2d_url: p.snapshot_2d_url,
+                  process: p.process,
                   files2d: (p.files2d || []).map((f: any) => ({
                     file: {
                       name: f.file_name || "Drawing",

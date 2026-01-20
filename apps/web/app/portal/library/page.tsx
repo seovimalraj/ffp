@@ -263,6 +263,24 @@ const Page = () => {
     );
   }, [groupedData, searchQuery]);
 
+  const handleDownload = async (url: string, filename: string) => {
+    try {
+      const response = await fetch(url);
+      const blob = await response.blob();
+      const downloadUrl = window.URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = downloadUrl;
+      link.download = filename;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      window.URL.revokeObjectURL(downloadUrl);
+    } catch (error) {
+      console.error("Download failed:", error);
+      window.open(url, "_blank");
+    }
+  };
+
   const tableColumns: Column<RFQPart>[] = [
     {
       key: "snapshot_2d",
@@ -495,7 +513,8 @@ const Page = () => {
                 {
                   label: "Download",
                   icon: <Download className="w-4 h-4" />,
-                  onClick: () => {},
+                  onClick: (row) =>
+                    handleDownload(row.cad_file_url, row.file_name),
                 },
               ]}
               onSelectionChange={(selected) => {
@@ -647,7 +666,7 @@ const Page = () => {
                           }
                           onPreview={() => setPreviewFile(part.cad_file_url)}
                           onDownload={() =>
-                            window.open(part.cad_file_url, "_blank")
+                            handleDownload(part.cad_file_url, part.file_name)
                           }
                           isSelected={selectedIds.has(part.id)}
                           onSelect={() => toggleSelection(part.id)}
@@ -732,7 +751,7 @@ const Page = () => {
                       }
                       onPreview={() => setPreviewFile(part.cad_file_url)}
                       onDownload={() =>
-                        window.open(part.cad_file_url, "_blank")
+                        handleDownload(part.cad_file_url, part.file_name)
                       }
                       isSelected={selectedIds.has(part.id)}
                       onSelect={() => toggleSelection(part.id)}

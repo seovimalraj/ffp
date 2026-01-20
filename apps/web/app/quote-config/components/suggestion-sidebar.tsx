@@ -15,7 +15,11 @@ interface SuggestionSidebarProps {
 }
 
 // Category types
-type SuggestionCategory = "cost-optimization" | "dfm" | "quality-optimization" | "all";
+type SuggestionCategory =
+  | "cost-optimization"
+  | "dfm"
+  | "quality-optimization"
+  | "all";
 
 export function SuggestionSidebar({
   parts,
@@ -24,7 +28,8 @@ export function SuggestionSidebar({
   const [isOpen, setIsOpen] = useState(false);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [selectedPart, setSelectedPart] = useState<string>("all");
-  const [selectedCategory, setSelectedCategory] = useState<SuggestionCategory>("all");
+  const [selectedCategory, setSelectedCategory] =
+    useState<SuggestionCategory>("all");
   const [isPartDropdownOpen, setIsPartDropdownOpen] = useState(false);
   const [isCategoryDropdownOpen, setIsCategoryDropdownOpen] = useState(false);
 
@@ -37,28 +42,43 @@ export function SuggestionSidebar({
   };
 
   const allSuggestions = generateSuggestions(parts);
-  
+
   // Categorize suggestions
   const categorizedSuggestions = useMemo(() => {
     return {
-      "cost-optimization": allSuggestions.filter(s => 
-        s.category === "volume-discount" || 
-        s.category === "premium-service" || 
-        s.category === "performance-upgrade" ||
-        s.type === "volume-discount" ||
-        s.type === "premium-upgrade" ||
-        s.type === "bundle" ||
-        s.type === "express-shipping"
+      "cost-optimization": allSuggestions.filter(
+        (s) =>
+          s.category === "volume-discount" ||
+          s.category === "premium-service" ||
+          s.category === "performance-upgrade" ||
+          s.type === "volume-discount" ||
+          s.type === "premium-upgrade" ||
+          s.type === "bundle" ||
+          s.type === "express-shipping",
       ),
-      dfm: allSuggestions.filter(s => 
-        s.type === "dfm" || 
-        s.type === "tolerance" ||
-        s.type === "secondary-ops"
+      dfm: allSuggestions.filter(
+        (s) =>
+          s.type === "dfm" ||
+          s.type === "tolerance" ||
+          s.type === "secondary-ops",
       ),
-      "quality-optimization": allSuggestions.filter(s => 
-        s.category === "quality-improvement" ||
-        (!["dfm", "tolerance", "secondary-ops", "volume-discount", "premium-upgrade", "bundle", "express-shipping"].includes(s.type) &&
-         !["volume-discount", "premium-service", "performance-upgrade"].includes(s.category || ""))
+      "quality-optimization": allSuggestions.filter(
+        (s) =>
+          s.category === "quality-improvement" ||
+          (![
+            "dfm",
+            "tolerance",
+            "secondary-ops",
+            "volume-discount",
+            "premium-upgrade",
+            "bundle",
+            "express-shipping",
+          ].includes(s.type) &&
+            ![
+              "volume-discount",
+              "premium-service",
+              "performance-upgrade",
+            ].includes(s.category || "")),
       ),
     };
   }, [allSuggestions]);
@@ -66,7 +86,7 @@ export function SuggestionSidebar({
   // Get unique parts
   const uniqueParts = useMemo(() => {
     const partMap = new Map();
-    parts.forEach(part => {
+    parts.forEach((part) => {
       if (!partMap.has(part.id)) {
         partMap.set(part.id, part);
       }
@@ -77,26 +97,28 @@ export function SuggestionSidebar({
   // Filter suggestions based on selected part and category
   const filteredSuggestions = useMemo(() => {
     let filtered = allSuggestions;
-    
+
     // Filter by part
     if (selectedPart !== "all") {
-      filtered = filtered.filter(s => s.partId === selectedPart);
+      filtered = filtered.filter((s) => s.partId === selectedPart);
     }
-    
+
     // Filter by category
     if (selectedCategory !== "all") {
       filtered = categorizedSuggestions[selectedCategory] || [];
       if (selectedPart !== "all") {
-        filtered = filtered.filter(s => s.partId === selectedPart);
+        filtered = filtered.filter((s) => s.partId === selectedPart);
       }
     }
-    
+
     // Sort: Cost Optimization first, then DFM Suggestions, then Quality Optimization
     return filtered.sort((a, b) => {
       const getOrder = (suggestion: any) => {
-        if (categorizedSuggestions["cost-optimization"].includes(suggestion)) return 1;
+        if (categorizedSuggestions["cost-optimization"].includes(suggestion))
+          return 1;
         if (categorizedSuggestions.dfm.includes(suggestion)) return 2;
-        if (categorizedSuggestions["quality-optimization"].includes(suggestion)) return 3;
+        if (categorizedSuggestions["quality-optimization"].includes(suggestion))
+          return 3;
         return 4;
       };
       return getOrder(a) - getOrder(b);
@@ -105,8 +127,10 @@ export function SuggestionSidebar({
 
   // Check if suggestion should show apply button (not DFM or quality optimization)
   const shouldShowApplyButton = (suggestion: any) => {
-    return !categorizedSuggestions.dfm.includes(suggestion) && 
-           !categorizedSuggestions["quality-optimization"].includes(suggestion);
+    return (
+      !categorizedSuggestions.dfm.includes(suggestion) &&
+      !categorizedSuggestions["quality-optimization"].includes(suggestion)
+    );
   };
 
   return (
@@ -145,7 +169,9 @@ export function SuggestionSidebar({
               group-hover:opacity-100
             "
             >
-              {filteredSuggestions.length > 0 ? "Smart Optimization" : "Analyze Quote"}
+              {filteredSuggestions.length > 0
+                ? "Smart Optimization"
+                : "Analyze Quote"}
             </span>
           </div>
         </Button>
@@ -239,16 +265,19 @@ export function SuggestionSidebar({
                 className="w-full flex items-center justify-between gap-2 px-4 py-2.5 bg-zinc-50 hover:bg-zinc-100 border border-zinc-200 rounded-lg text-sm font-medium text-zinc-900 transition-colors"
               >
                 <span className="truncate">
-                  {selectedPart === "all" 
-                    ? `All Parts (${uniqueParts.length})` 
-                    : uniqueParts.find(p => p.id === selectedPart)?.fileName || "Select Part"}
+                  {selectedPart === "all"
+                    ? `All Parts (${uniqueParts.length})`
+                    : uniqueParts.find((p) => p.id === selectedPart)
+                        ?.fileName || "Select Part"}
                 </span>
-                <ChevronDown className={cn(
-                  "w-4 h-4 text-zinc-400 transition-transform",
-                  isPartDropdownOpen && "rotate-180"
-                )} />
+                <ChevronDown
+                  className={cn(
+                    "w-4 h-4 text-zinc-400 transition-transform",
+                    isPartDropdownOpen && "rotate-180",
+                  )}
+                />
               </button>
-              
+
               <AnimatePresence>
                 {isPartDropdownOpen && (
                   <motion.div
@@ -264,12 +293,13 @@ export function SuggestionSidebar({
                       }}
                       className={cn(
                         "w-full px-4 py-2.5 text-left text-sm hover:bg-zinc-50 transition-colors",
-                        selectedPart === "all" && "bg-blue-50 text-blue-600 font-semibold"
+                        selectedPart === "all" &&
+                          "bg-blue-50 text-blue-600 font-semibold",
                       )}
                     >
                       All Parts ({uniqueParts.length})
                     </button>
-                    {uniqueParts.map(part => (
+                    {uniqueParts.map((part) => (
                       <button
                         key={part.id}
                         onClick={() => {
@@ -278,7 +308,8 @@ export function SuggestionSidebar({
                         }}
                         className={cn(
                           "w-full px-4 py-2.5 text-left text-sm hover:bg-zinc-50 transition-colors truncate",
-                          selectedPart === part.id && "bg-blue-50 text-blue-600 font-semibold"
+                          selectedPart === part.id &&
+                            "bg-blue-50 text-blue-600 font-semibold",
                         )}
                       >
                         {part.fileName}
@@ -295,7 +326,9 @@ export function SuggestionSidebar({
                 Category
               </label>
               <button
-                onClick={() => setIsCategoryDropdownOpen(!isCategoryDropdownOpen)}
+                onClick={() =>
+                  setIsCategoryDropdownOpen(!isCategoryDropdownOpen)
+                }
                 className="w-full flex items-center justify-between gap-2 px-4 py-2.5 bg-zinc-50 hover:bg-zinc-100 border border-zinc-200 rounded-lg text-sm font-medium text-zinc-900 transition-colors"
               >
                 <span className="flex items-center gap-2">
@@ -319,17 +352,21 @@ export function SuggestionSidebar({
                     </>
                   )}
                   <span className="text-xs text-zinc-400">
-                    ({selectedCategory === "all" 
-                      ? filteredSuggestions.length 
-                      : categorizedSuggestions[selectedCategory]?.length || 0})
+                    (
+                    {selectedCategory === "all"
+                      ? filteredSuggestions.length
+                      : categorizedSuggestions[selectedCategory]?.length || 0}
+                    )
                   </span>
                 </span>
-                <ChevronDown className={cn(
-                  "w-4 h-4 text-zinc-400 transition-transform",
-                  isCategoryDropdownOpen && "rotate-180"
-                )} />
+                <ChevronDown
+                  className={cn(
+                    "w-4 h-4 text-zinc-400 transition-transform",
+                    isCategoryDropdownOpen && "rotate-180",
+                  )}
+                />
               </button>
-              
+
               <AnimatePresence>
                 {isCategoryDropdownOpen && (
                   <motion.div
@@ -345,12 +382,15 @@ export function SuggestionSidebar({
                       }}
                       className={cn(
                         "w-full px-4 py-2.5 text-left text-sm hover:bg-zinc-50 transition-colors",
-                        selectedCategory === "all" && "bg-blue-50 text-blue-600 font-semibold"
+                        selectedCategory === "all" &&
+                          "bg-blue-50 text-blue-600 font-semibold",
                       )}
                     >
                       <div className="flex items-center justify-between">
                         <span>All Categories</span>
-                        <span className="text-xs text-zinc-400">({allSuggestions.length})</span>
+                        <span className="text-xs text-zinc-400">
+                          ({allSuggestions.length})
+                        </span>
                       </div>
                     </button>
                     <button
@@ -360,7 +400,8 @@ export function SuggestionSidebar({
                       }}
                       className={cn(
                         "w-full px-4 py-2.5 text-left text-sm hover:bg-zinc-50 transition-colors",
-                        selectedCategory === "cost-optimization" && "bg-purple-50 text-purple-600 font-semibold"
+                        selectedCategory === "cost-optimization" &&
+                          "bg-purple-50 text-purple-600 font-semibold",
                       )}
                     >
                       <div className="flex items-center justify-between">
@@ -368,7 +409,9 @@ export function SuggestionSidebar({
                           <span className="w-2 h-2 bg-purple-500 rounded-full"></span>
                           Cost Optimization
                         </span>
-                        <span className="text-xs text-zinc-400">({categorizedSuggestions["cost-optimization"].length})</span>
+                        <span className="text-xs text-zinc-400">
+                          ({categorizedSuggestions["cost-optimization"].length})
+                        </span>
                       </div>
                     </button>
                     <button
@@ -378,7 +421,8 @@ export function SuggestionSidebar({
                       }}
                       className={cn(
                         "w-full px-4 py-2.5 text-left text-sm hover:bg-zinc-50 transition-colors",
-                        selectedCategory === "dfm" && "bg-amber-50 text-amber-600 font-semibold"
+                        selectedCategory === "dfm" &&
+                          "bg-amber-50 text-amber-600 font-semibold",
                       )}
                     >
                       <div className="flex items-center justify-between">
@@ -386,7 +430,9 @@ export function SuggestionSidebar({
                           <span className="w-2 h-2 bg-amber-500 rounded-full"></span>
                           DFM Suggestions
                         </span>
-                        <span className="text-xs text-zinc-400">({categorizedSuggestions.dfm.length})</span>
+                        <span className="text-xs text-zinc-400">
+                          ({categorizedSuggestions.dfm.length})
+                        </span>
                       </div>
                     </button>
                     <button
@@ -396,7 +442,8 @@ export function SuggestionSidebar({
                       }}
                       className={cn(
                         "w-full px-4 py-2.5 text-left text-sm hover:bg-zinc-50 transition-colors",
-                        selectedCategory === "quality-optimization" && "bg-blue-50 text-blue-600 font-semibold"
+                        selectedCategory === "quality-optimization" &&
+                          "bg-blue-50 text-blue-600 font-semibold",
                       )}
                     >
                       <div className="flex items-center justify-between">
@@ -404,7 +451,14 @@ export function SuggestionSidebar({
                           <span className="w-2 h-2 bg-blue-500 rounded-full"></span>
                           Quality Optimization
                         </span>
-                        <span className="text-xs text-zinc-400">({categorizedSuggestions["quality-optimization"].length})</span>
+                        <span className="text-xs text-zinc-400">
+                          (
+                          {
+                            categorizedSuggestions["quality-optimization"]
+                              .length
+                          }
+                          )
+                        </span>
                       </div>
                     </button>
                   </motion.div>
@@ -482,8 +536,7 @@ export function SuggestionSidebar({
                           "bg-green-50 text-green-600",
                         suggestion.color === "amber" &&
                           "bg-amber-50 text-amber-600",
-                        suggestion.color === "red" &&
-                          "bg-red-50 text-red-600",
+                        suggestion.color === "red" && "bg-red-50 text-red-600",
                         suggestion.color === "orange" &&
                           "bg-orange-50 text-orange-600",
                         suggestion.color === "indigo" &&
@@ -492,7 +545,15 @@ export function SuggestionSidebar({
                           "bg-teal-50 text-teal-600",
                       )}
                     >
-                      {suggestion.icon}
+                      {suggestion.preview ? (
+                        <img
+                          src={suggestion.preview}
+                          alt="Preview"
+                          className="w-full h-full object-cover"
+                        />
+                      ) : (
+                        <Cpu className="w-5 h-5" />
+                      )}
                     </div>
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2 mb-1 flex-wrap">
@@ -500,15 +561,24 @@ export function SuggestionSidebar({
                           {suggestion.type}
                         </span>
                         {suggestion.category && (
-                          <span className={cn(
-                            "text-xs font-semibold px-2 py-0.5 rounded-full",
-                            suggestion.category === "cost-saving" && "bg-green-100 text-green-700",
-                            suggestion.category === "performance-upgrade" && "bg-indigo-100 text-indigo-700",
-                            suggestion.category === "volume-discount" && "bg-teal-100 text-teal-700",
-                            suggestion.category === "premium-service" && "bg-purple-100 text-purple-700",
-                            suggestion.category === "quality-improvement" && "bg-blue-100 text-blue-700",
-                          )}>
-                            {suggestion.category.replace(/-/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}
+                          <span
+                            className={cn(
+                              "text-xs font-semibold px-2 py-0.5 rounded-full",
+                              suggestion.category === "cost-saving" &&
+                                "bg-green-100 text-green-700",
+                              suggestion.category === "performance-upgrade" &&
+                                "bg-indigo-100 text-indigo-700",
+                              suggestion.category === "volume-discount" &&
+                                "bg-teal-100 text-teal-700",
+                              suggestion.category === "premium-service" &&
+                                "bg-purple-100 text-purple-700",
+                              suggestion.category === "quality-improvement" &&
+                                "bg-blue-100 text-blue-700",
+                            )}
+                          >
+                            {suggestion.category
+                              .replace(/-/g, " ")
+                              .replace(/\b\w/g, (l) => l.toUpperCase())}
                           </span>
                         )}
                         {suggestion.priority === "critical" && (
@@ -516,16 +586,19 @@ export function SuggestionSidebar({
                             CRITICAL
                           </span>
                         )}
-                        {suggestion.impact.savingsPercentage && suggestion.impact.savingsPercentage > 0 && (
-                          <span className="text-xs font-semibold text-green-600">
-                            {suggestion.impact.savingsPercentage}% savings
-                          </span>
-                        )}
-                        {suggestion.impact.revenueIncrease && suggestion.impact.revenueIncrease > 0 && (
-                          <span className="text-xs font-semibold text-indigo-600">
-                            +${suggestion.impact.revenueIncrease.toFixed(0)} revenue
-                          </span>
-                        )}
+                        {suggestion.impact.savingsPercentage &&
+                          suggestion.impact.savingsPercentage > 0 && (
+                            <span className="text-xs font-semibold text-green-600">
+                              {suggestion.impact.savingsPercentage}% savings
+                            </span>
+                          )}
+                        {suggestion.impact.revenueIncrease &&
+                          suggestion.impact.revenueIncrease > 0 && (
+                            <span className="text-xs font-semibold text-indigo-600">
+                              +${suggestion.impact.revenueIncrease.toFixed(0)}{" "}
+                              revenue
+                            </span>
+                          )}
                       </div>
                       <h3 className="text-sm font-semibold text-zinc-900 leading-tight">
                         {suggestion.title}
@@ -563,55 +636,76 @@ export function SuggestionSidebar({
                   </div>
 
                   {/* Savings / Impact */}
-                  {(suggestion.impact.savings !== undefined || suggestion.impact.lifetimeSavings || suggestion.impact.revenueIncrease) && (
+                  {(suggestion.impact.savings !== undefined ||
+                    suggestion.impact.lifetimeSavings ||
+                    suggestion.impact.revenueIncrease) && (
                     <div className="space-y-2">
-                      {suggestion.impact.savings !== undefined && suggestion.impact.savings !== 0 && (
-                        <div className={cn(
-                          "border rounded-lg px-3 py-2",
-                          suggestion.impact.savings > 0 
-                            ? "bg-green-50 border-green-100"
-                            : "bg-indigo-50 border-indigo-100"
-                        )}>
-                          <div className="flex items-center justify-between">
-                            <span className={cn(
-                              "text-xs font-medium",
-                              suggestion.impact.savings > 0 ? "text-green-700" : "text-indigo-700"
-                            )}>
-                              {suggestion.impact.savings > 0 ? "Potential Savings" : "Investment"}
-                            </span>
-                            <span className={cn(
-                              "text-sm font-semibold",
-                              suggestion.impact.savings > 0 ? "text-green-700" : "text-indigo-700"
-                            )}>
-                              ${Math.abs(suggestion.impact.savings).toFixed(2)}
-                            </span>
+                      {suggestion.impact.savings !== undefined &&
+                        suggestion.impact.savings !== 0 && (
+                          <div
+                            className={cn(
+                              "border rounded-lg px-3 py-2",
+                              suggestion.impact.savings > 0
+                                ? "bg-green-50 border-green-100"
+                                : "bg-indigo-50 border-indigo-100",
+                            )}
+                          >
+                            <div className="flex items-center justify-between">
+                              <span
+                                className={cn(
+                                  "text-xs font-medium",
+                                  suggestion.impact.savings > 0
+                                    ? "text-green-700"
+                                    : "text-indigo-700",
+                                )}
+                              >
+                                {suggestion.impact.savings > 0
+                                  ? "Potential Savings"
+                                  : "Investment"}
+                              </span>
+                              <span
+                                className={cn(
+                                  "text-sm font-semibold",
+                                  suggestion.impact.savings > 0
+                                    ? "text-green-700"
+                                    : "text-indigo-700",
+                                )}
+                              >
+                                $
+                                {Math.abs(suggestion.impact.savings).toFixed(2)}
+                              </span>
+                            </div>
                           </div>
-                        </div>
-                      )}
-                      {suggestion.impact.lifetimeSavings && suggestion.impact.lifetimeSavings > 0 && (
-                        <div className="bg-teal-50 border border-teal-100 rounded-lg px-3 py-2">
-                          <div className="flex items-center justify-between">
-                            <span className="text-xs font-medium text-teal-700">
-                              Lifetime Value (3 years)
-                            </span>
-                            <span className="text-sm font-semibold text-teal-700">
-                              ${Math.abs(suggestion.impact.lifetimeSavings).toFixed(2)}
-                            </span>
+                        )}
+                      {suggestion.impact.lifetimeSavings &&
+                        suggestion.impact.lifetimeSavings > 0 && (
+                          <div className="bg-teal-50 border border-teal-100 rounded-lg px-3 py-2">
+                            <div className="flex items-center justify-between">
+                              <span className="text-xs font-medium text-teal-700">
+                                Lifetime Value (3 years)
+                              </span>
+                              <span className="text-sm font-semibold text-teal-700">
+                                $
+                                {Math.abs(
+                                  suggestion.impact.lifetimeSavings,
+                                ).toFixed(2)}
+                              </span>
+                            </div>
                           </div>
-                        </div>
-                      )}
-                      {suggestion.impact.revenueIncrease && suggestion.impact.revenueIncrease > 0 && (
-                        <div className="bg-purple-50 border border-purple-100 rounded-lg px-3 py-2">
-                          <div className="flex items-center justify-between">
-                            <span className="text-xs font-medium text-purple-700">
-                              Revenue Opportunity
-                            </span>
-                            <span className="text-sm font-semibold text-purple-700">
-                              +${suggestion.impact.revenueIncrease.toFixed(2)}
-                            </span>
+                        )}
+                      {suggestion.impact.revenueIncrease &&
+                        suggestion.impact.revenueIncrease > 0 && (
+                          <div className="bg-purple-50 border border-purple-100 rounded-lg px-3 py-2">
+                            <div className="flex items-center justify-between">
+                              <span className="text-xs font-medium text-purple-700">
+                                Revenue Opportunity
+                              </span>
+                              <span className="text-sm font-semibold text-purple-700">
+                                +${suggestion.impact.revenueIncrease.toFixed(2)}
+                              </span>
+                            </div>
                           </div>
-                        </div>
-                      )}
+                        )}
                     </div>
                   )}
 
@@ -627,12 +721,12 @@ export function SuggestionSidebar({
                       Apply Suggestion
                     </Button>
                   )}
-                  
+
                   {/* Info message for DFM/Quality suggestions */}
                   {!shouldShowApplyButton(suggestion) && (
                     <div className="pt-3 border-t border-zinc-100">
                       <p className="text-xs text-zinc-500 italic text-center">
-                        {categorizedSuggestions.dfm.includes(suggestion) 
+                        {categorizedSuggestions.dfm.includes(suggestion)
                           ? "Design recommendation - requires CAD file modification"
                           : "Quality improvement suggestion for consideration"}
                       </p>

@@ -147,6 +147,7 @@ export default function InstantQuotePage() {
         } catch (error) {
           console.error(`Failed to upload ${file.name}:`, error);
           notify.error(`Failed to upload ${file.name}`);
+          return;
         }
 
         return {
@@ -173,9 +174,9 @@ export default function InstantQuotePage() {
       const rfqPayload = {
         user_id: session.data.user.id,
         parts: uploadResults.map((r) => ({
-          file_name: r.name,
-          cad_file_url: r.uploadedPath,
-          cad_file_type: r.name.split(".").pop() || "unknown",
+          file_name: r?.name,
+          cad_file_url: r?.uploadedPath,
+          cad_file_type: r?.name.split(".").pop() || "unknown",
           material: "aluminum-6061",
           quantity: 1,
           tolerance: "standard",
@@ -185,8 +186,9 @@ export default function InstantQuotePage() {
           notes: "",
           lead_time_type: "standard",
           lead_time: 7,
-          geometry: r.geometry,
+          geometry: r?.geometry,
           certificates: [],
+          process: r?.geometry?.recommendedProcess || "cnc-milling",
         })),
       };
 

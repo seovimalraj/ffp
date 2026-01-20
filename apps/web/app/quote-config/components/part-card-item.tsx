@@ -51,7 +51,7 @@ import {
 } from "@/types/part-config";
 import { apiClient } from "@/lib/api";
 import FileManagementModal from "./file-management-modal";
-import { formatCurrencyFixed } from "@/lib/utils";
+import { formatCurrencyFixed, processTranslator } from "@/lib/utils";
 import { leadTimeMeta, markupMap } from "@cnc-quote/shared";
 
 // --- Sub-Component: PartCardItem ---
@@ -448,7 +448,11 @@ export function PartCardItem({
                       {/* CNC */}
                       <div className="inline-flex items-center gap-1.5 rounded-md bg-amber-50 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider text-amber-700 ring-1 ring-inset ring-amber-200">
                         <Zap className="h-3.5 w-3.5 text-amber-500" />
-                        CNC Machining
+                        {
+                          processTranslator[
+                            part.process as keyof typeof processTranslator
+                          ]
+                        }
                       </div>
 
                       {/* Custom */}

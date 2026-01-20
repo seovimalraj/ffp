@@ -30,6 +30,7 @@ export interface PartConfig {
   leadTime?: number;
   snapshot_2d_url?: string;
   is_archived?: boolean;
+  process: string;
 }
 
 export type MaterialItem = {

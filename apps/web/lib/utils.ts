@@ -54,6 +54,7 @@ export function processParts(parts: any[]) {
       leadTime: part.lead_time,
       geometry: part.geometry,
       files2d: part.files2d || [],
+      process: part.process || "cnc-milling",
       certificates: part.certificates || [],
       is_archived: part.is_archived || false,
     };
@@ -88,3 +89,12 @@ export function dataURLtoFile(dataurl: string, filename: string): File {
   }
   return new File([u8arr], filename, { type: mime });
 }
+
+export const processTranslator = {
+  "cnc-milling": "CNC Machining",
+  "cnc-turning": "CNC Machining",
+  "cnc-machining": "CNC Machining",
+  "sheet-metal": "Sheet Metal",
+  "injection-molding": "Injection Molding",
+  "manual-quote": "Manual Quote",
+};

@@ -36,7 +36,8 @@ INSERT INTO rfq_parts (
         notes,
         lead_time_type,
         lead_time,
-        geometry
+        geometry,
+        process
     )
 VALUES (
         v_rfq_id,
@@ -54,7 +55,8 @@ VALUES (
         part->>'notes',
         part->>'lead_time_type',
         (part->>'lead_time')::INT,
-        part->'geometry'
+        part->'geometry',
+        part->'process'
     );
 END LOOP;
 RETURN QUERY
