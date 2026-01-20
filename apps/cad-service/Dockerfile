@@ -35,7 +35,8 @@ RUN python3 -m venv /app/venv \
     && /app/venv/bin/pip install fastapi uvicorn pydantic celery redis python-multipart numpy httpx psutil requests structlog \
     && /app/venv/bin/pip install opentelemetry-api opentelemetry-sdk opentelemetry-instrumentation-fastapi \
     && /app/venv/bin/pip install opentelemetry-instrumentation-redis opentelemetry-instrumentation-requests \
-    && /app/venv/bin/pip install opentelemetry-exporter-otlp-proto-grpc
+    && /app/venv/bin/pip install opentelemetry-exporter-otlp-proto-grpc \
+    && /app/venv/bin/pip install pythonocc-core==7.7.2 numpy-stl==3.1.1
 
 # Expose port
 EXPOSE 10001

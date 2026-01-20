@@ -7,6 +7,12 @@ python-jose==3.5.0
 redis==6.4.0
 httpx==0.28.1
 
+# STEP/IGES File Processing - pythonOCC for CAD geometry analysis
+pythonocc-core==7.7.2
+
+# STL File Processing
+numpy-stl==3.1.1
+
 # DFM Analysis dependencies (mock for now - numpy removed due to build issues)
 # numpy==1.24.3
 # scipy==1.11.2
