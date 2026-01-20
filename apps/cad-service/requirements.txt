@@ -13,8 +13,8 @@ pythonocc-core==7.7.2
 # STL File Processing
 numpy-stl==3.1.1
 
-# DFM Analysis dependencies (mock for now - numpy removed due to build issues)
-# numpy==1.24.3
-# scipy==1.11.2
-# trimesh==4.0.5
-# networkx==3.1
+# DFM Analysis dependencies - numpy and trimesh for ray-casting thickness detection
+numpy==1.24.3
+trimesh==4.0.5
+# scipy==1.11.2  # Not needed yet
+# networkx==3.1  # Not needed yet
