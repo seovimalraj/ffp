@@ -72,6 +72,45 @@ import Logo from "@/components/ui/logo";
 import ArchiveModal from "../components/archive-modal";
 import { SuggestionSidebar } from "../components/suggestion-sidebar";
 
+/**
+ * Normalize process string from database/API to clean format.
+ * Handles: double-encoded JSON strings, escaped quotes, extra whitespace
+ * Examples: "\"sheet-metal\"" -> "sheet-metal", "sheet_metal" -> "sheet-metal"
+ */
+function normalizeProcessString(rawProcess: string | undefined | null): string {
+  if (!rawProcess || typeof rawProcess !== 'string') {
+    return 'cnc-milling';
+  }
+  
+  let process = rawProcess;
+  
+  // Handle double-encoded JSON strings (e.g., "\"sheet-metal\"")
+  if (process.startsWith('"') && process.endsWith('"')) {
+    try {
+      process = JSON.parse(process);
+    } catch {
+      // If parsing fails, strip quotes manually
+      process = process.slice(1, -1);
+    }
+  }
+  
+  // Remove any remaining escaped quotes, backslashes, and whitespace
+  process = process
+    .replace(/\\"/g, '')   // Remove \" sequences
+    .replace(/"/g, '')     // Remove any remaining quotes
+    .replace(/\\/g, '')    // Remove backslashes
+    .trim();
+  
+  // Map underscore format to hyphen format
+  const processMap: Record<string, string> = {
+    'sheet_metal': 'sheet-metal',
+    'cnc_milling': 'cnc-milling',
+    'cnc_turning': 'cnc-turning',
+  };
+  
+  return processMap[process] || process || 'cnc-milling';
+}
+
 // --- Constants (Moved Outside) ---
 // Helper function to get materials based on process
 // Filters out materials requiring manual review (they shouldn't appear in the dropdown)
@@ -232,12 +271,8 @@ export const calculateLeadTime = (
 ) => {
   if (!part.geometry) return 7;
 
-  // Get material based on process type
-  // Clean up any malformed process strings (e.g., "\"sheet-metal\"" -> "sheet-metal")
-  const rawProcess: string = String(part.process || part.geometry?.recommendedProcess || "cnc-milling")
-    .replace(/^["'\s]+|["'\s]+$/g, '')
-    .replace(/\\"/g, '');
-  const processType = rawProcess;
+  // Get material based on process type (normalize handles malformed strings)
+  const processType = normalizeProcessString(part.process || part.geometry?.recommendedProcess);
   
   const material = getMaterialForProcess(part.material, processType);
   if (!material) return 7;
@@ -267,11 +302,8 @@ const calculatePrice = (
 ): number => {
   if (!part.geometry) return 0;
 
-  // Determine process type from CAD analysis
-  // Clean up any malformed process strings (e.g., "\"sheet-metal\"" -> "sheet-metal")
-  const processType: string = String(part.process || part.geometry?.recommendedProcess || "cnc-milling")
-    .replace(/^["'\s]+|["'\s]+$/g, '')
-    .replace(/\\"/g, '');
+  // Determine process type from CAD analysis (normalize handles malformed strings)
+  const processType = normalizeProcessString(part.process || part.geometry?.recommendedProcess);
 
   // Get material based on process type
   const material = getMaterialByValue(part.material, processType);
@@ -818,28 +850,9 @@ export default function QuoteConfigPage() {
             let syncNeeded = false;
 
             const processedParts: PartConfig[] = apiPartsRaw.map((p: any) => {
-              // CRITICAL: Normalize process field from database
-              // Use geometry.recommendedProcess if process field is missing or invalid
-              let normalizedProcess = p.process;
-              
-              // Clean up malformed process values (e.g., "\"sheet-metal\"" -> "sheet-metal")
-              if (normalizedProcess && typeof normalizedProcess === 'string') {
-                // Remove escaped quotes and extra whitespace
-                normalizedProcess = normalizedProcess.replace(/^["'\s]+|["'\s]+$/g, '').replace(/\\"/g, '');
-              }
-              
-              if (!normalizedProcess || normalizedProcess === '') {
-                // Fall back to geometry recommendation if available
-                normalizedProcess = p.geometry?.recommendedProcess || 'cnc-milling';
-                console.log(`📋 Part ${p.id}: process was empty, using ${normalizedProcess} from geometry`);
-              }
-              // Ensure process is in correct format (sheet-metal not sheet_metal)
-              const processMap: Record<string, string> = {
-                'sheet_metal': 'sheet-metal',
-                'cnc_milling': 'cnc-milling', 
-                'cnc_turning': 'cnc-turning',
-              };
-              normalizedProcess = processMap[normalizedProcess] || normalizedProcess;
+              // CRITICAL: Normalize process field from database using helper function
+              // Handles: double-encoded JSON, escaped quotes, underscore format, etc.
+              const normalizedProcess = normalizeProcessString(p.process || p.geometry?.recommendedProcess);
               
               // Determine if this is a sheet metal part for proper material defaulting
               const isSheetMetalPart = isSheetMetalProcess(normalizedProcess);
@@ -867,7 +880,7 @@ export default function QuoteConfigPage() {
                 leadTime: undefined,
                 is_archived: p.is_archived,
                 snapshot_2d_url: p.snapshot_2d_url,
-                process: normalizedProcess,
+                process: normalizedProcess as PartConfig['process'],
                 files2d: (p.files2d || []).map((f: any) => ({
                   file: {
                     name: f.file_name || "Drawing",

@@ -37,6 +37,8 @@ import {
   SHEET_METAL_FINISHES,
   CNC_TOLERANCES,
   SHEET_METAL_THICKNESSES,
+  recommendFinish,
+  recommendTolerance,
 } from "@/lib/pricing-engine";
 
 interface EditPartModalProps {
@@ -710,7 +712,7 @@ export function EditPartModal({
                               complexity: "moderate",
                               advancedFeatures: {},
                             } as any);
-                          const recommendedTolerance =
+                          const toleranceRec =
                             recommendTolerance(geometry);
 
                           return (
@@ -723,7 +725,7 @@ export function EditPartModal({
                                   Define the required dimensional accuracy for
                                   CNC machining.
                                 </p>
-                                {recommendedTolerance.tolerance !==
+                                {toleranceRec.tolerance !==
                                   "standard" && (
                                   <div className="mt-2 text-xs bg-blue-50 border border-blue-200 rounded-lg p-2">
                                     <span className="font-semibold text-blue-700">
@@ -731,7 +733,7 @@ export function EditPartModal({
                                     </span>
                                     <span className="text-blue-600">
                                       {" "}
-                                      {recommendedTolerance.reason}
+                                      {toleranceRec.reason}
                                     </span>
                                   </div>
                                 )}
@@ -740,7 +742,7 @@ export function EditPartModal({
                                 {CNC_TOLERANCES.map((t) => {
                                   const isRecommended =
                                     t.value ===
-                                    (recommendedTolerance?.tolerance ?? "");
+                                    (toleranceRec?.tolerance ?? "");
                                   return (
                                     <div
                                       key={t.value}
