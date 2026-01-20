@@ -147,6 +147,7 @@ export default function InstantQuotePage() {
         } catch (error) {
           console.error(`Failed to upload ${file.name}:`, error);
           notify.error(`Failed to upload ${file.name}`);
+          return;
         }
 
         return {
@@ -173,9 +174,9 @@ export default function InstantQuotePage() {
       const rfqPayload = {
         user_id: session.data.user.id,
         parts: uploadResults.map((r) => ({
-          file_name: r.name,
-          cad_file_url: r.uploadedPath,
-          cad_file_type: r.name.split(".").pop() || "unknown",
+          file_name: r?.name,
+          cad_file_url: r?.uploadedPath,
+          cad_file_type: r?.name.split(".").pop() || "unknown",
           material: "aluminum-6061",
           quantity: 1,
           tolerance: "standard",
@@ -185,8 +186,9 @@ export default function InstantQuotePage() {
           notes: "",
           lead_time_type: "standard",
           lead_time: 7,
-          geometry: r.geometry,
+          geometry: r?.geometry,
           certificates: [],
+          process: r?.geometry?.recommendedProcess || "cnc-milling",
         })),
       };
 
@@ -195,8 +197,10 @@ export default function InstantQuotePage() {
         console.log(response, "response");
         if (response.data?.success && response.data?.rfq_id) {
           console.log("RFQ Created:", response.data.rfq_id);
+          notify.success("Quote created successfully");
           router.push(`/quote-config/${response.data.rfq_id}`);
         } else {
+          notify.error("Failed to create quote");
           throw new Error("Failed to create quote");
         }
       } catch (apiError) {

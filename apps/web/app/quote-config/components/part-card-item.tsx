@@ -34,8 +34,8 @@ import { SheetMetalLeadTimeBreakdown } from "./sheet-metal-lead-time-breakdown";
 import { useFileUpload } from "@/lib/hooks/use-file-upload";
 import { notify } from "@/lib/toast";
 import { calculateLeadTime } from "../[id]/page";
-import { 
-  getProcessDisplayName, 
+import {
+  getProcessDisplayName,
   isCNCProcess,
   isSheetMetalProcess,
   getDefaultMaterialForProcess,
@@ -61,7 +61,7 @@ import {
 } from "@/types/part-config";
 import { apiClient } from "@/lib/api";
 import FileManagementModal from "./file-management-modal";
-import { formatCurrencyFixed } from "@/lib/utils";
+import { formatCurrencyFixed, processTranslator } from "@/lib/utils";
 import { leadTimeMeta, markupMap } from "@cnc-quote/shared";
 
 // --- Sub-Component: PartCardItem ---
@@ -456,12 +456,16 @@ export function PartCardItem({
                     {/* Badges */}
                     <div className="flex flex-wrap items-center gap-2">
                       {/* Process Badge - Dynamic based on part.process */}
-                      <div className={`inline-flex items-center gap-1.5 rounded-md px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider ring-1 ring-inset ${
-                        part.process === 'sheet-metal' || part.process?.includes('sheet')
-                          ? 'bg-green-50 text-green-700 ring-green-200'
-                          : 'bg-amber-50 text-amber-700 ring-amber-200'
-                      }`}>
-                        {part.process === 'sheet-metal' || part.process?.includes('sheet') ? (
+                      <div
+                        className={`inline-flex items-center gap-1.5 rounded-md px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider ring-1 ring-inset ${
+                          part.process === "sheet-metal" ||
+                          part.process?.includes("sheet")
+                            ? "bg-green-50 text-green-700 ring-green-200"
+                            : "bg-amber-50 text-amber-700 ring-amber-200"
+                        }`}
+                      >
+                        {part.process === "sheet-metal" ||
+                        part.process?.includes("sheet") ? (
                           <Layers className="h-3.5 w-3.5" />
                         ) : (
                           <Zap className="h-3.5 w-3.5" />
@@ -681,25 +685,25 @@ export function PartCardItem({
             {/* Row 2: Lead Time Pricing Options */}
             <div className="w-full xl:w-[240px] shrink-0">
               <div className="grid grid-cols-1 gap-3">
-                  {(["economy", "standard", "expedited"] as const).map(
-                    (leadTimeType) => {
-                      const realPrice =
-                        calculatePrice(part, leadTimeType) / part.quantity;
+                {(["economy", "standard", "expedited"] as const).map(
+                  (leadTimeType) => {
+                    const realPrice =
+                      calculatePrice(part, leadTimeType) / part.quantity;
 
-                      const uplift = markupMap[leadTimeType];
-                      const marketingPrice = realPrice * (1 + uplift);
+                    const uplift = markupMap[leadTimeType];
+                    const marketingPrice = realPrice * (1 + uplift);
 
-                      const isSelected = part.leadTimeType === leadTimeType;
-                      const icon = `/icons/${leadTimeType}.png`;
-                      const leadTime = calculateLeadTime(part, leadTimeType);
+                    const isSelected = part.leadTimeType === leadTimeType;
+                    const icon = `/icons/${leadTimeType}.png`;
+                    const leadTime = calculateLeadTime(part, leadTimeType);
 
-                      return (
-                        <div
-                          key={leadTimeType}
-                          onClick={() =>
-                            updatePart(index, "leadTimeType", leadTimeType, false)
-                          }
-                          className={`
+                    return (
+                      <div
+                        key={leadTimeType}
+                        onClick={() =>
+                          updatePart(index, "leadTimeType", leadTimeType, false)
+                        }
+                        className={`
                               relative cursor-pointer rounded-xl sm:rounded-2xl
                               border p-3 transition-all
                               active:scale-[0.98]
@@ -709,7 +713,7 @@ export function PartCardItem({
                                   : "border-slate-200 bg-white hover:border-slate-300 hover:shadow-sm"
                               }
                             `}
-                        >
+                      >
                         {/* Badge */}
                         <div className="absolute right-2 top-2 sm:-right-3 sm:-top-2">
                           <span
@@ -773,17 +777,19 @@ export function PartCardItem({
               </div>
             </div>
           </div>
-          
+
           {/* Sheet Metal Lead Time Breakdown */}
-          {(part.process === "sheet-metal" || part.geometry?.recommendedProcess === "sheet-metal") && 
-           part.geometry?.sheetMetalFeatures && part.leadTimeType && (
-            <div className="mt-6 px-6">
-              <SheetMetalLeadTimeBreakdown 
-                part={part}
-                leadTimeType={part.leadTimeType}
-              />
-            </div>
-          )}
+          {(part.process === "sheet-metal" ||
+            part.geometry?.recommendedProcess === "sheet-metal") &&
+            part.geometry?.sheetMetalFeatures &&
+            part.leadTimeType && (
+              <div className="mt-6 px-6">
+                <SheetMetalLeadTimeBreakdown
+                  part={part}
+                  leadTimeType={part.leadTimeType}
+                />
+              </div>
+            )}
         </div>
       </div>
       {/* Image Viewer for image files */}

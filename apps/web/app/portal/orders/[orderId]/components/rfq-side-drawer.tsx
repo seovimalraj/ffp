@@ -56,9 +56,6 @@ const RfqSideDrawer = ({ part, onClose }: Props) => {
               <h2 className="text-2xl font-bold text-slate-900 tracking-tight">
                 {part.rfq_part.file_name.split(".")[0]}
               </h2>
-              <p className="text-xs text-slate-500 mt-1.5 font-mono font-medium">
-                SKU: {part.order_part_code}
-              </p>
             </div>
             <button
               onClick={onClose}

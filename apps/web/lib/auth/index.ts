@@ -14,7 +14,10 @@ async function refreshAccessToken(token: any) {
 
     // Use internal API URL for server-side calls
     // IMPORTANT: Use INTERNAL_API_URL first (server-side), not NEXT_PUBLIC_API_URL (client-side relative path)
-    const apiUrl = process.env.INTERNAL_API_URL || "http://api:4001";
+    const apiUrl =
+      process.env.INTERNA_API_URL ||
+      process.env.NEXT_PUBLIC_API_URL ||
+      "http://api:4001";
 
     console.log("Refreshing token via API:", apiUrl);
 
@@ -225,10 +228,8 @@ const AuthService = {
     return res.json();
   },
   register: async (data: any) => {
-    console.log("here");
     const apiUrl = process.env.INTERNAL_API_URL || "http://api:4001";
 
-    console.log(apiUrl);
     const res = await fetch(`${apiUrl}/auth/register`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },

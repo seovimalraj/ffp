@@ -2,7 +2,6 @@
 
 import { useMetaStore } from "@/components/store/title-store";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
 import { DataTable, Column } from "@/components/ui/data-table";
 import { Skeleton } from "@/components/ui/skeleton";
 import { StatusCards } from "@/components/ui/status-cards";
@@ -18,38 +17,63 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import React, { useState } from "react";
-import { useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 
 export type IOrder = {
   order_id: string;
   order_code: string;
   total_amount: number | null;
-  confirmed_at: Date;
+  confirmed_at: string;
   payment_status: string;
   status: string;
   part_count: number;
-  created_at: Date;
+  created_at: string;
 };
 
 const Page = () => {
   const [orders, setOrders] = useState<IOrder[]>([]);
   const [loading, setLoading] = useState(true);
+  const [isFetchingMore, setIsFetchingMore] = useState(false);
+  const [hasMore, setHasMore] = useState(false);
+  const [totalCount, setTotalCount] = useState(0);
+
   const router = useRouter();
   const { setPageTitle, resetTitle } = useMetaStore();
 
-  useEffect(() => {
-    const fetchOrders = async () => {
-      try {
+  const fetchOrders = useCallback(
+    async (isNext = false) => {
+      if (isNext) {
+        setIsFetchingMore(true);
+      } else {
         setLoading(true);
-        const response = await apiClient.get("/orders");
-        setOrders(response.data || []);
+      }
+
+      try {
+        const lastOrder = isNext ? orders[orders.length - 1] : null;
+
+        const params = {
+          limit: 20,
+          cursorCreatedAt: lastOrder?.created_at,
+          cursorId: lastOrder?.order_id,
+        };
+
+        const response = await apiClient.get("/orders/infinite", { params });
+        const newData = response.data.data || [];
+
+        setOrders((prev) => (isNext ? [...prev, ...newData] : newData));
+        setHasMore(response.data.hasMore);
+        setTotalCount(response.data.total);
       } catch (error) {
         console.error("Error fetching orders:", error);
       } finally {
         setLoading(false);
+        setIsFetchingMore(false);
       }
-    };
+    },
+    [orders],
+  );
+
+  useEffect(() => {
     fetchOrders();
   }, []);
 
@@ -67,7 +91,7 @@ const Page = () => {
       render: (row) => (
         <Link
           href={`/portal/orders/${row.order_id}`}
-          className="text-blue-600 hover:text-blue-800 underline"
+          className="text-blue-600 hover:text-blue-800 underline uppercase font-medium"
         >
           {row.order_code}
         </Link>
@@ -81,15 +105,15 @@ const Page = () => {
     {
       key: "status",
       header: "Status",
-      render: (row) => row.status,
+      render: (row) => <span className="capitalize">{row.status}</span>,
     },
     {
       key: "payment_status",
       header: "Payment Status",
-      render: (row) => row.payment_status,
+      render: (row) => <span className="capitalize">{row.payment_status}</span>,
     },
     {
-      key: "parts_count",
+      key: "part_count",
       header: "Parts Count",
       render: (row) => row.part_count,
     },
@@ -107,7 +131,7 @@ const Page = () => {
         items={[
           {
             label: "Total Orders",
-            value: orders.length,
+            value: totalCount,
             icon: Package,
             color: "blue",
           },
@@ -149,11 +173,9 @@ const Page = () => {
                 ))}
               </div>
             ) : orders.length === 0 ? (
-              <div className="text-center py-12">
+              <div className="text-center py-12 text-[#111111]">
                 <CubeIcon className="w-12 h-12 text-gray-400 mx-auto mb-4" />
-                <h3 className="text-lg font-medium text-gray-900 mb-2">
-                  No orders yet
-                </h3>
+                <h3 className="text-lg font-medium mb-2">No orders yet</h3>
                 <p className="text-gray-500 mb-4">
                   Drag & drop a CAD file on the Dashboard to start an instant
                   quote.
@@ -167,16 +189,22 @@ const Page = () => {
                 <DataTable
                   columns={columns}
                   data={orders}
-                  keyExtractor={(m) => m.order_code}
+                  keyExtractor={(m) => m.order_id}
                   emptyMessage="No Orders Found"
-                  isLoading={loading}
+                  isLoading={loading || isFetchingMore}
                   numbering={true}
+                  hasMore={hasMore}
+                  onEndReached={() => {
+                    if (hasMore && !isFetchingMore) {
+                      fetchOrders(true);
+                    }
+                  }}
                   actions={[
                     {
                       label: "Open",
                       icon: <EyeIcon className="w-4 h-4" />,
                       onClick: (order) =>
-                        router.push(`/order/${order.order_code}`),
+                        router.push(`/portal/orders/${order.order_id}`),
                     },
                   ]}
                 />

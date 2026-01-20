@@ -64,6 +64,36 @@ export class OrdersController {
     });
   }
 
+  @Get('infinite')
+  @Roles(RoleNames.Admin, RoleNames.Customer)
+  async getOrdersInfinite(
+    @CurrentUser() currentUser: CurrentUserDto,
+    @Query('status') status?: string,
+    @Query('paymentStatus') paymentStatus?: string,
+    @Query('rfqId') rfqId?: string,
+    @Query('limit') limit = '20',
+    @Query('cursorCreatedAt') cursorCreatedAt?: string,
+    @Query('cursorId') cursorId?: string,
+  ) {
+    const organizationId =
+      currentUser.role === RoleNames.Admin ? null : currentUser.organizationId;
+
+    const data = await this.ordersService.getOrdersInfinite({
+      organizationId,
+      status,
+      paymentStatus,
+      rfqId,
+      limit: Number(limit),
+      cursorCreatedAt,
+      cursorId,
+    });
+
+    return {
+      success: true,
+      ...data,
+    };
+  }
+
   @Post('shipping_address')
   async createShippingAddress(
     @CurrentUser() currentUser: CurrentUserDto,

@@ -34,7 +34,8 @@ INSERT INTO rfq_parts (
         notes,
         lead_time_type,
         lead_time,
-        geometry
+        geometry,
+        process
     )
 SELECT v_rfq_id,
     v_org_id,
@@ -51,7 +52,8 @@ SELECT v_rfq_id,
     notes,
     lead_time_type,
     lead_time,
-    geometry
+    geometry,
+    process
 FROM rfq_parts
 WHERE id = ANY(v_group)
     AND organization_id = v_org_id;

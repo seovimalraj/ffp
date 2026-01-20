@@ -1,6 +1,11 @@
 import axios, { AxiosInstance, AxiosResponse } from "axios";
 import { getSession, signOut } from "next-auth/react";
 
+console.log(
+  process.env.NEXT_PUBLIC_NEST_API,
+  process.env.NEXT_PUBLIC_API_URL || "/api",
+);
+
 // Create axios instance
 const apiClient: AxiosInstance = axios.create({
   baseURL:

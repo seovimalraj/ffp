@@ -43,6 +43,7 @@ import {
   getDefaultMaterialForProcess,
   getDefaultFinishForProcess,
   getDefaultToleranceForProcess,
+  getDefaultThickness,
 } from "../../../lib/pricing-engine";
 import { PartCardItem } from "../components/part-card-item";
 import { useDropzone } from "react-dropzone";
@@ -76,38 +77,63 @@ import { SuggestionSidebar } from "../components/suggestion-sidebar";
 const getMaterialsForProcess = (process: string | undefined) => {
   if (isSheetMetalProcess(process)) {
     // Flatten sheet metal materials for dropdown
-    const materials: { value: string; label: string; multiplier: number; icon: string }[] = [];
+    const materials: {
+      value: string;
+      label: string;
+      multiplier: number;
+      icon: string;
+    }[] = [];
     for (const [category, mats] of Object.entries(SHEET_METAL_MATERIALS)) {
       for (const mat of mats) {
         materials.push({
-          value: mat.value,
-          label: mat.label,
+          value: (mat as any).value || mat.code,
+          label: (mat as any).label || mat.name,
           multiplier: mat.costPerKg / 8.5,
-          icon: category === 'aluminum' ? "🔷" :
-                category === 'stainless' ? "⚙️" :
-                category === 'copper' ? "🟠" :
-                category === 'galvanized' ? "🔩" :
-                category === 'brass' ? "🟤" : "⚫",
+          icon:
+            category === "aluminum"
+              ? "🔷"
+              : category === "stainless"
+                ? "⚙️"
+                : category === "copper"
+                  ? "🟠"
+                  : category === "galvanized"
+                    ? "🔩"
+                    : category === "brass"
+                      ? "🟤"
+                      : "⚫",
         });
       }
     }
     return materials;
   }
-  
+
   // CNC Machining materials - flatten from categorized structure
-  const materials: { value: string; label: string; multiplier: number; icon: string }[] = [];
+  const materials: {
+    value: string;
+    label: string;
+    multiplier: number;
+    icon: string;
+  }[] = [];
   for (const [category, mats] of Object.entries(CNC_MATERIALS)) {
     for (const mat of mats) {
       materials.push({
         value: mat.value,
         label: mat.label,
         multiplier: mat.costPerKg / 8.5,
-        icon: category === 'aluminum' ? "🔷" :
-              category === 'steel' ? "⚙️" :
-              category === 'stainless' ? "⚙️" :
-              category === 'titanium' ? "🔵" :
-              category === 'brass' ? "🟤" :
-              category === 'plastics' ? "🟢" : "⚫",
+        icon:
+          category === "aluminum"
+            ? "🔷"
+            : category === "steel"
+              ? "⚙️"
+              : category === "stainless"
+                ? "⚙️"
+                : category === "titanium"
+                  ? "🔵"
+                  : category === "brass"
+                    ? "🟤"
+                    : category === "plastics"
+                      ? "🟢"
+                      : "⚫",
       });
     }
   }
@@ -147,9 +173,21 @@ const SHEET_METAL_FINISHES_LIST = [
   { value: "as-cut", label: "As Cut (Unfinished)", cost: 0 },
   { value: "deburring", label: "Deburred Edges", cost: 8 },
   { value: "powder-coated", label: "Powder Coated", cost: 22 },
-  { value: "powder-coated-custom", label: "Powder Coated (Custom Color)", cost: 35 },
-  { value: "anodized-clear", label: "Anodized Clear (Aluminum only)", cost: 18 },
-  { value: "anodized-color", label: "Anodized Color (Aluminum only)", cost: 25 },
+  {
+    value: "powder-coated-custom",
+    label: "Powder Coated (Custom Color)",
+    cost: 35,
+  },
+  {
+    value: "anodized-clear",
+    label: "Anodized Clear (Aluminum only)",
+    cost: 18,
+  },
+  {
+    value: "anodized-color",
+    label: "Anodized Color (Aluminum only)",
+    cost: 25,
+  },
   { value: "zinc-plated", label: "Zinc Plated", cost: 15 },
   { value: "electropolished", label: "Electropolished", cost: 35 },
 ];
@@ -190,12 +228,15 @@ export const calculateLeadTime = (
   if (!part.geometry) return 7;
 
   // Get material based on process type
-  const processType = part.process || part.geometry?.recommendedProcess || 'cnc-milling';
+  const processType =
+    part.process || part.geometry?.recommendedProcess || "cnc-milling";
   const material = getMaterialForProcess(part.material, processType);
   if (!material) return 7;
 
   // Get correct process config
-  const process = PROCESSES[processType as keyof typeof PROCESSES] || PROCESSES["cnc-milling"];
+  const process =
+    PROCESSES[processType as keyof typeof PROCESSES] ||
+    PROCESSES["cnc-milling"];
   const finish = getFinish(part.finish);
 
   const pricing = calculatePricing({
@@ -218,7 +259,8 @@ const calculatePrice = (
   if (!part.geometry) return 0;
 
   // Determine process type from CAD analysis
-  const processType = part.process || part.geometry?.recommendedProcess || 'cnc-milling';
+  const processType =
+    part.process || part.geometry?.recommendedProcess || "cnc-milling";
 
   // Get material based on process type
   const material = getMaterialByValue(part.material, processType);
@@ -226,9 +268,11 @@ const calculatePrice = (
     // Fallback to legacy getMaterial for backward compatibility
     const legacyMaterial = getMaterial(part.material);
     if (!legacyMaterial) return 0;
-    
+
     // Use legacy pricing
-    const process = PROCESSES[processType as keyof typeof PROCESSES] || PROCESSES["cnc-milling"];
+    const process =
+      PROCESSES[processType as keyof typeof PROCESSES] ||
+      PROCESSES["cnc-milling"];
     const finish = getFinish(part.finish);
     const pricing = calculatePricing({
       geometry: part.geometry,
@@ -243,16 +287,25 @@ const calculatePrice = (
   }
 
   // Get correct process config
-  const process = PROCESSES[processType as keyof typeof PROCESSES] || PROCESSES["cnc-milling"];
+  const process =
+    PROCESSES[processType as keyof typeof PROCESSES] ||
+    PROCESSES["cnc-milling"];
   const finish = getFinish(part.finish);
 
   // Create material spec for pricing engine
   const materialSpec = {
-    code: material.value.toUpperCase(),
-    name: material.label,
+    code: (
+      (material as any).value ||
+      (material as any).code ||
+      ""
+    ).toUpperCase(),
+    name: (material as any).label || (material as any).name || "",
     density: material.density,
     costPerKg: material.costPerKg,
-    machinabilityFactor: 'machinabilityFactor' in material ? material.machinabilityFactor : 1.0,
+    machinabilityFactor:
+      "machinabilityFactor" in material
+        ? (material as any).machinabilityFactor
+        : 1.0,
   };
 
   // Calculate pricing with thickness support for sheet metal
@@ -262,12 +315,15 @@ const calculatePrice = (
     process,
     finish,
     quantity: part.quantity,
-    tolerance: isCNCProcess(processType) ? (part.tolerance as "standard" | "precision" | "tight") : 'standard',
+    tolerance: isCNCProcess(processType)
+      ? (part.tolerance as "standard" | "precision" | "tight")
+      : "standard",
     leadTimeType: tier,
     // Pass thickness for sheet metal calculations
-    ...(isSheetMetalProcess(processType) && part.thickness && {
-      sheetThickness: parseFloat(part.thickness),
-    }),
+    ...(isSheetMetalProcess(processType) &&
+      part.thickness && {
+        sheetThickness: parseFloat(part.thickness),
+      }),
   });
 
   return pricing.totalPrice;
@@ -346,86 +402,101 @@ export default function QuoteConfigPage() {
           }
 
           console.log(`Analyzing CAD file: ${file.name}`);
-          
+
           // ENTERPRISE-LEVEL: Use backend analysis for STEP files (advanced ray-casting thickness detection)
-          const extension = file.name.toLowerCase().split('.').pop();
-          const useBackendAnalysis = ['step', 'stp', 'iges', 'igs'].includes(extension || '');
-          
+          const extension = file.name.toLowerCase().split(".").pop();
+          const useBackendAnalysis = ["step", "stp", "iges", "igs"].includes(
+            extension || "",
+          );
+
           let geometry;
           if (useBackendAnalysis && uploadedPath) {
-            console.log(`🔬 Using backend analysis for ${file.name} (advanced thickness detection)`);
+            console.log(
+              `🔬 Using backend analysis for ${file.name} (advanced thickness detection)`,
+            );
             console.log(`📤 File uploaded to: ${uploadedPath}`);
             console.log(`🔍 Calling backend API: /api/cad/analyze-geometry`);
-            
+
             try {
-              const analysisResponse = await fetch('/api/cad/analyze-geometry', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ 
-                  fileUrl: uploadedPath,
-                  fileName: file.name
-                })
-              });
-              
-              console.log(`📡 Backend API response status: ${analysisResponse.status}`);
-              
+              const analysisResponse = await fetch(
+                "/api/cad/analyze-geometry",
+                {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({
+                    fileUrl: uploadedPath,
+                    fileName: file.name,
+                  }),
+                },
+              );
+
+              console.log(
+                `📡 Backend API response status: ${analysisResponse.status}`,
+              );
+
               if (analysisResponse.ok) {
                 geometry = await analysisResponse.json();
-                console.log('✅ Backend analysis complete:', {
+                console.log("✅ Backend analysis complete:", {
                   process: geometry.recommendedProcess,
                   thickness: geometry.detectedWallThickness,
                   confidence: geometry.thicknessConfidence,
                   method: geometry.thicknessDetectionMethod,
-                  sheetMetalScore: geometry.sheetMetalScore
+                  sheetMetalScore: geometry.sheetMetalScore,
                 });
               } else {
                 const errorText = await analysisResponse.text();
-                console.error('❌ Backend analysis failed:', analysisResponse.status, errorText);
-                console.warn('⚠️ Falling back to client-side analysis');
+                console.error(
+                  "❌ Backend analysis failed:",
+                  analysisResponse.status,
+                  errorText,
+                );
+                console.warn("⚠️ Falling back to client-side analysis");
                 geometry = await analyzeCADFile(file);
               }
             } catch (error) {
-              console.error('❌ Backend analysis error:', error);
-              console.warn('⚠️ Falling back to client-side analysis');
+              console.error("❌ Backend analysis error:", error);
+              console.warn("⚠️ Falling back to client-side analysis");
               geometry = await analyzeCADFile(file);
             }
           } else {
             console.log(`⚡ Using client-side analysis for ${file.name}`);
             geometry = await analyzeCADFile(file);
           }
-          
+
           console.log(`Geometry analysis complete:`, geometry);
 
           // Map recommendedProcess to process field
           const processMap: Record<string, string> = {
-            'sheet-metal': 'sheet-metal',
-            'cnc-milling': 'cnc-milling',
-            'cnc-turning': 'cnc-turning',
-            'injection-molding': 'injection-molding',
+            "sheet-metal": "sheet-metal",
+            "cnc-milling": "cnc-milling",
+            "cnc-turning": "cnc-turning",
+            "injection-molding": "injection-molding",
           };
-          const detectedProcess = geometry?.recommendedProcess 
-            ? processMap[geometry.recommendedProcess] || 'cnc-milling'
-            : 'cnc-milling';
+          const detectedProcess = geometry?.recommendedProcess
+            ? processMap[geometry.recommendedProcess] || "cnc-milling"
+            : "cnc-milling";
 
           console.log(`Process detection for ${file.name}:`, {
             recommendedProcess: geometry?.recommendedProcess,
             detectedProcess,
             confidence: geometry?.processConfidence,
             reasoning: geometry?.processReasoning,
-            sheetMetalScore: geometry?.sheetMetalScore
+            sheetMetalScore: geometry?.sheetMetalScore,
           });
 
           // Use process-specific defaults
           const defaultMaterial = getDefaultMaterialForProcess(detectedProcess);
           const defaultFinish = getDefaultFinishForProcess(detectedProcess);
-          const defaultTolerance = getDefaultToleranceForProcess(detectedProcess);
-          const defaultThickness = detectedProcess.includes('sheet') ? getDefaultThickness() : undefined;
+          const defaultTolerance =
+            getDefaultToleranceForProcess(detectedProcess);
+          const defaultThickness = detectedProcess.includes("sheet")
+            ? getDefaultThickness()
+            : undefined;
 
           const newPart: any = {
             file_name: file.name,
             cad_file_url: uploadedPath,
             cad_file_type: file.type,
-            process: detectedProcess, // Set process based on geometry analysis
             material: defaultMaterial, // Process-specific default material
             quantity: 1,
             status: "draft",
@@ -439,6 +510,7 @@ export default function QuoteConfigPage() {
             lead_time: 0,
             geometry,
             pricing: undefined,
+            process: geometry.recommendedProcess || "cnc-milling",
             final_price: 0,
             certificates: [],
           };
@@ -696,92 +768,99 @@ export default function QuoteConfigPage() {
             let rfqTotalCalculated = 0;
             let syncNeeded = false;
 
-            const processedParts: PartConfig[] = apiPartsRaw.map(
-              (p: any, index: number) => {
-                const part: PartConfig = {
-                  id: p.id || `part-${index + 1}`,
-                  rfqId: p.rfq_id,
-                  status: p.status || "active",
-                  fileName: p.file_name,
-                  filePath: p.cad_file_url,
-                  fileObject: undefined, // URL only
-                  material: p.material || "aluminum-6061",
-                  quantity: p.quantity || 1,
-                  tolerance: p.tolerance || "standard",
-                  finish: p.finish || "as-machined",
-                  threads: p.threads || "none",
-                  inspection: p.inspection || "standard",
-                  notes: p.notes || "",
-                  leadTimeType: (p.lead_time_type as any) || "standard",
-                  geometry: p.geometry,
-                  pricing: undefined,
-                  certificates: p.certificates || [],
-                  final_price: undefined,
-                  leadTime: undefined,
-                  is_archived: p.is_archived,
-                  snapshot_2d_url: p.snapshot_2d_url,
-                  files2d: (p.files2d || []).map((f: any) => ({
-                    file: {
-                      name: f.file_name || "Drawing",
-                      type: f.mime_type || "application/pdf",
-                      size: 0,
-                      id: f.id,
-                    },
-                    preview: f.file_url,
-                  })),
-                };
+            const processedParts: PartConfig[] = apiPartsRaw.map((p: any) => {
+              const part: PartConfig = {
+                id: p.id,
+                rfqId: p.rfq_id,
+                status: p.status || "active",
+                fileName: p.file_name,
+                filePath: p.cad_file_url,
+                fileObject: undefined, // URL only
+                material: p.material || "aluminum-6061",
+                quantity: p.quantity || 1,
+                tolerance: p.tolerance || "standard",
+                finish: p.finish || "as-machined",
+                threads: p.threads || "none",
+                inspection: p.inspection || "standard",
+                notes: p.notes || "",
+                leadTimeType: (p.lead_time_type as any) || "standard",
+                geometry: p.geometry,
+                pricing: undefined,
+                certificates: p.certificates || [],
+                final_price: undefined,
+                leadTime: undefined,
+                is_archived: p.is_archived,
+                snapshot_2d_url: p.snapshot_2d_url,
+                process: p.process,
+                files2d: (p.files2d || []).map((f: any) => ({
+                  file: {
+                    name: f.file_name || "Drawing",
+                    type: f.mime_type || "application/pdf",
+                    size: 0,
+                    id: f.id,
+                  },
+                  preview: f.file_url,
+                })),
+              };
 
-                // Recalculate Pricing Object
-                if (part.geometry) {
-                  const processType = p.process || part.geometry?.recommendedProcess || 'cnc-milling';
-                  const material = getMaterialForProcess(part.material, processType);
-                  if (material) {
-                    const process = PROCESSES[processType as keyof typeof PROCESSES] || PROCESSES["cnc-milling"];
-                    const finish = getFinish(part.finish);
-
-                    part.pricing = calculatePricing({
-                      geometry: part.geometry,
-                      material,
-                      process,
-                      finish,
-                      quantity: part.quantity,
-                      tolerance: part.tolerance as any,
-                      leadTimeType: "standard",
-                    });
-                  }
-                }
-
-                // Recalculate Final Price and Lead Time
-                const calculatedPrice = calculatePrice(part, part.leadTimeType);
-                const calculatedLeadTime = calculateLeadTime(
-                  part,
-                  part.leadTimeType,
+              // Recalculate Pricing Object
+              if (part.geometry) {
+                const processType =
+                  p.process ||
+                  part.geometry?.recommendedProcess ||
+                  "cnc-milling";
+                const material = getMaterialForProcess(
+                  part.material,
+                  processType,
                 );
+                if (material) {
+                  const process =
+                    PROCESSES[processType as keyof typeof PROCESSES] ||
+                    PROCESSES["cnc-milling"];
+                  const finish = getFinish(part.finish);
 
-                part.final_price = calculatedPrice;
-                part.leadTime = calculatedLeadTime;
-
-                rfqTotalCalculated += calculatedPrice;
-
-                // Check for discrepancies
-                const dbPrice = p.final_price ? Number(p.final_price) : 0;
-                const dbLeadTime = p.lead_time ? Number(p.lead_time) : 0;
-
-                if (
-                  Math.abs(calculatedPrice - dbPrice) > 0.01 ||
-                  calculatedLeadTime !== dbLeadTime
-                ) {
-                  syncNeeded = true;
-                  partsToSync.push({
-                    id: part.id,
-                    final_price: calculatedPrice,
-                    lead_time: calculatedLeadTime,
+                  part.pricing = calculatePricing({
+                    geometry: part.geometry,
+                    material,
+                    process,
+                    finish,
+                    quantity: part.quantity,
+                    tolerance: part.tolerance as any,
+                    leadTimeType: "standard",
                   });
                 }
+              }
 
-                return part;
-              },
-            );
+              // Recalculate Final Price and Lead Time
+              const calculatedPrice = calculatePrice(part, part.leadTimeType);
+              const calculatedLeadTime = calculateLeadTime(
+                part,
+                part.leadTimeType,
+              );
+
+              part.final_price = calculatedPrice;
+              part.leadTime = calculatedLeadTime;
+
+              rfqTotalCalculated += calculatedPrice;
+
+              // Check for discrepancies
+              const dbPrice = p.final_price ? Number(p.final_price) : 0;
+              const dbLeadTime = p.lead_time ? Number(p.lead_time) : 0;
+
+              if (
+                Math.abs(calculatedPrice - dbPrice) > 0.01 ||
+                calculatedLeadTime !== dbLeadTime
+              ) {
+                syncNeeded = true;
+                partsToSync.push({
+                  id: part.id,
+                  final_price: calculatedPrice,
+                  lead_time: calculatedLeadTime,
+                });
+              }
+
+              return part;
+            });
 
             // Check RFQ Total Sync
             const dbRfqTotal = currentRfq.final_price
@@ -857,16 +936,23 @@ export default function QuoteConfigPage() {
       updatedPart.material = getDefaultMaterialForProcess(updates.process);
       updatedPart.finish = getDefaultFinishForProcess(updates.process);
       updatedPart.tolerance = getDefaultToleranceForProcess(updates.process);
-      notify.info(`Process changed. Material and finish reset to ${getProcessDisplayName(updates.process)} defaults.`);
+      notify.info(
+        `Process changed. Material and finish reset to ${getProcessDisplayName(updates.process)} defaults.`,
+      );
     }
 
     // Recalculate pricing if geometry exists
     if (updatedPart.geometry) {
-      const processType = updatedPart.process || updatedPart.geometry?.recommendedProcess || 'cnc-milling';
+      const processType =
+        updatedPart.process ||
+        updatedPart.geometry?.recommendedProcess ||
+        "cnc-milling";
       const material = getMaterialForProcess(updatedPart.material, processType);
-      
+
       if (material) {
-        const process = PROCESSES[processType as keyof typeof PROCESSES] || PROCESSES["cnc-milling"];
+        const process =
+          PROCESSES[processType as keyof typeof PROCESSES] ||
+          PROCESSES["cnc-milling"];
         const finish = getFinish(updatedPart.finish);
 
         // Calculate pricing
@@ -1316,13 +1402,15 @@ export default function QuoteConfigPage() {
           {parts.map((part, index) => {
             // Get process-specific materials, tolerances, and finishes
             const processMaterials = getMaterialsForProcess(part.process);
-            const processTolerances = (part.process === 'sheet-metal' || part.process?.includes('sheet')) 
-              ? SHEET_METAL_TOLERANCES_LIST 
-              : TOLERANCES_LIST;
-            const processFinishes = (part.process === 'sheet-metal' || part.process?.includes('sheet')) 
-              ? SHEET_METAL_FINISHES_LIST 
-              : FINISHES_LIST;
-            
+            const processTolerances =
+              part.process === "sheet-metal" || part.process?.includes("sheet")
+                ? SHEET_METAL_TOLERANCES_LIST
+                : TOLERANCES_LIST;
+            const processFinishes =
+              part.process === "sheet-metal" || part.process?.includes("sheet")
+                ? SHEET_METAL_FINISHES_LIST
+                : FINISHES_LIST;
+
             return (
               <PartCardItem
                 key={index}

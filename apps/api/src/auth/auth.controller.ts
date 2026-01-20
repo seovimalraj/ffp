@@ -4,6 +4,7 @@ import {
   Get,
   HttpException,
   HttpStatus,
+  Logger,
   Post,
   UseGuards,
 } from '@nestjs/common';
@@ -16,12 +17,18 @@ import { compare, hash } from 'bcrypt';
 import { randomBytes } from 'crypto';
 import { SQLFunctions, Tables } from '../../libs/constants';
 import { AuthDto, LogoutDto, RefreshTokenDto } from './auth.dto';
+import { InjectQueue } from '@nestjs/bullmq';
+import { Queue } from 'bullmq';
+import { EmailService } from 'src/email/email.service';
 
 @Controller('auth')
 export class AuthController {
   constructor(
     private readonly supabaseService: SupabaseService,
     private readonly jwtService: JwtService,
+    private readonly logger: Logger,
+    @InjectQueue('email') private readonly emailQueue: Queue,
+    private readonly emailService: EmailService,
   ) {}
 
   @Get('profile')
@@ -50,7 +57,7 @@ export class AuthController {
         .single();
 
       if (error || !user) {
-        console.log(error);
+        this.logger.error(error);
         throw new HttpException('Invalid credentials', HttpStatus.UNAUTHORIZED);
       }
 
@@ -103,7 +110,7 @@ export class AuthController {
       };
       return result;
     } catch (error) {
-      console.error(error);
+      this.logger.error(error);
       if (error instanceof Error) {
         throw error;
       }
@@ -340,5 +347,17 @@ export class AuthController {
         HttpStatus.INTERNAL_SERVER_ERROR,
       );
     }
+  }
+
+  @Post('email')
+  async testEmail(@Body() body: any) {
+    await this.emailService.sendEmail(
+      body.to,
+      body.subject,
+      body.text || 'text',
+      body.html || 'html',
+      body.name,
+    );
+    return { message: 'Email queued for sending' };
   }
 }

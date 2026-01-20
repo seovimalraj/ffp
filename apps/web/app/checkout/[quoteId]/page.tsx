@@ -66,6 +66,7 @@ interface PartConfig {
   finalPrice: number;
   leadTime: number;
   snapshot_2d_url: string | null;
+  process: string;
 }
 
 interface QuoteConfig {
