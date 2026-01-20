@@ -354,8 +354,8 @@ const calculatePrice = (
     if (smThickness && smThickness > 0 && smThickness <= 25) {
       return smThickness;
     }
-    // Default
-    return 1.5;
+    // Default to 2.0mm (matches AL5052-2.0 default material)
+    return 2.0;
   };
   
   const materialSpec = isSheetMetal
@@ -566,7 +566,7 @@ export default function QuoteConfigPage() {
             getDefaultToleranceForProcess(detectedProcess);
           // For sheet metal, get thickness as a number (not string)
           const defaultThicknessMm = detectedProcess?.includes("sheet")
-            ? parseFloat(getDefaultThickness()) || 1.5
+            ? parseFloat(getDefaultThickness()) || 2.0
             : undefined;
 
           const newPart: any = {
@@ -856,7 +856,7 @@ export default function QuoteConfigPage() {
               
               // Determine if this is a sheet metal part for proper material defaulting
               const isSheetMetalPart = isSheetMetalProcess(normalizedProcess);
-              const defaultMaterial = isSheetMetalPart ? "AL5052-1.5" : "aluminum-6061";
+              const defaultMaterial = isSheetMetalPart ? "AL5052-2.0" : "aluminum-6061";
               
               const part: PartConfig = {
                 id: p.id,

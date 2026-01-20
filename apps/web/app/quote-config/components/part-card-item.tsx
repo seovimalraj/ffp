@@ -94,8 +94,8 @@ function getValidSheetThickness(part: PartConfig): number {
     return closest;
   }
   
-  // Default to 1.5mm (most common sheet metal gauge)
-  return 1.5;
+  // Default to 2.0mm (matches AL5052-2.0 default material)
+  return 2.0;
 }
 
 // --- Sub-Component: PartCardItem ---

@@ -139,7 +139,7 @@ export function SheetMetalFields({ part, index, updatePart, className = "" }: Sh
           Material & Thickness
         </label>
         <select
-          value={part.material || "AL5052-1.5"}
+          value={part.material || "AL5052-2.0"}
           onChange={(e) => {
             const selectedMat = SHEET_MATERIALS.find(m => m.value === e.target.value);
             updatePart(index, "material", e.target.value, true);

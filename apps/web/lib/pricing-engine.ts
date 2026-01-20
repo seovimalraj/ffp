@@ -868,8 +868,8 @@ export function isSheetMetalProcess(process: string | undefined): boolean {
 // Get default material for a process
 export function getDefaultMaterialForProcess(process: string): string {
   if (isSheetMetalProcess(process)) {
-    // Default to Aluminum 5052 - 1.5mm for sheet metal (most common gauge)
-    return "AL5052-1.5";
+    // Default to Aluminum 5052 - 2.0mm for sheet metal
+    return "AL5052-2.0";
   }
   // Default to Aluminum 6061 for CNC
   return "aluminum-6061";
@@ -890,7 +890,7 @@ export function getDefaultToleranceForProcess(process: string): string {
 
 // Get default thickness for sheet metal
 export function getDefaultThickness(): string {
-  return "1.5"; // 1.5mm default
+  return "2.0"; // 2.0mm default
 }
 
 // ============================================================================
@@ -3731,8 +3731,8 @@ export function getMaterialByValue(value: string, process: string) {
       // Return first available thickness for this material family
       const materialFamily = SHEET_METAL_MATERIALS[value];
       if (materialFamily && materialFamily.length > 0) {
-        // Default to 1.5mm or closest available
-        const preferred = materialFamily.find((m: any) => m.thickness === 1.5);
+        // Default to 2.0mm or closest available
+        const preferred = materialFamily.find((m: any) => m.thickness === 2.0);
         return preferred || materialFamily[0];
       }
     }
@@ -3757,16 +3757,16 @@ export function getMaterialByValue(value: string, process: string) {
     if (mappedKey && mappedKey in SHEET_METAL_MATERIALS) {
       const materialFamily = SHEET_METAL_MATERIALS[mappedKey];
       if (materialFamily && materialFamily.length > 0) {
-        const preferred = materialFamily.find((m: any) => m.thickness === 1.5);
+        const preferred = materialFamily.find((m: any) => m.thickness === 2.0);
         console.log(`⚠️ Mapped CNC material "${value}" to sheet metal "${mappedKey}"`);
         return preferred || materialFamily[0];
       }
     }
-    // Final fallback: return default AL5052-1.5
-    console.log(`⚠️ Sheet metal material "${value}" not found, using default AL5052-1.5`);
+    // Final fallback: return default AL5052-2.0
+    console.log(`⚠️ Sheet metal material "${value}" not found, using default AL5052-2.0`);
     const defaultFamily = SHEET_METAL_MATERIALS["aluminum-5052"];
     if (defaultFamily && defaultFamily.length > 0) {
-      const preferred = defaultFamily.find((m: any) => m.thickness === 1.5);
+      const preferred = defaultFamily.find((m: any) => m.thickness === 2.0);
       return preferred || defaultFamily[0];
     }
   }
