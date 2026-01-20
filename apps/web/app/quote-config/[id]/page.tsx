@@ -293,20 +293,33 @@ const calculatePrice = (
   const finish = getFinish(part.finish);
 
   // Create material spec for pricing engine
-  const materialSpec = {
-    code: (
-      (material as any).value ||
-      (material as any).code ||
-      ""
-    ).toUpperCase(),
-    name: (material as any).label || (material as any).name || "",
-    density: material.density,
-    costPerKg: material.costPerKg,
-    machinabilityFactor:
-      "machinabilityFactor" in material
-        ? (material as any).machinabilityFactor
-        : 1.0,
-  };
+  // IMPORTANT: Include thickness for sheet metal materials
+  const isSheetMetal = isSheetMetalProcess(processType);
+  const materialSpec = isSheetMetal
+    ? {
+        // Sheet metal material spec with thickness
+        code: ((material as any).value || (material as any).code || "").toUpperCase(),
+        name: (material as any).label || (material as any).name || "",
+        density: material.density,
+        costPerKg: material.costPerKg,
+        thickness: (material as any).thickness || part.sheet_thickness_mm || part.geometry?.sheetMetalFeatures?.thickness || 1.5,
+        category: (material as any).category || "aluminum",
+        bendability: (material as any).bendability || 1.0,
+        // Pass manual quote flags for exotic materials
+        requiresManualQuote: (material as any).requiresManualQuote || false,
+        manualQuoteReason: (material as any).manualQuoteReason,
+      }
+    : {
+        // CNC material spec
+        code: ((material as any).value || (material as any).code || "").toUpperCase(),
+        name: (material as any).label || (material as any).name || "",
+        density: material.density,
+        costPerKg: material.costPerKg,
+        machinabilityFactor:
+          "machinabilityFactor" in material
+            ? (material as any).machinabilityFactor
+            : 1.0,
+      };
 
   // Calculate pricing with thickness support for sheet metal
   const pricing = calculatePricing({

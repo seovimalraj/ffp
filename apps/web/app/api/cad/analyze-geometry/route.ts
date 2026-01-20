@@ -70,6 +70,28 @@ export async function POST(request: NextRequest) {
         );
       }
       
+      // === ASSEMBLY DETECTION ===
+      // If backend detected an assembly, return special response
+      if (cadResult.metrics.is_assembly) {
+        console.warn('⚠️ Assembly detected:', cadResult.metrics.assembly_info);
+        return NextResponse.json({
+          isAssembly: true,
+          assemblyInfo: cadResult.metrics.assembly_info,
+          requiresManualQuote: true,
+          manualQuoteReason: cadResult.metrics.manual_quote_reason || 'Assembly files require manual quoting',
+          recommendedProcess: 'manual-quote',
+          processConfidence: 0,
+          processReasoning: 'Assembly detected - individual parts must be quoted separately',
+          volume: 0,
+          surfaceArea: 0,
+          boundingBox: { x: 0, y: 0, z: 0 },
+          complexity: 'complex' as const,
+          estimatedMachiningTime: 0,
+          materialWeight: 0,
+          sheetMetalScore: 0,
+        });
+      }
+      
       console.log('✅ Backend analysis successful:', {
         process: cadResult.metrics.process_type,
         thickness: cadResult.metrics.thickness,

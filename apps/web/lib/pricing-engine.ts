@@ -50,8 +50,10 @@ export interface SheetMetalMaterialSpec {
   density: number; // g/cm³
   costPerKg: number;
   thickness: number; // mm
-  category: "steel" | "stainless" | "aluminum" | "copper" | "brass";
+  category: "steel" | "stainless" | "aluminum" | "copper" | "brass" | "titanium" | "superalloy";
   bendability: number; // 1 = easy, higher = harder to bend
+  requiresManualQuote?: boolean; // Exotic materials requiring manual review
+  manualQuoteReason?: string; // Reason for manual quote
 }
 
 export interface SheetMetalFinish {
@@ -2644,6 +2646,150 @@ export const SHEET_METAL_MATERIALS: Record<string, any[]> = {
       bendability: 1.8,
     },
   ],
+  // === EXOTIC MATERIALS - REQUIRE MANUAL QUOTE ===
+  // Titanium - Aerospace grade, requires special tooling
+  "titanium-grade2": [
+    {
+      code: "TI-GR2-1.0",
+      name: "Titanium Grade 2 - 1.0mm",
+      density: 4.51,
+      costPerKg: 45,
+      thickness: 1,
+      category: "titanium",
+      bendability: 1.8,
+      requiresManualQuote: true,
+      manualQuoteReason: "Exotic material - requires specialized tooling",
+    },
+    {
+      code: "TI-GR2-1.5",
+      name: "Titanium Grade 2 - 1.5mm",
+      density: 4.51,
+      costPerKg: 44,
+      thickness: 1.5,
+      category: "titanium",
+      bendability: 2.0,
+      requiresManualQuote: true,
+      manualQuoteReason: "Exotic material - requires specialized tooling",
+    },
+    {
+      code: "TI-GR2-2.0",
+      name: "Titanium Grade 2 - 2.0mm",
+      density: 4.51,
+      costPerKg: 43,
+      thickness: 2,
+      category: "titanium",
+      bendability: 2.2,
+      requiresManualQuote: true,
+      manualQuoteReason: "Exotic material - requires specialized tooling",
+    },
+  ],
+  "titanium-grade5": [
+    {
+      code: "TI-6AL4V-1.0",
+      name: "Titanium Grade 5 (Ti-6Al-4V) - 1.0mm",
+      density: 4.43,
+      costPerKg: 65,
+      thickness: 1,
+      category: "titanium",
+      bendability: 2.5,
+      requiresManualQuote: true,
+      manualQuoteReason: "Exotic material - requires specialized tooling and heat treatment",
+    },
+    {
+      code: "TI-6AL4V-1.5",
+      name: "Titanium Grade 5 (Ti-6Al-4V) - 1.5mm",
+      density: 4.43,
+      costPerKg: 64,
+      thickness: 1.5,
+      category: "titanium",
+      bendability: 2.8,
+      requiresManualQuote: true,
+      manualQuoteReason: "Exotic material - requires specialized tooling and heat treatment",
+    },
+    {
+      code: "TI-6AL4V-2.0",
+      name: "Titanium Grade 5 (Ti-6Al-4V) - 2.0mm",
+      density: 4.43,
+      costPerKg: 63,
+      thickness: 2,
+      category: "titanium",
+      bendability: 3.0,
+      requiresManualQuote: true,
+      manualQuoteReason: "Exotic material - requires specialized tooling and heat treatment",
+    },
+  ],
+  // Inconel - High temperature superalloy
+  "inconel-625": [
+    {
+      code: "INC625-1.0",
+      name: "Inconel 625 - 1.0mm",
+      density: 8.44,
+      costPerKg: 85,
+      thickness: 1,
+      category: "superalloy",
+      bendability: 2.0,
+      requiresManualQuote: true,
+      manualQuoteReason: "Superalloy - requires specialized equipment and expertise",
+    },
+    {
+      code: "INC625-1.5",
+      name: "Inconel 625 - 1.5mm",
+      density: 8.44,
+      costPerKg: 82,
+      thickness: 1.5,
+      category: "superalloy",
+      bendability: 2.2,
+      requiresManualQuote: true,
+      manualQuoteReason: "Superalloy - requires specialized equipment and expertise",
+    },
+    {
+      code: "INC625-2.0",
+      name: "Inconel 625 - 2.0mm",
+      density: 8.44,
+      costPerKg: 80,
+      thickness: 2,
+      category: "superalloy",
+      bendability: 2.5,
+      requiresManualQuote: true,
+      manualQuoteReason: "Superalloy - requires specialized equipment and expertise",
+    },
+  ],
+  // Hastelloy - Corrosion resistant superalloy
+  "hastelloy-c276": [
+    {
+      code: "HAS-C276-1.0",
+      name: "Hastelloy C-276 - 1.0mm",
+      density: 8.89,
+      costPerKg: 95,
+      thickness: 1,
+      category: "superalloy",
+      bendability: 2.0,
+      requiresManualQuote: true,
+      manualQuoteReason: "Superalloy - requires specialized equipment and expertise",
+    },
+    {
+      code: "HAS-C276-1.5",
+      name: "Hastelloy C-276 - 1.5mm",
+      density: 8.89,
+      costPerKg: 92,
+      thickness: 1.5,
+      category: "superalloy",
+      bendability: 2.2,
+      requiresManualQuote: true,
+      manualQuoteReason: "Superalloy - requires specialized equipment and expertise",
+    },
+    {
+      code: "HAS-C276-2.0",
+      name: "Hastelloy C-276 - 2.0mm",
+      density: 8.89,
+      costPerKg: 90,
+      thickness: 2,
+      category: "superalloy",
+      bendability: 2.5,
+      requiresManualQuote: true,
+      manualQuoteReason: "Superalloy - requires specialized equipment and expertise",
+    },
+  ],
 };
 
 // Sheet Metal Finish Options
@@ -2807,6 +2953,8 @@ const SHEET_METAL_COST_OPTIMIZATION = {
     stainless: 1.22, // 22% for stainless
     copper: 1.2, // 20% for copper
     brass: 1.18, // 18% for brass
+    titanium: 1.45, // 45% for titanium (exotic)
+    superalloy: 1.55, // 55% for superalloys (exotic)
   },
   toleranceMultiplier: {
     standard: 1.0,
@@ -3220,7 +3368,12 @@ function computeSheetMetalLeadTime(
 
   // Advanced material procurement optimization
   let materialProcurementDays = 0;
-  if (material.category === "copper" || material.category === "brass") {
+  // Exotic materials (titanium, superalloys) require special procurement
+  if (material.category === "titanium" || material.category === "superalloy") {
+    if (leadTimeType === "expedited") materialProcurementDays = 7;
+    else if (leadTimeType === "standard") materialProcurementDays = 10;
+    else materialProcurementDays = 14;
+  } else if (material.category === "copper" || material.category === "brass") {
     if (leadTimeType === "expedited") materialProcurementDays = 2;
     else if (leadTimeType === "standard") materialProcurementDays = 3;
     else materialProcurementDays = 5;
@@ -3331,6 +3484,14 @@ function checkSheetMetalFeasibility(
   const features = geometry.sheetMetalFeatures;
   if (!features) {
     return { isFeasible: false, reason: "Sheet metal features not detected" };
+  }
+
+  // Check if material requires manual quote (exotic materials like titanium, inconel, hastelloy)
+  if ((material as any).requiresManualQuote) {
+    return {
+      isFeasible: false,
+      reason: (material as any).manualQuoteReason || `Material ${material.name} requires manual quote - exotic material`,
+    };
   }
 
   // Check size limits (0.5mm min to 700mm max)
@@ -3609,16 +3770,34 @@ export function getMaterial(nameOrCode: string): MaterialSpec | null {
 
 /**
  * Helper: Get finish by name/code
+ * Searches both CNC and Sheet Metal finishes
  */
 export function getFinish(nameOrCode: string): FinishOption {
   const normalized = nameOrCode.toLowerCase().replaceAll(/[^a-z0-9]/g, "");
 
+  // First search CNC finishes
   for (const [key, fin] of Object.entries(FINISHES)) {
     const keyNorm = key.replaceAll(/[^a-z0-9]/g, "");
     const codeNorm = fin.code.toLowerCase().replaceAll(/[^a-z0-9]/g, "");
 
     if (keyNorm === normalized || codeNorm === normalized) {
       return fin;
+    }
+  }
+  
+  // Then search Sheet Metal finishes
+  for (const [key, fin] of Object.entries(SHEET_METAL_FINISHES)) {
+    const keyNorm = key.replaceAll(/[^a-z0-9]/g, "");
+    const codeNorm = (fin.code || "").toLowerCase().replaceAll(/[^a-z0-9]/g, "");
+
+    if (keyNorm === normalized || codeNorm === normalized) {
+      // Convert to FinishOption format for compatibility
+      return {
+        code: fin.code,
+        name: fin.name,
+        baseCost: fin.baseCost || 0,
+        perAreaCost: fin.perAreaCost || 0,
+      };
     }
   }
 
@@ -4260,6 +4439,9 @@ export function getMaterialForProcess(
         thickness: (material as any).thickness,
         category: (material as any).category,
         bendability: (material as any).bendability || 1.0,
+        // Pass manual quote flags for exotic materials
+        requiresManualQuote: (material as any).requiresManualQuote || false,
+        manualQuoteReason: (material as any).manualQuoteReason,
       } as SheetMetalMaterialSpec;
     }
     

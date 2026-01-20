@@ -5,7 +5,7 @@ from typing import Optional
 from ..workers.celery import celery_app
 from ..utils.download import download_to_temp
 from ..utils.units import scale_to_mm
-from ..loaders.step_loader import occ_available, load_step_shape, shape_mass_props
+from ..loaders.step_loader import occ_available, load_step_shape, shape_mass_props, count_solids_and_compounds
 from ..loaders.stl_loader import load_stl, mesh_mass_props
 from ..extractors.holes import extract_holes_from_shape
 from ..extractors.pockets import extract_pockets_from_shape
@@ -124,6 +124,34 @@ def analyze_file_path(file_path: str, units_hint: Optional[str] = None) -> dict:
         if not occ_available():
             raise HTTPException(status_code=400, detail="STEP analysis requires pythonOCC; not available")
         shape = load_step_shape(file_path)
+        
+        # === ASSEMBLY DETECTION ===
+        # Check if this is a multi-body assembly that requires manual quoting
+        assembly_info = count_solids_and_compounds(shape)
+        if assembly_info.is_assembly:
+            print(f"⚠️ {assembly_info.reason}")
+            # Return special metrics for assemblies
+            return {
+                "volume": 0,
+                "surface_area": 0,
+                "bbox": {"min": {"x": 0, "y": 0, "z": 0}, "max": {"x": 0, "y": 0, "z": 0}},
+                "thickness": None,
+                "primitive_features": {"holes": 0, "pockets": 0, "slots": 0, "faces": 0},
+                "material_usage": None,
+                "process_type": "assembly",
+                "sheet_metal_score": 0,
+                "is_assembly": True,
+                "assembly_info": {
+                    "solid_count": assembly_info.solid_count,
+                    "compound_count": assembly_info.compound_count,
+                    "shell_count": assembly_info.shell_count,
+                    "reason": assembly_info.reason
+                },
+                "requires_manual_quote": True,
+                "manual_quote_reason": assembly_info.reason,
+                "advanced_metrics": {}
+            }
+        
         vol_mm3, area_mm2 = shape_mass_props(shape)
         
         # BBox using OCC
@@ -245,7 +273,7 @@ def analyze_file_path(file_path: str, units_hint: Optional[str] = None) -> dict:
     else:
         raise HTTPException(status_code=400, detail="Unsupported CAD format. Use STEP or STL.")
 
-def calculate_stock_size(bbox: dict, thickness: float = None) -> dict:
+def calculate_stock_size(bbox: dict, thickness: Optional[float] = None) -> dict:
     """Calculate required stock material size."""
     x_size = bbox["max"]["x"] - bbox["min"]["x"]
     y_size = bbox["max"]["y"] - bbox["min"]["y"]
