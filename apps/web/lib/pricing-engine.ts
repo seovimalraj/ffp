@@ -4,7 +4,7 @@
  * Optimized to be 30% more competitive than Xometry
  */
 
-import { GeometryData } from "./cad-analysis";
+import { GeometryData, SheetMetalFeatures } from "./cad-analysis";
 
 export interface MaterialSpec {
   code: string;
@@ -844,18 +844,24 @@ export function getProcessDisplayName(process: string | undefined): string {
 
 // Helper: Check if process is CNC-based
 export function isCNCProcess(process: string | undefined): boolean {
-  return process === "cnc-milling" || process === "cnc-turning";
+  if (!process) return false;
+  // Clean up any malformed process strings
+  const cleanProcess = process.replace(/^["'\s]+|["'\s]+$/g, '').replace(/\\"/g, '').toLowerCase();
+  return cleanProcess === "cnc-milling" || cleanProcess === "cnc-turning" || cleanProcess.includes("cnc");
 }
 
 // Helper: Check if process is sheet metal-based
 export function isSheetMetalProcess(process: string | undefined): boolean {
+  if (!process) return false;
+  // Clean up any malformed process strings (e.g., "\"sheet-metal\"" -> "sheet-metal")
+  const cleanProcess = process.replace(/^["'\s]+|["'\s]+$/g, '').replace(/\\"/g, '').toLowerCase();
   return (
-    process === "sheet-metal" ||
-    process?.includes("sheet") ||
-    process === "laser" ||
-    process === "drilling" ||
-    process === "plasma" ||
-    process === "waterjet"
+    cleanProcess === "sheet-metal" ||
+    cleanProcess.includes("sheet") ||
+    cleanProcess === "laser" ||
+    cleanProcess === "drilling" ||
+    cleanProcess === "plasma" ||
+    cleanProcess === "waterjet"
   );
 }
 
@@ -2257,6 +2263,74 @@ const CNC_CONSTRAINTS = {
 };
 
 /**
+ * Generate default sheet metal features from geometry when CAD analysis didn't provide them.
+ * This enables pricing when a user manually switches process to sheet-metal.
+ */
+function generateDefaultSheetMetalFeatures(
+  geometry: GeometryData,
+  materialThickness: number = 1.5,
+): SheetMetalFeatures {
+  const bbox = geometry.boundingBox;
+  const dims = [bbox.x, bbox.y, bbox.z].sort((a, b) => a - b);
+  
+  // Use material thickness if specified, otherwise smallest dimension (clamped for reasonability)
+  const thickness = materialThickness > 0 && materialThickness <= 25 
+    ? materialThickness 
+    : Math.min(dims[0], 6); // Cap at 6mm for auto-detection
+  const width = dims[1];
+  const length = dims[2];
+  
+  // Calculate flat area: approximate from surface area or bounding box
+  // For sheet metal, half the surface area is a reasonable approximation
+  const flatArea = geometry.surfaceArea ? geometry.surfaceArea / 2 : width * length;
+  
+  // Perimeter: 2 * (width + length) for a simple rectangle
+  const perimeterLength = 2 * (width + length);
+  
+  // Estimate bends from complexity
+  const bendCount = geometry.complexity === "complex" ? 4 : 
+                    geometry.complexity === "moderate" ? 2 : 0;
+  
+  // Estimate holes from surface area (roughly 1 hole per 5000mm² for typical parts)
+  const holeCount = Math.min(Math.floor(flatArea / 5000), 50);
+  
+  return {
+    thickness,
+    flatArea,
+    developedLength: perimeterLength * 1.1, // 10% extra for bends
+    perimeterLength,
+    bendCount,
+    bendAngles: Array(bendCount).fill(90),
+    minBendRadius: thickness * 1.0,
+    maxBendRadius: thickness * 3.0,
+    hasSharptBends: false,
+    holeCount,
+    totalHoleDiameter: holeCount * Math.PI * 6, // Assume 6mm average hole
+    cornerCount: 4 + bendCount * 2,
+    complexCuts: geometry.complexity === "complex" ? 3 : 0,
+    straightCutLength: perimeterLength * 0.8,
+    curvedCutLength: perimeterLength * 0.2,
+    hasHems: bendCount > 4,
+    hasCountersinks: holeCount > 8,
+    hasLouvers: false,
+    hasEmbossments: false,
+    hasLances: false,
+    flangeCount: Math.floor(bendCount / 2),
+    hasSmallFeatures: thickness < 1.5 || holeCount > 30,
+    hasTightTolerance: false,
+    requiresMultipleSetups: bendCount > 10,
+    nestingEfficiency: 0.85,
+    recommendedCuttingMethod: thickness > 6 ? "plasma" : "laser",
+    recommendedBendingMethod: "press-brake",
+    estimatedCuttingTime: (perimeterLength / 1000) * 0.5, // 0.5 min per meter
+    estimatedFormingTime: bendCount * 0.5, // 0.5 min per bend
+    partType: bendCount > 2 ? "bracket" : "flat-pattern",
+    complexity: geometry.complexity === "complex" ? "complex" : 
+                geometry.complexity === "moderate" ? "moderate" : "simple",
+  };
+}
+
+/**
  * Sheet Metal Helper Functions
  */
 function calculateSheetMetalPricingInternal(
@@ -2269,21 +2343,25 @@ function calculateSheetMetalPricingInternal(
   cuttingMethod: "laser" | "plasma" | "waterjet" | "turret-punch",
   hardware: HardwareOption[] = [],
 ): PricingBreakdown {
-  // Check feasibility
+  // Use existing sheet metal features or generate defaults from geometry
+  const features = geometry.sheetMetalFeatures || generateDefaultSheetMetalFeatures(geometry, material.thickness);
+  
+  // Check feasibility with the features we have (original or generated)
   const feasibility = checkSheetMetalFeasibility(
     geometry,
     material,
     cuttingMethod,
+    features,
   );
   if (!feasibility.isFeasible) {
     return manualQuoteBreakdown(leadTimeType, feasibility.reason);
   }
-
-  const features = geometry.sheetMetalFeatures;
-  if (!features) {
+  
+  // Safety check: if flatArea is invalid, we can't calculate pricing
+  if (!features.flatArea || features.flatArea <= 0 || isNaN(features.flatArea)) {
     return manualQuoteBreakdown(
       leadTimeType,
-      "Sheet metal features not detected",
+      "Invalid sheet metal geometry - flat area cannot be determined",
     );
   }
 
@@ -2722,11 +2800,10 @@ function checkSheetMetalFeasibility(
   geometry: GeometryData,
   material: SheetMetalMaterialSpec,
   cuttingMethod: "laser" | "plasma" | "waterjet" | "turret-punch",
+  features?: SheetMetalFeatures | null, // Accept optional features for when defaults are generated
 ): { isFeasible: boolean; reason?: string } {
-  const features = geometry.sheetMetalFeatures;
-  if (!features) {
-    return { isFeasible: false, reason: "Sheet metal features not detected" };
-  }
+  // Features are now passed in (either from geometry or generated defaults)
+  // Skip feature check since we handle defaults in the pricing function
 
   // Check if material requires manual quote (exotic materials like titanium, inconel, hastelloy)
   if ((material as any).requiresManualQuote) {
@@ -2767,17 +2844,20 @@ function checkSheetMetalFeasibility(
     };
   }
 
-  if (features.bendCount > 0 && material.thickness > 6) {
+  // Only check bend-related limits if we have features
+  const bendCount = features?.bendCount ?? 0;
+  
+  if (bendCount > 0 && material.thickness > 6) {
     return {
       isFeasible: false,
       reason: `Material thickness ${material.thickness}mm exceeds standard bending capability (max 6mm). Please request manual quote.`,
     };
   }
 
-  if (features.bendCount > 30) {
+  if (bendCount > 30) {
     return {
       isFeasible: false,
-      reason: `Excessive bend count (${features.bendCount} bends) exceeds standard fabrication capacity. Please request manual quote.`,
+      reason: `Excessive bend count (${bendCount} bends) exceeds standard fabrication capacity. Please request manual quote.`,
     };
   }
 
@@ -3631,10 +3711,13 @@ export function getSheetMetalFinish(
 }
 
 export function getMaterialByValue(value: string, process: string) {
+  // Clean up any malformed process strings (e.g., "\"sheet-metal\"" -> "sheet-metal")
+  const cleanProcess = process ? process.replace(/^["'\s]+|["'\s]+$/g, '').replace(/\\"/g, '').toLowerCase() : '';
+  
   if (
-    process.includes("cnc") ||
-    process === "cnc-milling" ||
-    process === "cnc-turning"
+    cleanProcess.includes("cnc") ||
+    cleanProcess === "cnc-milling" ||
+    cleanProcess === "cnc-turning"
   ) {
     // Search CNC materials
     for (const materials of Object.values(CNC_MATERIALS)) {
@@ -3694,10 +3777,13 @@ export function getMaterialForProcess(
   materialValue: string,
   process: string,
 ): MaterialSpec | SheetMetalMaterialSpec | null {
+  // Clean up any malformed process strings
+  const cleanProcess = process ? process.replace(/^["'\s]+|["'\s]+$/g, '').replace(/\\"/g, '').toLowerCase() : '';
+  
   const material = getMaterialByValue(materialValue, process);
   if (material) {
     // For sheet metal, return the full SheetMetalMaterialSpec
-    if (!process.includes("cnc") && process !== "cnc-milling" && process !== "cnc-turning") {
+    if (!cleanProcess.includes("cnc") && cleanProcess !== "cnc-milling" && cleanProcess !== "cnc-turning") {
       // This is a sheet metal material - return as SheetMetalMaterialSpec
       return {
         code: (material as any).code,

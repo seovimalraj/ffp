@@ -233,8 +233,12 @@ export const calculateLeadTime = (
   if (!part.geometry) return 7;
 
   // Get material based on process type
-  const processType =
-    part.process || part.geometry?.recommendedProcess || "cnc-milling";
+  // Clean up any malformed process strings (e.g., "\"sheet-metal\"" -> "sheet-metal")
+  const rawProcess: string = String(part.process || part.geometry?.recommendedProcess || "cnc-milling")
+    .replace(/^["'\s]+|["'\s]+$/g, '')
+    .replace(/\\"/g, '');
+  const processType = rawProcess;
+  
   const material = getMaterialForProcess(part.material, processType);
   if (!material) return 7;
 
@@ -264,8 +268,10 @@ const calculatePrice = (
   if (!part.geometry) return 0;
 
   // Determine process type from CAD analysis
-  const processType =
-    part.process || part.geometry?.recommendedProcess || "cnc-milling";
+  // Clean up any malformed process strings (e.g., "\"sheet-metal\"" -> "sheet-metal")
+  const processType: string = String(part.process || part.geometry?.recommendedProcess || "cnc-milling")
+    .replace(/^["'\s]+|["'\s]+$/g, '')
+    .replace(/\\"/g, '');
 
   // Get material based on process type
   const material = getMaterialByValue(part.material, processType);
@@ -815,6 +821,13 @@ export default function QuoteConfigPage() {
               // CRITICAL: Normalize process field from database
               // Use geometry.recommendedProcess if process field is missing or invalid
               let normalizedProcess = p.process;
+              
+              // Clean up malformed process values (e.g., "\"sheet-metal\"" -> "sheet-metal")
+              if (normalizedProcess && typeof normalizedProcess === 'string') {
+                // Remove escaped quotes and extra whitespace
+                normalizedProcess = normalizedProcess.replace(/^["'\s]+|["'\s]+$/g, '').replace(/\\"/g, '');
+              }
+              
               if (!normalizedProcess || normalizedProcess === '') {
                 // Fall back to geometry recommendation if available
                 normalizedProcess = p.geometry?.recommendedProcess || 'cnc-milling';
