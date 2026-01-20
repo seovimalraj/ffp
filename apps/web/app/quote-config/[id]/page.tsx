@@ -773,6 +773,22 @@ export default function QuoteConfigPage() {
             let syncNeeded = false;
 
             const processedParts: PartConfig[] = apiPartsRaw.map((p: any) => {
+              // CRITICAL: Normalize process field from database
+              // Use geometry.recommendedProcess if process field is missing or invalid
+              let normalizedProcess = p.process;
+              if (!normalizedProcess || normalizedProcess === '') {
+                // Fall back to geometry recommendation if available
+                normalizedProcess = p.geometry?.recommendedProcess || 'cnc-milling';
+                console.log(`📋 Part ${p.id}: process was empty, using ${normalizedProcess} from geometry`);
+              }
+              // Ensure process is in correct format (sheet-metal not sheet_metal)
+              const processMap: Record<string, string> = {
+                'sheet_metal': 'sheet-metal',
+                'cnc_milling': 'cnc-milling', 
+                'cnc_turning': 'cnc-turning',
+              };
+              normalizedProcess = processMap[normalizedProcess] || normalizedProcess;
+              
               const part: PartConfig = {
                 id: p.id,
                 rfqId: p.rfq_id,
@@ -795,7 +811,7 @@ export default function QuoteConfigPage() {
                 leadTime: undefined,
                 is_archived: p.is_archived,
                 snapshot_2d_url: p.snapshot_2d_url,
-                process: p.process,
+                process: normalizedProcess,
                 files2d: (p.files2d || []).map((f: any) => ({
                   file: {
                     name: f.file_name || "Drawing",

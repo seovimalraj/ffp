@@ -11,9 +11,14 @@ def min_wall_mesh(mesh, *, samples: int = 5000, threshold_mm: float = 1.5) -> Mi
     Detects actual material thickness (not bounding box dimensions) for accurate sheet metal classification.
     Uses multi-sample analysis with outlier filtering for robust results.
     """
-    # Sample points uniformly on surface
-    pts, face_index = mesh.sample(samples, return_index=True)
-    face_normals = mesh.face_normals[face_index]
+    try:
+        # Sample points uniformly on surface
+        pts, face_index = mesh.sample(samples, return_index=True)
+        face_normals = mesh.face_normals[face_index]
+    except Exception as e:
+        # Trimesh sampling failed (missing dependency or mesh issue)
+        print(f"⚠️ Mesh sampling failed: {str(e)[:100]}")
+        return MinWallData(global_min_mm=0.0, samples=[])
 
     # Build ray intersector (triangle-based, no pyembree dependency)
     try:

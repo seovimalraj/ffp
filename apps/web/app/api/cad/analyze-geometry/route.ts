@@ -126,6 +126,15 @@ function transformBackendGeometry(backendData: any, fileName: string): any {
   const detectedThickness = advancedMetrics.detected_thickness_mm || backendData.thickness;
   const thicknessConfidence = advancedMetrics.thickness_confidence || 0.5;
   const thicknessMethod = advancedMetrics.thickness_detection_method || 'bbox_approximation';
+  
+  // === EXTRACT BEND ANALYSIS FROM BACKEND ===
+  const bendAnalysis = advancedMetrics.bend_analysis || {};
+  const bendCount = bendAnalysis.bend_count || 0;
+  const bendConfidence = bendAnalysis.confidence || 0;
+  const isLikelyBent = bendAnalysis.is_likely_bent || false;
+  const bendComplexity = bendAnalysis.complexity || 0;
+  
+  console.log('🔧 Bend Analysis:', { bendCount, isLikelyBent, bendConfidence, bendComplexity });
 
   // Map backend process type to frontend format
   const processMap: Record<string, string> = {
@@ -217,6 +226,57 @@ function transformBackendGeometry(backendData: any, fileName: string): any {
       threads: { count: 0, specs: [] },
       undercuts: { count: 0, severity: 'none' as const },
       thinWalls: { count: 0, minThickness: detectedThickness || 2, locations: [] }
+    },
+    
+    // === SHEET METAL FEATURES FROM BACKEND BEND DETECTION ===
+    sheetMetalFeatures: {
+      thickness: detectedThickness || Math.min(boundingBox.x, boundingBox.y, boundingBox.z),
+      flatArea: (backendData.surface_area || 0) * 100 * 0.5, // Approximate flat area
+      developedLength: 2 * (boundingBox.x + boundingBox.y) * (1 + bendCount * 0.05),
+      perimeterLength: 2 * (boundingBox.x + boundingBox.y),
+      
+      // BEND DATA FROM BACKEND
+      bendCount: bendCount,
+      bendAngles: bendCount > 0 ? Array(Math.min(bendCount, 10)).fill(90) : [],
+      minBendRadius: (detectedThickness || 2) * 1.0,
+      maxBendRadius: (detectedThickness || 2) * 3.0,
+      hasSharptBends: bendCount > 0 && (detectedThickness || 2) > 2,
+      
+      // Cutting features (estimated)
+      holeCount: backendData.primitive_features?.holes || 0,
+      totalHoleDiameter: (backendData.primitive_features?.holes || 0) * Math.PI * 5,
+      cornerCount: 4 + bendCount * 2,
+      complexCuts: Math.floor(bendComplexity / 20),
+      straightCutLength: 2 * (boundingBox.x + boundingBox.y),
+      curvedCutLength: bendComplexity > 30 ? 50 : 0,
+      
+      // Forming features (inferred from bend analysis)
+      hasHems: bendCount > 4,
+      hasCountersinks: (backendData.primitive_features?.holes || 0) > 8,
+      hasLouvers: bendCount > 6 && bendComplexity > 50,
+      hasEmbossments: bendComplexity > 60,
+      hasLances: bendComplexity > 70,
+      flangeCount: Math.floor(bendCount / 2),
+      
+      // Manufacturing complexity
+      hasSmallFeatures: (detectedThickness || 2) < 1.5,
+      hasTightTolerance: bendCount > 5 && (detectedThickness || 2) < 2,
+      requiresMultipleSetups: bendCount > 10,
+      nestingEfficiency: Math.max(0.6, 0.85 - bendCount * 0.01),
+      
+      // Process recommendations (required by interface)
+      recommendedCuttingMethod: 'laser' as const,
+      recommendedBendingMethod: 'press-brake' as const,
+      estimatedCuttingTime: Math.max(1, 2 * (boundingBox.x + boundingBox.y) / 1000 * 0.5), // perimeter-based
+      estimatedFormingTime: Math.max(0.5, bendCount * 0.3), // per-bend time
+      
+      // Part classification
+      partType: bendCount > 4 ? 'complex-enclosure' : bendCount > 1 ? 'bracket' : 'flat-pattern' as 'flat-pattern' | 'simple-enclosure' | 'complex-enclosure' | 'bracket' | 'panel' | 'chassis' | 'housing' | 'cabinet',
+      complexity: bendCount > 8 ? 'complex' : bendCount > 3 ? 'moderate' : 'simple' as 'simple' | 'moderate' | 'complex' | 'very-complex',
+      
+      // Backend analysis info
+      bendConfidence: bendConfidence,
+      isLikelyBent: isLikelyBent
     },
     
     recommendedSecondaryOps: [],

@@ -31,7 +31,7 @@ export class CNCMillingStrategy implements PricingStrategy {
   calculateMaterialCost(geometry: GeometryData, material: MaterialSpec): number {
     // Use bounding box for stock material + waste factor
     const bboxVolumeMm3 = geometry.boundingBox.x * geometry.boundingBox.y * geometry.boundingBox.z;
-    const bboxVolumeCm3 = bboxVolumeMm3 / 1_000_000; // CRITICAL: mm³ to cm³
+    const bboxVolumeCm3 = bboxVolumeMm3 / 1000; // CRITICAL: mm³ to cm³ (1 cm = 10mm, so 1 cm³ = 1000 mm³)
     
     // Account for material waste (typically 20-40% for CNC)
     const wasteFactor = this.calculateWasteFactor(geometry);
@@ -104,7 +104,7 @@ export class CNCMillingStrategy implements PricingStrategy {
     }
     
     // Thin walls require careful machining
-    if (metrics.hasT hinWalls) {
+    if (metrics.hasThinWalls) {
       complexityMultiplier += 0.15;
       riskPremium += 0.03;
     }
@@ -307,7 +307,7 @@ export class CNCTurningStrategy implements PricingStrategy {
     
     // Cylindrical stock volume
     const stockVolumeMm3 = Math.PI * Math.pow(maxDiameter / 2, 2) * length;
-    const stockVolumeCm3 = stockVolumeMm3 / 1_000_000;
+    const stockVolumeCm3 = stockVolumeMm3 / 1000; // mm³ to cm³ (1 cm³ = 1000 mm³)
     
     // Turning typically has less waste than milling
     const wasteFactor = 1.15; // 15% waste

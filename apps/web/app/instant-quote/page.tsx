@@ -166,15 +166,21 @@ export default function InstantQuotePage() {
             });
 
             if (analysisResponse.ok) {
-              const analysisData = await analysisResponse.json();
-              geometry = analysisData.geometry;
+              // Backend returns geometry data directly, NOT nested under .geometry
+              geometry = await analysisResponse.json();
               
+              // Log with type assertion for custom backend properties
+              const features = geometry.sheetMetalFeatures as any;
               console.log(`✅ Backend analysis complete for ${file.name}:`, {
                 process: geometry.recommendedProcess,
                 thickness: geometry.detectedWallThickness,
                 confidence: geometry.thicknessConfidence,
                 method: geometry.thicknessDetectionMethod,
                 sheetMetalScore: geometry.sheetMetalScore,
+                // Bend detection info from backend
+                bendCount: features?.bendCount,
+                isLikelyBent: features?.isLikelyBent,
+                bendConfidence: features?.bendConfidence,
               });
             } else {
               const errorText = await analysisResponse.text();

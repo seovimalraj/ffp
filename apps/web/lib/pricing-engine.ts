@@ -3789,7 +3789,9 @@ function calculateRawStockWeightKg(
 ): number {
   const bboxVolumeMm3 =
     geometry.boundingBox.x * geometry.boundingBox.y * geometry.boundingBox.z;
-  const bboxVolumeCm3 = bboxVolumeMm3 / 1000000; // CRITICAL FIX: 1 cm = 10mm, so 1 cm³ = 1000mm³
+  // CRITICAL FIX: 1 cm = 10mm, so 1 cm³ = 10mm × 10mm × 10mm = 1000 mm³
+  // Previously was dividing by 1,000,000 which is WRONG
+  const bboxVolumeCm3 = bboxVolumeMm3 / 1000;
   const rawWeightKg = (bboxVolumeCm3 * material.density) / 1000;
   return rawWeightKg * process.materialWasteFactor;
 }
@@ -4220,6 +4222,17 @@ export function getMaterialByValue(value: string, process: string) {
     }
   } else {
     // Search Sheet Metal materials
+    // First try to find by material key (e.g., "aluminum-6061")
+    if (value in SHEET_METAL_MATERIALS) {
+      // Return first available thickness for this material family
+      const materialFamily = SHEET_METAL_MATERIALS[value];
+      if (materialFamily && materialFamily.length > 0) {
+        // Default to 1.5mm or closest available
+        const preferred = materialFamily.find((m: any) => m.thickness === 1.5);
+        return preferred || materialFamily[0];
+      }
+    }
+    // Then try to find by code or value
     for (const materials of Object.values(SHEET_METAL_MATERIALS)) {
       const found = materials.find(
         (m) => m.value === value || m.code === value,
@@ -4233,9 +4246,24 @@ export function getMaterialByValue(value: string, process: string) {
 export function getMaterialForProcess(
   materialValue: string,
   process: string,
-): MaterialSpec | null {
+): MaterialSpec | SheetMetalMaterialSpec | null {
   const material = getMaterialByValue(materialValue, process);
   if (material) {
+    // For sheet metal, return the full SheetMetalMaterialSpec
+    if (!process.includes("cnc") && process !== "cnc-milling" && process !== "cnc-turning") {
+      // This is a sheet metal material - return as SheetMetalMaterialSpec
+      return {
+        code: (material as any).code,
+        name: (material as any).name,
+        density: material.density,
+        costPerKg: material.costPerKg,
+        thickness: (material as any).thickness,
+        category: (material as any).category,
+        bendability: (material as any).bendability || 1.0,
+      } as SheetMetalMaterialSpec;
+    }
+    
+    // CNC material
     const label = (material as any).label || (material as any).name;
     const value = (material as any).value || (material as any).code;
 
@@ -4250,6 +4278,6 @@ export function getMaterialForProcess(
           : 1.0,
     };
   }
-  // Fallback to legacy materials
+  // Fallback to legacy materials (CNC only)
   return getMaterial(materialValue);
 }
