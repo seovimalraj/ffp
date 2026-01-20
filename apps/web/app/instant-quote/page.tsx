@@ -134,12 +134,7 @@ export default function InstantQuotePage() {
     try {
       // Analyze files and prepare for quote configuration
       const uploadPromises = files.map(async (file) => {
-        // Analyze CAD geometry
-        console.log(`Analyzing CAD file: ${file.name}`);
-        const geometry = await analyzeCADFile(file);
-        console.log(`Geometry analysis complete:`, geometry);
-
-        // Upload file to Supabase
+        // Upload file to Supabase first (needed for backend analysis)
         let uploadedPath = `quotes/temp-${Date.now()}/${file.name}`;
         try {
           const { url } = await upload(file);
@@ -149,6 +144,56 @@ export default function InstantQuotePage() {
           notify.error(`Failed to upload ${file.name}`);
           return;
         }
+
+        // Analyze CAD geometry - use backend for STEP files
+        console.log(`🔬 Analyzing CAD file: ${file.name}`);
+        let geometry: GeometryData;
+        
+        const fileExt = file.name.toLowerCase().split(".").pop();
+        const isStepFile = fileExt === "step" || fileExt === "stp";
+        
+        if (isStepFile) {
+          // Use backend analysis for STEP files (accurate bend detection)
+          console.log(`📡 Using backend analysis for ${file.name}`);
+          try {
+            const analysisResponse = await fetch("/api/cad/analyze-geometry", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                fileUrl: uploadedPath,
+                fileName: file.name,
+              }),
+            });
+
+            if (analysisResponse.ok) {
+              const analysisData = await analysisResponse.json();
+              geometry = analysisData.geometry;
+              
+              console.log(`✅ Backend analysis complete for ${file.name}:`, {
+                process: geometry.recommendedProcess,
+                thickness: geometry.detectedWallThickness,
+                confidence: geometry.thicknessConfidence,
+                method: geometry.thicknessDetectionMethod,
+                sheetMetalScore: geometry.sheetMetalScore,
+              });
+            } else {
+              const errorText = await analysisResponse.text();
+              console.error("❌ Backend analysis failed:", analysisResponse.status, errorText);
+              console.warn("⚠️ Falling back to client-side analysis");
+              geometry = await analyzeCADFile(file);
+            }
+          } catch (error) {
+            console.error("❌ Backend analysis error:", error);
+            console.warn("⚠️ Falling back to client-side analysis");
+            geometry = await analyzeCADFile(file);
+          }
+        } else {
+          // Use client-side analysis for STL files (faster)
+          console.log(`⚡ Using client-side analysis for ${file.name}`);
+          geometry = await analyzeCADFile(file);
+        }
+        
+        console.log(`Geometry analysis complete:`, geometry);
 
         return {
           file,

@@ -16,6 +16,8 @@ from ..models import FeaturesJson, BBox, MassProps, HoleFeature, PocketFeature, 
 from ..core.geometry import GeometricMetrics, calculate_sheet_metal_score, calculate_advanced_metrics
 from ..core.bend_detection import AdvancedBendDetector
 from ..core.classification import ProcessClassifier
+from ..dfm_analyzer import analyze_dfm
+from ..core.validation import validate_geometry
 
 router = APIRouter()
 
