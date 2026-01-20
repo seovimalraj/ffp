@@ -858,6 +858,19 @@ export default function QuoteConfigPage() {
               const isSheetMetalPart = isSheetMetalProcess(normalizedProcess);
               const defaultMaterial = isSheetMetalPart ? "AL5052-2.0" : "aluminum-6061";
               
+              // Check if current material is valid for the process type
+              // If sheet metal part has a CNC material (like aluminum-6061), replace with sheet metal default
+              let partMaterial = p.material;
+              if (isSheetMetalPart && partMaterial) {
+                // Check if material is a sheet metal code (e.g., AL5052-2.0) or CNC code (e.g., aluminum-6061)
+                const isSheetMetalMaterial = partMaterial.match(/^[A-Z]{2}\d+/i) || 
+                                             partMaterial.includes("-") && partMaterial.match(/\d+\.\d+$/);
+                if (!isSheetMetalMaterial) {
+                  // CNC material on sheet metal part - replace with default
+                  partMaterial = defaultMaterial;
+                }
+              }
+              
               const part: PartConfig = {
                 id: p.id,
                 rfqId: p.rfq_id,
@@ -865,7 +878,7 @@ export default function QuoteConfigPage() {
                 fileName: p.file_name,
                 filePath: p.cad_file_url,
                 fileObject: undefined, // URL only
-                material: p.material || defaultMaterial,
+                material: partMaterial || defaultMaterial,
                 quantity: p.quantity || 1,
                 tolerance: p.tolerance || "standard",
                 finish: p.finish || "as-machined",

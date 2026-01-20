@@ -41,6 +41,7 @@ import {
   getDefaultMaterialForProcess,
   getDefaultFinishForProcess,
   getDefaultToleranceForProcess,
+  getMaterialDisplayName,
 } from "@/lib/pricing-engine";
 
 // Dynamically import PDF viewer to avoid SSR issues with DOMMatrix
@@ -661,7 +662,7 @@ export function PartCardItem({
                     <p className="text-sm font-bold text-slate-900 truncate">
                       {MATERIALS_LIST.find((m) => m.value === part.material)
                         ?.label ||
-                        part.material ||
+                        getMaterialDisplayName(part.material, part.process) ||
                         "Not specified"}
                     </p>
                   </div>

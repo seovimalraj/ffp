@@ -893,6 +893,32 @@ export function getDefaultThickness(): string {
   return "2.0"; // 2.0mm default
 }
 
+// Get display name for a material code
+export function getMaterialDisplayName(materialCode: string | undefined, process: string | undefined): string {
+  if (!materialCode) return "Not specified";
+  
+  if (isSheetMetalProcess(process)) {
+    // Search sheet metal materials
+    for (const materials of Object.values(SHEET_METAL_MATERIALS)) {
+      const found = materials.find((m: any) => m.code === materialCode || m.value === materialCode);
+      if (found) return found.name || found.label || materialCode;
+    }
+  } else {
+    // Search CNC materials
+    for (const materials of Object.values(CNC_MATERIALS)) {
+      const found = materials.find((m: any) => m.value === materialCode || m.code === materialCode);
+      if (found) return found.label || found.name || materialCode;
+    }
+  }
+  
+  // Fallback: format the code nicely
+  return materialCode
+    .replace(/-/g, " ")
+    .replace(/([A-Z]+)(\d+)/g, "$1 $2")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
 // ============================================================================
 // ADVANCED INTELLIGENT AUTOMATION ENGINE
 // ============================================================================

@@ -557,8 +557,8 @@ export function EditPartModal({
                         const finishRecs = recommendFinish(
                           localPart.material ||
                             (isSheetMetalProcess(localPart.process)
-                              ? "sm-aluminum-5052"
-                              : "AL5052-2.0"),
+                              ? "AL5052-2.0"
+                              : "aluminum-6061"),
                           "general",
                         );
 
