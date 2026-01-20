@@ -2397,6 +2397,25 @@ function analyzeProcessFeatures(
  * Calculate sheet metal likelihood score based on multiple geometric factors
  * Enhanced with advanced analysis
  */
+/**
+ * DEPRECATED: This function is a lightweight fallback for client-side STL analysis only.
+ * 
+ * ⚠️ DO NOT USE FOR PRIMARY ANALYSIS ⚠️
+ * 
+ * For accurate sheet metal detection (especially bent parts), always use:
+ * - Backend API: /api/cad/analyze-geometry (STEP files)
+ * - Python service with ray-casting and bend detection
+ * 
+ * This simplified version:
+ * - Uses bounding box approximation (can't detect bent sheet metal)
+ * - No ray-casting thickness detection
+ * - No advanced bend detection (U-brackets, L-brackets, etc.)
+ * 
+ * Only use when:
+ * - Backend unavailable (fallback scenario)
+ * - Quick client-side preview for STL files
+ * - Non-critical visualization
+ */
 function calculateSheetMetalScore(
   boundingBox: { x: number; y: number; z: number },
   volume: number,
