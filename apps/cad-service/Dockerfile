@@ -1,5 +1,5 @@
 # Use miniconda base for easier pythonOCC installation
-FROM continuumio/miniconda3:24.11.3-0
+FROM continuumio/miniconda3:latest
 
 # Install system dependencies for OpenCASCADE
 RUN apt-get update && apt-get install -y \
