@@ -165,8 +165,19 @@ function transformBackendGeometry(backendData: any, fileName: string): any {
     thicknessWarning = 'Using bounding box approximation. Actual wall thickness may differ for bent sheet metal parts.';
   }
 
+  // Sanity check: Prevent absurd volumes from corrupting pricing
+  // Reasonable part volumes: 1 mm³ to 10,000,000 mm³ (10 liters)
+  let volumeMm3 = (backendData.volume || 0) * 1000; // Convert cm³ to mm³
+  const bboxVolume = boundingBox.x * boundingBox.y * boundingBox.z;
+  
+  if (volumeMm3 > bboxVolume * 2 || volumeMm3 > 10000000 || volumeMm3 < 0.001) {
+    console.warn(`⚠️ Suspicious volume detected: ${volumeMm3.toFixed(0)} mm³ (bbox: ${bboxVolume.toFixed(0)} mm³)`);
+    console.warn(`   Using estimated volume from bounding box instead`);
+    volumeMm3 = bboxVolume * 0.6; // Estimate 60% fill for typical parts
+  }
+  
   return {
-    volume: (backendData.volume || 0) * 1000, // Convert cm³ to mm³
+    volume: volumeMm3,
     surfaceArea: (backendData.surface_area || 0) * 100, // Convert cm² to mm²
     boundingBox,
     complexity: backendData.complexity || 'simple',
