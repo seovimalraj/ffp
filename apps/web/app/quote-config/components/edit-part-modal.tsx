@@ -415,7 +415,7 @@ export function EditPartModal({
                         )}
 
                         {/* Smart Quantity Breakpoints */}
-                        {(() => {
+                        {/* {(() => {
                           try {
                             const basePrice =
                               localPart.pricing?.subtotal || 100;
@@ -485,7 +485,7 @@ export function EditPartModal({
                             );
                             return null;
                           }
-                        })()}
+                        })()} */}
                       </div>
                     </div>
                   </div>
