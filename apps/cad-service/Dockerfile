@@ -19,7 +19,7 @@ RUN conda create -n cadenv python=3.11 -y \
 COPY apps/cad-service/pyproject.toml ./pyproject.toml
 RUN /opt/conda/envs/cadenv/bin/pip install --no-cache-dir \
     fastapi uvicorn pydantic celery redis python-multipart \
-    httpx psutil requests structlog numpy-stl \
+    httpx psutil requests structlog numpy-stl trimesh==4.0.5 \
     opentelemetry-api opentelemetry-sdk opentelemetry-instrumentation-fastapi \
     opentelemetry-instrumentation-redis opentelemetry-instrumentation-requests \
     opentelemetry-exporter-otlp-proto-grpc

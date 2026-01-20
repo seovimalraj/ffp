@@ -128,9 +128,10 @@ def analyze_file_path(file_path: str, units_hint: Optional[str] = None) -> dict:
         
         # BBox using OCC
         from OCC.Core.Bnd import Bnd_Box
-        from OCC.Core.BRepBndLib import brepbndlib_Add
+        from OCC.Core.BRepBndLib import brepbndlib
         box = Bnd_Box()
-        brepbndlib_Add(shape, box)
+        # Use new static method syntax (pythonocc-core 7.7.1+)
+        brepbndlib.Add(shape, box)
         xmin, ymin, zmin, xmax, ymax, zmax = box.Get()
         
         # Calculate bounding box dimensions

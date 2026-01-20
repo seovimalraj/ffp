@@ -32,14 +32,20 @@ def load_step_shape(path: str):
 def shape_mass_props(shape) -> tuple[float, float]:
     """Return (volume_mm3, surface_area_mm2) for a TopoDS_Shape."""
     from OCC.Core.GProp import GProp_GProps
-    from OCC.Core.BRepGProp import brepgprop_VolumeProperties, brepgprop_SurfaceProperties
+    from OCC.Core.BRepGProp import brepgprop
 
     props = GProp_GProps()
-    brepgprop_VolumeProperties(shape, props)
-    vol = props.Mass() * 1e9  # m^3 -> mm^3 if kernel returns SI
+    # Use new static method syntax (pythonocc-core 7.7.1+)
+    brepgprop.VolumeProperties(shape, props)
+    # CRITICAL FIX: OCC returns values in file units (typically mm), NOT SI units (m)
+    # Previously multiplied by 1e9 thinking it was m³, causing billion-scale bugs
+    vol = props.Mass()  # Already in mm³ from STEP file units
 
     props2 = GProp_GProps()
-    brepgprop_SurfaceProperties(shape, props2)
-    area = props2.Mass() * 1e6  # m^2 -> mm^2
+    # Use new static method syntax (pythonocc-core 7.7.1+)
+    brepgprop.SurfaceProperties(shape, props2)
+    # CRITICAL FIX: OCC returns surface area in file units (mm²), NOT m²
+    # Previously multiplied by 1e6, causing billion mm² values
+    area = props2.Mass()  # Already in mm² from STEP file units
     return float(vol), float(area)
 

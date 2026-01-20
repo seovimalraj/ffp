@@ -514,6 +514,10 @@ export default function QuoteConfigPage() {
             final_price: 0,
             certificates: [],
           };
+          // CRITICAL FIX: Use mapped detectedProcess, not raw recommendedProcess
+          // This ensures UI shows correct process (e.g., "sheet-metal" not "sheet_metal")
+          newPart.process = detectedProcess;
+          
           newPart.final_price = calculatePrice(newPart);
 
           newPart.lead_time = calculateLeadTime(newPart, "standard");
