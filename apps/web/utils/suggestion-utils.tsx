@@ -399,8 +399,8 @@ function generateDFMSuggestions(part: PartConfig): Suggestion[] {
 
     // Surface finish requirements
     if (
-      advancedFeatures.surfaceFinish.requiresPolishing ||
-      advancedFeatures.surfaceFinish.criticalSurfaces > 5
+      advancedFeatures.surfaceFinish?.requiresPolishing ||
+      (advancedFeatures.surfaceFinish?.criticalSurfaces || 0) > 5
     ) {
       suggestions.push({
         id: `dfm-surface-finish-${part.id}`,
