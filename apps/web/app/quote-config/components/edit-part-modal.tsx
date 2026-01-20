@@ -842,22 +842,27 @@ export function EditPartModal({
                         </SelectTrigger>
                         <SelectContent className="max-h-[400px]">
                           {isSheetMetalProcess(localPart.process) ? (
-                            // Sheet Metal Materials - Categorized
+                            // Sheet Metal Materials - Categorized (filter out manual review materials)
                             <>
-                              {Object.entries(SHEET_METAL_MATERIALS).map(
-                                ([category, materials]) => (
+                              {Object.entries(SHEET_METAL_MATERIALS)
+                                .filter(([category, materials]) => 
+                                  // Only show categories that have at least one non-manual material
+                                  materials.some((m: any) => !m.requiresManualQuote)
+                                )
+                                .map(([category, materials]) => (
                                   <SelectGroup key={category}>
                                     <SelectLabel className="text-xs font-bold uppercase tracking-wider text-gray-500 bg-gray-50 px-2 py-1.5">
                                       {category.replace(/-/g, " ")}
                                     </SelectLabel>
-                                    {materials.map((m) => (
-                                      <SelectItem key={m.value} value={m.value}>
-                                        {m.label}
-                                      </SelectItem>
-                                    ))}
+                                    {materials
+                                      .filter((m: any) => !m.requiresManualQuote)
+                                      .map((m: any) => (
+                                        <SelectItem key={m.code || m.value} value={m.code || m.value}>
+                                          {m.name || m.label}
+                                        </SelectItem>
+                                      ))}
                                   </SelectGroup>
-                                ),
-                              )}
+                                ))}
                             </>
                           ) : (
                             // CNC Materials - Categorized

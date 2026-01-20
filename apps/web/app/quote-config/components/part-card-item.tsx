@@ -778,18 +778,8 @@ export function PartCardItem({
             </div>
           </div>
 
-          {/* Sheet Metal Lead Time Breakdown */}
-          {(part.process === "sheet-metal" ||
-            part.geometry?.recommendedProcess === "sheet-metal") &&
-            part.geometry?.sheetMetalFeatures &&
-            part.leadTimeType && (
-              <div className="mt-6 px-6">
-                <SheetMetalLeadTimeBreakdown
-                  part={part}
-                  leadTimeType={part.leadTimeType}
-                />
-              </div>
-            )}
+          {/* Sheet Metal Lead Time Breakdown - Hidden per user request */}
+          {/* Lead time breakdown and AI optimization removed for sheet metal parts */}
         </div>
       </div>
       {/* Image Viewer for image files */}

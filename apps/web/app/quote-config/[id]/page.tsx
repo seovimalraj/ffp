@@ -74,6 +74,7 @@ import { SuggestionSidebar } from "../components/suggestion-sidebar";
 
 // --- Constants (Moved Outside) ---
 // Helper function to get materials based on process
+// Filters out materials requiring manual review (they shouldn't appear in the dropdown)
 const getMaterialsForProcess = (process: string | undefined) => {
   if (isSheetMetalProcess(process)) {
     // Flatten sheet metal materials for dropdown
@@ -82,9 +83,13 @@ const getMaterialsForProcess = (process: string | undefined) => {
       label: string;
       multiplier: number;
       icon: string;
+      requiresManualQuote?: boolean;
     }[] = [];
     for (const [category, mats] of Object.entries(SHEET_METAL_MATERIALS)) {
       for (const mat of mats) {
+        // Skip materials that require manual quote - they shouldn't be in the dropdown
+        if ((mat as any).requiresManualQuote) continue;
+        
         materials.push({
           value: (mat as any).value || mat.code,
           label: (mat as any).label || mat.name,

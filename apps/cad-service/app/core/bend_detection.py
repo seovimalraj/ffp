@@ -49,6 +49,9 @@ class AdvancedBendDetector:
         self.mid_dim = self.bbox_dims[1]
         self.max_dim = self.bbox_dims[2]
         
+        # Calculate aspect ratio
+        self.aspect_ratio = self.max_dim / self.min_dim if self.min_dim > 0.01 else 1.0
+        
         self.envelope_volume = self.min_dim * self.mid_dim * self.max_dim
         self.volume_efficiency = volume_mm3 / self.envelope_volume if self.envelope_volume > 0 else 0
     
@@ -79,11 +82,13 @@ class AdvancedBendDetector:
             thickness_ratio = detected_thickness / self.min_dim if self.min_dim > 0 else 1.0
             
             # Actual thickness significantly smaller than bbox = bent part
-            if thickness_ratio < 0.5 and thickness_confidence > 0.6:
+            # LOWERED: Accept lower confidence threshold (0.4 instead of 0.6)
+            if thickness_ratio < 0.5 and thickness_confidence > 0.4:
                 has_thickness_discrepancy = True
+                confidence = min(0.95, thickness_confidence + 0.2)  # Boost confidence
                 bend_indicators.append({
                     'method': 'thickness_discrepancy',
-                    'confidence': thickness_confidence,
+                    'confidence': confidence,
                     'ratio': thickness_ratio,
                     'evidence': f"Wall {detected_thickness:.1f}mm << bbox {self.min_dim:.1f}mm"
                 })
@@ -96,6 +101,17 @@ class AdvancedBendDetector:
                     bend_count = 2  # Multiple bends (U-bracket)
                 else:
                     bend_count = 1  # Single bend (L-bracket)
+        
+        # === METHOD 1B: DIMENSION RATIO DETECTION ===
+        # NEW: Detect bent parts purely from dimensions when thickness detection fails
+        # A thin min dimension with high aspect ratio strongly suggests sheet metal bending
+        if not has_thickness_discrepancy and self.min_dim < 6 and self.aspect_ratio > 8:
+            bend_indicators.append({
+                'method': 'dimension_ratio',
+                'confidence': 0.70,
+                'evidence': f"Thin profile ({self.min_dim:.1f}mm) with high aspect ratio ({self.aspect_ratio:.1f})"
+            })
+            bend_count = max(bend_count, 1)  # At least one bend likely
         
         # === METHOD 2: VOLUME HOLLOWNESS ===
         # Low volume efficiency indicates bent/hollow structure
@@ -223,7 +239,11 @@ class AdvancedBendDetector:
             if has_thickness_discrepancy and is_hollow:
                 overall_confidence = min(0.95, overall_confidence + 0.2)
             
-            is_likely_bent = overall_confidence > 0.6 and bend_count > 0
+            # LOWERED THRESHOLD: More lenient detection
+            # Any bend with reasonable confidence should be flagged
+            is_likely_bent = (overall_confidence > 0.4 and bend_count > 0) or \
+                            (bend_count >= 2) or \
+                            (has_thickness_discrepancy and self.aspect_ratio > 8)
         
         # === COMPLEXITY SCORE ===
         complexity_score = min(100, 
