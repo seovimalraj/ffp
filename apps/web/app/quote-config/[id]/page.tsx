@@ -489,7 +489,7 @@ export default function QuoteConfigPage() {
           const defaultFinish = getDefaultFinishForProcess(detectedProcess);
           const defaultTolerance =
             getDefaultToleranceForProcess(detectedProcess);
-          const defaultThickness = detectedProcess.includes("sheet")
+          const defaultThickness = detectedProcess?.includes("sheet")
             ? getDefaultThickness()
             : undefined;
 

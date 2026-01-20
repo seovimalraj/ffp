@@ -371,7 +371,7 @@ function generateDFMSuggestions(part: PartConfig): Suggestion[] {
     }
 
     // Tool access and multi-axis warnings
-    if (advancedFeatures.toolAccess.restrictedAreas > 3) {
+    if (advancedFeatures.toolAccess?.restrictedAreas && advancedFeatures.toolAccess.restrictedAreas > 3) {
       suggestions.push({
         id: `dfm-tool-access-${part.id}`,
         type: "dfm",
