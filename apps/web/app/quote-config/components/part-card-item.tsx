@@ -29,9 +29,19 @@ import { CubeIcon } from "@heroicons/react/24/outline";
 import { CadViewer } from "@/components/cad/cad-viewer";
 import ExpandFileModal from "./expand-file-modal";
 import { EditPartModal } from "./edit-part-modal";
+import { SheetMetalFields } from "./sheet-metal-fields";
+import { SheetMetalLeadTimeBreakdown } from "./sheet-metal-lead-time-breakdown";
 import { useFileUpload } from "@/lib/hooks/use-file-upload";
 import { notify } from "@/lib/toast";
 import { calculateLeadTime } from "../[id]/page";
+import {
+  getProcessDisplayName,
+  isCNCProcess,
+  isSheetMetalProcess,
+  getDefaultMaterialForProcess,
+  getDefaultFinishForProcess,
+  getDefaultToleranceForProcess,
+} from "@/lib/pricing-engine";
 
 // Dynamically import PDF viewer to avoid SSR issues with DOMMatrix
 const PdfViewerModal = dynamic(
@@ -445,14 +455,22 @@ export function PartCardItem({
 
                     {/* Badges */}
                     <div className="flex flex-wrap items-center gap-2">
-                      {/* CNC */}
-                      <div className="inline-flex items-center gap-1.5 rounded-md bg-amber-50 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider text-amber-700 ring-1 ring-inset ring-amber-200">
-                        <Zap className="h-3.5 w-3.5 text-amber-500" />
-                        {
-                          processTranslator[
-                            part.process as keyof typeof processTranslator
-                          ]
-                        }
+                      {/* Process Badge - Dynamic based on part.process */}
+                      <div
+                        className={`inline-flex items-center gap-1.5 rounded-md px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider ring-1 ring-inset ${
+                          part.process === "sheet-metal" ||
+                          part.process?.includes("sheet")
+                            ? "bg-green-50 text-green-700 ring-green-200"
+                            : "bg-amber-50 text-amber-700 ring-amber-200"
+                        }`}
+                      >
+                        {part.process === "sheet-metal" ||
+                        part.process?.includes("sheet") ? (
+                          <Layers className="h-3.5 w-3.5" />
+                        ) : (
+                          <Zap className="h-3.5 w-3.5" />
+                        )}
+                        {getProcessDisplayName(part.process)}
                       </div>
 
                       {/* Custom */}
@@ -686,15 +704,15 @@ export function PartCardItem({
                           updatePart(index, "leadTimeType", leadTimeType, false)
                         }
                         className={`
-                            relative cursor-pointer rounded-xl sm:rounded-2xl
-                            border p-3 transition-all
-                            active:scale-[0.98]
-                            ${
-                              isSelected
-                                ? "border-blue-600 bg-blue-50 ring-2 ring-blue-600"
-                                : "border-slate-200 bg-white hover:border-slate-300 hover:shadow-sm"
-                            }
-                          `}
+                              relative cursor-pointer rounded-xl sm:rounded-2xl
+                              border p-3 transition-all
+                              active:scale-[0.98]
+                              ${
+                                isSelected
+                                  ? "border-blue-600 bg-blue-50 ring-2 ring-blue-600"
+                                  : "border-slate-200 bg-white hover:border-slate-300 hover:shadow-sm"
+                              }
+                            `}
                       >
                         {/* Badge */}
                         <div className="absolute right-2 top-2 sm:-right-3 sm:-top-2">
@@ -759,6 +777,19 @@ export function PartCardItem({
               </div>
             </div>
           </div>
+
+          {/* Sheet Metal Lead Time Breakdown */}
+          {(part.process === "sheet-metal" ||
+            part.geometry?.recommendedProcess === "sheet-metal") &&
+            part.geometry?.sheetMetalFeatures &&
+            part.leadTimeType && (
+              <div className="mt-6 px-6">
+                <SheetMetalLeadTimeBreakdown
+                  part={part}
+                  leadTimeType={part.leadTimeType}
+                />
+              </div>
+            )}
         </div>
       </div>
       {/* Image Viewer for image files */}

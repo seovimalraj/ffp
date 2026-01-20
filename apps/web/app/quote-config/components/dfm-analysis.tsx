@@ -12,15 +12,26 @@ import {
   CheckCheck,
   Sparkles,
   TrendingDown,
+  Activity,
+  Droplet,
 } from "lucide-react";
 import React, { useEffect, useState, useRef } from "react";
 import { cn } from "@/lib/utils";
 import { PartConfig } from "@/types/part-config";
 import { motion, AnimatePresence } from "framer-motion";
-import { analyzeGeometryFeatures, GeometryFeatureMap } from "@/lib/geometry-feature-locator";
+import {
+  analyzeGeometryFeatures,
+  GeometryFeatureMap,
+} from "@/lib/geometry-feature-locator";
 
 // DFM Check Status Types
-type CheckStatus = "pass" | "warning" | "fail" | "critical" | "info" | "loading";
+type CheckStatus =
+  | "pass"
+  | "warning"
+  | "fail"
+  | "critical"
+  | "info"
+  | "loading";
 
 interface DFMCheck {
   id: string;
@@ -29,12 +40,20 @@ interface DFMCheck {
   status: CheckStatus;
   details?: string;
   icon: React.ReactNode;
-  category: "geometry" | "feasibility" | "manufacturability" | "tolerances" | "features" | "optimization" | "bending" | "forming";
+  category:
+    | "geometry"
+    | "feasibility"
+    | "manufacturability"
+    | "tolerances"
+    | "features"
+    | "optimization"
+    | "bending"
+    | "forming";
   severity?: "low" | "medium" | "high" | "critical";
   potentialSavings?: number;
   actionable?: boolean;
   selectionHint?: {
-    type: 'feature' | 'surface' | 'edge' | 'dimension';
+    type: "feature" | "surface" | "edge" | "dimension";
     featureType?: string;
     location?: { x: number; y: number; z: number };
     triangles?: number[];
@@ -68,23 +87,56 @@ const SUPPORTED_FILE_TYPES = [
 const MAX_DIMENSIONS = { x: 1000, y: 500, z: 500 };
 const MIN_WALL_THICKNESS = 0.8;
 
-function analyzeDFM(part: PartConfig, geometryFeatures?: GeometryFeatureMap): DFMAnalysisResult {
+function analyzeDFM(
+  part: PartConfig,
+  geometryFeatures?: GeometryFeatureMap,
+): DFMAnalysisResult {
   const checks: DFMCheck[] = [];
   const recommendations: string[] = [];
   let totalPotentialSavings = 0;
 
   const geometry = part.geometry;
   const hasGeometry = !!geometry;
-  
-  // Detect process type - check part config or geometry
-  const processType: "cnc" | "sheet-metal" | "unknown" = 
-    part.process === "sheet-metal" ? "sheet-metal" :
-    part.process === "cnc" || part.process === "cnc-milling" || part.process === "cnc-turning" ? "cnc" :
-    geometry?.sheetMetalFeatures ? "sheet-metal" :
-    "cnc"; // Default to CNC
-  
+
+  // ENTERPRISE: Process detection with explicit part.process priority
+  const processType: "cnc" | "sheet-metal" | "unknown" =
+    part.process === "sheet-metal" || part.process?.includes("sheet")
+      ? "sheet-metal"
+      : part.process === "cnc-milling" ||
+          part.process === "cnc-turning" ||
+          part.process === "cnc"
+        ? "cnc"
+        : geometry?.recommendedProcess === "sheet-metal"
+          ? "sheet-metal"
+          : geometry?.recommendedProcess?.includes("sheet")
+            ? "sheet-metal"
+            : geometry?.recommendedProcess === "cnc-milling" ||
+                geometry?.recommendedProcess === "cnc-turning"
+              ? "cnc"
+              : geometry?.sheetMetalFeatures
+                ? "sheet-metal"
+                : "cnc"; // Default to CNC
+
   const isCNC = processType === "cnc";
   const isSheetMetal = processType === "sheet-metal";
+
+  // Process type indicator
+  checks.push({
+    id: "process-type",
+    name: "Manufacturing Process",
+    description: `Detected as ${processType === "sheet-metal" ? "Sheet Metal Fabrication" : "CNC Machining"}`,
+    status: "pass",
+    details: isSheetMetal
+      ? "Laser cutting, bending, forming operations"
+      : "Milling, turning, drilling operations",
+    icon: isSheetMetal ? (
+      <Layers className="w-4 h-4" />
+    ) : (
+      <Zap className="w-4 h-4" />
+    ),
+    category: "geometry",
+    severity: "low",
+  });
 
   // ===== GEOMETRY VALIDATION =====
   const fileExt = part.fileName.split(".").pop()?.toLowerCase() || "";
@@ -94,7 +146,9 @@ function analyzeDFM(part: PartConfig, geometryFeatures?: GeometryFeatureMap): DF
     name: "File Format",
     description: "CAD file format validation",
     status: isValidFileType ? "pass" : "fail",
-    details: isValidFileType ? `${fileExt.toUpperCase()} format` : "Unsupported format",
+    details: isValidFileType
+      ? `${fileExt.toUpperCase()} format`
+      : "Unsupported format",
     icon: <FileType className="w-4 h-4" />,
     category: "geometry",
     severity: isValidFileType ? "low" : "critical",
@@ -102,7 +156,9 @@ function analyzeDFM(part: PartConfig, geometryFeatures?: GeometryFeatureMap): DF
   });
 
   if (!isValidFileType) {
-    recommendations.push("Convert file to STEP or STL format for accurate analysis.");
+    recommendations.push(
+      "Convert file to STEP or STL format for accurate analysis.",
+    );
   }
 
   // Model integrity
@@ -111,7 +167,9 @@ function analyzeDFM(part: PartConfig, geometryFeatures?: GeometryFeatureMap): DF
     name: "Geometric Integrity",
     description: "3D model structure validation",
     status: hasGeometry ? "pass" : "fail",
-    details: hasGeometry ? `${geometry.complexity} geometry validated` : "No geometry data",
+    details: hasGeometry
+      ? `${geometry.complexity} geometry validated`
+      : "No geometry data",
     icon: <Shield className="w-4 h-4" />,
     category: "geometry",
     severity: hasGeometry ? "low" : "critical",
@@ -127,7 +185,7 @@ function analyzeDFM(part: PartConfig, geometryFeatures?: GeometryFeatureMap): DF
       boundingBox.x > MAX_DIMENSIONS.x ||
       boundingBox.y > MAX_DIMENSIONS.y ||
       boundingBox.z > MAX_DIMENSIONS.z;
-    
+
     checks.push({
       id: "machine-capacity",
       name: "Machine Work Envelope",
@@ -140,7 +198,9 @@ function analyzeDFM(part: PartConfig, geometryFeatures?: GeometryFeatureMap): DF
     });
 
     if (exceedsMaxSize) {
-      recommendations.push(`Part exceeds machine capacity. Consider splitting into smaller components or using specialized equipment.`);
+      recommendations.push(
+        `Part exceeds machine capacity. Consider splitting into smaller components or using specialized equipment.`,
+      );
     }
 
     // ===== ADVANCED FEATURE ANALYSIS =====
@@ -148,10 +208,14 @@ function analyzeDFM(part: PartConfig, geometryFeatures?: GeometryFeatureMap): DF
 
     // Hole analysis
     if (features.holes.count > 0) {
-      const holeStatus = 
-        features.holes.microHoleCount > 0 ? "critical" :
-        features.holes.deepHoleCount > 3 ? "warning" : 
-        features.holes.toolAccessIssues > 0 ? "warning" : "pass";
+      const holeStatus =
+        features.holes.microHoleCount > 0
+          ? "critical"
+          : features.holes.deepHoleCount > 3
+            ? "warning"
+            : features.holes.toolAccessIssues > 0
+              ? "warning"
+              : "pass";
 
       checks.push({
         id: "hole-features",
@@ -162,41 +226,62 @@ function analyzeDFM(part: PartConfig, geometryFeatures?: GeometryFeatureMap): DF
         icon: <Circle className="w-4 h-4" />,
         category: "features",
         severity: features.holes.microHoleCount > 0 ? "critical" : "medium",
-        potentialSavings: features.holes.microHoleCount * 50 + features.holes.deepHoleCount * 20,
+        potentialSavings:
+          features.holes.microHoleCount * 50 +
+          features.holes.deepHoleCount * 20,
         actionable: holeStatus !== "pass",
-        selectionHint: geometryFeatures && geometryFeatures.holes.length > 0 ? {
-          type: 'feature',
-          featureType: 'holes',
-          location: geometryFeatures.holes[0].centroid,
-          triangles: geometryFeatures.holes.flatMap(h => h.triangles).slice(0, 100),
-          description: `${geometryFeatures.holes.length} hole locations detected with ${(geometryFeatures.holes[0].confidence * 100).toFixed(0)}% accuracy`
-        } : features.holes.count > 0 ? {
-          type: 'feature',
-          featureType: 'holes',
-          location: { x: 0, y: 0, z: 10 },
-          triangles: [],
-          description: `${features.holes.count} holes requiring machining`
-        } : undefined,
+        selectionHint:
+          geometryFeatures && geometryFeatures.holes.length > 0
+            ? {
+                type: "feature",
+                featureType: "holes",
+                location: geometryFeatures.holes[0].centroid,
+                triangles: geometryFeatures.holes
+                  .flatMap((h) => h.triangles)
+                  .slice(0, 100),
+                description: `${geometryFeatures.holes.length} hole locations detected with ${(geometryFeatures.holes[0].confidence * 100).toFixed(0)}% accuracy`,
+              }
+            : features.holes.count > 0
+              ? {
+                  type: "feature",
+                  featureType: "holes",
+                  location: { x: 0, y: 0, z: 10 },
+                  triangles: [],
+                  description: `${features.holes.count} holes requiring machining`,
+                }
+              : undefined,
       });
 
       if (features.holes.microHoleCount > 0) {
-        recommendations.push(`${features.holes.microHoleCount} micro holes (<1mm) require specialized tooling. Consider enlarging to ≥1mm diameter for standard machining.`);
+        recommendations.push(
+          `${features.holes.microHoleCount} micro holes (<1mm) require specialized tooling. Consider enlarging to ≥1mm diameter for standard machining.`,
+        );
         totalPotentialSavings += features.holes.microHoleCount * 50;
       }
       if (features.holes.deepHoleCount > 0) {
-        recommendations.push(`${features.holes.deepHoleCount} deep holes (L/D > 5:1) require peck drilling cycles. Reduce depth or increase diameter if possible.`);
+        recommendations.push(
+          `${features.holes.deepHoleCount} deep holes (L/D > 5:1) require peck drilling cycles. Reduce depth or increase diameter if possible.`,
+        );
         totalPotentialSavings += features.holes.deepHoleCount * 20;
       }
-      if (features.holes.drillingMethod === 'gun-drill' || features.holes.drillingMethod === 'boring') {
-        recommendations.push(`Specialized drilling method required: ${features.holes.drillingMethod}. Lead time may increase.`);
+      if (
+        features.holes.drillingMethod === "gun-drill" ||
+        features.holes.drillingMethod === "boring"
+      ) {
+        recommendations.push(
+          `Specialized drilling method required: ${features.holes.drillingMethod}. Lead time may increase.`,
+        );
       }
     }
 
     // Pocket & boss analysis (CNC only)
     if (isCNC && features.pockets.count > 0) {
-      const pocketStatus = 
-        features.pockets.sharpCornersCount > 5 ? "warning" :
-        features.pockets.deepPockets > 3 ? "warning" : "pass";
+      const pocketStatus =
+        features.pockets.sharpCornersCount > 5
+          ? "warning"
+          : features.pockets.deepPockets > 3
+            ? "warning"
+            : "pass";
 
       checks.push({
         id: "pocket-features",
@@ -207,29 +292,42 @@ function analyzeDFM(part: PartConfig, geometryFeatures?: GeometryFeatureMap): DF
         icon: <Layers className="w-4 h-4" />,
         category: "features",
         severity: pocketStatus === "warning" ? "medium" : "low",
-        potentialSavings: features.pockets.sharpCornersCount * 8 + features.pockets.deepPockets * 25,
+        potentialSavings:
+          features.pockets.sharpCornersCount * 8 +
+          features.pockets.deepPockets * 25,
         actionable: pocketStatus === "warning",
-        selectionHint: geometryFeatures && geometryFeatures.pockets.length > 0 ? {
-          type: 'feature',
-          featureType: 'pockets',
-          location: geometryFeatures.pockets[0].centroid,
-          triangles: geometryFeatures.pockets.flatMap(p => p.triangles).slice(0, 150),
-          description: `${geometryFeatures.pockets.length} pocket areas identified with ${(geometryFeatures.pockets[0].confidence * 100).toFixed(0)}% confidence`
-        } : features.pockets.count > 0 ? {
-          type: 'feature',
-          featureType: 'pockets',
-          location: { x: 0, y: 0, z: -5 },
-          triangles: [],
-          description: `${features.pockets.count} pockets with ${features.pockets.sharpCornersCount} sharp corners`
-        } : undefined,
+        selectionHint:
+          geometryFeatures && geometryFeatures.pockets.length > 0
+            ? {
+                type: "feature",
+                featureType: "pockets",
+                location: geometryFeatures.pockets[0].centroid,
+                triangles: geometryFeatures.pockets
+                  .flatMap((p) => p.triangles)
+                  .slice(0, 150),
+                description: `${geometryFeatures.pockets.length} pocket areas identified with ${(geometryFeatures.pockets[0].confidence * 100).toFixed(0)}% confidence`,
+              }
+            : features.pockets.count > 0
+              ? {
+                  type: "feature",
+                  featureType: "pockets",
+                  location: { x: 0, y: 0, z: -5 },
+                  triangles: [],
+                  description: `${features.pockets.count} pockets with ${features.pockets.sharpCornersCount} sharp corners`,
+                }
+              : undefined,
       });
 
       if (features.pockets.sharpCornersCount > 3) {
-        recommendations.push(`${features.pockets.sharpCornersCount} sharp pocket corners detected. Add R${features.pockets.minCornerRadius.toFixed(1)}mm radii to eliminate square endmill requirement.`);
+        recommendations.push(
+          `${features.pockets.sharpCornersCount} sharp pocket corners detected. Add R${features.pockets.minCornerRadius.toFixed(1)}mm radii to eliminate square endmill requirement.`,
+        );
         totalPotentialSavings += features.pockets.sharpCornersCount * 8;
       }
       if (features.pockets.deepPockets > 2) {
-        recommendations.push(`${features.pockets.deepPockets} deep pockets (depth > 3x width) may cause tool deflection. Consider reducing depth by 30%.`);
+        recommendations.push(
+          `${features.pockets.deepPockets} deep pockets (depth > 3x width) may cause tool deflection. Consider reducing depth by 30%.`,
+        );
         totalPotentialSavings += features.pockets.deepPockets * 25;
       }
     }
@@ -249,8 +347,12 @@ function analyzeDFM(part: PartConfig, geometryFeatures?: GeometryFeatureMap): DF
       });
 
       if (features.threads.count > 8) {
-        const cost = features.threads.internalThreads * 3 + features.threads.externalThreads * 2;
-        recommendations.push(`High thread count (${features.threads.count}). Threading cost: $${cost}. Consider using fewer, larger fasteners.`);
+        const cost =
+          features.threads.internalThreads * 3 +
+          features.threads.externalThreads * 2;
+        recommendations.push(
+          `High thread count (${features.threads.count}). Threading cost: $${cost}. Consider using fewer, larger fasteners.`,
+        );
       }
     }
 
@@ -260,29 +362,38 @@ function analyzeDFM(part: PartConfig, geometryFeatures?: GeometryFeatureMap): DF
         id: "fillet-analysis",
         name: "Internal Corners",
         description: "Stress concentration analysis",
-        status: features.fillets.stressConcentrationRisk > 6 ? "critical" : "warning",
+        status:
+          features.fillets.stressConcentrationRisk > 6 ? "critical" : "warning",
         details: `${features.fillets.missingFilletCount} sharp corners, risk ${features.fillets.stressConcentrationRisk}/10`,
         icon: <Shield className="w-4 h-4" />,
         category: "features",
-        severity: features.fillets.stressConcentrationRisk > 6 ? "critical" : "medium",
+        severity:
+          features.fillets.stressConcentrationRisk > 6 ? "critical" : "medium",
         actionable: true,
-        selectionHint: geometryFeatures && geometryFeatures.fillets.length > 0 ? {
-          type: 'feature',
-          featureType: 'fillets',
-          location: geometryFeatures.fillets[0].centroid,
-          triangles: geometryFeatures.fillets.flatMap(f => f.triangles).slice(0, 80),
-          description: `${geometryFeatures.fillets.length} fillet locations detected (avg confidence: ${(geometryFeatures.fillets.reduce((sum, f) => sum + f.confidence, 0) / geometryFeatures.fillets.length * 100).toFixed(0)}%)`
-        } : undefined,
+        selectionHint:
+          geometryFeatures && geometryFeatures.fillets.length > 0
+            ? {
+                type: "feature",
+                featureType: "fillets",
+                location: geometryFeatures.fillets[0].centroid,
+                triangles: geometryFeatures.fillets
+                  .flatMap((f) => f.triangles)
+                  .slice(0, 80),
+                description: `${geometryFeatures.fillets.length} fillet locations detected (avg confidence: ${((geometryFeatures.fillets.reduce((sum, f) => sum + f.confidence, 0) / geometryFeatures.fillets.length) * 100).toFixed(0)}%)`,
+              }
+            : undefined,
       });
 
-      recommendations.push(`${features.fillets.missingFilletCount} sharp internal corners increase stress concentration (risk: ${features.fillets.stressConcentrationRisk}/10). Add R${features.fillets.minRadius.toFixed(1)}mm fillets to prevent crack initiation.`);
+      recommendations.push(
+        `${features.fillets.missingFilletCount} sharp internal corners increase stress concentration (risk: ${features.fillets.stressConcentrationRisk}/10). Add R${features.fillets.minRadius.toFixed(1)}mm fillets to prevent crack initiation.`,
+      );
     }
 
     // Chamfer analysis (CNC only) - NEW
     if (isCNC && geometryFeatures && geometryFeatures.chamfers.length > 0) {
       const chamferCount = geometryFeatures.chamfers.length;
       const chamferStatus = chamferCount < 5 ? "info" : "pass";
-      
+
       checks.push({
         id: "chamfer-features",
         name: "Edge Treatment",
@@ -294,11 +405,13 @@ function analyzeDFM(part: PartConfig, geometryFeatures?: GeometryFeatureMap): DF
         severity: "low",
         actionable: false,
         selectionHint: {
-          type: 'feature',
-          featureType: 'chamfers',
+          type: "feature",
+          featureType: "chamfers",
           location: geometryFeatures.chamfers[0].centroid,
-          triangles: geometryFeatures.chamfers.flatMap(c => c.triangles).slice(0, 60),
-          description: `${chamferCount} chamfer edges identified (avg confidence: ${(geometryFeatures.chamfers.reduce((sum, c) => sum + c.confidence, 0) / chamferCount * 100).toFixed(0)}%)`
+          triangles: geometryFeatures.chamfers
+            .flatMap((c) => c.triangles)
+            .slice(0, 60),
+          description: `${chamferCount} chamfer edges identified (avg confidence: ${((geometryFeatures.chamfers.reduce((sum, c) => sum + c.confidence, 0) / chamferCount) * 100).toFixed(0)}%)`,
         },
       });
     }
@@ -307,7 +420,7 @@ function analyzeDFM(part: PartConfig, geometryFeatures?: GeometryFeatureMap): DF
     if (geometryFeatures && geometryFeatures.threads.length > 0) {
       const threadCount = geometryFeatures.threads.length;
       const threadStatus = threadCount > 5 ? "warning" : "info";
-      
+
       checks.push({
         id: "thread-features",
         name: "Threading Operations",
@@ -320,26 +433,34 @@ function analyzeDFM(part: PartConfig, geometryFeatures?: GeometryFeatureMap): DF
         potentialSavings: threadCount * 8,
         actionable: threadCount > 5,
         selectionHint: {
-          type: 'feature',
-          featureType: 'threads',
+          type: "feature",
+          featureType: "threads",
           location: geometryFeatures.threads[0].centroid,
-          triangles: geometryFeatures.threads.flatMap(t => t.triangles).slice(0, 120),
-          description: `${threadCount} threaded regions (helical patterns) detected with ${(geometryFeatures.threads[0].confidence * 100).toFixed(0)}% confidence`
+          triangles: geometryFeatures.threads
+            .flatMap((t) => t.triangles)
+            .slice(0, 120),
+          description: `${threadCount} threaded regions (helical patterns) detected with ${(geometryFeatures.threads[0].confidence * 100).toFixed(0)}% confidence`,
         },
       });
-      
+
       if (threadCount > 5) {
-        recommendations.push(`${threadCount} threaded features detected. Consider using press-fit inserts or reducing thread count to lower manufacturing time.`);
+        recommendations.push(
+          `${threadCount} threaded features detected. Consider using press-fit inserts or reducing thread count to lower manufacturing time.`,
+        );
         totalPotentialSavings += threadCount * 8;
       }
     }
 
     // Counterbore/Countersink analysis - NEW
-    if (geometryFeatures && (geometryFeatures.counterbores.length > 0 || geometryFeatures.countersinks.length > 0)) {
+    if (
+      geometryFeatures &&
+      (geometryFeatures.counterbores.length > 0 ||
+        geometryFeatures.countersinks.length > 0)
+    ) {
       const cbCount = geometryFeatures.counterbores.length;
       const cskCount = geometryFeatures.countersinks.length;
       const total = cbCount + cskCount;
-      
+
       checks.push({
         id: "secondary-hole-ops",
         name: "Secondary Hole Operations",
@@ -351,17 +472,27 @@ function analyzeDFM(part: PartConfig, geometryFeatures?: GeometryFeatureMap): DF
         severity: total > 8 ? "medium" : "low",
         potentialSavings: total * 4,
         actionable: total > 8,
-        selectionHint: cbCount > 0 ? {
-          type: 'feature',
-          featureType: 'counterbores',
-          location: geometryFeatures.counterbores[0].centroid,
-          triangles: [...geometryFeatures.counterbores, ...geometryFeatures.countersinks].flatMap(f => f.triangles).slice(0, 100),
-          description: `${total} secondary hole features (${cbCount} CB, ${cskCount} CSK) with ${((geometryFeatures.counterbores[0]?.confidence || 0.8) * 100).toFixed(0)}% detection accuracy`
-        } : undefined,
+        selectionHint:
+          cbCount > 0
+            ? {
+                type: "feature",
+                featureType: "counterbores",
+                location: geometryFeatures.counterbores[0].centroid,
+                triangles: [
+                  ...geometryFeatures.counterbores,
+                  ...geometryFeatures.countersinks,
+                ]
+                  .flatMap((f) => f.triangles)
+                  .slice(0, 100),
+                description: `${total} secondary hole features (${cbCount} CB, ${cskCount} CSK) with ${((geometryFeatures.counterbores[0]?.confidence || 0.8) * 100).toFixed(0)}% detection accuracy`,
+              }
+            : undefined,
       });
-      
+
       if (total > 8) {
-        recommendations.push(`${total} secondary hole operations (counterbores/countersinks) add cycle time. Consider standardizing hole types where possible.`);
+        recommendations.push(
+          `${total} secondary hole operations (counterbores/countersinks) add cycle time. Consider standardizing hole types where possible.`,
+        );
         totalPotentialSavings += total * 4;
       }
     }
@@ -370,7 +501,7 @@ function analyzeDFM(part: PartConfig, geometryFeatures?: GeometryFeatureMap): DF
     if (geometryFeatures && geometryFeatures.slots.length > 0) {
       const slotCount = geometryFeatures.slots.length;
       const slotStatus = slotCount > 3 ? "warning" : "info";
-      
+
       checks.push({
         id: "slot-features",
         name: "Slot Machining",
@@ -383,16 +514,20 @@ function analyzeDFM(part: PartConfig, geometryFeatures?: GeometryFeatureMap): DF
         potentialSavings: slotCount * 15,
         actionable: slotCount > 3,
         selectionHint: {
-          type: 'feature',
-          featureType: 'slots',
+          type: "feature",
+          featureType: "slots",
           location: geometryFeatures.slots[0].centroid,
-          triangles: geometryFeatures.slots.flatMap(s => s.triangles).slice(0, 150),
-          description: `${slotCount} slot features with elongated geometry (confidence: ${(geometryFeatures.slots[0].confidence * 100).toFixed(0)}%)`
+          triangles: geometryFeatures.slots
+            .flatMap((s) => s.triangles)
+            .slice(0, 150),
+          description: `${slotCount} slot features with elongated geometry (confidence: ${(geometryFeatures.slots[0].confidence * 100).toFixed(0)}%)`,
         },
       });
-      
+
       if (slotCount > 3) {
-        recommendations.push(`${slotCount} slots require multiple passes and tool changes. Consider using simple holes where functionality permits.`);
+        recommendations.push(
+          `${slotCount} slots require multiple passes and tool changes. Consider using simple holes where functionality permits.`,
+        );
         totalPotentialSavings += slotCount * 15;
       }
     }
@@ -400,8 +535,13 @@ function analyzeDFM(part: PartConfig, geometryFeatures?: GeometryFeatureMap): DF
     // Tool access restriction analysis - NEW
     if (geometryFeatures && geometryFeatures.toolAccessRestricted.length > 0) {
       const restrictedCount = geometryFeatures.toolAccessRestricted.length;
-      const restrictionStatus = restrictedCount > 2 ? "critical" : restrictedCount > 0 ? "warning" : "pass";
-      
+      const restrictionStatus =
+        restrictedCount > 2
+          ? "critical"
+          : restrictedCount > 0
+            ? "warning"
+            : "pass";
+
       checks.push({
         id: "tool-access-restrictions",
         name: "Tool Accessibility",
@@ -414,16 +554,20 @@ function analyzeDFM(part: PartConfig, geometryFeatures?: GeometryFeatureMap): DF
         potentialSavings: restrictedCount * 45,
         actionable: true,
         selectionHint: {
-          type: 'feature',
-          featureType: 'tool-access',
+          type: "feature",
+          featureType: "tool-access",
           location: geometryFeatures.toolAccessRestricted[0].centroid,
-          triangles: geometryFeatures.toolAccessRestricted.flatMap(r => r.triangles).slice(0, 200),
-          description: `${restrictedCount} confined areas with limited tool access (confinement score: ${(geometryFeatures.toolAccessRestricted[0].confidence * 100).toFixed(0)}%)`
+          triangles: geometryFeatures.toolAccessRestricted
+            .flatMap((r) => r.triangles)
+            .slice(0, 200),
+          description: `${restrictedCount} confined areas with limited tool access (confinement score: ${(geometryFeatures.toolAccessRestricted[0].confidence * 100).toFixed(0)}%)`,
         },
       });
-      
+
       if (restrictedCount > 0) {
-        recommendations.push(`${restrictedCount} areas have restricted tool access requiring special fixturing or extended reach tooling. Estimated additional cost: $${restrictedCount * 45}.`);
+        recommendations.push(
+          `${restrictedCount} areas have restricted tool access requiring special fixturing or extended reach tooling. Estimated additional cost: $${restrictedCount * 45}.`,
+        );
         totalPotentialSavings += restrictedCount * 45;
       }
     }
@@ -432,7 +576,7 @@ function analyzeDFM(part: PartConfig, geometryFeatures?: GeometryFeatureMap): DF
     if (geometryFeatures && geometryFeatures.complexSurfaces.length > 0) {
       const complexCount = geometryFeatures.complexSurfaces.length;
       const complexStatus = complexCount > 3 ? "warning" : "info";
-      
+
       checks.push({
         id: "complex-surfaces",
         name: "Complex Surface Machining",
@@ -445,16 +589,20 @@ function analyzeDFM(part: PartConfig, geometryFeatures?: GeometryFeatureMap): DF
         potentialSavings: complexCount * 35,
         actionable: complexCount > 3,
         selectionHint: {
-          type: 'surface',
-          featureType: 'complex-surface',
+          type: "surface",
+          featureType: "complex-surface",
           location: geometryFeatures.complexSurfaces[0].centroid,
-          triangles: geometryFeatures.complexSurfaces.flatMap(cs => cs.triangles).slice(0, 200),
-          description: `${complexCount} regions with multi-directional curvature (complexity: ${(geometryFeatures.complexSurfaces[0].confidence * 100).toFixed(0)}%)`
+          triangles: geometryFeatures.complexSurfaces
+            .flatMap((cs) => cs.triangles)
+            .slice(0, 200),
+          description: `${complexCount} regions with multi-directional curvature (complexity: ${(geometryFeatures.complexSurfaces[0].confidence * 100).toFixed(0)}%)`,
         },
       });
-      
+
       if (complexCount > 3) {
-        recommendations.push(`${complexCount} complex surfaces require extensive tool path programming and slower feed rates. Consider simplifying geometry where possible.`);
+        recommendations.push(
+          `${complexCount} complex surfaces require extensive tool path programming and slower feed rates. Consider simplifying geometry where possible.`,
+        );
         totalPotentialSavings += complexCount * 35;
       }
     }
@@ -463,9 +611,12 @@ function analyzeDFM(part: PartConfig, geometryFeatures?: GeometryFeatureMap): DF
 
     // Thin wall analysis (Both CNC and Sheet Metal)
     if (features.thinWalls.count > 0) {
-      const wallStatus = 
-        features.thinWalls.risk === "high" ? "critical" :
-        features.thinWalls.risk === "medium" ? "warning" : "pass";
+      const wallStatus =
+        features.thinWalls.risk === "high"
+          ? "critical"
+          : features.thinWalls.risk === "medium"
+            ? "warning"
+            : "pass";
 
       checks.push({
         id: "thin-walls",
@@ -475,32 +626,48 @@ function analyzeDFM(part: PartConfig, geometryFeatures?: GeometryFeatureMap): DF
         details: `${features.thinWalls.minThickness.toFixed(1)}mm minimum, ${features.thinWalls.risk} risk`,
         icon: <Ruler className="w-4 h-4" />,
         category: "manufacturability",
-        severity: features.thinWalls.risk === "high" ? "critical" : features.thinWalls.risk === "medium" ? "medium" : "low",
+        severity:
+          features.thinWalls.risk === "high"
+            ? "critical"
+            : features.thinWalls.risk === "medium"
+              ? "medium"
+              : "low",
         potentialSavings: features.thinWalls.risk === "high" ? 120 : 45,
         actionable: wallStatus !== "pass",
-        selectionHint: geometryFeatures && geometryFeatures.thinWalls.length > 0 ? {
-          type: 'surface',
-          featureType: 'thin-wall',
-          location: geometryFeatures.thinWalls[0].centroid,
-          triangles: geometryFeatures.thinWalls.flatMap(w => w.triangles).slice(0, 200),
-          description: `${geometryFeatures.thinWalls.length} thin wall regions detected (accuracy: ${(geometryFeatures.thinWalls[0].confidence * 100).toFixed(0)}%)`
-        } : {
-          type: 'surface',
-          featureType: 'thin-wall',
-          description: `Thin walls ${features.thinWalls.minThickness.toFixed(1)}mm requiring special attention`,
-        },
+        selectionHint:
+          geometryFeatures && geometryFeatures.thinWalls.length > 0
+            ? {
+                type: "surface",
+                featureType: "thin-wall",
+                location: geometryFeatures.thinWalls[0].centroid,
+                triangles: geometryFeatures.thinWalls
+                  .flatMap((w) => w.triangles)
+                  .slice(0, 200),
+                description: `${geometryFeatures.thinWalls.length} thin wall regions detected (accuracy: ${(geometryFeatures.thinWalls[0].confidence * 100).toFixed(0)}%)`,
+              }
+            : {
+                type: "surface",
+                featureType: "thin-wall",
+                description: `Thin walls ${features.thinWalls.minThickness.toFixed(1)}mm requiring special attention`,
+              },
       });
 
       if (features.thinWalls.risk === "high") {
-        recommendations.push(`Critical: Walls ${features.thinWalls.minThickness.toFixed(1)}mm thick will deflect during machining. Increase to 2.5mm minimum or accept high scrap risk.`);
+        recommendations.push(
+          `Critical: Walls ${features.thinWalls.minThickness.toFixed(1)}mm thick will deflect during machining. Increase to 2.5mm minimum or accept high scrap risk.`,
+        );
         totalPotentialSavings += 120;
       } else if (features.thinWalls.risk === "medium") {
-        recommendations.push(`Moderate thin walls (${features.thinWalls.minThickness.toFixed(1)}mm). Recommend increasing to 2.5mm for better rigidity.`);
+        recommendations.push(
+          `Moderate thin walls (${features.thinWalls.minThickness.toFixed(1)}mm). Recommend increasing to 2.5mm for better rigidity.`,
+        );
         totalPotentialSavings += 45;
       }
 
       if (features.thinWalls.requiresSupportFixture) {
-        recommendations.push("Specialized fixtures required to support thin walls during machining.");
+        recommendations.push(
+          "Specialized fixtures required to support thin walls during machining.",
+        );
       }
     }
 
@@ -510,31 +677,41 @@ function analyzeDFM(part: PartConfig, geometryFeatures?: GeometryFeatureMap): DF
         id: "rib-thickness",
         name: "Rib Structures",
         description: "Rib manufacturability check",
-        status: features.ribs.deflectionRisk === "high" ? "critical" : "warning",
+        status:
+          features.ribs.deflectionRisk === "high" ? "critical" : "warning",
         details: `${features.ribs.thinRibCount} thin ribs, ${features.ribs.minThickness.toFixed(1)}mm minimum`,
         icon: <Layers className="w-4 h-4" />,
         category: "manufacturability",
-        severity: features.ribs.deflectionRisk === "high" ? "critical" : "medium",
+        severity:
+          features.ribs.deflectionRisk === "high" ? "critical" : "medium",
         potentialSavings: features.ribs.deflectionRisk === "high" ? 55 : 30,
         actionable: true,
-        selectionHint: geometryFeatures && geometryFeatures.ribs.length > 0 ? {
-          type: 'feature',
-          featureType: 'ribs',
-          location: geometryFeatures.ribs[0].centroid,
-          triangles: geometryFeatures.ribs.flatMap(r => r.triangles).slice(0, 100),
-          description: `${geometryFeatures.ribs.length} elongated vertical features detected (confidence: ${(geometryFeatures.ribs[0].confidence * 100).toFixed(0)}%)`
-        } : undefined,
+        selectionHint:
+          geometryFeatures && geometryFeatures.ribs.length > 0
+            ? {
+                type: "feature",
+                featureType: "ribs",
+                location: geometryFeatures.ribs[0].centroid,
+                triangles: geometryFeatures.ribs
+                  .flatMap((r) => r.triangles)
+                  .slice(0, 100),
+                description: `${geometryFeatures.ribs.length} elongated vertical features detected (confidence: ${(geometryFeatures.ribs[0].confidence * 100).toFixed(0)}%)`,
+              }
+            : undefined,
       });
 
-      recommendations.push(`${features.ribs.thinRibCount} ribs below 1.5mm thickness. Increase to 2mm minimum for manufacturability.`);
-      totalPotentialSavings += features.ribs.deflectionRisk === "high" ? 55 : 30;
+      recommendations.push(
+        `${features.ribs.thinRibCount} ribs below 1.5mm thickness. Increase to 2mm minimum for manufacturability.`,
+      );
+      totalPotentialSavings +=
+        features.ribs.deflectionRisk === "high" ? 55 : 30;
     }
 
     // Boss analysis (CNC only) - NEW
     if (geometryFeatures && geometryFeatures.bosses.length > 0) {
       const bossCount = geometryFeatures.bosses.length;
       const bossStatus = bossCount > 5 ? "info" : "pass";
-      
+
       checks.push({
         id: "boss-features",
         name: "Boss Features",
@@ -546,11 +723,13 @@ function analyzeDFM(part: PartConfig, geometryFeatures?: GeometryFeatureMap): DF
         severity: "low",
         actionable: false,
         selectionHint: {
-          type: 'feature',
-          featureType: 'bosses',
+          type: "feature",
+          featureType: "bosses",
           location: geometryFeatures.bosses[0].centroid,
-          triangles: geometryFeatures.bosses.flatMap(b => b.triangles).slice(0, 80),
-          description: `${bossCount} cylindrical protrusions identified (confidence: ${(geometryFeatures.bosses[0].confidence * 100).toFixed(0)}%)`
+          triangles: geometryFeatures.bosses
+            .flatMap((b) => b.triangles)
+            .slice(0, 80),
+          description: `${bossCount} cylindrical protrusions identified (confidence: ${(geometryFeatures.bosses[0].confidence * 100).toFixed(0)}%)`,
         },
       });
     }
@@ -559,7 +738,7 @@ function analyzeDFM(part: PartConfig, geometryFeatures?: GeometryFeatureMap): DF
     if (geometryFeatures && geometryFeatures.sharpCorners.length > 5) {
       const cornerCount = geometryFeatures.sharpCorners.length;
       const cornerStatus = cornerCount > 15 ? "warning" : "info";
-      
+
       checks.push({
         id: "sharp-corner-analysis",
         name: "Sharp Corner Detection",
@@ -572,22 +751,527 @@ function analyzeDFM(part: PartConfig, geometryFeatures?: GeometryFeatureMap): DF
         potentialSavings: cornerCount > 15 ? Math.min(cornerCount * 2, 50) : 0,
         actionable: cornerCount > 15,
         selectionHint: {
-          type: 'feature',
-          featureType: 'sharp-corners',
+          type: "feature",
+          featureType: "sharp-corners",
           location: geometryFeatures.sharpCorners[0].centroid,
-          triangles: geometryFeatures.sharpCorners.flatMap(c => c.triangles).slice(0, 60),
-          description: `${cornerCount} high-curvature regions (avg confidence: ${(geometryFeatures.sharpCorners.reduce((sum, c) => sum + c.confidence, 0) / cornerCount * 100).toFixed(0)}%)`
+          triangles: geometryFeatures.sharpCorners
+            .flatMap((c) => c.triangles)
+            .slice(0, 60),
+          description: `${cornerCount} high-curvature regions (avg confidence: ${((geometryFeatures.sharpCorners.reduce((sum, c) => sum + c.confidence, 0) / cornerCount) * 100).toFixed(0)}%)`,
         },
       });
-      
+
       if (cornerCount > 15) {
-        recommendations.push(`${cornerCount} sharp corners detected. Consider adding small radii (0.5mm) to reduce tool wear and improve surface finish.`);
+        recommendations.push(
+          `${cornerCount} sharp corners detected. Consider adding small radii (0.5mm) to reduce tool wear and improve surface finish.`,
+        );
         totalPotentialSavings += Math.min(cornerCount * 2, 50);
       }
     }
 
+    // ===== ENTERPRISE-LEVEL SHEET METAL CHECKS =====
+    if (isSheetMetal && geometry.sheetMetalFeatures) {
+      const smFeatures = geometry.sheetMetalFeatures;
+
+      // SM-ENT-1: Bend Allowance & K-Factor Analysis
+      if (smFeatures.bendCount > 0) {
+        const kFactor = 0.4; // Standard for mild steel
+        const hasBendAllowanceIssues =
+          smFeatures.minBendRadius < smFeatures.thickness * 0.8;
+
+        checks.push({
+          id: "bend-allowance-enterprise",
+          name: "Bend Allowance Calculation",
+          description: "K-factor and material compensation",
+          status: hasBendAllowanceIssues ? "warning" : "pass",
+          details: `K=${kFactor} • ${smFeatures.bendCount} bends require flat pattern compensation`,
+          icon: <Ruler className="w-4 h-4" />,
+          category: "bending",
+          severity: hasBendAllowanceIssues ? "medium" : "low",
+          potentialSavings: hasBendAllowanceIssues ? 30 : 0,
+        });
+
+        if (hasBendAllowanceIssues) {
+          recommendations.push(
+            `⚠️ Tight bend radii detected. Verify flat pattern calculations account for springback and k-factor ($30 rework risk).`,
+          );
+          totalPotentialSavings += 30;
+        }
+      }
+
+      // SM-ENT-2: Springback Compensation
+      if (smFeatures.bendCount > 5 || smFeatures.thickness < 1.0) {
+        checks.push({
+          id: "springback-analysis",
+          name: "Springback Compensation",
+          description: "Angular deviation after forming",
+          status: "warning",
+          details: `${smFeatures.thickness}mm material requires overbend compensation`,
+          icon: <Activity className="w-4 h-4" />,
+          category: "forming",
+          severity: "medium",
+          potentialSavings: 25,
+        });
+
+        recommendations.push(
+          `📐 Material will springback 2-4° after bending. Verify tooling compensates for elastic recovery ($25 adjustment cost).`,
+        );
+        totalPotentialSavings += 25;
+      }
+
+      // SM-ENT-3: Edge Distance to Bend Line
+      if (smFeatures.bendCount > 0 && smFeatures.hasSmallFeatures) {
+        const minEdgeDistance = smFeatures.thickness * 2.5;
+        checks.push({
+          id: "edge-distance-check",
+          name: "Edge Distance to Bends",
+          description: "Minimum flange length validation",
+          status: "warning",
+          details: `Features <${minEdgeDistance.toFixed(1)}mm from bend line risk distortion`,
+          icon: <Ruler className="w-4 h-4" />,
+          category: "bending",
+          severity: "high",
+          potentialSavings: 40,
+        });
+
+        recommendations.push(
+          `⚠️ Holes/features too close to bend lines. Move to ≥${minEdgeDistance.toFixed(1)}mm to prevent warping ($40 scrap risk).`,
+        );
+        totalPotentialSavings += 40;
+      }
+
+      // SM-ENT-4: Relief Notches & Corners
+      if (smFeatures.bendCount > 2) {
+        checks.push({
+          id: "relief-notches",
+          name: "Corner Relief Design",
+          description: "Stress concentration at bend intersections",
+          status: "info",
+          details: "Relief notches recommended for intersecting bends",
+          icon: <Maximize2 className="w-4 h-4" />,
+          category: "bending",
+          severity: "medium",
+          potentialSavings: 15,
+        });
+
+        recommendations.push(
+          `🔧 Add corner relief notches at bend intersections to prevent tearing. Standard: R=${(smFeatures.thickness * 1.5).toFixed(1)}mm ($15 rework prevention).`,
+        );
+        totalPotentialSavings += 15;
+      }
+
+      // SM-ENT-5: Hemming Operations
+      if (
+        smFeatures.complexity === "complex" ||
+        smFeatures.complexity === "very-complex"
+      ) {
+        const hasHemmingOps = smFeatures.bendCount > 8;
+        if (hasHemmingOps) {
+          checks.push({
+            id: "hemming-operations",
+            name: "Hemming & Edge Sealing",
+            description: "Complex edge finishing detected",
+            status: "warning",
+            details: "Hemming adds 2-3 operations per edge",
+            icon: <Layers className="w-4 h-4" />,
+            category: "forming",
+            severity: "medium",
+            potentialSavings: 50,
+          });
+
+          recommendations.push(
+            `🔄 Complex hemming operations detected. Consider simplified edge design for $50 cost reduction.`,
+          );
+          totalPotentialSavings += 50;
+        }
+      }
+
+      // SM-ENT-6: Material Grain Direction
+      if (smFeatures.bendCount > 0) {
+        checks.push({
+          id: "grain-direction",
+          name: "Material Grain Orientation",
+          description: "Bending relative to rolling direction",
+          status: "info",
+          details: "Bending across grain reduces cracking risk by 40%",
+          icon: <LayoutDashboard className="w-4 h-4" />,
+          category: "bending",
+          severity: "low",
+        });
+
+        recommendations.push(
+          `📋 Ensure major bends are perpendicular to material grain direction for best results.`,
+        );
+      }
+
+      // SM-ENT-7: Hole-to-Edge Distance
+      if (smFeatures.holeCount > 5) {
+        const minHoleEdgeDistance = smFeatures.thickness * 2;
+        checks.push({
+          id: "hole-edge-distance",
+          name: "Hole Edge Clearance",
+          description: "Minimum distance from holes to edges",
+          status: "warning",
+          details: `${smFeatures.holeCount} holes require ≥${minHoleEdgeDistance.toFixed(1)}mm edge clearance`,
+          icon: <Circle className="w-4 h-4" />,
+          category: "manufacturability",
+          severity: "medium",
+          potentialSavings: 20,
+        });
+
+        recommendations.push(
+          `🔵 Move holes ≥${minHoleEdgeDistance.toFixed(1)}mm from edges to prevent deformation during cutting/punching ($20 savings).`,
+        );
+        totalPotentialSavings += 20;
+      }
+
+      // SM-ENT-8: Minimum Hole Size
+      if (smFeatures.holeCount > 0) {
+        const minHoleDiameter = smFeatures.thickness * 1.5;
+        checks.push({
+          id: "min-hole-size-sheet",
+          name: "Minimum Hole Diameter",
+          description: "Sheet metal hole size limits",
+          status: "info",
+          details: `Minimum: ${minHoleDiameter.toFixed(1)}mm (1.5× material thickness)`,
+          icon: <Circle className="w-4 h-4" />,
+          category: "manufacturability",
+          severity: "low",
+        });
+      }
+
+      // SM-ENT-9: Laser Cutting Kerf Width
+      if (smFeatures.recommendedCuttingMethod === "laser") {
+        const kerfWidth = smFeatures.thickness <= 3 ? 0.2 : 0.3;
+        checks.push({
+          id: "laser-kerf-width",
+          name: "Laser Cutting Kerf",
+          description: "Material removal width compensation",
+          status: "pass",
+          details: `${kerfWidth}mm kerf width for ${smFeatures.thickness}mm material`,
+          icon: <Zap className="w-4 h-4" />,
+          category: "geometry",
+          severity: "low",
+        });
+      }
+
+      // SM-ENT-10: Weldment Preparation
+      if (smFeatures.complexity === "very-complex") {
+        checks.push({
+          id: "weldment-prep",
+          name: "Welding & Assembly",
+          description: "Part requires welding or multi-piece assembly",
+          status: "warning",
+          details: "Complex geometry may need sub-assemblies",
+          icon: <Layers className="w-4 h-4" />,
+          category: "feasibility",
+          severity: "high",
+          potentialSavings: 80,
+        });
+
+        recommendations.push(
+          `🔥 Complex design may require welded assembly. Consider single-piece redesign for $80 savings.`,
+        );
+        totalPotentialSavings += 80;
+      }
+
+      // SM-ENT-11: Powder Coating Considerations
+      if (
+        part.finish === "powder-coated" ||
+        part.finish === "powder-coated-custom"
+      ) {
+        checks.push({
+          id: "powder-coating-prep",
+          name: "Powder Coating Design",
+          description: "Coating thickness and drainage holes",
+          status: "info",
+          details: "0.08-0.12mm coating thickness, drainage holes required",
+          icon: <Droplet className="w-4 h-4" />,
+          category: "manufacturability",
+          severity: "low",
+        });
+
+        recommendations.push(
+          `🎨 For powder coating: Add drainage holes in pockets to prevent fluid trapping.`,
+        );
+      }
+
+      // SM-ENT-12: Tab & Breakout Features
+      if (smFeatures.flatArea > 10000) {
+        // Large parts
+        checks.push({
+          id: "micro-joints",
+          name: "Micro-Joints & Tabs",
+          description: "Part retention during cutting",
+          status: "info",
+          details: "Large part requires 4-6 micro-joints",
+          icon: <Layers className="w-4 h-4" />,
+          category: "manufacturability",
+          severity: "low",
+        });
+      }
+
+      // SM-ENT-13: Bend Sequence Optimization
+      if (smFeatures.bendCount > 4) {
+        const requiresSpecialFixturing =
+          smFeatures.requiresMultipleSetups || smFeatures.bendCount > 8;
+        checks.push({
+          id: "bend-sequence",
+          name: "Bend Sequence Analysis",
+          description: "Optimal bending order and tooling",
+          status: requiresSpecialFixturing ? "warning" : "pass",
+          details: `${smFeatures.bendCount} bends${requiresSpecialFixturing ? " require special sequencing" : ""}`,
+          icon: <Activity className="w-4 h-4" />,
+          category: "bending",
+          severity: requiresSpecialFixturing ? "medium" : "low",
+          potentialSavings: requiresSpecialFixturing ? 35 : 0,
+        });
+
+        if (requiresSpecialFixturing) {
+          recommendations.push(
+            `🔧 Complex bend sequence requires specialized fixtures. Simplify to save $35.`,
+          );
+          totalPotentialSavings += 35;
+        }
+      }
+
+      // SM-ENT-14: Countersinking for Sheet Metal
+      if (smFeatures.holeCount > 10) {
+        checks.push({
+          id: "countersink-sheet",
+          name: "Countersink Operations",
+          description: "Secondary hole operations on sheet metal",
+          status: "info",
+          details: `${smFeatures.holeCount} holes may require countersinking for flush fasteners`,
+          icon: <Circle className="w-4 h-4" />,
+          category: "features",
+          severity: "low",
+          potentialSavings: smFeatures.holeCount * 0.5,
+        });
+      }
+
+      // SM-ENT-15: Notch & Cutout Design
+      if (smFeatures.complexity !== "simple") {
+        checks.push({
+          id: "notch-design",
+          name: "Notches & Cutouts",
+          description: "Internal cutout geometry validation",
+          status: "info",
+          details: "Corner radii should match material thickness",
+          icon: <Maximize2 className="w-4 h-4" />,
+          category: "manufacturability",
+          severity: "low",
+        });
+
+        recommendations.push(
+          `✂️ Ensure internal cutout corners have R≥${smFeatures.thickness.toFixed(1)}mm radii.`,
+        );
+      }
+
+      // Material Thickness Validation
+      checks.push({
+        id: "sheet-thickness-enterprise",
+        name: "Material Thickness",
+        description: "Sheet metal thickness validation",
+        status:
+          smFeatures.thickness >= 0.5 && smFeatures.thickness <= 25
+            ? "pass"
+            : "warning",
+        details: `${smFeatures.thickness.toFixed(2)}mm${smFeatures.partType ? ` • ${smFeatures.partType.replace(/-/g, " ").toUpperCase()}` : ""}`,
+        icon: <Layers className="w-4 h-4" />,
+        category: "geometry",
+        severity:
+          smFeatures.thickness < 0.5 || smFeatures.thickness > 25
+            ? "high"
+            : "low",
+      });
+
+      // Bend Radius Check (Enhanced)
+      if (smFeatures.bendCount > 0) {
+        const idealMinRadius = smFeatures.thickness * 1.0;
+        const isBendRadiusOk = smFeatures.minBendRadius >= idealMinRadius;
+
+        checks.push({
+          id: "bend-radius-enterprise",
+          name: "Bend Radius",
+          description: "Minimum bend radius validation",
+          status: isBendRadiusOk
+            ? "pass"
+            : smFeatures.hasSharptBends
+              ? "critical"
+              : "warning",
+          details: `${smFeatures.minBendRadius.toFixed(2)}mm (${(smFeatures.minBendRadius / smFeatures.thickness).toFixed(1)}x material)`,
+          icon: <Activity className="w-4 h-4" />,
+          category: "feasibility",
+          severity: smFeatures.hasSharptBends
+            ? "critical"
+            : isBendRadiusOk
+              ? "low"
+              : "medium",
+          potentialSavings: !isBendRadiusOk ? 40 : 0,
+        });
+
+        if (!isBendRadiusOk) {
+          recommendations.push(
+            `⚠️ Increase bend radius to ${idealMinRadius.toFixed(1)}mm minimum to prevent cracking ($40 rework risk).`,
+          );
+          totalPotentialSavings += 40;
+        }
+      }
+
+      // Cutting Method & Efficiency
+      if (smFeatures.recommendedCuttingMethod) {
+        checks.push({
+          id: "cutting-method-enterprise",
+          name: "Cutting Process",
+          description: "Optimal cutting method selection",
+          status: "pass",
+          details: `${smFeatures.recommendedCuttingMethod.replace("-", " ").toUpperCase()} • ${smFeatures.estimatedCuttingTime?.toFixed(1)}min`,
+          icon: <Zap className="w-4 h-4" />,
+          category: "optimization",
+          severity: "low",
+        });
+      }
+
+      // Nesting Efficiency
+      if (smFeatures.nestingEfficiency) {
+        const isEfficient = smFeatures.nestingEfficiency > 0.75;
+        const wasteSavings = !isEfficient
+          ? Math.round(
+              (((1 - smFeatures.nestingEfficiency) * smFeatures.flatArea) /
+                1000) *
+                0.5,
+            )
+          : 0;
+
+        checks.push({
+          id: "nesting-efficiency-enterprise",
+          name: "Material Utilization",
+          description: "Sheet nesting efficiency",
+          status: isEfficient ? "pass" : "warning",
+          details: `${(smFeatures.nestingEfficiency * 100).toFixed(0)}% utilization • ${((1 - smFeatures.nestingEfficiency) * 100).toFixed(0)}% scrap`,
+          icon: <TrendingDown className="w-4 h-4" />,
+          category: "optimization",
+          severity: isEfficient ? "low" : "medium",
+          potentialSavings: wasteSavings,
+        });
+
+        if (!isEfficient && wasteSavings > 10) {
+          recommendations.push(
+            `📊 Material waste at ${((1 - smFeatures.nestingEfficiency) * 100).toFixed(0)}%. Optimize part shape for $${wasteSavings} savings.`,
+          );
+          totalPotentialSavings += wasteSavings;
+        }
+      }
+
+      // Complexity & Setup Analysis
+      const complexity = smFeatures.complexity || "moderate";
+      const requiresMultipleSetups = smFeatures.requiresMultipleSetups || false;
+
+      if (
+        complexity === "complex" ||
+        complexity === "very-complex" ||
+        requiresMultipleSetups
+      ) {
+        const setupCost = requiresMultipleSetups ? 45 : 0;
+        checks.push({
+          id: "manufacturing-complexity-enterprise",
+          name: "Manufacturing Complexity",
+          description: `${complexity.toUpperCase()} part${requiresMultipleSetups ? ", multiple setups" : ""}`,
+          status:
+            complexity === "very-complex" || requiresMultipleSetups
+              ? "warning"
+              : "info",
+          details: `${smFeatures.bendCount} bends • ${smFeatures.holeCount} holes • ${smFeatures.estimatedCuttingTime?.toFixed(0)}+${smFeatures.estimatedFormingTime?.toFixed(0)}min`,
+          icon: <LayoutDashboard className="w-4 h-4" />,
+          category: "feasibility",
+          severity: requiresMultipleSetups
+            ? "high"
+            : complexity === "very-complex"
+              ? "medium"
+              : "low",
+          potentialSavings: setupCost,
+        });
+
+        if (requiresMultipleSetups) {
+          recommendations.push(
+            `🔧 Multiple setups required add $${setupCost}. Consider single-setup redesign.`,
+          );
+          totalPotentialSavings += setupCost;
+        }
+      }
+
+      // Small Features Warning
+      if (smFeatures.hasSmallFeatures) {
+        checks.push({
+          id: "small-features-enterprise",
+          name: "Small Features",
+          description: "Features smaller than recommended",
+          status: "warning",
+          details: "Features <2mm may be difficult to form accurately",
+          icon: <Ruler className="w-4 h-4" />,
+          category: "manufacturability",
+          severity: "medium",
+          potentialSavings: 20,
+        });
+
+        recommendations.push(
+          `⚠️ Small features (<2mm) detected. Increase to ≥2mm for better quality ($20 rework savings).`,
+        );
+        totalPotentialSavings += 20;
+      }
+
+      // Tolerance Feasibility
+      if (smFeatures.hasTightTolerance) {
+        checks.push({
+          id: "tolerance-feasibility-enterprise",
+          name: "Tolerance Requirements",
+          description: "Tight tolerances on sheet metal",
+          status: "warning",
+          details:
+            "Tolerances <±0.1mm require secondary operations (grinding/milling)",
+          icon: <Ruler className="w-4 h-4" />,
+          category: "tolerances",
+          severity: "medium",
+          potentialSavings: 35,
+        });
+
+        recommendations.push(
+          `📏 Tight tolerances add $35. Relax to ±0.2mm if acceptable.`,
+        );
+        totalPotentialSavings += 35;
+      }
+
+      // Cut Path Optimization
+      if (smFeatures.straightCutLength && smFeatures.curvedCutLength) {
+        const totalCutLength =
+          smFeatures.straightCutLength + smFeatures.curvedCutLength;
+        const complexCutRatio = smFeatures.curvedCutLength / totalCutLength;
+
+        if (complexCutRatio > 0.3) {
+          const savings = Math.round(smFeatures.curvedCutLength / 100);
+          checks.push({
+            id: "cut-path-optimization-enterprise",
+            name: "Cutting Path Complexity",
+            description: "High ratio of complex cuts",
+            status: "warning",
+            details: `${(complexCutRatio * 100).toFixed(0)}% curved cuts (${(smFeatures.curvedCutLength / 1000).toFixed(1)}m)`,
+            icon: <Zap className="w-4 h-4" />,
+            category: "optimization",
+            severity: "medium",
+            potentialSavings: savings,
+          });
+
+          recommendations.push(
+            `✂️ ${(complexCutRatio * 100).toFixed(0)}% curved cuts slow production. Simplify for $${savings} savings.`,
+          );
+          totalPotentialSavings += savings;
+        }
+      }
+    }
+
     // SHEET METAL SPECIFIC CHECKS
-    
+
     // SM1: Bend Operations (Sheet Metal only)
     if (isSheetMetal && geometry.sheetMetalFeatures?.bends) {
       const bends = geometry.sheetMetalFeatures.bends;
@@ -597,10 +1281,14 @@ function analyzeDFM(part: PartConfig, geometryFeatures?: GeometryFeatureMap): DF
       const materialThickness = geometry.boundingBox?.z || 1.0;
       const minRecommendedRadius = materialThickness * 1.5;
 
-      const bendStatus = 
-        sharpBends > 0 ? "critical" :
-        minRadius < minRecommendedRadius ? "warning" :
-        bendCount > 20 ? "warning" : "pass";
+      const bendStatus =
+        sharpBends > 0
+          ? "critical"
+          : minRadius < minRecommendedRadius
+            ? "warning"
+            : bendCount > 20
+              ? "warning"
+              : "pass";
 
       let bendSavings = 0;
       if (sharpBends > 0) bendSavings += sharpBends * 35;
@@ -614,18 +1302,23 @@ function analyzeDFM(part: PartConfig, geometryFeatures?: GeometryFeatureMap): DF
         category: "bending",
         icon: <Layers className="w-5 h-5" />,
         details: `${bendCount} bends, R${minRadius.toFixed(1)}mm minimum`,
-        severity: sharpBends > 0 ? "critical" : minRadius < minRecommendedRadius ? "high" : "low",
+        severity:
+          sharpBends > 0
+            ? "critical"
+            : minRadius < minRecommendedRadius
+              ? "high"
+              : "low",
         potentialSavings: bendSavings,
         actionable: bendSavings > 0,
       });
 
       if (sharpBends > 0) {
         recommendations.push(
-          `Critical: ${sharpBends} sharp bends (radius < t) detected. Increase bend radius to ≥${minRecommendedRadius.toFixed(1)}mm. Savings: $${bendSavings}`
+          `Critical: ${sharpBends} sharp bends (radius < t) detected. Increase bend radius to ≥${minRecommendedRadius.toFixed(1)}mm. Savings: $${bendSavings}`,
         );
       } else if (minRadius < minRecommendedRadius) {
         recommendations.push(
-          `Bend radius ${minRadius.toFixed(1)}mm is tight for ${materialThickness}mm material. Recommended: ${minRecommendedRadius.toFixed(1)}mm.`
+          `Bend radius ${minRadius.toFixed(1)}mm is tight for ${materialThickness}mm material. Recommended: ${minRecommendedRadius.toFixed(1)}mm.`,
         );
       }
 
@@ -641,9 +1334,8 @@ function analyzeDFM(part: PartConfig, geometryFeatures?: GeometryFeatureMap): DF
       const materialThickness = geometry.boundingBox?.z || 1.0;
       const minRecommendedLength = materialThickness * 3;
 
-      const flangeStatus = 
-        shortFlanges > 3 ? "critical" :
-        shortFlanges > 0 ? "warning" : "pass";
+      const flangeStatus =
+        shortFlanges > 3 ? "critical" : shortFlanges > 0 ? "warning" : "pass";
 
       const flangeSavings = shortFlanges * 20;
 
@@ -655,14 +1347,15 @@ function analyzeDFM(part: PartConfig, geometryFeatures?: GeometryFeatureMap): DF
         category: "forming",
         icon: <Maximize2 className="w-5 h-5" />,
         details: `${flangeCount} flanges, ${minFlangeLength.toFixed(1)}mm minimum`,
-        severity: shortFlanges > 3 ? "critical" : shortFlanges > 0 ? "medium" : "low",
+        severity:
+          shortFlanges > 3 ? "critical" : shortFlanges > 0 ? "medium" : "low",
         potentialSavings: flangeSavings,
         actionable: flangeSavings > 0,
       });
 
       if (shortFlanges > 0) {
         recommendations.push(
-          `${shortFlanges} flanges too short (< ${minRecommendedLength.toFixed(1)}mm). Extend to ≥${minRecommendedLength.toFixed(1)}mm. Savings: $${flangeSavings}`
+          `${shortFlanges} flanges too short (< ${minRecommendedLength.toFixed(1)}mm). Extend to ≥${minRecommendedLength.toFixed(1)}mm. Savings: $${flangeSavings}`,
         );
         totalPotentialSavings += flangeSavings;
       }
@@ -675,7 +1368,8 @@ function analyzeDFM(part: PartConfig, geometryFeatures?: GeometryFeatureMap): DF
       const sharpCorners = notches.sharpCorners || 0;
       const minRadius = notches.minRadius || 0;
 
-      const notchStatus = sharpCorners > 5 ? "critical" : sharpCorners > 0 ? "warning" : "pass";
+      const notchStatus =
+        sharpCorners > 5 ? "critical" : sharpCorners > 0 ? "warning" : "pass";
       const notchSavings = sharpCorners * 8;
 
       checks.push({
@@ -686,14 +1380,15 @@ function analyzeDFM(part: PartConfig, geometryFeatures?: GeometryFeatureMap): DF
         category: "forming",
         icon: <Circle className="w-5 h-5" />,
         details: `${notchCount} notches, ${sharpCorners} sharp corners`,
-        severity: sharpCorners > 5 ? "high" : sharpCorners > 0 ? "medium" : "low",
+        severity:
+          sharpCorners > 5 ? "high" : sharpCorners > 0 ? "medium" : "low",
         potentialSavings: notchSavings,
         actionable: notchSavings > 0,
       });
 
       if (sharpCorners > 0) {
         recommendations.push(
-          `${sharpCorners} notches have sharp corners. Add R0.5mm corner relief. Savings: $${notchSavings}.`
+          `${sharpCorners} notches have sharp corners. Add R0.5mm corner relief. Savings: $${notchSavings}.`,
         );
         totalPotentialSavings += notchSavings;
       }
@@ -712,17 +1407,24 @@ function analyzeDFM(part: PartConfig, geometryFeatures?: GeometryFeatureMap): DF
         severity: features.undercuts.requires5Axis ? "high" : "low",
         potentialSavings: features.undercuts.requires5Axis ? 180 : 0,
         actionable: features.undercuts.requires5Axis,
-        selectionHint: geometryFeatures && geometryFeatures.undercuts.length > 0 ? {
-          type: 'feature',
-          featureType: 'undercuts',
-          location: geometryFeatures.undercuts[0].centroid,
-          triangles: geometryFeatures.undercuts.flatMap(u => u.triangles).slice(0, 120),
-          description: `${geometryFeatures.undercuts.length} undercut regions with downward-facing geometry (confidence: ${(geometryFeatures.undercuts[0].confidence * 100).toFixed(0)}%)`
-        } : undefined,
+        selectionHint:
+          geometryFeatures && geometryFeatures.undercuts.length > 0
+            ? {
+                type: "feature",
+                featureType: "undercuts",
+                location: geometryFeatures.undercuts[0].centroid,
+                triangles: geometryFeatures.undercuts
+                  .flatMap((u) => u.triangles)
+                  .slice(0, 120),
+                description: `${geometryFeatures.undercuts.length} undercut regions with downward-facing geometry (confidence: ${(geometryFeatures.undercuts[0].confidence * 100).toFixed(0)}%)`,
+              }
+            : undefined,
       });
 
       if (features.undercuts.requires5Axis) {
-        recommendations.push(`${features.undercuts.count} undercuts require 5-axis machining. Redesign to eliminate undercuts for 28% cost reduction.`);
+        recommendations.push(
+          `${features.undercuts.count} undercuts require 5-axis machining. Redesign to eliminate undercuts for 28% cost reduction.`,
+        );
         totalPotentialSavings += 180;
       }
     }
@@ -733,20 +1435,30 @@ function analyzeDFM(part: PartConfig, geometryFeatures?: GeometryFeatureMap): DF
         id: "tool-access",
         name: "Tool Accessibility",
         description: "Setup complexity assessment",
-        status: features.toolAccess.requiresMultiAxisMachining ? "warning" : "pass",
+        status: features.toolAccess.requiresMultiAxisMachining
+          ? "warning"
+          : "pass",
         details: `${features.toolAccess.estimatedSetupCount} setups, ${features.toolAccess.restrictedAreas} restricted areas`,
         icon: <LayoutDashboard className="w-4 h-4" />,
         category: "manufacturability",
-        severity: features.toolAccess.requiresMultiAxisMachining ? "high" : "medium",
+        severity: features.toolAccess.requiresMultiAxisMachining
+          ? "high"
+          : "medium",
         potentialSavings: features.toolAccess.estimatedSetupCount * 35,
       });
 
-      recommendations.push(`${features.toolAccess.restrictedAreas} restricted tool access areas require ${features.toolAccess.estimatedSetupCount} setups. Simplify geometry to reduce cost by $${features.toolAccess.estimatedSetupCount * 35}.`);
+      recommendations.push(
+        `${features.toolAccess.restrictedAreas} restricted tool access areas require ${features.toolAccess.estimatedSetupCount} setups. Simplify geometry to reduce cost by $${features.toolAccess.estimatedSetupCount * 35}.`,
+      );
       totalPotentialSavings += features.toolAccess.estimatedSetupCount * 35;
     }
 
     // Surface finish requirements (CNC only)
-    if (isCNC && (features.surfaceFinish.requiresPolishing || features.surfaceFinish.criticalSurfaces > 5)) {
+    if (
+      isCNC &&
+      (features.surfaceFinish.requiresPolishing ||
+        features.surfaceFinish.criticalSurfaces > 5)
+    ) {
       checks.push({
         id: "surface-finish",
         name: "Surface Finish Requirements",
@@ -760,7 +1472,9 @@ function analyzeDFM(part: PartConfig, geometryFeatures?: GeometryFeatureMap): DF
       });
 
       if (features.surfaceFinish.criticalSurfaces > 5) {
-        recommendations.push(`${features.surfaceFinish.criticalSurfaces} surfaces require fine finish. Relax to standard finish on non-critical surfaces for $${features.surfaceFinish.criticalSurfaces * 8} savings.`);
+        recommendations.push(
+          `${features.surfaceFinish.criticalSurfaces} surfaces require fine finish. Relax to standard finish on non-critical surfaces for $${features.surfaceFinish.criticalSurfaces * 8} savings.`,
+        );
         totalPotentialSavings += features.surfaceFinish.criticalSurfaces * 8;
       }
     }
@@ -768,10 +1482,13 @@ function analyzeDFM(part: PartConfig, geometryFeatures?: GeometryFeatureMap): DF
     // ===== TOLERANCE ANALYSIS =====
     if (geometry.toleranceFeasibility) {
       const tol = geometry.toleranceFeasibility;
-      const tolStatus = 
-        !tol.isAchievable ? "fail" :
-        tol.concerns.length > 2 ? "warning" :
-        tol.additionalCost > 100 ? "warning" : "pass";
+      const tolStatus = !tol.isAchievable
+        ? "fail"
+        : tol.concerns.length > 2
+          ? "warning"
+          : tol.additionalCost > 100
+            ? "warning"
+            : "pass";
 
       checks.push({
         id: "tolerance-feasibility",
@@ -781,13 +1498,19 @@ function analyzeDFM(part: PartConfig, geometryFeatures?: GeometryFeatureMap): DF
         details: `${tol.requiredProcess}, Cpk ${tol.estimatedCapability.toFixed(2)}`,
         icon: <CheckCheck className="w-4 h-4" />,
         category: "tolerances",
-        severity: !tol.isAchievable ? "critical" : tol.concerns.length > 2 ? "high" : "medium",
+        severity: !tol.isAchievable
+          ? "critical"
+          : tol.concerns.length > 2
+            ? "high"
+            : "medium",
         potentialSavings: tol.additionalCost,
         actionable: tol.concerns.length > 0,
       });
 
       if (!tol.isAchievable) {
-        recommendations.push("Requested tolerances not achievable with current geometry. See concerns for details.");
+        recommendations.push(
+          "Requested tolerances not achievable with current geometry. See concerns for details.",
+        );
       }
 
       tol.concerns.forEach((concern) => {
@@ -811,14 +1534,14 @@ function analyzeDFM(part: PartConfig, geometryFeatures?: GeometryFeatureMap): DF
     if (geometry.toleranceFeasibility?.gdtSupport) {
       const gdt = geometry.toleranceFeasibility.gdtSupport;
       const hasGDT = gdt.flatness || gdt.perpendicularity || gdt.position;
-      
+
       if (hasGDT) {
         checks.push({
           id: "gdt-requirements",
           name: "GD&T Requirements",
           description: "Geometric dimensioning & tolerancing",
           status: "info",
-          details: `${gdt.flatness ? 'Flatness' : ''}${gdt.perpendicularity ? ', Perpendicularity' : ''}${gdt.position ? ', Position' : ''}`,
+          details: `${gdt.flatness ? "Flatness" : ""}${gdt.perpendicularity ? ", Perpendicularity" : ""}${gdt.position ? ", Position" : ""}`,
           icon: <Ruler className="w-4 h-4" />,
           category: "tolerances",
           severity: "medium",
@@ -829,16 +1552,27 @@ function analyzeDFM(part: PartConfig, geometryFeatures?: GeometryFeatureMap): DF
     // ===== OPTIMIZATION OPPORTUNITIES =====
     const dfmIssues = geometry.dfmIssues || [];
     dfmIssues.forEach((issue, index) => {
-      if (issue.severity === "critical" && issue.potentialSavings && issue.potentialSavings > 30) {
+      if (
+        issue.severity === "critical" &&
+        issue.potentialSavings &&
+        issue.potentialSavings > 30
+      ) {
         checks.push({
           id: `dfm-optimization-${index}`,
-          name: issue.issue.split('.')[0].substring(0, 40),
+          name: issue.issue.split(".")[0].substring(0, 40),
           description: issue.recommendation.substring(0, 60),
           status: issue.severity === "critical" ? "critical" : "warning",
-          details: issue.potentialSavings ? `$${issue.potentialSavings} savings` : undefined,
+          details: issue.potentialSavings
+            ? `$${issue.potentialSavings} savings`
+            : undefined,
           icon: <Zap className="w-4 h-4" />,
           category: "optimization",
-          severity: issue.severity === "critical" ? "critical" : issue.severity === "warning" ? "medium" : "low",
+          severity:
+            issue.severity === "critical"
+              ? "critical"
+              : issue.severity === "warning"
+                ? "medium"
+                : "low",
           potentialSavings: issue.potentialSavings,
           actionable: true,
         });
@@ -850,12 +1584,12 @@ function analyzeDFM(part: PartConfig, geometryFeatures?: GeometryFeatureMap): DF
     });
 
     // ===== ADVANCED ENTERPRISE-LEVEL CHECKS =====
-    
+
     // Surface Roughness Analysis
     if (isCNC && features.surfaceFinish) {
       const requiresPolishing = features.surfaceFinish.estimatedRa > 1.6;
       const criticalSurfaces = features.surfaceFinish.criticalSurfaces || 0;
-      
+
       if (requiresPolishing || criticalSurfaces > 0) {
         checks.push({
           id: "surface-finish-requirements",
@@ -869,20 +1603,22 @@ function analyzeDFM(part: PartConfig, geometryFeatures?: GeometryFeatureMap): DF
           potentialSavings: requiresPolishing ? criticalSurfaces * 15 : 0,
           actionable: true,
         });
-        
+
         if (requiresPolishing) {
-          recommendations.push(`${criticalSurfaces} surfaces require Ra <1.6μm finish. Consider relaxing to Ra 3.2μm for ${criticalSurfaces * 15}$ savings.`);
+          recommendations.push(
+            `${criticalSurfaces} surfaces require Ra <1.6μm finish. Consider relaxing to Ra 3.2μm for ${criticalSurfaces * 15}$ savings.`,
+          );
           totalPotentialSavings += criticalSurfaces * 15;
         }
       }
     }
-    
+
     // Feature Interaction Analysis
     if (geometryFeatures) {
       const holeCount = geometryFeatures.holes.length;
       const pocketCount = geometryFeatures.pockets.length;
       const threadCount = geometryFeatures.threads.length;
-      
+
       // Check for features that are too close together
       let proximityIssues = 0;
       if (holeCount > 1) {
@@ -892,14 +1628,14 @@ function analyzeDFM(part: PartConfig, geometryFeatures?: GeometryFeatureMap): DF
             const hole2 = geometryFeatures.holes[j];
             const distance = Math.sqrt(
               Math.pow(hole1.centroid.x - hole2.centroid.x, 2) +
-              Math.pow(hole1.centroid.y - hole2.centroid.y, 2) +
-              Math.pow(hole1.centroid.z - hole2.centroid.z, 2)
+                Math.pow(hole1.centroid.y - hole2.centroid.y, 2) +
+                Math.pow(hole1.centroid.z - hole2.centroid.z, 2),
             );
             if (distance < 5) proximityIssues++; // Features within 5mm
           }
         }
       }
-      
+
       if (proximityIssues > 0) {
         checks.push({
           id: "feature-proximity-warning",
@@ -913,18 +1649,23 @@ function analyzeDFM(part: PartConfig, geometryFeatures?: GeometryFeatureMap): DF
           potentialSavings: proximityIssues > 5 ? 40 : 0,
           actionable: true,
         });
-        
+
         if (proximityIssues > 5) {
-          recommendations.push(`${proximityIssues} features have insufficient spacing (<5mm). Increase spacing to avoid tool interference.`);
+          recommendations.push(
+            `${proximityIssues} features have insufficient spacing (<5mm). Increase spacing to avoid tool interference.`,
+          );
         }
       }
     }
-    
+
     // Material Utilization Analysis
     if (geometry.volume && geometry.boundingBox) {
-      const boxVolume = geometry.boundingBox.x * geometry.boundingBox.y * geometry.boundingBox.z;
+      const boxVolume =
+        geometry.boundingBox.x *
+        geometry.boundingBox.y *
+        geometry.boundingBox.z;
       const materialUtilization = (geometry.volume / boxVolume) * 100;
-      
+
       if (materialUtilization < 30) {
         checks.push({
           id: "material-efficiency",
@@ -938,18 +1679,26 @@ function analyzeDFM(part: PartConfig, geometryFeatures?: GeometryFeatureMap): DF
           potentialSavings: materialUtilization < 20 ? 80 : 0,
           actionable: true,
         });
-        
+
         if (materialUtilization < 20) {
-          recommendations.push(`Low material utilization (${materialUtilization.toFixed(1)}%). Consider design optimization or alternative manufacturing process.`);
+          recommendations.push(
+            `Low material utilization (${materialUtilization.toFixed(1)}%). Consider design optimization or alternative manufacturing process.`,
+          );
           totalPotentialSavings += 80;
         }
       }
     }
-    
+
     // Assembly Considerations
-    if (geometryFeatures && (geometryFeatures.holes.length > 10 || geometryFeatures.threads.length > 5)) {
-      const fastenerCount = geometryFeatures.threads.length + Math.floor(geometryFeatures.holes.length * 0.4);
-      
+    if (
+      geometryFeatures &&
+      (geometryFeatures.holes.length > 10 ||
+        geometryFeatures.threads.length > 5)
+    ) {
+      const fastenerCount =
+        geometryFeatures.threads.length +
+        Math.floor(geometryFeatures.holes.length * 0.4);
+
       checks.push({
         id: "assembly-complexity",
         name: "Assembly Features",
@@ -961,24 +1710,47 @@ function analyzeDFM(part: PartConfig, geometryFeatures?: GeometryFeatureMap): DF
         severity: "low",
       });
     }
-    
+
     // Manufacturability Score (Enterprise KPI)
     const manufacturabilityFactors = {
-      simpleGeometry: geometry.complexity === 'simple' ? 25 : geometry.complexity === 'moderate' ? 15 : 5,
-      standardFeatures: (features.holes.count < 15 && features.pockets.count < 8) ? 20 : 10,
+      simpleGeometry:
+        geometry.complexity === "simple"
+          ? 25
+          : geometry.complexity === "moderate"
+            ? 15
+            : 5,
+      standardFeatures:
+        features.holes.count < 15 && features.pockets.count < 8 ? 20 : 10,
       noUndercuts: !features.undercuts.requires5Axis ? 20 : 5,
-      goodTolerance: part.tolerance === 'standard' ? 15 : part.tolerance === 'precision' ? 10 : 5,
-      wallThickness: features.thinWalls.risk === 'low' ? 20 : features.thinWalls.risk === 'medium' ? 10 : 5,
+      goodTolerance:
+        part.tolerance === "standard"
+          ? 15
+          : part.tolerance === "precision"
+            ? 10
+            : 5,
+      wallThickness:
+        features.thinWalls.risk === "low"
+          ? 20
+          : features.thinWalls.risk === "medium"
+            ? 10
+            : 5,
     };
-    
-    const manufacturabilityScore = Object.values(manufacturabilityFactors).reduce((sum, val) => sum + val, 0);
-    
+
+    const manufacturabilityScore = Object.values(
+      manufacturabilityFactors,
+    ).reduce((sum, val) => sum + val, 0);
+
     checks.push({
       id: "manufacturability-index",
       name: "DFM Score",
       description: `${manufacturabilityScore}/100 manufacturability rating`,
-      status: manufacturabilityScore >= 80 ? "pass" : manufacturabilityScore >= 60 ? "info" : "warning",
-      details: `${manufacturabilityScore >= 80 ? 'Excellent' : manufacturabilityScore >= 60 ? 'Good' : 'Challenging'} design for manufacturing`,
+      status:
+        manufacturabilityScore >= 80
+          ? "pass"
+          : manufacturabilityScore >= 60
+            ? "info"
+            : "warning",
+      details: `${manufacturabilityScore >= 80 ? "Excellent" : manufacturabilityScore >= 60 ? "Good" : "Challenging"} design for manufacturing`,
       icon: <Shield className="w-4 h-4" />,
       category: "optimization",
       severity: manufacturabilityScore < 60 ? "medium" : "low",
@@ -986,9 +1758,9 @@ function analyzeDFM(part: PartConfig, geometryFeatures?: GeometryFeatureMap): DF
 
     // Process complexity
     let complexityScore = 0;
-    
+
     if (isCNC) {
-      complexityScore = 
+      complexityScore =
         (features.holes.count > 10 ? 1 : 0) +
         (features.pockets.count > 5 ? 1 : 0) +
         (features.threads.count > 8 ? 1 : 0) +
@@ -998,7 +1770,7 @@ function analyzeDFM(part: PartConfig, geometryFeatures?: GeometryFeatureMap): DF
       const bends = geometry.sheetMetalFeatures?.bends?.count || 0;
       const flanges = geometry.sheetMetalFeatures?.flanges?.count || 0;
       const notches = geometry.sheetMetalFeatures?.notches?.count || 0;
-      
+
       complexityScore =
         (bends > 8 ? 1 : 0) +
         (flanges > 6 ? 1 : 0) +
@@ -1012,7 +1784,7 @@ function analyzeDFM(part: PartConfig, geometryFeatures?: GeometryFeatureMap): DF
       name: "Processing Complexity",
       description: "Overall machining difficulty",
       status: geometry.complexity === "complex" ? "warning" : "pass",
-      details: `${geometry.complexity} part, ${complexityScore > 3 ? 'high' : complexityScore > 1 ? 'moderate' : 'low'} complexity score`,
+      details: `${geometry.complexity} part, ${complexityScore > 3 ? "high" : complexityScore > 1 ? "moderate" : "low"} complexity score`,
       icon: <LayoutDashboard className="w-4 h-4" />,
       category: "optimization",
       severity: geometry.complexity === "complex" ? "medium" : "low",
@@ -1025,11 +1797,19 @@ function analyzeDFM(part: PartConfig, geometryFeatures?: GeometryFeatureMap): DF
   const failCount = checks.filter((c) => c.status === "fail").length;
   const criticalCount = checks.filter((c) => c.status === "critical").length;
 
-  const overallScore = Math.max(0, Math.round(
-    ((passCount * 100 + warningCount * 60 + failCount * 20 - criticalCount * 50) / (checks.length * 100)) * 100,
-  ));
+  const overallScore = Math.max(
+    0,
+    Math.round(
+      ((passCount * 100 +
+        warningCount * 60 +
+        failCount * 20 -
+        criticalCount * 50) /
+        (checks.length * 100)) *
+        100,
+    ),
+  );
 
-  let manufacturability: DFMAnalysisResult['manufacturability'];
+  let manufacturability: DFMAnalysisResult["manufacturability"];
   if (criticalCount > 0) manufacturability = "critical";
   else if (failCount > 0) manufacturability = "poor";
   else if (warningCount > 3) manufacturability = "fair";
@@ -1037,7 +1817,9 @@ function analyzeDFM(part: PartConfig, geometryFeatures?: GeometryFeatureMap): DF
   else manufacturability = "excellent";
 
   if (criticalCount === 0 && failCount === 0 && warningCount === 0) {
-    recommendations.push("Part is optimized for manufacturing. No design changes required.");
+    recommendations.push(
+      "Part is optimized for manufacturing. No design changes required.",
+    );
   }
 
   return {
@@ -1071,37 +1853,45 @@ const StatTile = ({
   </div>
 );
 
-const DFMAnalysis = ({ 
+const DFMAnalysis = ({
   part,
-}: { 
+  selectedHighlight,
+  onHighlightChange,
+}: {
   part: PartConfig;
+  selectedHighlight?: string | null;
+  onHighlightChange?: (checkId: string | null, selectionHint?: any) => void;
 }) => {
   const [analysis, setAnalysis] = useState<DFMAnalysisResult | null>(null);
   const [isAnalyzing, setIsAnalyzing] = useState(true);
-  const [geometryFeatures, setGeometryFeatures] = useState<GeometryFeatureMap | undefined>(undefined);
+  const [geometryFeatures, setGeometryFeatures] = useState<
+    GeometryFeatureMap | undefined
+  >(undefined);
   const scrollRef = useRef<HTMLDivElement>(null);
 
   // Load and analyze geometry for accurate feature detection
   useEffect(() => {
     async function loadAndAnalyzeGeometry() {
       if (!part.fileObject && !part.filePath) return;
-      
+
       try {
         // Load the file
-        const file = part.fileObject || await fetch(part.filePath!).then(r => r.blob());
-        const fileExt = part.fileName.split('.').pop()?.toLowerCase();
-        
+        const file =
+          part.fileObject ||
+          (await fetch(part.filePath!).then((r) => r.blob()));
+        const fileExt = part.fileName.split(".").pop()?.toLowerCase();
+
         // Only analyze STL files for now (STEP files need backend processing)
-        if (fileExt === 'stl') {
+        if (fileExt === "stl") {
           // Geometry analysis will be implemented with backend integration
           // For now, we skip the 3D viewer functionality
           setGeometryFeatures(undefined);
         }
       } catch (error) {
-        console.warn('Could not analyze geometry features:', error);
+        console.warn("Could not analyze geometry features:", error);
       }
     }
-    
+
     loadAndAnalyzeGeometry();
   }, [part.fileObject, part.filePath, part.fileName]);
 
@@ -1224,12 +2014,16 @@ const DFMAnalysis = ({
           <StatTile
             label="Critical"
             value={analysis.criticalIssues}
-            color={analysis.criticalIssues > 0 ? "text-red-600" : "text-gray-400"}
+            color={
+              analysis.criticalIssues > 0 ? "text-red-600" : "text-gray-400"
+            }
           />
           <StatTile
             label="Issues"
             value={analysis.estimatedIssues}
-            color={analysis.estimatedIssues > 0 ? "text-rose-600" : "text-gray-400"}
+            color={
+              analysis.estimatedIssues > 0 ? "text-rose-600" : "text-gray-400"
+            }
           />
           <StatTile
             label="Passed"
@@ -1254,21 +2048,40 @@ const DFMAnalysis = ({
             Analysis Summary
           </h4>
           <div className="space-y-3 mb-8">
-            {(analysis.processType === "sheet-metal" 
-              ? ["geometry", "bending", "forming", "features", "tolerances", "optimization"]
-              : ["geometry", "manufacturability", "features", "tolerances", "optimization"]
+            {(analysis.processType === "sheet-metal"
+              ? [
+                  "geometry",
+                  "bending",
+                  "forming",
+                  "features",
+                  "tolerances",
+                  "optimization",
+                ]
+              : [
+                  "geometry",
+                  "manufacturability",
+                  "features",
+                  "tolerances",
+                  "optimization",
+                ]
             ).map((cat) => {
               const catChecks = analysis.checks.filter(
                 (c) => c.category === cat,
               );
               if (catChecks.length === 0) return null;
               const pass = catChecks.filter((c) => c.status === "pass").length;
-              const critical = catChecks.filter((c) => c.status === "critical").length;
+              const critical = catChecks.filter(
+                (c) => c.status === "critical",
+              ).length;
               return (
                 <div key={cat} className="flex flex-col gap-1.5">
                   <div className="flex items-center justify-between text-xs font-bold px-1">
                     <span className="capitalize">{cat}</span>
-                    <span className={critical > 0 ? "text-red-600" : "text-gray-400"}>
+                    <span
+                      className={
+                        critical > 0 ? "text-red-600" : "text-gray-400"
+                      }
+                    >
                       {pass}/{catChecks.length}
                     </span>
                   </div>
@@ -1340,19 +2153,38 @@ const DFMAnalysis = ({
           <div className="max-w-xl mx-auto space-y-8">
             {/* Category Groups */}
             {(analysis.processType === "sheet-metal"
-              ? (["geometry", "bending", "forming", "features", "tolerances", "optimization"] as const)
-              : (["geometry", "manufacturability", "features", "tolerances", "optimization"] as const)
+              ? ([
+                  "geometry",
+                  "bending",
+                  "forming",
+                  "features",
+                  "tolerances",
+                  "optimization",
+                ] as const)
+              : ([
+                  "geometry",
+                  "manufacturability",
+                  "features",
+                  "tolerances",
+                  "optimization",
+                ] as const)
             ).map((cat) => {
-              const catChecks = analysis.checks.filter((c) => c.category === cat);
+              const catChecks = analysis.checks.filter(
+                (c) => c.category === cat,
+              );
               if (catChecks.length === 0) return null;
-              
-              const categoryLabel = 
-                cat === "manufacturability" ? "Assessment" :
-                cat === "optimization" ? "Opportunities" :
-                cat === "bending" ? "Operations" :
-                cat === "forming" ? "Features" :
-                "Analysis";
-              
+
+              const categoryLabel =
+                cat === "manufacturability"
+                  ? "Assessment"
+                  : cat === "optimization"
+                    ? "Opportunities"
+                    : cat === "bending"
+                      ? "Operations"
+                      : cat === "forming"
+                        ? "Features"
+                        : "Analysis";
+
               return (
                 <div key={cat} className="space-y-4">
                   <div className="flex items-center gap-3">
@@ -1367,15 +2199,27 @@ const DFMAnalysis = ({
                       <div
                         key={check.id}
                         className={cn(
-                          "group p-4 rounded-xl border flex items-start gap-4 transition-all hover:shadow-md active:scale-[0.99]",
+                          "group p-4 rounded-xl border flex items-start gap-4 transition-all hover:shadow-md cursor-pointer active:scale-[0.99]",
+                          selectedHighlight === check.id
+                            ? "ring-2 ring-blue-500 border-blue-500 shadow-md transform scale-[1.01]"
+                            : "",
                           check.status === "pass"
                             ? "bg-white border-gray-100 hover:border-gray-200"
                             : check.status === "critical"
-                            ? "bg-red-50 border-red-200 hover:border-red-300"
-                            : check.status === "fail"
-                            ? "bg-rose-50 border-rose-200 hover:border-rose-300"
-                            : mood.light + " " + mood.border,
+                              ? "bg-red-50 border-red-200 hover:border-red-300"
+                              : check.status === "fail"
+                                ? "bg-rose-50 border-rose-200 hover:border-rose-300"
+                                : mood.light + " " + mood.border,
                         )}
+                        onClick={() => {
+                          if (onHighlightChange) {
+                            if (selectedHighlight === check.id) {
+                              onHighlightChange(null);
+                            } else {
+                              onHighlightChange(check.id, check.selectionHint);
+                            }
+                          }
+                        }}
                       >
                         <div
                           className={cn(
@@ -1383,10 +2227,10 @@ const DFMAnalysis = ({
                             check.status === "pass"
                               ? "bg-emerald-50 text-emerald-600 border-emerald-100"
                               : check.status === "critical"
-                              ? "bg-red-100 text-red-600 border-red-200"
-                              : check.status === "fail"
-                              ? "bg-rose-100 text-rose-600 border-rose-200"
-                              : "bg-white text-gray-500 border-gray-100",
+                                ? "bg-red-100 text-red-600 border-red-200"
+                                : check.status === "fail"
+                                  ? "bg-rose-100 text-rose-600 border-rose-200"
+                                  : "bg-white text-gray-500 border-gray-100",
                           )}
                         >
                           {check.icon}
@@ -1398,24 +2242,27 @@ const DFMAnalysis = ({
                               {check.name}
                             </span>
                             <div className="flex items-center gap-2 flex-shrink-0">
-                              {check.potentialSavings && check.potentialSavings > 0 && (
-                                <span className="px-2 py-0.5 rounded text-[10px] font-black uppercase tracking-tight bg-green-100 text-green-700">
-                                  ${check.potentialSavings}
-                                </span>
-                              )}
+                              {check.potentialSavings &&
+                                check.potentialSavings > 0 && (
+                                  <span className="px-2 py-0.5 rounded text-[10px] font-black uppercase tracking-tight bg-green-100 text-green-700">
+                                    ${check.potentialSavings}
+                                  </span>
+                                )}
                               <span
                                 className={cn(
                                   "px-2 py-0.5 rounded text-[10px] font-black uppercase tracking-tight",
                                   check.status === "pass"
                                     ? "bg-emerald-100 text-emerald-700"
                                     : check.status === "critical"
-                                    ? "bg-red-600 text-white animate-pulse"
-                                    : check.status === "fail"
-                                    ? "bg-rose-600 text-white"
-                                    : mood.bg + " text-white",
+                                      ? "bg-red-600 text-white animate-pulse"
+                                      : check.status === "fail"
+                                        ? "bg-rose-600 text-white"
+                                        : mood.bg + " text-white",
                                 )}
                               >
-                                {check.status === "pass" ? "✓ OK" : check.status.toUpperCase()}
+                                {check.status === "pass"
+                                  ? "✓ OK"
+                                  : check.status.toUpperCase()}
                               </span>
                             </div>
                           </div>
@@ -1431,13 +2278,19 @@ const DFMAnalysis = ({
                           )}
                           {check.severity && check.status !== "pass" && (
                             <div className="mt-2">
-                              <span className={cn(
-                                "text-[10px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded",
-                                check.severity === "critical" && "bg-red-100 text-red-700",
-                                check.severity === "high" && "bg-orange-100 text-orange-700",
-                                check.severity === "medium" && "bg-amber-100 text-amber-700",
-                                check.severity === "low" && "bg-yellow-100 text-yellow-700",
-                              )}>
+                              <span
+                                className={cn(
+                                  "text-[10px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded",
+                                  check.severity === "critical" &&
+                                    "bg-red-100 text-red-700",
+                                  check.severity === "high" &&
+                                    "bg-orange-100 text-orange-700",
+                                  check.severity === "medium" &&
+                                    "bg-amber-100 text-amber-700",
+                                  check.severity === "low" &&
+                                    "bg-yellow-100 text-yellow-700",
+                                )}
+                              >
                                 {check.severity} priority
                               </span>
                             </div>
@@ -1455,7 +2308,11 @@ const DFMAnalysis = ({
               <div className="inline-flex items-center gap-2 px-3 py-1.5 bg-gray-50 rounded-full border border-gray-100">
                 <Shield className="w-3 h-3 text-gray-400" />
                 <span className="text-[10px] font-black text-gray-500 uppercase tracking-widest">
-                  {analysis.checks.length}+ Point Inspection • {analysis.processType === "sheet-metal" ? "Sheet Metal" : "CNC Machining"} • {analysis.processingComplexity} Complexity
+                  {analysis.checks.length}+ Point Inspection •{" "}
+                  {analysis.processType === "sheet-metal"
+                    ? "Sheet Metal"
+                    : "CNC Machining"}{" "}
+                  • {analysis.processingComplexity} Complexity
                 </span>
               </div>
             </div>

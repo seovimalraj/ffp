@@ -18,6 +18,12 @@ import { analyzeCADFile } from "@/lib/cad-analysis";
 import { useFileUpload } from "@/lib/hooks/use-file-upload";
 import { notify } from "@/lib/toast";
 import { apiClient } from "@/lib/api";
+import { 
+  getDefaultMaterialForProcess,
+  getDefaultFinishForProcess,
+  getDefaultToleranceForProcess,
+  getDefaultThickness 
+} from "@/lib/pricing-engine";
 
 type UploadFileModalProps = {
   open: boolean;
@@ -47,31 +53,113 @@ const UploadFileModal = ({
 
         for (const file of acceptedFiles) {
           console.log(`Analyzing CAD file: ${file.name}`);
-          const geometry = await analyzeCADFile(file);
-
+          
+          // ENTERPRISE-LEVEL: Use backend analysis for STEP files (advanced ray-casting thickness detection)
+          // Use client-side analysis for STL files (faster, no thickness detection needed)
+          const extension = file.name.toLowerCase().split('.').pop();
+          const useBackendAnalysis = ['step', 'stp', 'iges', 'igs'].includes(extension || '');
+          
+          let geometry;
           let uploadedPath = `quotes/temp-${Date.now()}/${file.name}`;
-          try {
-            const { url } = await upload(file);
-            uploadedPath = url;
-          } catch (error) {
-            console.error(`Failed to upload ${file.name}:`, error);
-            notify.error(`Failed to upload ${file.name}`);
-            continue; // Skip if upload fails
+          
+          if (useBackendAnalysis) {
+            console.log(`🔬 Using backend analysis for ${file.name} (advanced thickness detection)`);
+            try {
+              // Upload file first to get URL
+              const { url } = await upload(file);
+              uploadedPath = url;
+              
+              console.log(`📤 File uploaded to: ${url}`);
+              console.log(`🔍 Calling backend API: /api/cad/analyze-geometry`);
+              
+              // Call backend API for accurate analysis with ray-casting
+              const analysisResponse = await fetch('/api/cad/analyze-geometry', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ 
+                  fileUrl: url,
+                  fileName: file.name
+                })
+              });
+              
+              console.log(`📡 Backend API response status: ${analysisResponse.status}`);
+              
+              if (analysisResponse.ok) {
+                const backendGeometry = await analysisResponse.json();
+                geometry = backendGeometry;
+                console.log('✅ Backend analysis complete:', {
+                  process: geometry.recommendedProcess,
+                  thickness: geometry.detectedWallThickness,
+                  confidence: geometry.thicknessConfidence,
+                  method: geometry.thicknessDetectionMethod,
+                  sheetMetalScore: geometry.sheetMetalScore
+                });
+              } else {
+                const errorText = await analysisResponse.text();
+                console.error('❌ Backend analysis failed:', analysisResponse.status, errorText);
+                console.warn('⚠️ Falling back to client-side analysis');
+                geometry = await analyzeCADFile(file);
+              }
+            } catch (error) {
+              console.error('❌ Backend analysis error:', error);
+              console.log('⚠️ Falling back to client-side analysis');
+              geometry = await analyzeCADFile(file);
+            }
+          } else {
+            // STL files - use fast client-side analysis
+            console.log(`⚡ Using client-side analysis for ${file.name}`);
+            geometry = await analyzeCADFile(file);
+            
+            // Upload after analysis for STL
+            try {
+              const { url } = await upload(file);
+              uploadedPath = url;
+            } catch (error) {
+              console.error(`Failed to upload ${file.name}:`, error);
+              notify.error(`Failed to upload ${file.name}`);
+              continue; // Skip if upload fails
+            }
           }
+
+          // Map recommendedProcess to process field
+          const processMap: Record<string, string> = {
+            'sheet-metal': 'sheet-metal',
+            'cnc-milling': 'cnc-milling',
+            'cnc-turning': 'cnc-turning',
+            'injection-molding': 'injection-molding',
+          };
+          const detectedProcess = geometry?.recommendedProcess 
+            ? processMap[geometry.recommendedProcess] || 'cnc-milling'
+            : 'cnc-milling';
+
+          console.log(`Process detection for ${file.name}:`, {
+            recommendedProcess: geometry?.recommendedProcess,
+            detectedProcess,
+            confidence: geometry?.processConfidence,
+            reasoning: geometry?.processReasoning
+          });
+
+          // Use process-specific defaults
+          const defaultMaterial = getDefaultMaterialForProcess(detectedProcess);
+          const defaultFinish = getDefaultFinishForProcess(detectedProcess);
+          const defaultTolerance = getDefaultToleranceForProcess(detectedProcess);
+          const defaultThickness = detectedProcess.includes('sheet') ? getDefaultThickness() : undefined;
 
           uploadResults.push({
             file_name: file.name,
             cad_file_url: uploadedPath,
             cad_file_type: file.name.split(".").pop() || "unknown",
-            material: "aluminum-6061",
+            process: detectedProcess, // Set process based on geometry analysis
+            material: defaultMaterial,
             quantity: 1,
-            tolerance: "standard",
-            finish: "as-machined",
+            tolerance: defaultTolerance,
+            finish: defaultFinish,
             threads: "none",
             inspection: "standard",
             notes: "",
             lead_time_type: "standard",
             lead_time: 7,
+            thickness: defaultThickness,
             geometry,
             certificates: [],
           });
