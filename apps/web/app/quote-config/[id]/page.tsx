@@ -510,7 +510,7 @@ export default function QuoteConfigPage() {
             lead_time: 0,
             geometry,
             pricing: undefined,
-            process: geometry.recommendedProcess || "cnc-milling",
+            process: geometry?.recommendedProcess || "cnc-milling",
             final_price: 0,
             certificates: [],
           };
