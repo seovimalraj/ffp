@@ -5,8 +5,13 @@ import { NextRequest, NextResponse } from 'next/server';
  * Connects to Python CAD service for advanced thickness detection using ray-casting
  */
 export async function POST(request: NextRequest) {
+  console.log('🚀 API ROUTE HIT: /api/cad/analyze-geometry');
+  console.log('   Request method:', request.method);
+  console.log('   Request URL:', request.url);
+  
   try {
     const body = await request.json();
+    console.log('   Request body:', body);
     const { fileUrl, fileName } = body;
 
     if (!fileUrl || !fileName) {
