@@ -556,7 +556,7 @@ export function EditPartModal({
                           localPart.material ||
                             (isSheetMetalProcess(localPart.process)
                               ? "sm-aluminum-5052"
-                              : "aluminum-6061"),
+                              : "AL5052-1.5"),
                           "general",
                         );
 

@@ -300,6 +300,26 @@ const calculatePrice = (
   // Create material spec for pricing engine
   // IMPORTANT: Include thickness for sheet metal materials
   const isSheetMetal = isSheetMetalProcess(processType);
+  
+  // Helper to get valid sheet thickness (clamp unrealistic values)
+  const getValidThickness = () => {
+    // Priority 1: Material's thickness property (from SHEET_METAL_MATERIALS)
+    if ((material as any).thickness && (material as any).thickness <= 25) {
+      return (material as any).thickness;
+    }
+    // Priority 2: User-configured sheet_thickness_mm
+    if (part.sheet_thickness_mm && part.sheet_thickness_mm > 0 && part.sheet_thickness_mm <= 25) {
+      return part.sheet_thickness_mm;
+    }
+    // Priority 3: Geometry sheetMetalFeatures (validate range - bbox values can be huge)
+    const smThickness = part.geometry?.sheetMetalFeatures?.thickness;
+    if (smThickness && smThickness > 0 && smThickness <= 25) {
+      return smThickness;
+    }
+    // Default
+    return 1.5;
+  };
+  
   const materialSpec = isSheetMetal
     ? {
         // Sheet metal material spec with thickness
@@ -307,7 +327,7 @@ const calculatePrice = (
         name: (material as any).label || (material as any).name || "",
         density: material.density,
         costPerKg: material.costPerKg,
-        thickness: (material as any).thickness || part.sheet_thickness_mm || part.geometry?.sheetMetalFeatures?.thickness || 1.5,
+        thickness: getValidThickness(),
         category: (material as any).category || "aluminum",
         bendability: (material as any).bendability || 1.0,
         // Pass manual quote flags for exotic materials
@@ -337,10 +357,9 @@ const calculatePrice = (
       ? (part.tolerance as "standard" | "precision" | "tight")
       : "standard",
     leadTimeType: tier,
-    // Pass thickness for sheet metal calculations (use sheet_thickness_mm numeric field)
-    ...(isSheetMetalProcess(processType) &&
-      (part.sheet_thickness_mm || part.geometry?.sheetMetalFeatures?.thickness) && {
-        sheetThickness: part.sheet_thickness_mm || part.geometry?.sheetMetalFeatures?.thickness || 1.5,
+    // Pass thickness for sheet metal calculations
+    ...(isSheetMetalProcess(processType) && {
+        sheetThickness: getValidThickness(),
       }),
   });
 
@@ -809,6 +828,10 @@ export default function QuoteConfigPage() {
               };
               normalizedProcess = processMap[normalizedProcess] || normalizedProcess;
               
+              // Determine if this is a sheet metal part for proper material defaulting
+              const isSheetMetalPart = isSheetMetalProcess(normalizedProcess);
+              const defaultMaterial = isSheetMetalPart ? "AL5052-1.5" : "aluminum-6061";
+              
               const part: PartConfig = {
                 id: p.id,
                 rfqId: p.rfq_id,
@@ -816,7 +839,7 @@ export default function QuoteConfigPage() {
                 fileName: p.file_name,
                 filePath: p.cad_file_url,
                 fileObject: undefined, // URL only
-                material: p.material || "aluminum-6061",
+                material: p.material || defaultMaterial,
                 quantity: p.quantity || 1,
                 tolerance: p.tolerance || "standard",
                 finish: p.finish || "as-machined",

@@ -3643,7 +3643,7 @@ export function getMaterialByValue(value: string, process: string) {
     }
   } else {
     // Search Sheet Metal materials
-    // First try to find by material key (e.g., "aluminum-6061")
+    // First try to find by material key (e.g., "aluminum-5052")
     if (value in SHEET_METAL_MATERIALS) {
       // Return first available thickness for this material family
       const materialFamily = SHEET_METAL_MATERIALS[value];
@@ -3653,12 +3653,38 @@ export function getMaterialByValue(value: string, process: string) {
         return preferred || materialFamily[0];
       }
     }
-    // Then try to find by code or value
+    // Then try to find by code or value (e.g., "AL5052-1.5")
     for (const materials of Object.values(SHEET_METAL_MATERIALS)) {
       const found = materials.find(
         (m) => m.value === value || m.code === value,
       );
       if (found) return found;
+    }
+    // FALLBACK: If a CNC material code is used for sheet metal, map to closest sheet metal equivalent
+    // This handles cases where old parts have CNC materials like "aluminum-6061"
+    const cncToSheetMetalMapping: Record<string, string> = {
+      "aluminum-6061": "aluminum-5052",  // 6061 is not good for bending, use 5052
+      "aluminum-7075": "aluminum-5052",
+      "stainless-steel-304": "stainless-304",
+      "stainless-steel-316": "stainless-316",
+      "mild-steel": "steel-cr",
+      "carbon-steel": "steel-cr",
+    };
+    const mappedKey = cncToSheetMetalMapping[value];
+    if (mappedKey && mappedKey in SHEET_METAL_MATERIALS) {
+      const materialFamily = SHEET_METAL_MATERIALS[mappedKey];
+      if (materialFamily && materialFamily.length > 0) {
+        const preferred = materialFamily.find((m: any) => m.thickness === 1.5);
+        console.log(`⚠️ Mapped CNC material "${value}" to sheet metal "${mappedKey}"`);
+        return preferred || materialFamily[0];
+      }
+    }
+    // Final fallback: return default AL5052-1.5
+    console.log(`⚠️ Sheet metal material "${value}" not found, using default AL5052-1.5`);
+    const defaultFamily = SHEET_METAL_MATERIALS["aluminum-5052"];
+    if (defaultFamily && defaultFamily.length > 0) {
+      const preferred = defaultFamily.find((m: any) => m.thickness === 1.5);
+      return preferred || defaultFamily[0];
     }
   }
   return null;

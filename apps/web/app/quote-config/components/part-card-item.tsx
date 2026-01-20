@@ -64,6 +64,40 @@ import FileManagementModal from "./file-management-modal";
 import { formatCurrencyFixed, processTranslator } from "@/lib/utils";
 import { leadTimeMeta, markupMap } from "@cnc-quote/shared";
 
+// Valid sheet metal thicknesses in mm
+const VALID_SHEET_THICKNESSES = [0.5, 0.8, 1.0, 1.2, 1.5, 2.0, 2.5, 3.0, 4.0, 5.0, 6.0];
+
+// Helper to get valid sheet thickness (clamp bbox-derived values to valid sheet sizes)
+function getValidSheetThickness(part: PartConfig): number {
+  // Priority 1: User-configured sheet_thickness_mm
+  if (part.sheet_thickness_mm && part.sheet_thickness_mm > 0 && part.sheet_thickness_mm <= 25) {
+    return part.sheet_thickness_mm;
+  }
+  
+  // Priority 2: Geometry-detected thickness from advanced metrics (from CAD service ray-casting)
+  const advancedThickness = (part.geometry as any)?.advancedMetrics?.detected_thickness_mm;
+  if (advancedThickness && advancedThickness > 0 && advancedThickness <= 25) {
+    // Find closest standard thickness
+    const closest = VALID_SHEET_THICKNESSES.reduce((prev, curr) => 
+      Math.abs(curr - advancedThickness) < Math.abs(prev - advancedThickness) ? curr : prev
+    );
+    return closest;
+  }
+  
+  // Priority 3: SheetMetalFeatures thickness (may be from bbox - validate range)
+  const smThickness = part.geometry?.sheetMetalFeatures?.thickness;
+  if (smThickness && smThickness > 0 && smThickness <= 25) {
+    // Find closest standard thickness
+    const closest = VALID_SHEET_THICKNESSES.reduce((prev, curr) => 
+      Math.abs(curr - smThickness) < Math.abs(prev - smThickness) ? curr : prev
+    );
+    return closest;
+  }
+  
+  // Default to 1.5mm (most common sheet metal gauge)
+  return 1.5;
+}
+
 // --- Sub-Component: PartCardItem ---
 export function PartCardItem({
   part,
@@ -662,7 +696,7 @@ export function PartCardItem({
                     </p>
                     <p className="text-sm font-bold text-slate-900 truncate capitalize">
                       {isSheetMetalProcess(part.process) 
-                        ? `${part.sheet_thickness_mm || part.geometry?.sheetMetalFeatures?.thickness || 1.5}mm`
+                        ? `${getValidSheetThickness(part)}mm`
                         : (part.tolerance || "Standard")}
                     </p>
                   </div>
