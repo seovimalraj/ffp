@@ -3789,7 +3789,7 @@ function calculateRawStockWeightKg(
 ): number {
   const bboxVolumeMm3 =
     geometry.boundingBox.x * geometry.boundingBox.y * geometry.boundingBox.z;
-  const bboxVolumeCm3 = bboxVolumeMm3 / 1000;
+  const bboxVolumeCm3 = bboxVolumeMm3 / 1000000; // CRITICAL FIX: 1 cm = 10mm, so 1 cm³ = 1000mm³
   const rawWeightKg = (bboxVolumeCm3 * material.density) / 1000;
   return rawWeightKg * process.materialWasteFactor;
 }
