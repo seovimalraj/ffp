@@ -337,10 +337,10 @@ const calculatePrice = (
       ? (part.tolerance as "standard" | "precision" | "tight")
       : "standard",
     leadTimeType: tier,
-    // Pass thickness for sheet metal calculations
+    // Pass thickness for sheet metal calculations (use sheet_thickness_mm numeric field)
     ...(isSheetMetalProcess(processType) &&
-      part.thickness && {
-        sheetThickness: parseFloat(part.thickness),
+      (part.sheet_thickness_mm || part.geometry?.sheetMetalFeatures?.thickness) && {
+        sheetThickness: part.sheet_thickness_mm || part.geometry?.sheetMetalFeatures?.thickness || 1.5,
       }),
   });
 
@@ -507,8 +507,9 @@ export default function QuoteConfigPage() {
           const defaultFinish = getDefaultFinishForProcess(detectedProcess);
           const defaultTolerance =
             getDefaultToleranceForProcess(detectedProcess);
-          const defaultThickness = detectedProcess?.includes("sheet")
-            ? getDefaultThickness()
+          // For sheet metal, get thickness as a number (not string)
+          const defaultThicknessMm = detectedProcess?.includes("sheet")
+            ? parseFloat(getDefaultThickness()) || 1.5
             : undefined;
 
           const newPart: any = {
@@ -520,7 +521,8 @@ export default function QuoteConfigPage() {
             status: "draft",
             tolerance: defaultTolerance,
             finish: defaultFinish, // Process-specific default finish
-            thickness: defaultThickness, // Sheet metal thickness if applicable
+            // Use sheet_thickness_mm (numeric) instead of thickness (string) for database compatibility
+            sheet_thickness_mm: defaultThicknessMm,
             threads: "none",
             inspection: "standard",
             notes: "",

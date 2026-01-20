@@ -651,17 +651,19 @@ export function PartCardItem({
                   </div>
                 </div>
 
-                {/* Tolerance */}
+                {/* Tolerance for CNC / Thickness for Sheet Metal */}
                 <div className="flex items-center gap-4 py-4 group">
                   <div className="h-10 w-10 shrink-0 rounded-lg bg-slate-50 flex items-center justify-center text-slate-500 group-hover:text-blue-600 group-hover:bg-blue-50 transition-colors">
                     <Ruler className="w-5 h-5" />
                   </div>
                   <div className="min-w-0">
                     <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-0.5">
-                      Tolerance
+                      {isSheetMetalProcess(part.process) ? "Thickness" : "Tolerance"}
                     </p>
                     <p className="text-sm font-bold text-slate-900 truncate capitalize">
-                      {part.tolerance || "Standard"}
+                      {isSheetMetalProcess(part.process) 
+                        ? `${part.sheet_thickness_mm || part.geometry?.sheetMetalFeatures?.thickness || 1.5}mm`
+                        : (part.tolerance || "Standard")}
                     </p>
                   </div>
                 </div>
