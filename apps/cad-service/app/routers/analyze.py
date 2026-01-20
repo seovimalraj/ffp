@@ -185,6 +185,24 @@ def determine_process_type(bbox_dims: list, vol_mm3: float, area_mm2: float, thi
     mid_dim = bbox_dims[1]
     max_dim = bbox_dims[2]
     
+    # === CRITICAL: BENT SHEET METAL DETECTION ===
+    # When actual thickness (2mm) << bbox minimum (20mm), part is likely BENT sheet metal
+    # Examples: U-brackets, L-brackets, enclosures, cabinets, housings
+    thickness_discrepancy_ratio = thickness / bbox_dims[0] if (thickness and bbox_dims[0] > 0) else 1.0
+    is_likely_bent = thickness_discrepancy_ratio < 0.5  # Actual thickness is 50%+ smaller than bbox
+    
+    # Volume hollowness check: bent parts have low volume efficiency (< 40%)
+    envelope_volume = bbox_dims[0] * bbox_dims[1] * bbox_dims[2]
+    volume_efficiency = vol_mm3 / envelope_volume if envelope_volume > 0 else 0
+    is_hollow = volume_efficiency < 0.4
+    
+    if has_reliable_thickness and is_likely_bent and is_hollow:
+        print(f"🎯 BENT SHEET METAL DETECTED:")
+        print(f"   Wall thickness: {thickness:.2f}mm | Bbox min: {bbox_dims[0]:.2f}mm | Ratio: {thickness_discrepancy_ratio:.1%}")
+        print(f"   Volume efficiency: {volume_efficiency:.1%} (hollow/bent structure)")
+        print(f"   → High confidence sheet metal classification")
+        enhanced_sm_score = max(enhanced_sm_score, 85)  # Boost score for bent parts
+    
     # Enhanced sheet metal score with advanced metrics
     enhanced_sm_score = sheet_metal_score
     enhanced_sm_score += advanced_metrics.get('wall_thickness_consistency', 0) * 20
