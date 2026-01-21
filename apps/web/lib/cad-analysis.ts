@@ -391,14 +391,36 @@ function analyzeBinarySTL(dataView: DataView): GeometryData {
     z: maxZ - minZ,
   };
 
-  // Estimate complexity based on triangle count and surface area to volume ratio
-  const complexityScore = triangleCount / 1000 + surfaceArea / volume / 10;
+  // ENTERPRISE COMPLEXITY CALCULATION - based on multiple geometric factors
+  // Not just file size or triangle count - use actual geometry metrics
+  const dims = [boundingBox.x, boundingBox.y, boundingBox.z].sort((a, b) => a - b);
+  const aspectRatio = dims[2] / Math.max(dims[0], 0.1);
+  const svRatio = surfaceArea / Math.max(volume / 1000, 0.001);
+  const trianglesPerMm3 = triangleCount / Math.max(volume, 1);
+  
+  let complexityScore = 0;
+  
+  // Aspect ratio factor
+  if (aspectRatio > 10) complexityScore += 20;
+  else if (aspectRatio > 5) complexityScore += 12;
+  else if (aspectRatio > 3) complexityScore += 6;
+  
+  // Surface complexity (high S/V = thin features or complex surfaces)
+  if (svRatio > 80) complexityScore += 25;
+  else if (svRatio > 40) complexityScore += 15;
+  else if (svRatio > 20) complexityScore += 8;
+  
+  // Mesh detail (triangle density indicates fine features)
+  if (triangleCount > 15000) complexityScore += 20;
+  else if (triangleCount > 8000) complexityScore += 12;
+  else if (triangleCount > 3000) complexityScore += 6;
+  
   const complexity: GeometryData["complexity"] =
-    complexityScore < 5
-      ? "simple"
-      : complexityScore < 15
+    complexityScore >= 45
+      ? "complex"
+      : complexityScore >= 20
         ? "moderate"
-        : "complex";
+        : "simple";
 
   // REAL GEOMETRY ANALYSIS: Use THREE.js BufferGeometry for accurate feature detection
   let geometryFeatures: GeometryFeatureMap | null = null;
@@ -1096,48 +1118,34 @@ function detectAdvancedFeatures(
 
   // Use REAL geometry data when available, fallback to heuristics
 
-  // Undercut detection (enhanced with real geometry)
-  const undercutCount =
-    geometryFeatures?.undercuts.length ??
-    (complexity === "complex" && triangleCount > 5000
-      ? Math.floor(triangleCount / 2500)
-      : 0);
+  // Undercut detection - ONLY use real geometry data, no heuristics
+  const undercutCount = geometryFeatures?.undercuts.length ?? 0;
   const undercutSeverity: "minor" | "moderate" | "severe" =
     undercutCount > 4 ? "severe" : undercutCount > 2 ? "moderate" : "minor";
-  const requires5Axis =
-    undercutCount > 2 || (complexity === "complex" && svRatio > 60);
+  const requires5Axis = undercutCount > 2;
 
-  // Hole detection with detailed classification (REAL GEOMETRY)
-  const totalHoles =
-    geometryFeatures?.holes.length ??
-    (svRatio > 50
-      ? Math.floor(svRatio / 25)
-      : triangleCount > 2000
-        ? Math.floor(triangleCount / 800)
-        : 0);
-  const throughHoles = Math.floor(totalHoles * 0.5);
+  // Hole detection - ONLY use real geometry data
+  // Do NOT estimate holes from surface/volume ratio - this produces false positives
+  const totalHoles = geometryFeatures?.holes.length ?? 0;
+  const throughHoles = geometryFeatures ? Math.floor(totalHoles * 0.5) : 0;
   const blindHoles = totalHoles - throughHoles;
-  const tappedHoles =
-    geometryFeatures?.threads.filter((t) =>
-      geometryFeatures.holes.some(
-        (h) =>
-          Math.abs(h.centroid.x - t.centroid.x) < 5 &&
-          Math.abs(h.centroid.y - t.centroid.y) < 5,
-      ),
-    ).length ?? Math.floor(totalHoles * 0.3);
-  const reamedHoles = Math.floor(totalHoles * 0.1);
-  const countersunkHoles =
-    geometryFeatures?.countersinks.length ?? Math.floor(totalHoles * 0.2);
-  const counterboredHoles =
-    geometryFeatures?.counterbores.length ?? Math.floor(totalHoles * 0.15);
-  const avgHoleDiameter = (minDim + midDim) / 15;
-  const minHoleDiameter = Math.max(0.5, avgHoleDiameter * 0.3);
-  const maxHoleDiameter = avgHoleDiameter * 2.5;
+  const tappedHoles = geometryFeatures?.threads.filter((t) =>
+    geometryFeatures.holes.some(
+      (h) =>
+        Math.abs(h.centroid.x - t.centroid.x) < 5 &&
+        Math.abs(h.centroid.y - t.centroid.y) < 5,
+    ),
+  ).length ?? 0;
+  const reamedHoles = totalHoles > 0 ? Math.floor(totalHoles * 0.1) : 0;
+  const countersunkHoles = geometryFeatures?.countersinks.length ?? 0;
+  const counterboredHoles = geometryFeatures?.counterbores.length ?? 0;
+  const avgHoleDiameter = totalHoles > 0 ? (minDim + midDim) / 15 : 0;
+  const minHoleDiameter = totalHoles > 0 ? Math.max(0.5, avgHoleDiameter * 0.3) : 0;
+  const maxHoleDiameter = totalHoles > 0 ? avgHoleDiameter * 2.5 : 0;
   const deepHoleCount = totalHoles > 0 ? Math.floor(totalHoles * 0.2) : 0;
-  const microHoleCount =
-    minHoleDiameter < 1 ? Math.floor(totalHoles * 0.15) : 0;
+  const microHoleCount = minHoleDiameter < 1 && totalHoles > 0 ? Math.floor(totalHoles * 0.15) : 0;
   const avgDepthRatio = deepHoleCount > 0 ? 6.5 : 3.0;
-  const drillingMethod =
+  const drillingMethod: "standard-drill" | "deep-hole-drill" | "gun-drill" | "boring" =
     deepHoleCount > 2
       ? "deep-hole-drill"
       : microHoleCount > 0
@@ -1145,52 +1153,41 @@ function detectAdvancedFeatures(
         : avgHoleDiameter > 20
           ? "boring"
           : "standard-drill";
-  const toolAccessIssues =
-    geometryFeatures?.toolAccessRestricted.length ??
-    (complexity === "complex" ? Math.floor(totalHoles * 0.25) : 0);
+  const toolAccessIssues = geometryFeatures?.toolAccessRestricted.length ?? 0;
 
-  // Pocket detection (REAL GEOMETRY)
-  const pocketCount =
-    geometryFeatures?.pockets.length ??
-    (svRatio > 40 ? Math.floor(svRatio / 15) : 0);
-  const openPockets = Math.floor(pocketCount * 0.6);
+  // Pocket detection - ONLY use real geometry data
+  // Do NOT estimate pockets from surface/volume ratio - this produces false positives
+  const pocketCount = geometryFeatures?.pockets.length ?? 0;
+  const openPockets = pocketCount > 0 ? Math.floor(pocketCount * 0.6) : 0;
   const closedPockets = pocketCount - openPockets;
   const deepPockets = pocketCount > 0 ? Math.floor(pocketCount * 0.3) : 0;
-  const avgDepth = minDim * 0.4;
-  const maxAspectRatio = avgDepth / (midDim * 0.1);
-  const minCornerRadius = Math.max(0.5, avgDepth * 0.05);
-  const sharpCornersCount =
-    geometryFeatures?.sharpCorners.length ??
-    (pocketCount > 0 ? Math.floor(pocketCount * 0.4) : 0);
+  const avgDepth = pocketCount > 0 ? minDim * 0.4 : 0;
+  const maxAspectRatio = avgDepth > 0 ? avgDepth / (midDim * 0.1) : 0;
+  const minCornerRadius = pocketCount > 0 ? Math.max(0.5, avgDepth * 0.05) : 0;
+  const sharpCornersCount = geometryFeatures?.sharpCorners.length ?? 0;
   const requiresSquareEndmill = sharpCornersCount > 0;
   const requiresBallEndmill = complexity === "complex" && pocketCount > 3;
 
-  // Boss detection (REAL GEOMETRY)
-  const bossCount =
-    geometryFeatures?.bosses.length ??
-    (svRatio > 35 ? Math.floor(svRatio / 30) : 0);
-  const avgBossHeight = maxDim * 0.15;
-  const maxBossAspectRatio = avgBossHeight / (minDim * 0.2);
+  // Boss detection - ONLY use real geometry data
+  const bossCount = geometryFeatures?.bosses.length ?? 0;
+  const avgBossHeight = bossCount > 0 ? maxDim * 0.15 : 0;
+  const maxBossAspectRatio = bossCount > 0 ? avgBossHeight / (minDim * 0.2) : 0;
   const bossRequiresThreading = bossCount > 0 && tappedHoles > 0;
   const bossRequiresReaming = bossCount > 1;
 
-  // Rib detection (REAL GEOMETRY)
-  const ribCount =
-    geometryFeatures?.ribs.length ??
-    (minDim < 5 && complexity !== "simple" ? Math.floor(svRatio / 20) : 0);
-  const avgRibThickness = minDim < 5 ? minDim * 0.8 : 2.5;
-  const minRibThickness = avgRibThickness * 0.6;
-  const thinRibCount = avgRibThickness < 1.5 ? Math.floor(ribCount * 0.7) : 0;
+  // Rib detection - ONLY use real geometry data, no heuristics
+  const ribCount = geometryFeatures?.ribs.length ?? 0;
+  const avgRibThickness = ribCount > 0 ? (minDim < 5 ? minDim * 0.8 : 2.5) : 0;
+  const minRibThickness = ribCount > 0 ? avgRibThickness * 0.6 : 0;
+  const thinRibCount = ribCount > 0 && avgRibThickness < 1.5 ? Math.floor(ribCount * 0.7) : 0;
   const ribDeflectionRisk: "low" | "medium" | "high" =
-    minRibThickness < 1 ? "high" : minRibThickness < 1.5 ? "medium" : "low";
+    ribCount > 0 ? (minRibThickness < 1 ? "high" : minRibThickness < 1.5 ? "medium" : "low") : "low";
 
-  // Thread detection (REAL GEOMETRY - most accurate)
-  const totalThreads =
-    geometryFeatures?.threads.length ??
-    (triangleCount > 2000 ? Math.floor(triangleCount / 1000) : 0);
-  const internalThreads = Math.floor(totalThreads * 0.7);
+  // Thread detection - ONLY use real geometry data, no heuristics
+  const totalThreads = geometryFeatures?.threads.length ?? 0;
+  const internalThreads = totalThreads > 0 ? Math.floor(totalThreads * 0.7) : 0;
   const externalThreads = totalThreads - internalThreads;
-  const avgThreadDiameter = (minDim + midDim) / 10;
+  const avgThreadDiameter = totalThreads > 0 ? (minDim + midDim) / 10 : 0;
 
   // Thread specifications (estimated based on diameter)
   const threadSpecs: {
@@ -1232,34 +1229,29 @@ function detectAdvancedFeatures(
   const requiresThreadMilling = internalThreads > 0 && avgThreadDiameter >= 12;
   const singlePointThreading = externalThreads > 0 && maxDim / minDim > 3; // lathe parts
 
-  // Fillet detection (REAL GEOMETRY - high accuracy)
-  const filletCount =
-    geometryFeatures?.fillets.length ??
-    (triangleCount > 1000 ? Math.floor(triangleCount / 500) : 0);
-  const avgFilletRadius = minDim * 0.05;
-  const minFilletRadius = Math.max(0.5, avgFilletRadius * 0.4);
+  // Fillet detection - ONLY use real geometry data, no heuristics
+  const filletCount = geometryFeatures?.fillets.length ?? 0;
+  const avgFilletRadius = filletCount > 0 ? minDim * 0.05 : 0;
+  const minFilletRadius = filletCount > 0 ? Math.max(0.5, avgFilletRadius * 0.4) : 0;
   // Missing fillets = sharp corners that should be filleted
-  const missingFilletCount = sharpCornersCount - filletCount;
+  const missingFilletCount = sharpCornersCount > 0 ? Math.max(0, sharpCornersCount - filletCount) : 0;
   const stressConcentrationRisk =
     missingFilletCount > 3 ? 8 : missingFilletCount > 1 ? 5 : 2;
   const blendRadiusCount =
-    complexity === "complex" ? Math.floor(filletCount * 0.2) : 0;
+    complexity === "complex" && filletCount > 0 ? Math.floor(filletCount * 0.2) : 0;
 
-  // Chamfer detection (REAL GEOMETRY)
-  const chamferCount =
-    geometryFeatures?.chamfers.length ?? Math.floor(filletCount * 0.3);
-  const avgChamferSize = avgFilletRadius * 0.8;
-  const deburringRequired = chamferCount < (totalHoles + pocketCount) * 0.5;
+  // Chamfer detection - ONLY use real geometry data, no heuristics
+  const chamferCount = geometryFeatures?.chamfers.length ?? 0;
+  const avgChamferSize = chamferCount > 0 ? avgFilletRadius * 0.8 : 0;
+  const deburringRequired = (totalHoles + pocketCount) > 0 && chamferCount < (totalHoles + pocketCount) * 0.5;
 
-  // Thin wall detection (REAL GEOMETRY)
-  const thinWallCount =
-    geometryFeatures?.thinWalls.length ??
-    (minDim < 3 ? Math.ceil(perimeter(midDim, maxDim) / 50) : 0);
-  const minThickness = minDim < 10 ? minDim : minDim * 0.1;
-  const avgThickness = minDim < 10 ? minDim * 1.5 : minDim * 0.15;
+  // Thin wall detection - ONLY use real geometry data, no heuristics
+  const thinWallCount = geometryFeatures?.thinWalls.length ?? 0;
+  const minThickness = thinWallCount > 0 ? (minDim < 10 ? minDim : minDim * 0.1) : minDim;
+  const avgThickness = thinWallCount > 0 ? (minDim < 10 ? minDim * 1.5 : minDim * 0.15) : minDim;
   const thinWallRisk: "low" | "medium" | "high" =
-    minThickness < 1 ? "high" : minThickness < 2 ? "medium" : "low";
-  const requiresSupportFixture = thinWallRisk === "high" || minThickness < 1.5;
+    thinWallCount > 0 ? (minThickness < 1 ? "high" : minThickness < 2 ? "medium" : "low") : "low";
+  const requiresSupportFixture = thinWallCount > 0 && (thinWallRisk === "high" || minThickness < 1.5);
 
   // Tool access analysis (REAL GEOMETRY - enhanced accuracy)
   const restrictedAreas = toolAccessIssues;
@@ -1962,6 +1954,7 @@ export async function estimateSTEPGeometry(file: File): Promise<GeometryData> {
 
 /**
  * Helper to build GeometryData from volume and bounding box
+ * Used for client-side analysis (fallback when backend unavailable)
  */
 function buildGeometryData(
   file: File,
@@ -1969,13 +1962,36 @@ function buildGeometryData(
   volume: number,
   surfaceArea: number,
 ): GeometryData {
+  // Estimate triangle count from file size (STL = 50 bytes/triangle for binary)
   const fileSizeKB = file.size / 1024;
+  const estimatedTriangleCount = Math.floor((file.size - 84) / 50);
 
+  // Calculate complexity based on geometry, not file size
+  // Factors: aspect ratio, surface-to-volume ratio, triangle density
+  const dims = [boundingBox.x, boundingBox.y, boundingBox.z].sort((a, b) => a - b);
+  const aspectRatio = dims[2] / Math.max(dims[0], 0.1);
+  const svRatio = surfaceArea / Math.max(volume / 1000, 0.001);
+  const trianglesPerMm3 = estimatedTriangleCount / Math.max(volume, 1);
+  
+  let complexityScore = 0;
+  
+  // High aspect ratio indicates complex machining
+  if (aspectRatio > 10) complexityScore += 25;
+  else if (aspectRatio > 5) complexityScore += 15;
+  else if (aspectRatio > 3) complexityScore += 8;
+  
+  // High surface/volume ratio indicates thin features or complex surfaces
+  if (svRatio > 100) complexityScore += 25;
+  else if (svRatio > 50) complexityScore += 15;
+  else if (svRatio > 25) complexityScore += 8;
+  
+  // Triangle density indicates geometric detail
+  if (trianglesPerMm3 > 0.1) complexityScore += 20;
+  else if (trianglesPerMm3 > 0.05) complexityScore += 12;
+  else if (trianglesPerMm3 > 0.02) complexityScore += 6;
+  
   const complexity: GeometryData["complexity"] =
-    fileSizeKB < 500 ? "simple" : fileSizeKB < 2000 ? "moderate" : "complex";
-
-  // Estimate triangle count from file size
-  const estimatedTriangleCount = fileSizeKB * 10;
+    complexityScore >= 45 ? "complex" : complexityScore >= 20 ? "moderate" : "simple";
 
   // Analyze part characteristics for process identification
   const partCharacteristics = analyzePartCharacteristics(
