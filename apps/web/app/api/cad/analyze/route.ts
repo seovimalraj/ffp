@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from "next/server";
 
 export async function POST(request: NextRequest) {
   try {
@@ -7,8 +7,8 @@ export async function POST(request: NextRequest) {
 
     if (!fileId || !lineId || !quoteId) {
       return NextResponse.json(
-        { error: 'Missing required fields: fileId, lineId, quoteId' },
-        { status: 400 }
+        { error: "Missing required fields: fileId, lineId, quoteId" },
+        { status: 400 },
       );
     }
 
@@ -16,28 +16,33 @@ export async function POST(request: NextRequest) {
     const taskId = `cad_${Date.now()}_${Math.random().toString(36).substring(2, 11)}`;
 
     // Connect to CAD service for real analysis
-    const cadServiceUrl = process.env.CAD_SERVICE_URL || 'http://cad-service:10001';
+    const cadServiceUrl =
+      process.env.CAD_SERVICE_URL || "http://cad-service:10001";
 
     try {
       const cadResponse = await fetch(`${cadServiceUrl}/api/cad/analyze`, {
-        method: 'POST',
+        method: "POST",
         headers: {
-          'Content-Type': 'application/json',
+          "Content-Type": "application/json",
         },
         body: JSON.stringify({
           file_id: fileId,
           quote_line_id: lineId,
-          process: 'cnc', // Default to CNC, can be made configurable
-          material: 'aluminum_6061', // Default material
-          units: 'mm'
-        })
+          process: "cnc", // Default to CNC, can be made configurable
+          material: "aluminum_6061", // Default material
+          units: "mm",
+        }),
       });
 
       if (!cadResponse.ok) {
-        console.error('CAD service error:', cadResponse.status, cadResponse.statusText);
+        console.error(
+          "CAD service error:",
+          cadResponse.status,
+          cadResponse.statusText,
+        );
         return NextResponse.json(
-          { error: 'CAD service is currently unavailable' },
-          { status: 503 }
+          { error: "CAD service is currently unavailable" },
+          { status: 503 },
         );
       }
 
@@ -48,26 +53,24 @@ export async function POST(request: NextRequest) {
         fileId,
         lineId,
         quoteId,
-        status: cadResult.status || 'processing',
+        status: cadResult.status || "processing",
         createdAt: new Date().toISOString(),
         estimatedDuration: cadResult.estimated_duration || 20000,
         progress: cadResult.progress || 0,
-        ...cadResult
+        ...cadResult,
       });
-
     } catch (cadError) {
-      console.error('CAD service connection error:', cadError);
+      console.error("CAD service connection error:", cadError);
       return NextResponse.json(
-        { error: 'Failed to connect to CAD service' },
-        { status: 500 }
+        { error: "Failed to connect to CAD service" },
+        { status: 500 },
       );
     }
-
   } catch (error) {
-    console.error('CAD analysis error:', error);
+    console.error("CAD analysis error:", error);
     return NextResponse.json(
-      { error: 'Failed to start CAD analysis' },
-      { status: 500 }
+      { error: "Failed to start CAD analysis" },
+      { status: 500 },
     );
   }
 }

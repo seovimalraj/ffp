@@ -191,6 +191,9 @@ export interface SheetMetalFeatures {
   straightCutLength: number; // mm
   curvedCutLength: number; // mm
 
+  bends?: any;
+  notches?: any;
+  flanges?: any;
   // Forming Features
   hasHems: boolean;
   hasCountersinks: boolean;
@@ -446,9 +449,9 @@ function analyzeBinarySTL(dataView: DataView): GeometryData {
     boundingBox,
     volume,
     surfaceArea,
-    complexity,
-    partCharacteristics,
-    triangleCount,
+    // complexity,
+    // partCharacteristics,
+    // triangleCount,
   );
 
   // Estimate machining time (simplified)
@@ -515,7 +518,7 @@ function analyzeBinarySTL(dataView: DataView): GeometryData {
         boundingBox,
         volume,
         surfaceArea,
-        partCharacteristics,
+        // partCharacteristics,
       ),
       features: [
         ...(partCharacteristics.isThinWalled ? ["thin-wall"] : []),
@@ -559,7 +562,7 @@ function analyzeBinarySTL(dataView: DataView): GeometryData {
       boundingBox,
       volume,
       surfaceArea,
-      partCharacteristics,
+      // partCharacteristics,
     ),
 
     // Thickness detection metadata
@@ -667,9 +670,9 @@ function analyzeASCIISTL(text: string): GeometryData {
     boundingBox,
     volume,
     surfaceArea,
-    complexity,
-    partCharacteristics,
-    triangleCount,
+    // complexity,
+    // partCharacteristics,
+    // triangleCount,
   );
 
   const estimatedMachiningTime = calculateMachiningTime(
@@ -767,7 +770,7 @@ function analyzeASCIISTL(text: string): GeometryData {
       boundingBox,
       volume,
       surfaceArea,
-      partCharacteristics,
+      // partCharacteristics,
     ),
     partCharacteristics,
     features: [
@@ -2084,7 +2087,7 @@ function buildGeometryData(
       boundingBox,
       volume,
       surfaceArea,
-      partCharacteristics,
+      // partCharacteristics,
     ),
     partCharacteristics,
     features: [
@@ -2398,14 +2401,14 @@ function _analyzeProcessFeatures(
  */
 /**
  * SIMPLE FALLBACK ONLY - Do not use for accurate classification
- * 
+ *
  * ⚠️ EMERGENCY FALLBACK WHEN BACKEND UNAVAILABLE ⚠️
- * 
+ *
  * This is a simple bbox-based estimation that:
  * - Cannot detect bent sheet metal (uses bbox height, not actual thickness)
  * - Cannot detect flanges, relief cuts, or complex bends
  * - Should only be used when backend API fails
- * 
+ *
  * For accurate analysis, ALWAYS use backend API: /api/cad/analyze-geometry
  */
 function calculateSheetMetalScore(
@@ -2413,7 +2416,9 @@ function calculateSheetMetalScore(
   volume: number,
   surfaceArea: number,
 ): number {
-  const dims = [boundingBox.x, boundingBox.y, boundingBox.z].sort((a, b) => a - b);
+  const dims = [boundingBox.x, boundingBox.y, boundingBox.z].sort(
+    (a, b) => a - b,
+  );
   const minDim = dims[0];
   const maxDim = dims[2];
   const aspectRatio = maxDim / Math.max(minDim, 0.1);
@@ -2424,11 +2429,11 @@ function calculateSheetMetalScore(
 
   // Basic thickness check (bbox approximation only)
   if (minDim >= 0.5 && minDim <= 6) score += 40;
-  
+
   // Basic aspect ratio check
   if (aspectRatio > 10) score += 30;
   else if (aspectRatio > 5) score += 15;
-  
+
   // Basic volume efficiency (hollow = possibly bent)
   if (volumeEfficiency < 0.5) score += 30;
 
@@ -2437,12 +2442,12 @@ function calculateSheetMetalScore(
 
 /**
  * SIMPLE FALLBACK ONLY - Do not use for accurate classification
- * 
+ *
  * ⚠️ EMERGENCY FALLBACK WHEN BACKEND UNAVAILABLE ⚠️
- * 
+ *
  * Uses very conservative logic that defaults to CNC for safety.
  * Cannot detect bent sheet metal or complex geometries accurately.
- * 
+ *
  * For accurate analysis, ALWAYS use backend API: /api/cad/analyze-geometry
  */
 function recommendManufacturingProcess(
@@ -2454,7 +2459,9 @@ function recommendManufacturingProcess(
   confidence: number;
   reasoning?: string;
 } {
-  const dims = [boundingBox.x, boundingBox.y, boundingBox.z].sort((a, b) => a - b);
+  const dims = [boundingBox.x, boundingBox.y, boundingBox.z].sort(
+    (a, b) => a - b,
+  );
   const minDim = dims[0];
   const maxDim = dims[2];
   const aspectRatio = maxDim / Math.max(minDim, 0.1);
@@ -2462,17 +2469,26 @@ function recommendManufacturingProcess(
   const volumeEfficiency = volume / envelopeVolume;
 
   // Simple sheet metal score (bbox-based only)
-  const sheetMetalScore = calculateSheetMetalScore(boundingBox, volume, surfaceArea);
+  const sheetMetalScore = calculateSheetMetalScore(
+    boundingBox,
+    volume,
+    surfaceArea,
+  );
 
   console.log("⚠️ USING FALLBACK ANALYSIS (bbox approximation only)", {
     minDim: minDim.toFixed(2) + "mm",
     aspectRatio: aspectRatio.toFixed(1),
     score: sheetMetalScore.toFixed(0),
-    warning: "Cannot detect bent sheet metal - use backend for accuracy"
+    warning: "Cannot detect bent sheet metal - use backend for accuracy",
   });
 
   // Very conservative classification - prefer CNC for safety
-  if (minDim >= 0.5 && minDim <= 6 && aspectRatio > 15 && sheetMetalScore > 70) {
+  if (
+    minDim >= 0.5 &&
+    minDim <= 6 &&
+    aspectRatio > 15 &&
+    sheetMetalScore > 70
+  ) {
     return {
       process: "sheet-metal",
       confidence: 0.65, // Low confidence for fallback
@@ -2483,8 +2499,9 @@ function recommendManufacturingProcess(
   // Default to CNC milling for safety in fallback mode
   return {
     process: "cnc-milling",
-    confidence: 0.50, // Low confidence - this is fallback only
-    reasoning: "Fallback default - use backend /api/cad/analyze-geometry for accuracy",
+    confidence: 0.5, // Low confidence - this is fallback only
+    reasoning:
+      "Fallback default - use backend /api/cad/analyze-geometry for accuracy",
   };
 }
 

@@ -44,12 +44,13 @@ interface CadViewerProps {
   previewUrl?: string;
   onSnapshot?: (url: string) => void;
   selectedHighlight?: {
-    type: 'feature' | 'surface' | 'edge' | 'dimension';
+    type: "feature" | "surface" | "edge" | "dimension";
     featureType?: string;
     location?: { x: number; y: number; z: number };
     triangles?: number[];
     description?: string;
   };
+  backgroundColor?: string | number;
 }
 
 export interface CadViewerRef {
@@ -68,6 +69,7 @@ export const CadViewer = forwardRef<CadViewerRef, CadViewerProps>(
       previewUrl,
       onSnapshot,
       selectedHighlight,
+      backgroundColor,
     },
     ref,
   ) => {
@@ -140,6 +142,9 @@ export const CadViewer = forwardRef<CadViewerRef, CadViewerProps>(
       // Initialize viewer
       viewerRef.current = createViewer(containerRef.current);
       viewerRef.current.setMeasurementGraphicsScale(dimScale);
+      if (backgroundColor && viewerRef.current.setBackgroundColor) {
+        viewerRef.current.setBackgroundColor(backgroundColor);
+      }
 
       // Initialize worker
       try {
@@ -195,6 +200,16 @@ export const CadViewer = forwardRef<CadViewerRef, CadViewerProps>(
       }
     }, [dimScale]);
 
+    useEffect(() => {
+      if (
+        viewerRef.current &&
+        backgroundColor &&
+        (viewerRef.current as any).setBackgroundColor
+      ) {
+        (viewerRef.current as any).setBackgroundColor(backgroundColor);
+      }
+    }, [backgroundColor]);
+
     // Update zoom when prop changes
     useEffect(() => {
       if (viewerRef.current && !isLoading) {
@@ -205,11 +220,14 @@ export const CadViewer = forwardRef<CadViewerRef, CadViewerProps>(
     // Update highlight when selectedHighlight changes
     useEffect(() => {
       if (!viewerRef.current) return;
-      
-      if (selectedHighlight?.triangles && selectedHighlight.triangles.length > 0) {
+
+      if (
+        selectedHighlight?.triangles &&
+        selectedHighlight.triangles.length > 0
+      ) {
         viewerRef.current.setHighlight(
           selectedHighlight.triangles,
-          selectedHighlight.location
+          selectedHighlight.location,
         );
       } else {
         // Clear highlight if no triangles
@@ -386,39 +404,46 @@ export const CadViewer = forwardRef<CadViewerRef, CadViewerProps>(
 
         {/* Controls Overlay */}
         {showControls && (
-          <div className="absolute top-14 left-4 z-10 flex flex-col gap-2 rounded-lg bg-gray-900/80 p-3 backdrop-blur-sm shadow-lg border border-gray-700 max-w-xs text-sm text-gray-200">
+          <div className="absolute top-6 left-6 z-10 flex flex-col gap-3 rounded-2xl bg-white/80 p-4 backdrop-blur-xl shadow-[0_8px_30px_rgba(0,0,0,0.08)] border border-slate-200/50 min-w-[220px] text-sm text-slate-600 ring-1 ring-black/[0.02]">
             {/* Views */}
-            <div className="flex flex-wrap gap-2">
+            <div className="grid grid-cols-3 gap-1.5">
               <button
                 onClick={() => viewerRef.current?.setView("iso")}
-                className="rounded bg-gray-700 px-2 py-1 hover:bg-gray-600 transition-colors"
+                className="rounded-lg bg-slate-50 border border-slate-200/60 py-1.5 hover:bg-white hover:border-blue-200 hover:text-blue-600 transition-all text-xs font-medium"
               >
                 Iso
               </button>
               <button
                 onClick={() => viewerRef.current?.setView("top")}
-                className="rounded bg-gray-700 px-2 py-1 hover:bg-gray-600 transition-colors"
+                className="rounded-lg bg-slate-50 border border-slate-200/60 py-1.5 hover:bg-white hover:border-blue-200 hover:text-blue-600 transition-all text-xs font-medium"
               >
                 Top
               </button>
               <button
                 onClick={() => viewerRef.current?.setView("front")}
-                className="rounded bg-gray-700 px-2 py-1 hover:bg-gray-600 transition-colors"
+                className="rounded-lg bg-slate-50 border border-slate-200/60 py-1.5 hover:bg-white hover:border-blue-200 hover:text-blue-600 transition-all text-xs font-medium"
               >
                 Front
               </button>
               <button
                 onClick={() => viewerRef.current?.setView("right")}
-                className="rounded bg-gray-700 px-2 py-1 hover:bg-gray-600 transition-colors"
+                className="rounded-lg bg-slate-50 border border-slate-200/60 py-1.5 hover:bg-white hover:border-blue-200 hover:text-blue-600 transition-all text-xs font-medium"
               >
                 Right
               </button>
+              <button
+                onClick={() => viewerRef.current?.fitToScreen(1)}
+                className="col-span-2 rounded-lg bg-blue-50 border border-blue-100 py-1.5 hover:bg-blue-100 text-blue-600 transition-all text-xs font-medium flex items-center justify-center gap-1.5"
+                title="Fit to Screen"
+              >
+                Fit Model
+              </button>
             </div>
 
-            <div className="h-px bg-gray-700 my-1" />
+            <div className="h-px bg-slate-200/60 mx-1" />
 
             {/* Measurements */}
-            <div className="flex items-center justify-between gap-2">
+            <div className="flex items-center gap-2">
               <button
                 onClick={() => {
                   const next = !measureMode;
@@ -429,10 +454,10 @@ export const CadViewer = forwardRef<CadViewerRef, CadViewerProps>(
                     viewerRef.current.setMeasurementSegment(null, null, null);
                   }
                 }}
-                className={`flex-1 rounded px-2 py-1 transition-colors ${
+                className={`flex-1 rounded-lg px-3 py-1.5 text-xs font-medium transition-all ${
                   measureMode
-                    ? "bg-blue-600 text-white"
-                    : "bg-gray-700 hover:bg-gray-600"
+                    ? "bg-blue-600 text-white shadow-md shadow-blue-200"
+                    : "bg-slate-50 border border-slate-200/60 text-slate-600 hover:bg-white hover:border-blue-200"
                 }`}
               >
                 Measure
@@ -440,7 +465,7 @@ export const CadViewer = forwardRef<CadViewerRef, CadViewerProps>(
               <select
                 value={units}
                 onChange={(e) => setUnits(e.target.value as Units)}
-                className="bg-gray-700 rounded px-2 py-1 text-white border-none outline-none focus:ring-1 focus:ring-blue-500"
+                className="bg-slate-50 border border-slate-200/60 rounded-lg px-2 py-1.5 text-xs font-medium text-slate-700 outline-none hover:border-blue-200 transition-all"
               >
                 <option value="mm">mm</option>
                 <option value="cm">cm</option>
@@ -450,145 +475,167 @@ export const CadViewer = forwardRef<CadViewerRef, CadViewerProps>(
             </div>
 
             {measureMode && (
-              <div className="text-xs text-gray-400 mt-1">
-                {measurePoints.length === 0 && "Click start point"}
-                {measurePoints.length === 1 && "Click end point"}
+              <div className="bg-blue-50/50 rounded-lg p-2 border border-blue-100/50">
+                <div className="text-[10px] uppercase tracking-wider text-blue-500 font-bold mb-1">
+                  {measurePoints.length === 0 && "Select Point 1"}
+                  {measurePoints.length === 1 && "Select Point 2"}
+                  {measurePointsHasResult(measurePoints) && "Result"}
+                </div>
                 {measurePointsHasResult(measurePoints) && (
-                  <span className="text-white font-mono">
+                  <div className="text-blue-700 font-mono text-xs font-bold">
                     {fmt(convert(measureMM!, units))} {units}
-                  </span>
+                  </div>
                 )}
               </div>
             )}
 
-            <div className="h-px bg-gray-700 my-1" />
+            <div className="h-px bg-slate-200/60 mx-1" />
 
             {/* Style Controls */}
-            <div className="space-y-2">
+            <div className="space-y-2.5">
               <div className="flex items-center justify-between">
-                <span className="text-gray-400 text-xs">Wireframe</span>
+                <span className="text-slate-500 text-xs font-medium">
+                  Wireframe
+                </span>
                 <button
                   onClick={() => setWireframe(!wireframe)}
-                  className={`h-4 w-8 rounded-full transition-colors ${
-                    wireframe ? "bg-blue-600" : "bg-gray-600"
+                  className={`relative inline-flex h-5 w-9 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 focus:outline-none ${
+                    wireframe ? "bg-blue-600" : "bg-slate-200"
                   }`}
                 >
-                  <div
-                    className={`h-2 w-2 rounded-full bg-white transition-transform ${
-                      wireframe ? "translate-x-5" : "translate-x-1"
+                  <span
+                    className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
+                      wireframe ? "translate-x-4" : "translate-x-0"
                     }`}
-                    style={{ marginTop: 4 }}
                   />
                 </button>
               </div>
               <div className="flex items-center justify-between">
-                <span className="text-gray-400 text-xs">X-Ray</span>
+                <span className="text-slate-500 text-xs font-medium">
+                  X-Ray View
+                </span>
                 <button
                   onClick={() => setXray(!xray)}
-                  className={`h-4 w-8 rounded-full transition-colors ${
-                    xray ? "bg-blue-600" : "bg-gray-600"
+                  className={`relative inline-flex h-5 w-9 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 focus:outline-none ${
+                    xray ? "bg-blue-600" : "bg-slate-200"
                   }`}
                 >
-                  <div
-                    className={`h-2 w-2 rounded-full bg-white transition-transform ${
-                      xray ? "translate-x-5" : "translate-x-1"
+                  <span
+                    className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
+                      xray ? "translate-x-4" : "translate-x-0"
                     }`}
-                    style={{ marginTop: 4 }}
                   />
                 </button>
               </div>
-              <div className="flex justify-between gap-1">
+              <div className="flex justify-between items-center pt-1">
                 {[
                   "#b8c2ff", // Default Blue
                   "#ef4444", // Red
                   "#22c55e", // Green
-                  "#eab308", // Yellow
+                  "#f59e0b", // Amber
                   "#d1d5db", // Grey
-                  "#C0C0C0", // Grey
+                  "#334155", // Slate
                 ].map((c) => (
                   <button
                     key={c}
                     onClick={() => setMaterialColor(c)}
-                    className={`h-5 w-5 rounded-full border border-white/20 hover:scale-110 transition-transform ${
-                      materialColor === c ? "ring-2 ring-white" : ""
+                    className={`h-5 w-5 rounded-full border ring-offset-2 transition-all ${
+                      materialColor === c
+                        ? "ring-2 ring-blue-500 scale-110 border-white"
+                        : "border-slate-200 hover:scale-110"
                     }`}
                     style={{ backgroundColor: c }}
-                    title={c}
                   />
                 ))}
               </div>
             </div>
 
-            <div className="h-px bg-gray-700 my-1" />
+            <div className="h-px bg-slate-200/60 mx-1" />
 
             {/* Slicing Controls */}
             <div className="space-y-2">
               <div className="flex items-center justify-between">
-                <span className="text-gray-400 text-xs">Slice Model</span>
+                <span className="text-slate-500 text-xs font-medium">
+                  Cross Section
+                </span>
                 <button
                   onClick={() => setSliceEnabled(!sliceEnabled)}
-                  className={`h-4 w-8 rounded-full transition-colors ${
-                    sliceEnabled ? "bg-blue-600" : "bg-gray-600"
+                  className={`relative inline-flex h-5 w-9 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 focus:outline-none ${
+                    sliceEnabled ? "bg-blue-600" : "bg-slate-200"
                   }`}
                 >
-                  <div
-                    className={`h-2 w-2 rounded-full bg-white transition-transform ${
-                      sliceEnabled ? "translate-x-5" : "translate-x-1"
+                  <span
+                    className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
+                      sliceEnabled ? "translate-x-4" : "translate-x-0"
                     }`}
-                    style={{ marginTop: 4 }}
                   />
                 </button>
               </div>
               {sliceEnabled && (
-                <div className="px-1">
+                <div className="px-0.5 pt-1">
                   <input
                     type="range"
                     min="0"
                     max="100"
                     value={sliceLevel}
                     onChange={(e) => setSliceLevel(Number(e.target.value))}
-                    className="w-full h-1 bg-gray-600 rounded-lg appearance-none cursor-pointer accent-blue-500"
+                    className="w-full h-1 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-blue-600"
                   />
                 </div>
               )}
             </div>
 
-            <div className="h-px bg-gray-700 my-1" />
+            <div className="h-px bg-slate-200/60 mx-1" />
 
             {/* Snapshots */}
-            <div className="flex gap-2">
+            <div className="grid grid-cols-2 gap-2">
               <button
                 onClick={() => handleSnapshot("normal")}
-                className="flex-1 rounded bg-gray-700 px-2 py-1 text-xs hover:bg-gray-600 transition-colors"
+                className="rounded-lg bg-slate-50 border border-slate-200/60 py-1.5 text-[11px] font-semibold text-slate-600 hover:bg-white hover:border-blue-200 hover:text-blue-600 transition-all"
               >
-                Snap
+                Screenshot
               </button>
               <button
                 onClick={() => handleSnapshot("outline")}
-                className="flex-1 rounded bg-gray-700 px-2 py-1 text-xs hover:bg-gray-600 transition-colors"
+                className="rounded-lg bg-slate-50 border border-slate-200/60 py-1.5 text-[11px] font-semibold text-slate-600 hover:bg-white hover:border-blue-200 hover:text-blue-600 transition-all"
               >
-                Outline
+                Outline Snap
               </button>
             </div>
 
-            <div className="h-px bg-gray-700 my-1" />
-
             {/* Dimensions Info */}
-            {dimsMM ? (
-              <div className="text-xs space-y-0.5 text-gray-400">
-                <div className="font-semibold text-gray-300">Dimensions:</div>
-                <div>
-                  L: {fmt(convert(dimsMM.x, units))} {units}
+            {dimsMM && (
+              <>
+                <div className="h-px bg-slate-200/60 mx-1" />
+                <div className="bg-slate-50/50 rounded-xl p-3 border border-slate-200/40">
+                  <div className="text-[10px] uppercase tracking-wider text-slate-400 font-bold mb-2">
+                    Model Bounds
+                  </div>
+                  <div className="grid grid-cols-3 gap-2 text-[11px] font-mono">
+                    <div className="flex flex-col">
+                      <span className="text-slate-400">X</span>
+                      <span className="text-slate-700 font-bold">
+                        {fmt(convert(dimsMM.x, units))}
+                      </span>
+                    </div>
+                    <div className="flex flex-col">
+                      <span className="text-slate-400">Y</span>
+                      <span className="text-slate-700 font-bold">
+                        {fmt(convert(dimsMM.y, units))}
+                      </span>
+                    </div>
+                    <div className="flex flex-col">
+                      <span className="text-slate-400">Z</span>
+                      <span className="text-slate-700 font-bold">
+                        {fmt(convert(dimsMM.z, units))}
+                      </span>
+                    </div>
+                  </div>
+                  <div className="mt-1 text-[10px] text-right text-slate-400 uppercase font-medium">
+                    {units}
+                  </div>
                 </div>
-                <div>
-                  W: {fmt(convert(dimsMM.z, units))} {units}
-                </div>
-                <div>
-                  H: {fmt(convert(dimsMM.y, units))} {units}
-                </div>
-              </div>
-            ) : (
-              <div className="text-xs text-gray-500">Dimensions: —</div>
+              </>
             )}
           </div>
         )}

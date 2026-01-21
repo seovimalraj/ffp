@@ -1274,7 +1274,7 @@ function analyzeDFM(
 
     // SM1: Bend Operations (Sheet Metal only)
     if (isSheetMetal && geometry.sheetMetalFeatures?.bends) {
-      const bends = geometry.sheetMetalFeatures.bends;
+      const bends = geometry.sheetMetalFeatures.bends ?? {};
       const bendCount = bends.count || 0;
       const sharpBends = bends.sharpBends || 0;
       const minRadius = bends.minBendRadius || 0;
@@ -1430,7 +1430,7 @@ function analyzeDFM(
     }
 
     // Tool access analysis
-    if (features.toolAccess.restrictedAreas > 2) {
+    if ((features?.toolAccess?.restrictedAreas ?? 0) > 2) {
       checks.push({
         id: "tool-access",
         name: "Tool Accessibility",

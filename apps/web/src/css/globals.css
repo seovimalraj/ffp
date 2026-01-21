@@ -597,6 +597,31 @@ span.flatpickr-weekday,
   border-left-width: 0;
 }
 
+/* react-phone-number-input */
+.PhoneInput {
+  @apply flex items-center gap-1;
+}
+
+.PhoneInputInput {
+  @apply flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 !border-0 !ring-0 !px-1;
+}
+
+.phone-input-container .PhoneInput {
+  @apply flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background transition-all focus-within:ring-2 focus-within:ring-ring focus-within:ring-offset-2;
+}
+
+.PhoneInputCountry {
+  @apply flex items-center gap-1 mr-2 pr-2 border-r border-gray-100;
+}
+
+.PhoneInputCountrySelectArrow {
+  @apply ml-1 opacity-50;
+}
+
+.phone-input-error {
+  @apply !border-red-500 focus-within:!ring-red-500;
+}
+
 .fc .fc-toolbar.fc-header-toolbar {
   @apply flex-col gap-4 px-6 pt-6 sm:flex-row;
 }
