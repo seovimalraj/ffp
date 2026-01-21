@@ -149,6 +149,10 @@ function mapPartConfigV1ToVNext(part: PartConfigV1): QuoteLineVNext {
     machiningComplexity: part.machining_complexity ?? null,
     selectedQuantity: part.selected_quantity ?? null,
     quantities: [...(part.quantities || [])],
+    // Sheet metal fields
+    sheetThicknessMm: part.sheet_thickness_mm ?? null,
+    bendCount: part.bend_count ?? null,
+    materialGauge: part.material_gauge ?? null,
   };
 
   const quoteLine: ContractsVNext.QuoteLineVNext = {
@@ -195,9 +199,9 @@ function mapPartConfigVNextToV1(line: QuoteLineVNext): PartConfigV1 {
   inspection_level: coerceInspectionLevel(line.selection.inspectionLevel),
   surface_finish: coerceSurfaceFinish(line.selection.surfaceFinish),
   machining_complexity: coerceMachiningComplexity(line.selection.machiningComplexity),
-    sheet_thickness_mm: undefined,
-    bend_count: undefined,
-    material_gauge: undefined,
+    sheet_thickness_mm: line.selection.sheetThicknessMm ?? undefined,
+    bend_count: line.selection.bendCount ?? undefined,
+    material_gauge: line.selection.materialGauge ?? undefined,
     geometry: {
       metrics: line.geometry?.metrics ? { ...line.geometry.metrics } : {},
     },

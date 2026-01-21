@@ -41,6 +41,7 @@ import {
   getDefaultMaterialForProcess,
   getDefaultFinishForProcess,
   getDefaultToleranceForProcess,
+  getMaterialDisplayName,
 } from "@/lib/pricing-engine";
 
 // Dynamically import PDF viewer to avoid SSR issues with DOMMatrix
@@ -63,6 +64,40 @@ import { apiClient } from "@/lib/api";
 import FileManagementModal from "./file-management-modal";
 import { formatCurrencyFixed, processTranslator } from "@/lib/utils";
 import { leadTimeMeta, markupMap } from "@cnc-quote/shared";
+
+// Valid sheet metal thicknesses in mm
+const VALID_SHEET_THICKNESSES = [0.5, 0.8, 1.0, 1.2, 1.5, 2.0, 2.5, 3.0, 4.0, 5.0, 6.0];
+
+// Helper to get valid sheet thickness (clamp bbox-derived values to valid sheet sizes)
+function getValidSheetThickness(part: PartConfig): number {
+  // Priority 1: User-configured sheet_thickness_mm
+  if (part.sheet_thickness_mm && part.sheet_thickness_mm > 0 && part.sheet_thickness_mm <= 25) {
+    return part.sheet_thickness_mm;
+  }
+  
+  // Priority 2: Geometry-detected thickness from advanced metrics (from CAD service ray-casting)
+  const advancedThickness = (part.geometry as any)?.advancedMetrics?.detected_thickness_mm;
+  if (advancedThickness && advancedThickness > 0 && advancedThickness <= 25) {
+    // Find closest standard thickness
+    const closest = VALID_SHEET_THICKNESSES.reduce((prev, curr) => 
+      Math.abs(curr - advancedThickness) < Math.abs(prev - advancedThickness) ? curr : prev
+    );
+    return closest;
+  }
+  
+  // Priority 3: SheetMetalFeatures thickness (may be from bbox - validate range)
+  const smThickness = part.geometry?.sheetMetalFeatures?.thickness;
+  if (smThickness && smThickness > 0 && smThickness <= 25) {
+    // Find closest standard thickness
+    const closest = VALID_SHEET_THICKNESSES.reduce((prev, curr) => 
+      Math.abs(curr - smThickness) < Math.abs(prev - smThickness) ? curr : prev
+    );
+    return closest;
+  }
+  
+  // Default to 2.0mm (matches AL5052-2.0 default material)
+  return 2.0;
+}
 
 // --- Sub-Component: PartCardItem ---
 export function PartCardItem({
@@ -627,7 +662,7 @@ export function PartCardItem({
                     <p className="text-sm font-bold text-slate-900 truncate">
                       {MATERIALS_LIST.find((m) => m.value === part.material)
                         ?.label ||
-                        part.material ||
+                        getMaterialDisplayName(part.material, part.process) ||
                         "Not specified"}
                     </p>
                   </div>
@@ -651,17 +686,19 @@ export function PartCardItem({
                   </div>
                 </div>
 
-                {/* Tolerance */}
+                {/* Tolerance for CNC / Thickness for Sheet Metal */}
                 <div className="flex items-center gap-4 py-4 group">
                   <div className="h-10 w-10 shrink-0 rounded-lg bg-slate-50 flex items-center justify-center text-slate-500 group-hover:text-blue-600 group-hover:bg-blue-50 transition-colors">
                     <Ruler className="w-5 h-5" />
                   </div>
                   <div className="min-w-0">
                     <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-0.5">
-                      Tolerance
+                      {isSheetMetalProcess(part.process) ? "Thickness" : "Tolerance"}
                     </p>
                     <p className="text-sm font-bold text-slate-900 truncate capitalize">
-                      {part.tolerance || "Standard"}
+                      {isSheetMetalProcess(part.process) 
+                        ? `${getValidSheetThickness(part)}mm`
+                        : (part.tolerance || "Standard")}
                     </p>
                   </div>
                 </div>
@@ -778,18 +815,8 @@ export function PartCardItem({
             </div>
           </div>
 
-          {/* Sheet Metal Lead Time Breakdown */}
-          {(part.process === "sheet-metal" ||
-            part.geometry?.recommendedProcess === "sheet-metal") &&
-            part.geometry?.sheetMetalFeatures &&
-            part.leadTimeType && (
-              <div className="mt-6 px-6">
-                <SheetMetalLeadTimeBreakdown
-                  part={part}
-                  leadTimeType={part.leadTimeType}
-                />
-              </div>
-            )}
+          {/* Sheet Metal Lead Time Breakdown - Hidden per user request */}
+          {/* Lead time breakdown and AI optimization removed for sheet metal parts */}
         </div>
       </div>
       {/* Image Viewer for image files */}

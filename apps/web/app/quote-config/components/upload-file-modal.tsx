@@ -52,12 +52,15 @@ const UploadFileModal = ({
         const uploadResults = [];
 
         for (const file of acceptedFiles) {
+          console.log(`=== UPLOAD FLOW START ===`);
           console.log(`Analyzing CAD file: ${file.name}`);
           
           // ENTERPRISE-LEVEL: Use backend analysis for STEP files (advanced ray-casting thickness detection)
           // Use client-side analysis for STL files (faster, no thickness detection needed)
           const extension = file.name.toLowerCase().split('.').pop();
+          console.log(`   File extension detected: ${extension}`);
           const useBackendAnalysis = ['step', 'stp', 'iges', 'igs'].includes(extension || '');
+          console.log(`   Use backend analysis? ${useBackendAnalysis}`);
           
           let geometry;
           let uploadedPath = `quotes/temp-${Date.now()}/${file.name}`;
@@ -66,11 +69,13 @@ const UploadFileModal = ({
             console.log(`🔬 Using backend analysis for ${file.name} (advanced thickness detection)`);
             try {
               // Upload file first to get URL
+              console.log(`   Uploading file to storage...`);
               const { url } = await upload(file);
               uploadedPath = url;
               
               console.log(`📤 File uploaded to: ${url}`);
               console.log(`🔍 Calling backend API: /api/cad/analyze-geometry`);
+              console.log(`   Request body:`, { fileUrl: url, fileName: file.name });
               
               // Call backend API for accurate analysis with ray-casting
               const analysisResponse = await fetch('/api/cad/analyze-geometry', {

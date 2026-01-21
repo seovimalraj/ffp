@@ -72,8 +72,48 @@ import Logo from "@/components/ui/logo";
 import ArchiveModal from "../components/archive-modal";
 import { SuggestionSidebar } from "../components/suggestion-sidebar";
 
+/**
+ * Normalize process string from database/API to clean format.
+ * Handles: double-encoded JSON strings, escaped quotes, extra whitespace
+ * Examples: "\"sheet-metal\"" -> "sheet-metal", "sheet_metal" -> "sheet-metal"
+ */
+function normalizeProcessString(rawProcess: string | undefined | null): string {
+  if (!rawProcess || typeof rawProcess !== "string") {
+    return "cnc-milling";
+  }
+
+  let process = rawProcess;
+
+  // Handle double-encoded JSON strings (e.g., "\"sheet-metal\"")
+  if (process.startsWith('"') && process.endsWith('"')) {
+    try {
+      process = JSON.parse(process);
+    } catch {
+      // If parsing fails, strip quotes manually
+      process = process.slice(1, -1);
+    }
+  }
+
+  // Remove any remaining escaped quotes, backslashes, and whitespace
+  process = process
+    .replace(/\\"/g, "") // Remove \" sequences
+    .replace(/"/g, "") // Remove any remaining quotes
+    .replace(/\\/g, "") // Remove backslashes
+    .trim();
+
+  // Map underscore format to hyphen format
+  const processMap: Record<string, string> = {
+    sheet_metal: "sheet-metal",
+    cnc_milling: "cnc-milling",
+    cnc_turning: "cnc-turning",
+  };
+
+  return processMap[process] || process || "cnc-milling";
+}
+
 // --- Constants (Moved Outside) ---
 // Helper function to get materials based on process
+// Filters out materials requiring manual review (they shouldn't appear in the dropdown)
 const getMaterialsForProcess = (process: string | undefined) => {
   if (isSheetMetalProcess(process)) {
     // Flatten sheet metal materials for dropdown
@@ -82,9 +122,13 @@ const getMaterialsForProcess = (process: string | undefined) => {
       label: string;
       multiplier: number;
       icon: string;
+      requiresManualQuote?: boolean;
     }[] = [];
     for (const [category, mats] of Object.entries(SHEET_METAL_MATERIALS)) {
       for (const mat of mats) {
+        // Skip materials that require manual quote - they shouldn't be in the dropdown
+        if ((mat as any).requiresManualQuote) continue;
+
         materials.push({
           value: (mat as any).value || mat.code,
           label: (mat as any).label || mat.name,
@@ -227,9 +271,11 @@ export const calculateLeadTime = (
 ) => {
   if (!part.geometry) return 7;
 
-  // Get material based on process type
-  const processType =
-    part.process || part.geometry?.recommendedProcess || "cnc-milling";
+  // Get material based on process type (normalize handles malformed strings)
+  const processType = normalizeProcessString(
+    part.process || part.geometry?.recommendedProcess,
+  );
+
   const material = getMaterialForProcess(part.material, processType);
   if (!material) return 7;
 
@@ -258,9 +304,10 @@ const calculatePrice = (
 ): number => {
   if (!part.geometry) return 0;
 
-  // Determine process type from CAD analysis
-  const processType =
-    part.process || part.geometry?.recommendedProcess || "cnc-milling";
+  // Determine process type from CAD analysis (normalize handles malformed strings)
+  const processType = normalizeProcessString(
+    part.process || part.geometry?.recommendedProcess,
+  );
 
   // Get material based on process type
   const material = getMaterialByValue(part.material, processType);
@@ -293,20 +340,65 @@ const calculatePrice = (
   const finish = getFinish(part.finish);
 
   // Create material spec for pricing engine
-  const materialSpec = {
-    code: (
-      (material as any).value ||
-      (material as any).code ||
-      ""
-    ).toUpperCase(),
-    name: (material as any).label || (material as any).name || "",
-    density: material.density,
-    costPerKg: material.costPerKg,
-    machinabilityFactor:
-      "machinabilityFactor" in material
-        ? (material as any).machinabilityFactor
-        : 1.0,
+  // IMPORTANT: Include thickness for sheet metal materials
+  const isSheetMetal = isSheetMetalProcess(processType);
+
+  // Helper to get valid sheet thickness (clamp unrealistic values)
+  const getValidThickness = () => {
+    // Priority 1: Material's thickness property (from SHEET_METAL_MATERIALS)
+    if ((material as any).thickness && (material as any).thickness <= 25) {
+      return (material as any).thickness;
+    }
+    // Priority 2: User-configured sheet_thickness_mm
+    if (
+      part.sheet_thickness_mm &&
+      part.sheet_thickness_mm > 0 &&
+      part.sheet_thickness_mm <= 25
+    ) {
+      return part.sheet_thickness_mm;
+    }
+    // Priority 3: Geometry sheetMetalFeatures (validate range - bbox values can be huge)
+    const smThickness = part.geometry?.sheetMetalFeatures?.thickness;
+    if (smThickness && smThickness > 0 && smThickness <= 25) {
+      return smThickness;
+    }
+    // Default to 2.0mm (matches AL5052-2.0 default material)
+    return 2.0;
   };
+
+  const materialSpec = isSheetMetal
+    ? {
+        // Sheet metal material spec with thickness
+        code: (
+          (material as any).value ||
+          (material as any).code ||
+          ""
+        ).toUpperCase(),
+        name: (material as any).label || (material as any).name || "",
+        density: material.density,
+        costPerKg: material.costPerKg,
+        thickness: getValidThickness(),
+        category: (material as any).category || "aluminum",
+        bendability: (material as any).bendability || 1.0,
+        // Pass manual quote flags for exotic materials
+        requiresManualQuote: (material as any).requiresManualQuote || false,
+        manualQuoteReason: (material as any).manualQuoteReason,
+      }
+    : {
+        // CNC material spec
+        code: (
+          (material as any).value ||
+          (material as any).code ||
+          ""
+        ).toUpperCase(),
+        name: (material as any).label || (material as any).name || "",
+        density: material.density,
+        costPerKg: material.costPerKg,
+        machinabilityFactor:
+          "machinabilityFactor" in material
+            ? (material as any).machinabilityFactor
+            : 1.0,
+      };
 
   // Calculate pricing with thickness support for sheet metal
   const pricing = calculatePricing({
@@ -320,10 +412,9 @@ const calculatePrice = (
       : "standard",
     leadTimeType: tier,
     // Pass thickness for sheet metal calculations
-    ...(isSheetMetalProcess(processType) &&
-      part.thickness && {
-        sheetThickness: parseFloat(part.thickness),
-      }),
+    ...(isSheetMetalProcess(processType) && {
+      sheetThickness: getValidThickness(),
+    }),
   });
 
   return pricing.totalPrice;
@@ -489,8 +580,9 @@ export default function QuoteConfigPage() {
           const defaultFinish = getDefaultFinishForProcess(detectedProcess);
           const defaultTolerance =
             getDefaultToleranceForProcess(detectedProcess);
-          const defaultThickness = detectedProcess.includes("sheet")
-            ? getDefaultThickness()
+          // For sheet metal, get thickness as a number (not string)
+          const defaultThicknessMm = detectedProcess?.includes("sheet")
+            ? parseFloat(getDefaultThickness()) || 2.0
             : undefined;
 
           const newPart: any = {
@@ -502,7 +594,8 @@ export default function QuoteConfigPage() {
             status: "draft",
             tolerance: defaultTolerance,
             finish: defaultFinish, // Process-specific default finish
-            thickness: defaultThickness, // Sheet metal thickness if applicable
+            // Use sheet_thickness_mm (numeric) instead of thickness (string) for database compatibility
+            sheet_thickness_mm: defaultThicknessMm,
             threads: "none",
             inspection: "standard",
             notes: "",
@@ -510,10 +603,14 @@ export default function QuoteConfigPage() {
             lead_time: 0,
             geometry,
             pricing: undefined,
-            process: geometry.recommendedProcess || "cnc-milling",
+            process: geometry?.recommendedProcess || "cnc-milling",
             final_price: 0,
             certificates: [],
           };
+          // CRITICAL FIX: Use mapped detectedProcess, not raw recommendedProcess
+          // This ensures UI shows correct process (e.g., "sheet-metal" not "sheet_metal")
+          newPart.process = detectedProcess;
+
           newPart.final_price = calculatePrice(newPart);
 
           newPart.lead_time = calculateLeadTime(newPart, "standard");
@@ -769,6 +866,33 @@ export default function QuoteConfigPage() {
             let syncNeeded = false;
 
             const processedParts: PartConfig[] = apiPartsRaw.map((p: any) => {
+              // CRITICAL: Normalize process field from database using helper function
+              // Handles: double-encoded JSON, escaped quotes, underscore format, etc.
+              const normalizedProcess = normalizeProcessString(
+                p.process || p.geometry?.recommendedProcess,
+              );
+
+              // Determine if this is a sheet metal part for proper material defaulting
+              const isSheetMetalPart = isSheetMetalProcess(normalizedProcess);
+              const defaultMaterial = isSheetMetalPart
+                ? "AL5052-2.0"
+                : "aluminum-6061";
+
+              // Check if current material is valid for the process type
+              // If sheet metal part has a CNC material (like aluminum-6061), replace with sheet metal default
+              let partMaterial = p.material;
+              if (isSheetMetalPart && partMaterial) {
+                // Check if material is a sheet metal code (e.g., AL5052-2.0) or CNC code (e.g., aluminum-6061)
+                const isSheetMetalMaterial =
+                  partMaterial.match(/^[A-Z]{2}\d+/i) ||
+                  (partMaterial.includes("-") &&
+                    partMaterial.match(/\d+\.\d+$/));
+                if (!isSheetMetalMaterial) {
+                  // CNC material on sheet metal part - replace with default
+                  partMaterial = defaultMaterial;
+                }
+              }
+
               const part: PartConfig = {
                 id: p.id,
                 rfqId: p.rfq_id,
@@ -776,7 +900,7 @@ export default function QuoteConfigPage() {
                 fileName: p.file_name,
                 filePath: p.cad_file_url,
                 fileObject: undefined, // URL only
-                material: p.material || "aluminum-6061",
+                material: partMaterial || defaultMaterial,
                 quantity: p.quantity || 1,
                 tolerance: p.tolerance || "standard",
                 finish: p.finish || "as-machined",
@@ -791,7 +915,7 @@ export default function QuoteConfigPage() {
                 leadTime: undefined,
                 is_archived: p.is_archived,
                 snapshot_2d_url: p.snapshot_2d_url,
-                process: p.process,
+                process: normalizedProcess as PartConfig["process"],
                 files2d: (p.files2d || []).map((f: any) => ({
                   file: {
                     name: f.file_name || "Drawing",
@@ -1089,14 +1213,16 @@ export default function QuoteConfigPage() {
   };
 
   const checkFor2DDiagrams = () => {
-    parts.forEach((part) => {
+    let isValid = true;
+
+    for (const part of parts) {
       if (!part.files2d?.length) {
         notify.info(`Part ${part.id} is missing a 2D diagram`);
-        return false;
+        isValid = false;
       }
-    });
+    }
 
-    return true;
+    return isValid;
   };
 
   const handleCheckout = async () => {
@@ -1126,6 +1252,8 @@ export default function QuoteConfigPage() {
       setSaving(false);
     }
   };
+
+  const handleManualQuote = () => {};
 
   // Handle applying suggestions
   const handleApplySuggestion = (suggestion: any) => {
@@ -1596,23 +1724,41 @@ export default function QuoteConfigPage() {
                 </div>
               </div>
 
-              <Button
-                size="lg"
-                onClick={handleCheckout}
-                disabled={saving}
-                className="w-full bg-blue-600 hover:bg-blue-700 text-white shadow-lg shadow-blue-500/30 rounded-xl h-14 text-lg font-bold transition-all hover:scale-[1.02] active:scale-[0.98]"
-              >
-                {saving ? (
-                  <>
-                    <Loader2 className="w-5 h-5 mr-2 animate-spin" />
-                  </>
-                ) : (
+              <div className="flex flex-col gap-4 mt-6">
+                {/* Primary Checkout Button */}
+                <Button
+                  size="lg"
+                  onClick={handleCheckout}
+                  disabled={saving}
+                  className="w-full bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white shadow-[0_10px_20px_-10px_rgba(37,99,235,0.5)] rounded-2xl h-16 text-lg font-bold transition-all hover:scale-[1.02] active:scale-[0.98] group relative overflow-hidden"
+                >
                   <div className="flex items-center justify-center w-full">
-                    Checkout
-                    <ArrowRight className="w-5 h-5 ml-2" />
+                    {saving ? (
+                      <Loader2 className="w-6 h-6 animate-spin" />
+                    ) : (
+                      <>
+                        Make Payment
+                        <div className="ml-3 bg-white/20 p-1.5 rounded-xl group-hover:bg-white/30 transition-colors">
+                          <ArrowRight className="w-4 h-4 transition-transform group-hover:translate-x-0.5" />
+                        </div>
+                      </>
+                    )}
                   </div>
-                )}
-              </Button>
+                </Button>
+
+                {/* Secondary Manual Quote Button */}
+                {/* <Button
+                  size="lg"
+                  variant="outline"
+                  onClick={handleManualQuote}
+                  disabled={saving}
+                  className="w-full bg-white border-2 border-slate-100 hover:border-blue-200 hover:bg-blue-50/50 text-slate-600 hover:text-blue-600 rounded-2xl h-14 text-base font-bold transition-all"
+                >
+                  <div className="flex items-center justify-center w-full">
+                    Request Manual Quote
+                  </div>
+                </Button> */}
+              </div>
             </div>
           </div>
         </div>
@@ -1631,7 +1777,10 @@ export default function QuoteConfigPage() {
             Support
           </Link>
         </div>
-        <p>© 2025 Frigate Engineering Services. Secure & Confidential.</p>
+        <p>
+          © {new Date().getFullYear()} Frigate Engineering Services. Secure &
+          Confidential.
+        </p>
       </footer>
 
       <UploadFileModal

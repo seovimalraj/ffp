@@ -59,8 +59,29 @@ export function safeValue<T>(value: T | null | undefined, defaultValue: T): T {
 }
 
 export function processParts(parts: any[]) {
-  console.log(parts, "<<<<");
+  console.log('📦 Processing parts from backend:', parts.map(p => ({ id: p.id, process: p.process })));
   const processedParts = parts.map((part) => {
+    // CRITICAL: Normalize process field
+    // 1. Use geometry recommendation if process is missing
+    // 2. Convert underscore format to hyphen format (sheet_metal → sheet-metal)
+    let process = part.process;
+    
+    if (!process || process === '') {
+      // Fall back to geometry recommendation if available
+      process = part.geometry?.recommendedProcess || "cnc-milling";
+      console.log(`  Part ${part.id}: process was empty, using ${process} from geometry`);
+    }
+    
+    // Normalize underscore to hyphen format
+    const processMap: Record<string, string> = {
+      'sheet_metal': 'sheet-metal',
+      'cnc_milling': 'cnc-milling',
+      'cnc_turning': 'cnc-turning',
+    };
+    process = processMap[process] || process;
+    
+    console.log(`  Part ${part.id}: backend process='${part.process}' → final='${process}'`);
+    
     return {
       id: part.id,
       rfqId: part.rfq_id,
@@ -80,7 +101,7 @@ export function processParts(parts: any[]) {
       leadTime: part.lead_time,
       geometry: part.geometry,
       files2d: part.files2d || [],
-      process: part.process || "cnc-milling",
+      process, // Use the normalized process value
       certificates: part.certificates || [],
       is_archived: part.is_archived || false,
     };

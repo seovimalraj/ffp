@@ -1,44 +1,34 @@
-# Use Ubuntu base image
-FROM ubuntu:24.04
+# Use miniconda base for easier pythonOCC installation
+FROM continuumio/miniconda3:latest
 
-# Install system dependencies
-RUN apt-get update && apt-get install -y \
-    python3-pip \
-    python3-dev \
-    python3-venv \
+# Install system dependencies (minimal)
+RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
-    libgl1-mesa-dev \
-    libglu1-mesa-dev \
-    libxrender1 \
-    libxft2 \
-    occt-draw \
-    libocct-foundation-7.6t64 \
-    libocct-modeling-algorithms-7.6t64 \
-    libocct-modeling-data-7.6t64 \
-    libocct-ocaf-7.6t64 \
-    libocct-visualization-7.6t64 \
-    && rm -rf /var/lib/apt/lists/*
-
-# Install poetry system-wide to avoid conflicts
-RUN pip3 install --break-system-packages poetry
+    && rm -rf /var/lib/apt/lists/* \
+    && apt-get clean
 
 # Set working directory
 WORKDIR /app
 
-# Copy project files from the correct monorepo path
-COPY apps/cad-service/pyproject.toml ./pyproject.toml
-COPY apps/cad-service/app ./app
+# Create conda environment FIRST (better caching)
+RUN conda create -n cadenv python=3.11 -y \
+    && conda install -n cadenv -c conda-forge pythonocc-core=7.7.2 numpy -y \
+    && conda clean --all -f -y
 
-# Create virtual environment and install dependencies
-RUN python3 -m venv /app/venv \
-    && /app/venv/bin/pip install --upgrade pip \
-    && /app/venv/bin/pip install fastapi uvicorn pydantic celery redis python-multipart numpy httpx psutil requests structlog \
-    && /app/venv/bin/pip install opentelemetry-api opentelemetry-sdk opentelemetry-instrumentation-fastapi \
-    && /app/venv/bin/pip install opentelemetry-instrumentation-redis opentelemetry-instrumentation-requests \
-    && /app/venv/bin/pip install opentelemetry-exporter-otlp-proto-grpc
+# Copy requirements and install pip packages
+COPY apps/cad-service/pyproject.toml ./pyproject.toml
+RUN /opt/conda/envs/cadenv/bin/pip install --no-cache-dir \
+    fastapi uvicorn pydantic celery redis python-multipart \
+    httpx psutil requests structlog numpy-stl trimesh==4.0.5 scipy==1.11.2 \
+    opentelemetry-api opentelemetry-sdk opentelemetry-instrumentation-fastapi \
+    opentelemetry-instrumentation-redis opentelemetry-instrumentation-requests \
+    opentelemetry-exporter-otlp-proto-grpc
+
+# Copy application code LAST (for better layer caching)
+COPY apps/cad-service/app ./app
 
 # Expose port
 EXPOSE 10001
 
-# Run FastAPI with port from environment
-CMD /app/venv/bin/uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-10001}
+# Run FastAPI with conda environment
+CMD ["/opt/conda/envs/cadenv/bin/uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "10001"]

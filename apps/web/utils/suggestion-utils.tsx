@@ -60,530 +60,6 @@ export interface Suggestion {
 }
 
 /**
- * Generate comprehensive suggestions including DFM, material alternatives, and marketing intelligence
- */
-export function generateSuggestions(parts: PartConfig[]): Suggestion[] {
-  const suggestions: Suggestion[] = [];
-
-  parts.forEach((part) => {
-    // Generate DFM recommendations
-    suggestions.push(...generateDFMSuggestions(part));
-
-    // Generate alternative material suggestions
-    suggestions.push(...generateAlternativeMaterialSuggestions(part));
-
-    // Generate marketing-focused suggestions
-    suggestions.push(...generateMarketingSuggestions(part));
-
-    // Generate existing suggestions
-    suggestions.push(...generateLegacySuggestions(part));
-  });
-
-  // Generate multi-part bundle suggestions
-  if (parts.length > 1) {
-    suggestions.push(...generateBundleSuggestions(parts));
-  }
-
-  return suggestions;
-}
-
-/**
- * Generate DFM (Design for Manufacturing) cost-reduction recommendations
- * Analyzes geometry features and suggests design improvements
- */
-function generateDFMSuggestions(part: PartConfig): Suggestion[] {
-  const suggestions: Suggestion[] = [];
-  const geometry = part.geometry;
-
-  if (!geometry) return suggestions;
-
-  const {
-    dfmIssues,
-    advancedFeatures,
-    sheetMetalFeatures,
-    recommendedProcess,
-  } = geometry;
-
-  // Process DFM issues from CAD analysis
-  if (dfmIssues && dfmIssues.length > 0) {
-    dfmIssues.forEach((issue, index) => {
-      // Only show warnings and critical issues as suggestions
-      if (
-        issue.severity !== "info" &&
-        issue.potentialSavings &&
-        issue.potentialSavings > 20
-      ) {
-        suggestions.push({
-          id: `dfm-issue-${part.id}-${index}`,
-          type: "dfm",
-          title: issue.issue,
-          description: issue.recommendation,
-          partId: part.id,
-          partName: part.fileName,
-          currentValue: "Current Design",
-          suggestedValue: "Optimized Design",
-          preview: part.snapshot_2d_url,
-          impact: {
-            savings: issue.potentialSavings,
-            savingsPercentage: Math.round(
-              (issue.potentialSavings / (part.final_price || 200)) * 100,
-            ),
-          },
-          icon: React.createElement(AlertTriangle, { className: "w-5 h-5" }),
-          color: issue.severity === "critical" ? "red" : "amber",
-          action: { type: "dfm-redesign", issueType: issue.issue },
-        });
-      }
-    });
-  }
-
-  // CNC-specific DFM suggestions
-  if (
-    recommendedProcess === "cnc-milling" ||
-    recommendedProcess === "cnc-turning"
-  ) {
-    // Undercut suggestions
-    if (advancedFeatures.undercuts.requires5Axis) {
-      suggestions.push({
-        id: `dfm-undercut-${part.id}`,
-        type: "dfm",
-        title: "Enhance Part Reliability",
-        description: `Part has ${advancedFeatures.undercuts.count} undercuts that create stress concentration points and potential weak spots. Redesigning to eliminate these features improves structural integrity and part longevity under load.`,
-        partId: part.id,
-        partName: part.fileName,
-        currentValue: "Complex Geometry",
-        suggestedValue: "Simplified Design",
-        preview: part.snapshot_2d_url,
-        impact: {
-          savings: 180,
-          savingsPercentage: 28,
-        },
-        icon: React.createElement(Wrench, { className: "w-5 h-5" }),
-        color: "orange",
-        action: { type: "remove-undercuts" },
-      });
-    }
-
-    // Deep hole machining optimization
-    if (advancedFeatures.holes.deepHoleCount > 2) {
-      suggestions.push({
-        id: `dfm-deepholes-${part.id}`,
-        type: "dfm",
-        title: "Improve Hole Precision & Longevity",
-        description: `${advancedFeatures.holes.deepHoleCount} deep holes (L/D > 5:1) may experience wear issues and thread degradation over time. Optimizing hole depth or increasing diameter improves thread engagement and long-term reliability.`,
-        partId: part.id,
-        partName: part.fileName,
-        currentValue: `${advancedFeatures.holes.deepHoleCount} deep holes`,
-        suggestedValue: "Optimized for durability",
-        preview: part.snapshot_2d_url,
-        impact: {
-          savings: 65,
-          savingsPercentage: 16,
-        },
-        icon: React.createElement(Zap, { className: "w-5 h-5" }),
-        color: "orange",
-        action: { type: "optimize-holes", feature: "deep-holes" },
-      });
-    }
-
-    // Micro hole warnings
-    if (advancedFeatures.holes.microHoleCount > 0) {
-      suggestions.push({
-        id: `dfm-microholes-${part.id}`,
-        type: "dfm",
-        title: "Critical: Prevent Thread Stripping",
-        description: `${advancedFeatures.holes.microHoleCount} micro holes (<1mm) are prone to cross-threading and stripped threads during assembly. Increasing to ≥1mm diameter improves fastener reliability and reduces risk of field failures during installation or maintenance.`,
-        partId: part.id,
-        partName: part.fileName,
-        currentValue: `${advancedFeatures.holes.microHoleCount} micro holes`,
-        suggestedValue: "≥1mm diameter",
-        preview: part.snapshot_2d_url,
-        impact: {
-          savings: 50 * advancedFeatures.holes.microHoleCount,
-          savingsPercentage: Math.round(
-            ((50 * advancedFeatures.holes.microHoleCount) /
-              (part.final_price || 200)) *
-              100,
-          ),
-        },
-        icon: React.createElement(AlertTriangle, { className: "w-5 h-5" }),
-        color: "red",
-        action: { type: "increase-hole-diameter", minDiameter: 1.0 },
-      });
-    }
-
-    // Sharp corner optimization for pockets
-    if (advancedFeatures.pockets.sharpCornersCount > 3) {
-      suggestions.push({
-        id: `dfm-sharp-corners-${part.id}`,
-        type: "dfm",
-        title: "Reduce Stress Concentrations",
-        description: `${advancedFeatures.pockets.sharpCornersCount} sharp pocket corners act as stress risers that can initiate cracks under cyclic loading. Adding ${advancedFeatures.pockets.minCornerRadius.toFixed(1)}mm radii distributes stress evenly, extending part service life and preventing fatigue failures.`,
-        partId: part.id,
-        partName: part.fileName,
-        currentValue: "Sharp corners",
-        suggestedValue: `R${advancedFeatures.pockets.minCornerRadius.toFixed(1)} radii`,
-        preview: part.snapshot_2d_url,
-
-        impact: {
-          savings: 40,
-          savingsPercentage: 12,
-        },
-        icon: React.createElement(Layers, { className: "w-5 h-5" }),
-        color: "amber",
-        action: {
-          type: "add-corner-radii",
-          minRadius: advancedFeatures.pockets.minCornerRadius,
-        },
-      });
-    }
-
-    // Deep pocket suggestions
-    if (advancedFeatures.pockets.deepPockets > 2) {
-      suggestions.push({
-        id: `dfm-pocket-${part.id}`,
-        type: "dfm",
-        title: "Enhance Structural Integrity",
-        description: `${advancedFeatures.pockets.deepPockets} deep pockets detected with aspect ratio > 3:1. Deep cavities can reduce part stiffness and create weak points. Reducing pocket depth by 30% improves overall structural rigidity and resistance to bending loads.`,
-        partId: part.id,
-        partName: part.fileName,
-        currentValue: `${advancedFeatures.pockets.avgDepth.toFixed(1)}mm depth`,
-        suggestedValue: `${(advancedFeatures.pockets.avgDepth * 0.7).toFixed(1)}mm depth`,
-        preview: part.snapshot_2d_url,
-
-        impact: {
-          savings: 75,
-          savingsPercentage: 18,
-        },
-        icon: React.createElement(Layers, { className: "w-5 h-5" }),
-        color: "amber",
-        action: { type: "reduce-pocket-depth", reduction: 0.3 },
-      });
-    }
-
-    // Missing fillet recommendations
-    if (advancedFeatures.fillets.missingFilletCount > 2) {
-      suggestions.push({
-        id: `dfm-missing-fillets-${part.id}`,
-        type: "dfm",
-        title: "Prevent Crack Initiation",
-        description: `${advancedFeatures.fillets.missingFilletCount} sharp internal corners detected (stress risk: ${advancedFeatures.fillets.stressConcentrationRisk}/10). Sharp corners are prime locations for fatigue cracks to start. Adding R${advancedFeatures.fillets.minRadius.toFixed(1)}mm fillets significantly improves part longevity under repeated loading and prevents premature failures.`,
-        partId: part.id,
-        partName: part.fileName,
-        currentValue: "Sharp corners",
-        suggestedValue: `R${advancedFeatures.fillets.minRadius.toFixed(1)} fillets`,
-        preview: part.snapshot_2d_url,
-
-        impact: {
-          savings: 0,
-          savingsPercentage: 0,
-        },
-        icon: React.createElement(AlertTriangle, { className: "w-5 h-5" }),
-        color:
-          advancedFeatures.fillets.stressConcentrationRisk > 6
-            ? "red"
-            : "orange",
-        action: {
-          type: "add-fillets",
-          minRadius: advancedFeatures.fillets.minRadius,
-        },
-      });
-    }
-
-    // Thread optimization
-    if (advancedFeatures.threads.count > 8) {
-      const internalCost = advancedFeatures.threads.internalThreads * 3;
-      const externalCost = advancedFeatures.threads.externalThreads * 2;
-      suggestions.push({
-        id: `dfm-threads-${part.id}`,
-        type: "secondary-ops",
-        title: "Simplify Assembly Process",
-        description: `Part requires ${advancedFeatures.threads.count} fastening points (${advancedFeatures.threads.internalThreads} internal, ${advancedFeatures.threads.externalThreads} external). Excessive fasteners increase assembly time and potential for cross-threading errors. Consolidating to fewer, larger fasteners improves installation reliability and serviceability.`,
-        partId: part.id,
-        partName: part.fileName,
-        currentValue: `${advancedFeatures.threads.count} threads`,
-        suggestedValue: "Streamlined fastening",
-        preview: part.snapshot_2d_url,
-
-        impact: {
-          savings: Math.min(internalCost + externalCost, 80),
-          savingsPercentage: Math.round(
-            (Math.min(internalCost + externalCost, 80) /
-              (part.final_price || 200)) *
-              100,
-          ),
-        },
-        icon: React.createElement(Wrench, { className: "w-5 h-5" }),
-        color: "amber",
-        action: { type: "optimize-threads" },
-      });
-    }
-
-    // Boss/protrusion optimization
-    if (
-      advancedFeatures.bosses.count > 3 &&
-      advancedFeatures.bosses.maxAspectRatio > 4
-    ) {
-      suggestions.push({
-        id: `dfm-bosses-${part.id}`,
-        type: "dfm",
-        title: "Improve Mounting Stability",
-        description: `${advancedFeatures.bosses.count} tall bosses detected (height/diameter > 4:1). Tall, slender mounting features can bend or break during assembly torque application. Reducing height by 25% or adding gussets improves mounting robustness and prevents assembly damage.`,
-        partId: part.id,
-        partName: part.fileName,
-        currentValue: `${advancedFeatures.bosses.avgHeight.toFixed(1)}mm height`,
-        suggestedValue: `${(advancedFeatures.bosses.avgHeight * 0.75).toFixed(1)}mm height`,
-        preview: part.snapshot_2d_url,
-
-        impact: {
-          savings: 30,
-          savingsPercentage: 10,
-        },
-        icon: React.createElement(Layers, { className: "w-5 h-5" }),
-        color: "amber",
-        action: { type: "reduce-boss-height", reduction: 0.25 },
-      });
-    }
-
-    // Rib thickness optimization
-    if (advancedFeatures.ribs.thinRibCount > 2) {
-      suggestions.push({
-        id: `dfm-ribs-${part.id}`,
-        type: "dfm",
-        title: `${advancedFeatures.ribs.deflectionRisk === "high" ? "Critical: " : ""}Strengthen Load-Bearing Ribs`,
-        description: `${advancedFeatures.ribs.thinRibCount} thin ribs detected (${advancedFeatures.ribs.minThickness.toFixed(1)}mm). Ribs thinner than 1.5mm may deflect or crack under load, compromising structural support. Increasing to 2mm minimum prevents warping and ensures consistent part performance over time.`,
-        partId: part.id,
-        partName: part.fileName,
-        currentValue: `${advancedFeatures.ribs.minThickness.toFixed(1)}mm`,
-        suggestedValue: "2mm minimum",
-        preview: part.snapshot_2d_url,
-
-        impact: {
-          savings: advancedFeatures.ribs.deflectionRisk === "high" ? 55 : 30,
-          savingsPercentage:
-            advancedFeatures.ribs.deflectionRisk === "high" ? 15 : 10,
-        },
-        icon: React.createElement(AlertTriangle, { className: "w-5 h-5" }),
-        color:
-          advancedFeatures.ribs.deflectionRisk === "high" ? "red" : "orange",
-        action: { type: "increase-rib-thickness", minThickness: 2.0 },
-      });
-    }
-
-    // Tool access and multi-axis warnings
-    if (
-      advancedFeatures?.toolAccess?.restrictedAreas &&
-      advancedFeatures?.toolAccess?.restrictedAreas > 3
-    ) {
-      suggestions.push({
-        id: `dfm-tool-access-${part.id}`,
-        type: "dfm",
-        title: "Ensure Feature Consistency",
-        description: `${advancedFeatures.toolAccess?.restrictedAreas} restricted access areas require multiple setups${advancedFeatures.toolAccess?.requiresMultiAxisMachining ? " and complex fixturing" : ""}. Multiple setups increase variation risk between features. Simplifying geometry ensures tighter dimensional consistency and better part-to-part repeatability.`,
-        partId: part.id,
-        partName: part.fileName,
-        currentValue: `${advancedFeatures.toolAccess?.estimatedSetupCount} setups`,
-        suggestedValue: "Simplified geometry",
-        preview: part.snapshot_2d_url,
-
-        impact: {
-          savings: advancedFeatures.toolAccess.estimatedSetupCount * 35,
-          savingsPercentage: Math.round(
-            ((advancedFeatures.toolAccess.estimatedSetupCount * 35) /
-              (part.final_price || 200)) *
-              100,
-          ),
-        },
-        icon: React.createElement(Wrench, { className: "w-5 h-5" }),
-        color: "orange",
-        action: { type: "improve-tool-access" },
-      });
-    }
-
-    // Surface finish requirements
-    if (
-      advancedFeatures?.surfaceFinish?.requiresPolishing ||
-      advancedFeatures?.surfaceFinish?.criticalSurfaces > 5
-    ) {
-      suggestions.push({
-        id: `dfm-surface-finish-${part.id}`,
-        type: "secondary-ops",
-        title: "Relax Surface Finish Requirements",
-        description: `${advancedFeatures?.surfaceFinish?.criticalSurfaces} surfaces require fine finish (Ra < 1.6μm). Accepting standard finish (Ra 3.2μm) on non-critical surfaces saves polishing/honing operations.`,
-        partId: part.id,
-        partName: part.fileName,
-        currentValue: `Ra ${advancedFeatures?.surfaceFinish?.estimatedRa}μm`,
-        suggestedValue: "Standard finish on non-critical",
-        preview: part.snapshot_2d_url,
-
-        impact: {
-          savings: advancedFeatures.surfaceFinish.criticalSurfaces * 8,
-          savingsPercentage: Math.round(
-            ((advancedFeatures.surfaceFinish.criticalSurfaces * 8) /
-              (part.final_price || 200)) *
-              100,
-          ),
-        },
-        icon: React.createElement(Sparkles, { className: "w-5 h-5" }),
-        color: "amber",
-        action: { type: "relax-surface-finish" },
-      });
-    }
-
-    // Thin wall warnings
-    if (advancedFeatures.thinWalls.risk === "high") {
-      suggestions.push({
-        id: `dfm-thinwall-${part.id}`,
-        type: "dfm",
-        title: "Critical: Increase Wall Thickness",
-        description: `Thin walls (${advancedFeatures.thinWalls.minThickness.toFixed(1)}mm) pose high deflection risk. Increasing to 2.5mm minimum would dramatically reduce scrap rate and improve manufacturability.`,
-        partId: part.id,
-        partName: part.fileName,
-        currentValue: `${advancedFeatures.thinWalls.minThickness.toFixed(1)}mm`,
-        suggestedValue: "2.5mm minimum",
-        preview: part.snapshot_2d_url,
-
-        impact: {
-          savings: 120,
-          savingsPercentage: 22,
-        },
-        icon: React.createElement(AlertTriangle, { className: "w-5 h-5" }),
-        color: "red",
-        action: { type: "increase-wall-thickness", minThickness: 2.5 },
-      });
-    } else if (advancedFeatures.thinWalls.risk === "medium") {
-      suggestions.push({
-        id: `dfm-thinwall-medium-${part.id}`,
-        type: "dfm",
-        title: "Improve Wall Thickness",
-        description: `Moderate thin walls (${advancedFeatures.thinWalls.minThickness.toFixed(1)}mm). Increasing to 2.5mm would improve rigidity and reduce cycle time.`,
-        partId: part.id,
-        partName: part.fileName,
-        currentValue: `${advancedFeatures.thinWalls.minThickness.toFixed(1)}mm`,
-        suggestedValue: "2.5mm",
-        preview: part.snapshot_2d_url,
-
-        impact: {
-          savings: 45,
-          savingsPercentage: 12,
-        },
-        icon: React.createElement(Zap, { className: "w-5 h-5" }),
-        color: "amber",
-        action: { type: "increase-wall-thickness", minThickness: 2.5 },
-      });
-    }
-  }
-
-  // Sheet metal DFM suggestions
-  if (recommendedProcess === "sheet-metal" && sheetMetalFeatures) {
-    // High bend count
-    if (sheetMetalFeatures.bendCount > 12) {
-      suggestions.push({
-        id: `dfm-bends-${part.id}`,
-        type: "dfm",
-        title: "Reduce Bend Count",
-        description: `Part has ${sheetMetalFeatures.bendCount} bends. Simplifying design to reduce bends by 30% would significantly decrease forming time and cost.`,
-        partId: part.id,
-        partName: part.fileName,
-        currentValue: `${sheetMetalFeatures.bendCount} bends`,
-        suggestedValue: `${Math.ceil(sheetMetalFeatures.bendCount * 0.7)} bends`,
-        preview: part.snapshot_2d_url,
-
-        impact: {
-          savings: 60,
-          savingsPercentage: 15,
-        },
-        icon: React.createElement(Layers, { className: "w-5 h-5" }),
-        color: "amber",
-        action: { type: "reduce-bends", targetReduction: 0.3 },
-      });
-    }
-
-    // Bend radius too small
-    if (sheetMetalFeatures.minBendRadius < sheetMetalFeatures.thickness) {
-      suggestions.push({
-        id: `dfm-bendradius-${part.id}`,
-        type: "dfm",
-        title: "Critical: Increase Bend Radius",
-        description: `Bend radius (${sheetMetalFeatures.minBendRadius.toFixed(1)}mm) is less than material thickness. This will crack during forming. Increase to minimum ${(sheetMetalFeatures.thickness * 1.5).toFixed(1)}mm.`,
-        partId: part.id,
-        partName: part.fileName,
-        currentValue: `${sheetMetalFeatures.minBendRadius.toFixed(1)}mm radius`,
-        suggestedValue: `${(sheetMetalFeatures.thickness * 1.5).toFixed(1)}mm radius`,
-        preview: part.snapshot_2d_url,
-
-        impact: {
-          savings: 0,
-          savingsPercentage: 0,
-        },
-        icon: React.createElement(AlertTriangle, { className: "w-5 h-5" }),
-        color: "red",
-        action: {
-          type: "increase-bend-radius",
-          minRadius: sheetMetalFeatures.thickness * 1.5,
-        },
-      });
-    }
-
-    // Small features warning
-    if (sheetMetalFeatures.hasSmallFeatures) {
-      suggestions.push({
-        id: `dfm-small-features-${part.id}`,
-        type: "dfm",
-        title: "Enlarge Small Features",
-        description:
-          "Features smaller than 2x material thickness detected. These may be difficult or impossible to form reliably. Consider increasing feature size.",
-        partId: part.id,
-        partName: part.fileName,
-        currentValue: "< 2x thickness",
-        suggestedValue: "≥ 2x thickness",
-        preview: part.snapshot_2d_url,
-
-        impact: {
-          savings: 35,
-          savingsPercentage: 10,
-        },
-        icon: React.createElement(Zap, { className: "w-5 h-5" }),
-        color: "amber",
-        action: {
-          type: "enlarge-features",
-          minSize: sheetMetalFeatures.thickness * 2,
-        },
-      });
-    }
-  }
-
-  // Tolerance optimization
-  if (part.tolerance === "tight" || part.tolerance === "Tight") {
-    const geometry = part.geometry;
-    if (geometry && geometry.complexity === "complex") {
-      suggestions.push({
-        id: `dfm-tolerance-${part.id}`,
-        type: "tolerance",
-        title: "Relax Non-Critical Tolerances",
-        description:
-          "Tight tolerances (±0.025mm) on complex geometry significantly increase cost. Consider specifying tight tolerances only on critical dimensions and standard tolerances elsewhere.",
-        partId: part.id,
-        partName: part.fileName,
-        currentValue: "Tight (±0.025mm)",
-        suggestedValue: "Mixed (Precision on critical dims)",
-        preview: part.snapshot_2d_url,
-
-        impact: {
-          savings: 200,
-          savingsPercentage: 35,
-        },
-        icon: React.createElement(AlertTriangle, { className: "w-5 h-5" }),
-        color: "orange",
-        action: { type: "relax-tolerances", newTolerance: "precision" },
-      });
-    }
-  }
-
-  return suggestions;
-}
-
-/**
  * Generate alternative material suggestions for cost savings or performance improvement
  */
 function generateAlternativeMaterialSuggestions(
@@ -850,95 +326,6 @@ function generateAlternativeMaterialSuggestions(
         action: { type: "change-material", material: "Bronze C932" },
       });
     }
-  }
-
-  return suggestions;
-}
-
-/**
- * Generate original suggestions (quantity, finish, lead time)
- */
-function generateLegacySuggestions(part: PartConfig): Suggestion[] {
-  const suggestions: Suggestion[] = [];
-
-  // Quantity optimization suggestion
-  if (part.quantity >= 8 && part.quantity <= 12) {
-    const suggestedQty = 15;
-    const currentPrice = part.final_price || 200;
-    const savings = currentPrice * 0.12;
-
-    suggestions.push({
-      id: `qty-${part.id}`,
-      type: "quantity",
-      title: "Volume Pricing Unlock",
-      description: `Boosting to ${suggestedQty} units triggers a 12% price break on this specific geometry.`,
-      partId: part.id,
-      partName: part.fileName,
-      currentValue: part.quantity,
-      suggestedValue: suggestedQty,
-      preview: part.snapshot_2d_url,
-
-      impact: {
-        savings,
-        savingsPercentage: 12,
-      },
-      icon: React.createElement(Package, { className: "w-5 h-5" }),
-      color: "blue",
-      action: { type: "change-quantity", quantity: suggestedQty },
-    });
-  }
-
-  // Lead time optimization
-  if (part.leadTimeType === "expedited") {
-    const currentPrice = part.final_price || 200;
-    const savings = currentPrice * 0.35;
-
-    suggestions.push({
-      id: `lead-${part.id}`,
-      type: "leadtime",
-      title: "Consider Standard Lead Time",
-      description: `Switching to standard lead time can save 35% on this part`,
-      partId: part.id,
-      partName: part.fileName,
-      currentValue: "Expedited",
-      suggestedValue: "Standard",
-      preview: part.snapshot_2d_url,
-
-      impact: {
-        savings,
-        savingsPercentage: 35,
-        leadTimeReduction: -5,
-      },
-      icon: React.createElement(Clock, { className: "w-5 h-5" }),
-      color: "green",
-      action: { type: "change-lead-time", leadTime: "standard" },
-    });
-  }
-
-  // Finish optimization
-  if (
-    part.finish &&
-    (part.finish.includes("Anodiz") || part.finish === "Anodizing")
-  ) {
-    suggestions.push({
-      id: `finish-${part.id}`,
-      type: "finish",
-      title: "Cost-Effective Finish Option",
-      description: `Powder coating provides similar protection at 20% lower cost`,
-      partId: part.id,
-      partName: part.fileName,
-      currentValue: part.finish,
-      suggestedValue: "Powder Coating",
-      preview: part.snapshot_2d_url,
-
-      impact: {
-        savings: 35.0,
-        savingsPercentage: 20,
-      },
-      icon: React.createElement(Sparkles, { className: "w-5 h-5" }),
-      color: "amber",
-      action: { type: "change-finish", finish: "Powder Coating" },
-    });
   }
 
   return suggestions;
@@ -1256,6 +643,95 @@ function generateMarketingSuggestions(part: PartConfig): Suggestion[] {
 }
 
 /**
+ * Generate original suggestions (quantity, finish, lead time)
+ */
+function generateLegacySuggestions(part: PartConfig): Suggestion[] {
+  const suggestions: Suggestion[] = [];
+
+  // Quantity optimization suggestion
+  if (part.quantity >= 8 && part.quantity <= 12) {
+    const suggestedQty = 15;
+    const currentPrice = part.final_price || 200;
+    const savings = currentPrice * 0.12;
+
+    suggestions.push({
+      id: `qty-${part.id}`,
+      type: "quantity",
+      title: "Volume Pricing Unlock",
+      description: `Boosting to ${suggestedQty} units triggers a 12% price break on this specific geometry.`,
+      partId: part.id,
+      partName: part.fileName,
+      currentValue: part.quantity,
+      suggestedValue: suggestedQty,
+      preview: part.snapshot_2d_url,
+
+      impact: {
+        savings,
+        savingsPercentage: 12,
+      },
+      icon: React.createElement(Package, { className: "w-5 h-5" }),
+      color: "blue",
+      action: { type: "change-quantity", quantity: suggestedQty },
+    });
+  }
+
+  // Lead time optimization
+  if (part.leadTimeType === "expedited") {
+    const currentPrice = part.final_price || 200;
+    const savings = currentPrice * 0.35;
+
+    suggestions.push({
+      id: `lead-${part.id}`,
+      type: "leadtime",
+      title: "Consider Standard Lead Time",
+      description: `Switching to standard lead time can save 35% on this part`,
+      partId: part.id,
+      partName: part.fileName,
+      currentValue: "Expedited",
+      suggestedValue: "Standard",
+      preview: part.snapshot_2d_url,
+
+      impact: {
+        savings,
+        savingsPercentage: 35,
+        leadTimeReduction: -5,
+      },
+      icon: React.createElement(Clock, { className: "w-5 h-5" }),
+      color: "green",
+      action: { type: "change-lead-time", leadTime: "standard" },
+    });
+  }
+
+  // Finish optimization
+  if (
+    part.finish &&
+    (part.finish.includes("Anodiz") || part.finish === "Anodizing")
+  ) {
+    suggestions.push({
+      id: `finish-${part.id}`,
+      type: "finish",
+      title: "Cost-Effective Finish Option",
+      description: `Powder coating provides similar protection at 20% lower cost`,
+      partId: part.id,
+      partName: part.fileName,
+      currentValue: part.finish,
+      suggestedValue: "Powder Coating",
+      preview: part.snapshot_2d_url,
+
+      impact: {
+        savings: 35.0,
+        savingsPercentage: 20,
+      },
+      icon: React.createElement(Sparkles, { className: "w-5 h-5" }),
+      color: "amber",
+      action: { type: "change-finish", finish: "Powder Coating" },
+    });
+  }
+
+  return suggestions;
+}
+
+/**
  * Generate bundle suggestions for multi-part quotes
  */
 function generateBundleSuggestions(parts: PartConfig[]): Suggestion[] {
@@ -1354,6 +830,537 @@ function generateBundleSuggestions(parts: PartConfig[]): Suggestion[] {
       priority: "high",
       action: { type: "increase-total-quantity", target: bulkQty },
     });
+  }
+
+  return suggestions;
+}
+
+/**
+ * Generate comprehensive suggestions including DFM, material alternatives, and marketing intelligence
+ */
+export function generateSuggestions(parts: PartConfig[]): Suggestion[] {
+  const suggestions: Suggestion[] = [];
+
+  parts.forEach((part) => {
+    // Generate DFM recommendations
+    suggestions.push(...generateDFMSuggestions(part));
+
+    // Generate alternative material suggestions
+    suggestions.push(...generateAlternativeMaterialSuggestions(part));
+
+    // Generate marketing-focused suggestions
+    suggestions.push(...generateMarketingSuggestions(part));
+
+    // Generate existing suggestions
+    suggestions.push(...generateLegacySuggestions(part));
+  });
+
+  // Generate multi-part bundle suggestions
+  if (parts.length > 1) {
+    suggestions.push(...generateBundleSuggestions(parts));
+  }
+
+  return suggestions;
+}
+
+/**
+ * Generate DFM (Design for Manufacturing) cost-reduction recommendations
+ * Analyzes geometry features and suggests design improvements
+ */
+function generateDFMSuggestions(part: PartConfig): Suggestion[] {
+  const suggestions: Suggestion[] = [];
+  const geometry = part.geometry;
+
+  if (!geometry) return suggestions;
+
+  const {
+    dfmIssues,
+    advancedFeatures,
+    sheetMetalFeatures,
+    recommendedProcess,
+  } = geometry;
+
+  // Process DFM issues from CAD analysis
+  if (dfmIssues && dfmIssues.length > 0) {
+    dfmIssues.forEach((issue, index) => {
+      // Only show warnings and critical issues as suggestions
+      if (
+        issue.severity !== "info" &&
+        issue.potentialSavings &&
+        issue.potentialSavings > 20
+      ) {
+        suggestions.push({
+          id: `dfm-issue-${part.id}-${index}`,
+          type: "dfm",
+          title: issue.issue,
+          description: issue.recommendation,
+          partId: part.id,
+          partName: part.fileName,
+          currentValue: "Current Design",
+          suggestedValue: "Optimized Design",
+          preview: part.snapshot_2d_url,
+          impact: {
+            savings: issue.potentialSavings,
+            savingsPercentage: Math.round(
+              (issue.potentialSavings / (part.final_price || 200)) * 100,
+            ),
+          },
+          icon: React.createElement(AlertTriangle, { className: "w-5 h-5" }),
+          color: issue.severity === "critical" ? "red" : "amber",
+          action: { type: "dfm-redesign", issueType: issue.issue },
+        });
+      }
+    });
+  }
+
+  // CNC-specific DFM suggestions
+  if (
+    recommendedProcess === "cnc-milling" ||
+    recommendedProcess === "cnc-turning"
+  ) {
+    // Undercut suggestions
+    if (advancedFeatures.undercuts.requires5Axis) {
+      suggestions.push({
+        id: `dfm-undercut-${part.id}`,
+        type: "dfm",
+        title: "Enhance Part Reliability",
+        description: `Part has ${advancedFeatures.undercuts.count} undercuts that create stress concentration points and potential weak spots. Redesigning to eliminate these features improves structural integrity and part longevity under load.`,
+        partId: part.id,
+        partName: part.fileName,
+        currentValue: "Complex Geometry",
+        suggestedValue: "Simplified Design",
+        preview: part.snapshot_2d_url,
+        impact: {
+          savings: 180,
+          savingsPercentage: 28,
+        },
+        icon: React.createElement(Wrench, { className: "w-5 h-5" }),
+        color: "orange",
+        action: { type: "remove-undercuts" },
+      });
+    }
+
+    // Deep hole machining optimization
+    if (advancedFeatures.holes.deepHoleCount > 2) {
+      suggestions.push({
+        id: `dfm-deepholes-${part.id}`,
+        type: "dfm",
+        title: "Improve Hole Precision & Longevity",
+        description: `${advancedFeatures.holes.deepHoleCount} deep holes (L/D > 5:1) may experience wear issues and thread degradation over time. Optimizing hole depth or increasing diameter improves thread engagement and long-term reliability.`,
+        partId: part.id,
+        partName: part.fileName,
+        currentValue: `${advancedFeatures.holes.deepHoleCount} deep holes`,
+        suggestedValue: "Optimized for durability",
+        preview: part.snapshot_2d_url,
+        impact: {
+          savings: 65,
+          savingsPercentage: 16,
+        },
+        icon: React.createElement(Zap, { className: "w-5 h-5" }),
+        color: "orange",
+        action: { type: "optimize-holes", feature: "deep-holes" },
+      });
+    }
+
+    // Micro hole warnings
+    if (advancedFeatures.holes.microHoleCount > 0) {
+      suggestions.push({
+        id: `dfm-microholes-${part.id}`,
+        type: "dfm",
+        title: "Critical: Prevent Thread Stripping",
+        description: `${advancedFeatures.holes.microHoleCount} micro holes (<1mm) are prone to cross-threading and stripped threads during assembly. Increasing to ≥1mm diameter improves fastener reliability and reduces risk of field failures during installation or maintenance.`,
+        partId: part.id,
+        partName: part.fileName,
+        currentValue: `${advancedFeatures.holes.microHoleCount} micro holes`,
+        suggestedValue: "≥1mm diameter",
+        preview: part.snapshot_2d_url,
+        impact: {
+          savings: 50 * advancedFeatures.holes.microHoleCount,
+          savingsPercentage: Math.round(
+            ((50 * advancedFeatures.holes.microHoleCount) /
+              (part.final_price || 200)) *
+              100,
+          ),
+        },
+        icon: React.createElement(AlertTriangle, { className: "w-5 h-5" }),
+        color: "red",
+        action: { type: "increase-hole-diameter", minDiameter: 1.0 },
+      });
+    }
+
+    // Sharp corner optimization for pockets
+    if (advancedFeatures.pockets.sharpCornersCount > 3) {
+      suggestions.push({
+        id: `dfm-sharp-corners-${part.id}`,
+        type: "dfm",
+        title: "Reduce Stress Concentrations",
+        description: `${advancedFeatures.pockets.sharpCornersCount} sharp pocket corners act as stress risers that can initiate cracks under cyclic loading. Adding ${advancedFeatures.pockets.minCornerRadius.toFixed(1)}mm radii distributes stress evenly, extending part service life and preventing fatigue failures.`,
+        partId: part.id,
+        partName: part.fileName,
+        currentValue: "Sharp corners",
+        suggestedValue: `R${advancedFeatures.pockets.minCornerRadius.toFixed(1)} radii`,
+        preview: part.snapshot_2d_url,
+
+        impact: {
+          savings: 40,
+          savingsPercentage: 12,
+        },
+        icon: React.createElement(Layers, { className: "w-5 h-5" }),
+        color: "amber",
+        action: {
+          type: "add-corner-radii",
+          minRadius: advancedFeatures.pockets.minCornerRadius,
+        },
+      });
+    }
+
+    // Deep pocket suggestions
+    if (advancedFeatures.pockets.deepPockets > 2) {
+      suggestions.push({
+        id: `dfm-pocket-${part.id}`,
+        type: "dfm",
+        title: "Enhance Structural Integrity",
+        description: `${advancedFeatures.pockets.deepPockets} deep pockets detected with aspect ratio > 3:1. Deep cavities can reduce part stiffness and create weak points. Reducing pocket depth by 30% improves overall structural rigidity and resistance to bending loads.`,
+        partId: part.id,
+        partName: part.fileName,
+        currentValue: `${advancedFeatures.pockets.avgDepth.toFixed(1)}mm depth`,
+        suggestedValue: `${(advancedFeatures.pockets.avgDepth * 0.7).toFixed(1)}mm depth`,
+        preview: part.snapshot_2d_url,
+
+        impact: {
+          savings: 75,
+          savingsPercentage: 18,
+        },
+        icon: React.createElement(Layers, { className: "w-5 h-5" }),
+        color: "amber",
+        action: { type: "reduce-pocket-depth", reduction: 0.3 },
+      });
+    }
+
+    // Missing fillet recommendations
+    if (advancedFeatures.fillets.missingFilletCount > 2) {
+      suggestions.push({
+        id: `dfm-missing-fillets-${part.id}`,
+        type: "dfm",
+        title: "Prevent Crack Initiation",
+        description: `${advancedFeatures.fillets.missingFilletCount} sharp internal corners detected (stress risk: ${advancedFeatures.fillets.stressConcentrationRisk}/10). Sharp corners are prime locations for fatigue cracks to start. Adding R${advancedFeatures.fillets.minRadius.toFixed(1)}mm fillets significantly improves part longevity under repeated loading and prevents premature failures.`,
+        partId: part.id,
+        partName: part.fileName,
+        currentValue: "Sharp corners",
+        suggestedValue: `R${advancedFeatures.fillets.minRadius.toFixed(1)} fillets`,
+        preview: part.snapshot_2d_url,
+
+        impact: {
+          savings: 0,
+          savingsPercentage: 0,
+        },
+        icon: React.createElement(AlertTriangle, { className: "w-5 h-5" }),
+        color:
+          advancedFeatures.fillets.stressConcentrationRisk > 6
+            ? "red"
+            : "orange",
+        action: {
+          type: "add-fillets",
+          minRadius: advancedFeatures.fillets.minRadius,
+        },
+      });
+    }
+
+    // Thread optimization
+    if (advancedFeatures.threads.count > 8) {
+      const internalCost = advancedFeatures.threads.internalThreads * 3;
+      const externalCost = advancedFeatures.threads.externalThreads * 2;
+      suggestions.push({
+        id: `dfm-threads-${part.id}`,
+        type: "secondary-ops",
+        title: "Simplify Assembly Process",
+        description: `Part requires ${advancedFeatures.threads.count} fastening points (${advancedFeatures.threads.internalThreads} internal, ${advancedFeatures.threads.externalThreads} external). Excessive fasteners increase assembly time and potential for cross-threading errors. Consolidating to fewer, larger fasteners improves installation reliability and serviceability.`,
+        partId: part.id,
+        partName: part.fileName,
+        currentValue: `${advancedFeatures.threads.count} threads`,
+        suggestedValue: "Streamlined fastening",
+        preview: part.snapshot_2d_url,
+
+        impact: {
+          savings: Math.min(internalCost + externalCost, 80),
+          savingsPercentage: Math.round(
+            (Math.min(internalCost + externalCost, 80) /
+              (part.final_price || 200)) *
+              100,
+          ),
+        },
+        icon: React.createElement(Wrench, { className: "w-5 h-5" }),
+        color: "amber",
+        action: { type: "optimize-threads" },
+      });
+    }
+
+    // Boss/protrusion optimization
+    if (
+      advancedFeatures.bosses.count > 3 &&
+      advancedFeatures.bosses.maxAspectRatio > 4
+    ) {
+      suggestions.push({
+        id: `dfm-bosses-${part.id}`,
+        type: "dfm",
+        title: "Improve Mounting Stability",
+        description: `${advancedFeatures.bosses.count} tall bosses detected (height/diameter > 4:1). Tall, slender mounting features can bend or break during assembly torque application. Reducing height by 25% or adding gussets improves mounting robustness and prevents assembly damage.`,
+        partId: part.id,
+        partName: part.fileName,
+        currentValue: `${advancedFeatures.bosses.avgHeight.toFixed(1)}mm height`,
+        suggestedValue: `${(advancedFeatures.bosses.avgHeight * 0.75).toFixed(1)}mm height`,
+        preview: part.snapshot_2d_url,
+
+        impact: {
+          savings: 30,
+          savingsPercentage: 10,
+        },
+        icon: React.createElement(Layers, { className: "w-5 h-5" }),
+        color: "amber",
+        action: { type: "reduce-boss-height", reduction: 0.25 },
+      });
+    }
+
+    // Rib thickness optimization
+    if (advancedFeatures.ribs.thinRibCount > 2) {
+      suggestions.push({
+        id: `dfm-ribs-${part.id}`,
+        type: "dfm",
+        title: `${advancedFeatures.ribs.deflectionRisk === "high" ? "Critical: " : ""}Strengthen Load-Bearing Ribs`,
+        description: `${advancedFeatures.ribs.thinRibCount} thin ribs detected (${advancedFeatures.ribs.minThickness.toFixed(1)}mm). Ribs thinner than 1.5mm may deflect or crack under load, compromising structural support. Increasing to 2mm minimum prevents warping and ensures consistent part performance over time.`,
+        partId: part.id,
+        partName: part.fileName,
+        currentValue: `${advancedFeatures.ribs.minThickness.toFixed(1)}mm`,
+        suggestedValue: "2mm minimum",
+        preview: part.snapshot_2d_url,
+
+        impact: {
+          savings: advancedFeatures.ribs.deflectionRisk === "high" ? 55 : 30,
+          savingsPercentage:
+            advancedFeatures.ribs.deflectionRisk === "high" ? 15 : 10,
+        },
+        icon: React.createElement(AlertTriangle, { className: "w-5 h-5" }),
+        color:
+          advancedFeatures.ribs.deflectionRisk === "high" ? "red" : "orange",
+        action: { type: "increase-rib-thickness", minThickness: 2.0 },
+      });
+    }
+
+    // Tool access and multi-axis warnings
+    if (
+      advancedFeatures.toolAccess?.restrictedAreas &&
+      advancedFeatures.toolAccess.restrictedAreas > 3
+    ) {
+      if (
+        advancedFeatures?.toolAccess?.restrictedAreas &&
+        advancedFeatures?.toolAccess?.restrictedAreas > 3
+      ) {
+        suggestions.push({
+          id: `dfm-tool-access-${part.id}`,
+          type: "dfm",
+          title: "Ensure Feature Consistency",
+          description: `${advancedFeatures.toolAccess?.restrictedAreas} restricted access areas require multiple setups${advancedFeatures.toolAccess?.requiresMultiAxisMachining ? " and complex fixturing" : ""}. Multiple setups increase variation risk between features. Simplifying geometry ensures tighter dimensional consistency and better part-to-part repeatability.`,
+          partId: part.id,
+          partName: part.fileName,
+          currentValue: `${advancedFeatures.toolAccess?.estimatedSetupCount} setups`,
+          suggestedValue: "Simplified geometry",
+          preview: part.snapshot_2d_url,
+
+          impact: {
+            savings: advancedFeatures.toolAccess.estimatedSetupCount * 35,
+            savingsPercentage: Math.round(
+              ((advancedFeatures.toolAccess.estimatedSetupCount * 35) /
+                (part.final_price || 200)) *
+                100,
+            ),
+          },
+          icon: React.createElement(Wrench, { className: "w-5 h-5" }),
+          color: "orange",
+          action: { type: "improve-tool-access" },
+        });
+      }
+
+      // Surface finish requirements
+      if (
+        advancedFeatures.surfaceFinish?.requiresPolishing ||
+        (advancedFeatures.surfaceFinish?.criticalSurfaces || 0) > 5
+      ) {
+        suggestions.push({
+          id: `dfm-surface-finish-${part.id}`,
+          type: "secondary-ops",
+          title: "Relax Surface Finish Requirements",
+          description: `${advancedFeatures?.surfaceFinish?.criticalSurfaces} surfaces require fine finish (Ra < 1.6μm). Accepting standard finish (Ra 3.2μm) on non-critical surfaces saves polishing/honing operations.`,
+          partId: part.id,
+          partName: part.fileName,
+          currentValue: `Ra ${advancedFeatures?.surfaceFinish?.estimatedRa}μm`,
+          suggestedValue: "Standard finish on non-critical",
+          preview: part.snapshot_2d_url,
+
+          impact: {
+            savings: advancedFeatures.surfaceFinish.criticalSurfaces * 8,
+            savingsPercentage: Math.round(
+              ((advancedFeatures.surfaceFinish.criticalSurfaces * 8) /
+                (part.final_price || 200)) *
+                100,
+            ),
+          },
+          icon: React.createElement(Sparkles, { className: "w-5 h-5" }),
+          color: "amber",
+          action: { type: "relax-surface-finish" },
+        });
+      }
+
+      // Thin wall warnings
+      if (advancedFeatures.thinWalls.risk === "high") {
+        suggestions.push({
+          id: `dfm-thinwall-${part.id}`,
+          type: "dfm",
+          title: "Critical: Increase Wall Thickness",
+          description: `Thin walls (${advancedFeatures.thinWalls.minThickness.toFixed(1)}mm) pose high deflection risk. Increasing to 2.5mm minimum would dramatically reduce scrap rate and improve manufacturability.`,
+          partId: part.id,
+          partName: part.fileName,
+          currentValue: `${advancedFeatures.thinWalls.minThickness.toFixed(1)}mm`,
+          suggestedValue: "2.5mm minimum",
+          preview: part.snapshot_2d_url,
+
+          impact: {
+            savings: 120,
+            savingsPercentage: 22,
+          },
+          icon: React.createElement(AlertTriangle, { className: "w-5 h-5" }),
+          color: "red",
+          action: { type: "increase-wall-thickness", minThickness: 2.5 },
+        });
+      } else if (advancedFeatures.thinWalls.risk === "medium") {
+        suggestions.push({
+          id: `dfm-thinwall-medium-${part.id}`,
+          type: "dfm",
+          title: "Improve Wall Thickness",
+          description: `Moderate thin walls (${advancedFeatures.thinWalls.minThickness.toFixed(1)}mm). Increasing to 2.5mm would improve rigidity and reduce cycle time.`,
+          partId: part.id,
+          partName: part.fileName,
+          currentValue: `${advancedFeatures.thinWalls.minThickness.toFixed(1)}mm`,
+          suggestedValue: "2.5mm",
+          preview: part.snapshot_2d_url,
+
+          impact: {
+            savings: 45,
+            savingsPercentage: 12,
+          },
+          icon: React.createElement(Zap, { className: "w-5 h-5" }),
+          color: "amber",
+          action: { type: "increase-wall-thickness", minThickness: 2.5 },
+        });
+      }
+    }
+
+    // Tolerance optimization
+    if (part.tolerance === "tight" || part.tolerance === "Tight") {
+      const geometry = part.geometry;
+      if (geometry && geometry.complexity === "complex") {
+        suggestions.push({
+          id: `dfm-tolerance-${part.id}`,
+          type: "tolerance",
+          title: "Relax Non-Critical Tolerances",
+          description:
+            "Tight tolerances (±0.025mm) on complex geometry significantly increase cost. Consider specifying tight tolerances only on critical dimensions and standard tolerances elsewhere.",
+          partId: part.id,
+          partName: part.fileName,
+          currentValue: "Tight (±0.025mm)",
+          suggestedValue: "Mixed (Precision on critical dims)",
+          preview: part.snapshot_2d_url,
+
+          impact: {
+            savings: 200,
+            savingsPercentage: 35,
+          },
+          icon: React.createElement(AlertTriangle, { className: "w-5 h-5" }),
+          color: "orange",
+          action: { type: "relax-tolerances", newTolerance: "precision" },
+        });
+      }
+    }
+
+    return suggestions;
+  }
+
+  // Sheet metal DFM suggestions
+  if (recommendedProcess === "sheet-metal" && sheetMetalFeatures) {
+    // High bend count
+    if (sheetMetalFeatures.bendCount > 12) {
+      suggestions.push({
+        id: `dfm-bends-${part.id}`,
+        type: "dfm",
+        title: "Reduce Bend Count",
+        description: `Part has ${sheetMetalFeatures.bendCount} bends. Simplifying design to reduce bends by 30% would significantly decrease forming time and cost.`,
+        partId: part.id,
+        partName: part.fileName,
+        currentValue: `${sheetMetalFeatures.bendCount} bends`,
+        suggestedValue: `${Math.ceil(sheetMetalFeatures.bendCount * 0.7)} bends`,
+        preview: part.snapshot_2d_url,
+
+        impact: {
+          savings: 60,
+          savingsPercentage: 15,
+        },
+        icon: React.createElement(Layers, { className: "w-5 h-5" }),
+        color: "amber",
+        action: { type: "reduce-bends", targetReduction: 0.3 },
+      });
+    }
+
+    // Bend radius too small
+    if (sheetMetalFeatures.minBendRadius < sheetMetalFeatures.thickness) {
+      suggestions.push({
+        id: `dfm-bendradius-${part.id}`,
+        type: "dfm",
+        title: "Critical: Increase Bend Radius",
+        description: `Bend radius (${sheetMetalFeatures.minBendRadius.toFixed(1)}mm) is less than material thickness. This will crack during forming. Increase to minimum ${(sheetMetalFeatures.thickness * 1.5).toFixed(1)}mm.`,
+        partId: part.id,
+        partName: part.fileName,
+        currentValue: `${sheetMetalFeatures.minBendRadius.toFixed(1)}mm radius`,
+        suggestedValue: `${(sheetMetalFeatures.thickness * 1.5).toFixed(1)}mm radius`,
+        preview: part.snapshot_2d_url,
+
+        impact: {
+          savings: 0,
+          savingsPercentage: 0,
+        },
+        icon: React.createElement(AlertTriangle, { className: "w-5 h-5" }),
+        color: "red",
+        action: {
+          type: "increase-bend-radius",
+          minRadius: sheetMetalFeatures.thickness * 1.5,
+        },
+      });
+    }
+
+    // Small features warning
+    if (sheetMetalFeatures.hasSmallFeatures) {
+      suggestions.push({
+        id: `dfm-small-features-${part.id}`,
+        type: "dfm",
+        title: "Enlarge Small Features",
+        description:
+          "Features smaller than 2x material thickness detected. These may be difficult or impossible to form reliably. Consider increasing feature size.",
+        partId: part.id,
+        partName: part.fileName,
+        currentValue: "< 2x thickness",
+        suggestedValue: "≥ 2x thickness",
+        preview: part.snapshot_2d_url,
+
+        impact: {
+          savings: 35,
+          savingsPercentage: 10,
+        },
+        icon: React.createElement(Zap, { className: "w-5 h-5" }),
+        color: "amber",
+        action: {
+          type: "enlarge-features",
+          minSize: sheetMetalFeatures.thickness * 2,
+        },
+      });
+    }
   }
 
   return suggestions;

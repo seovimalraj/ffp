@@ -7,8 +7,14 @@ python-jose==3.5.0
 redis==6.4.0
 httpx==0.28.1
 
-# DFM Analysis dependencies (mock for now - numpy removed due to build issues)
-# numpy==1.24.3
-# scipy==1.11.2
-# trimesh==4.0.5
-# networkx==3.1
+# STEP/IGES File Processing - pythonOCC for CAD geometry analysis
+pythonocc-core==7.7.2
+
+# STL File Processing
+numpy-stl==3.1.1
+
+# DFM Analysis dependencies - numpy and trimesh for ray-casting thickness detection
+numpy==1.24.3
+trimesh==4.0.5
+scipy==1.11.2  # Required by trimesh for mesh.sample() and spatial operations
+# networkx==3.1  # Not needed yet

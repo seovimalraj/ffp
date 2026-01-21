@@ -134,12 +134,7 @@ export default function InstantQuotePage() {
     try {
       // Analyze files and prepare for quote configuration
       const uploadPromises = files.map(async (file) => {
-        // Analyze CAD geometry
-        console.log(`Analyzing CAD file: ${file.name}`);
-        const geometry = await analyzeCADFile(file);
-        console.log(`Geometry analysis complete:`, geometry);
-
-        // Upload file to Supabase
+        // Upload file to Supabase first (needed for backend analysis)
         let uploadedPath = `quotes/temp-${Date.now()}/${file.name}`;
         try {
           const { url } = await upload(file);
@@ -149,6 +144,72 @@ export default function InstantQuotePage() {
           notify.error(`Failed to upload ${file.name}`);
           return;
         }
+
+        // Analyze CAD geometry - use backend for STEP files
+        console.log(`🔬 Analyzing CAD file: ${file.name}`);
+        let geometry: GeometryData;
+        
+        const fileExt = file.name.toLowerCase().split(".").pop();
+        const isStepFile = fileExt === "step" || fileExt === "stp";
+        
+        if (isStepFile) {
+          // Use backend analysis for STEP files (accurate bend detection)
+          console.log(`📡 Using backend analysis for ${file.name}`);
+          try {
+            const analysisResponse = await fetch("/api/cad/analyze-geometry", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                fileUrl: uploadedPath,
+                fileName: file.name,
+              }),
+            });
+
+            if (analysisResponse.ok) {
+              // Backend returns geometry data directly, NOT nested under .geometry
+              geometry = await analysisResponse.json();
+              
+              // Check if this is an assembly (multi-body part)
+              if (geometry.isAssembly) {
+                console.log(`⚠️ Assembly detected for ${file.name}:`, geometry.assemblyInfo);
+                // Mark for manual quote - assemblies cannot be auto-quoted
+                geometry.requiresManualQuote = true;
+                geometry.manualQuoteReason = geometry.assemblyInfo?.reason || "Assembly detected";
+              }
+              
+              // Log with type assertion for custom backend properties
+              const features = geometry.sheetMetalFeatures as any;
+              console.log(`✅ Backend analysis complete for ${file.name}:`, {
+                process: geometry.recommendedProcess,
+                thickness: geometry.detectedWallThickness,
+                confidence: geometry.thicknessConfidence,
+                method: geometry.thicknessDetectionMethod,
+                sheetMetalScore: geometry.sheetMetalScore,
+                isAssembly: geometry.isAssembly,
+                requiresManualQuote: geometry.requiresManualQuote,
+                // Bend detection info from backend
+                bendCount: features?.bendCount,
+                isLikelyBent: features?.isLikelyBent,
+                bendConfidence: features?.bendConfidence,
+              });
+            } else {
+              const errorText = await analysisResponse.text();
+              console.error("❌ Backend analysis failed:", analysisResponse.status, errorText);
+              console.warn("⚠️ Falling back to client-side analysis");
+              geometry = await analyzeCADFile(file);
+            }
+          } catch (error) {
+            console.error("❌ Backend analysis error:", error);
+            console.warn("⚠️ Falling back to client-side analysis");
+            geometry = await analyzeCADFile(file);
+          }
+        } else {
+          // Use client-side analysis for STL files (faster)
+          console.log(`⚡ Using client-side analysis for ${file.name}`);
+          geometry = await analyzeCADFile(file);
+        }
+        
+        console.log(`Geometry analysis complete:`, geometry);
 
         return {
           file,
@@ -173,23 +234,38 @@ export default function InstantQuotePage() {
       // Create RFQ via API
       const rfqPayload = {
         user_id: session.data.user.id,
-        parts: uploadResults.map((r) => ({
-          file_name: r?.name,
-          cad_file_url: r?.uploadedPath,
-          cad_file_type: r?.name.split(".").pop() || "unknown",
-          material: "aluminum-6061",
-          quantity: 1,
-          tolerance: "standard",
-          finish: "as-machined",
-          threads: "none",
-          inspection: "standard",
-          notes: "",
-          lead_time_type: "standard",
-          lead_time: 7,
-          geometry: r?.geometry,
-          certificates: [],
-          process: r?.geometry?.recommendedProcess || "cnc-milling",
-        })),
+        parts: uploadResults.map((r) => {
+          const process = r?.geometry?.recommendedProcess || "cnc-milling";
+          const isSheetMetal = process === "sheet-metal" || process.includes("sheet");
+          const isAssembly = r?.geometry?.isAssembly || false;
+          const requiresManualQuote = r?.geometry?.requiresManualQuote || isAssembly;
+          
+          return {
+            file_name: r?.name,
+            cad_file_url: r?.uploadedPath,
+            cad_file_type: r?.name.split(".").pop() || "unknown",
+            material: "aluminum-6061",
+            quantity: 1,
+            tolerance: "standard",
+            finish: isSheetMetal ? "as-cut" : "as-machined",
+            threads: "none",
+            inspection: "standard",
+            notes: isAssembly ? `Assembly detected: ${r?.geometry?.assemblyInfo?.reason || 'Multi-body part'}` : "",
+            lead_time_type: "standard",
+            lead_time: 7,
+            geometry: r?.geometry,
+            certificates: [],
+            process: isAssembly ? "manual-quote" : process,
+            requires_manual_quote: requiresManualQuote,
+            manual_quote_reason: r?.geometry?.manualQuoteReason,
+            is_assembly: isAssembly,
+            // Sheet metal specific fields
+            ...(isSheetMetal && r?.geometry?.sheetMetalFeatures && {
+              sheet_thickness_mm: r.geometry.sheetMetalFeatures.thickness,
+              bend_count: r.geometry.sheetMetalFeatures.bendCount,
+            }),
+          };
+        }),
       };
 
       try {

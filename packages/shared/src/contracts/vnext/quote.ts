@@ -64,6 +64,10 @@ export const QuoteLineSelectionVNextSchema = z.object({
   machiningComplexity: z.string().nullable().optional(),
   selectedQuantity: z.number().nullable().optional(),
   quantities: z.array(z.number()).default([]),
+  // Sheet metal specific fields
+  sheetThicknessMm: z.number().nullable().optional(),
+  bendCount: z.number().nullable().optional(),
+  materialGauge: z.string().nullable().optional(),
 });
 
 export const QuoteLineGeometryVNextSchema = z.object({

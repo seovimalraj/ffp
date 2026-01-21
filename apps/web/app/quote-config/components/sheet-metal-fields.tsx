@@ -1,6 +1,7 @@
 "use client";
 
 import { PartConfig } from "@/types/part-config";
+import { SHEET_METAL_MATERIALS } from "@/lib/pricing-engine";
 import { 
   Scissors, 
   Layers, 
@@ -31,14 +32,19 @@ const CUTTING_METHODS = [
   { value: "turret-punch", label: "Turret Punch", icon: "🔨", description: "Fast for holes, simple shapes" },
 ];
 
-const SHEET_MATERIALS = [
-  { value: "mild-steel", label: "Mild Steel", grades: ["A36", "1008", "1018"] },
-  { value: "stainless-steel", label: "Stainless Steel", grades: ["304", "316", "430"] },
-  { value: "aluminum", label: "Aluminum", grades: ["5052", "6061", "3003"] },
-  { value: "galvanized-steel", label: "Galvanized Steel", grades: ["G90", "G60"] },
-  { value: "copper", label: "Copper", grades: ["C110", "C101"] },
-  { value: "brass", label: "Brass", grades: ["260", "360"] },
-];
+// Build material options from SHEET_METAL_MATERIALS
+const SHEET_MATERIALS = Object.entries(SHEET_METAL_MATERIALS)
+  .filter(([key]) => !key.includes("titanium") && !key.includes("inconel") && !key.includes("hastelloy")) // Filter exotic materials
+  .flatMap(([, materials]) => 
+    (materials as any[])
+      .filter((m: any) => !m.requiresManualQuote) // Only include auto-quotable materials
+      .map((m: any) => ({
+        value: m.code,
+        label: m.name,
+        thickness: m.thickness,
+        category: m.category,
+      }))
+  );
 
 const POWDER_COATING_COLORS = [
   { value: "black", label: "Black (RAL 9005)", color: "#0A0A0A" },
@@ -130,33 +136,38 @@ export function SheetMetalFields({ part, index, updatePart, className = "" }: Sh
       <div className="space-y-2">
         <label className="flex items-center gap-2 text-sm font-medium text-gray-700">
           <Package className="w-4 h-4" />
-          Material & Grade
+          Material & Thickness
         </label>
-        <div className="grid grid-cols-2 gap-2">
-          <select
-            value={part.material || "aluminum-6061"}
-            onChange={(e) => updatePart(index, "material", e.target.value, true)}
-            className="px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500"
-          >
-            {SHEET_MATERIALS.map((mat) => (
-              <option key={mat.value} value={mat.value}>
-                {mat.label}
-              </option>
-            ))}
-          </select>
-          <select
-            value={part.sheet_material_grade || ""}
-            onChange={(e) => updatePart(index, "sheet_material_grade", e.target.value, true)}
-            className="px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500"
-          >
-            <option value="">Select Grade</option>
-            {SHEET_MATERIALS.find(m => m.value === part.material)?.grades.map((grade) => (
-              <option key={grade} value={grade}>
-                {grade}
-              </option>
-            ))}
-          </select>
-        </div>
+        <select
+          value={part.material || "AL5052-2.0"}
+          onChange={(e) => {
+            const selectedMat = SHEET_MATERIALS.find(m => m.value === e.target.value);
+            updatePart(index, "material", e.target.value, true);
+            // Also update thickness from material
+            if (selectedMat?.thickness) {
+              updatePart(index, "sheet_thickness_mm", selectedMat.thickness, true);
+            }
+          }}
+          className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500"
+        >
+          {/* Group materials by category */}
+          {Object.entries(
+            SHEET_MATERIALS.reduce((acc, mat) => {
+              const category = mat.category || "other";
+              if (!acc[category]) acc[category] = [];
+              acc[category].push(mat);
+              return acc;
+            }, {} as Record<string, typeof SHEET_MATERIALS>)
+          ).map(([category, materials]) => (
+            <optgroup key={category} label={category.charAt(0).toUpperCase() + category.slice(1)}>
+              {materials.map((mat) => (
+                <option key={mat.value} value={mat.value}>
+                  {mat.label}
+                </option>
+              ))}
+            </optgroup>
+          ))}
+        </select>
       </div>
 
       {/* Cutting Method */}
