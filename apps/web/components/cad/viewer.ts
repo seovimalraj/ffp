@@ -24,7 +24,11 @@ export type Viewer = {
   ) => void;
   setClipping: (value: number | null) => void;
   fitToScreen: (zoom?: number) => void;
-  setHighlight: (triangles: number[] | null, location?: { x: number; y: number; z: number }) => void;
+  setHighlight: (
+    triangles: number[] | null,
+    location?: { x: number; y: number; z: number },
+  ) => void;
+  setBackgroundColor: (color: string | number) => void;
 };
 
 export function createViewer(container: HTMLElement): Viewer {
@@ -612,6 +616,10 @@ export function createViewer(container: HTMLElement): Viewer {
     }
     activeCamera.up.copy(up);
     (activeCamera as THREE.PerspectiveCamera).updateProjectionMatrix?.();
+
+    // Fit to model after setting view
+    fitToScreen(1);
+
     controls.update();
   }
 
@@ -707,10 +715,17 @@ export function createViewer(container: HTMLElement): Viewer {
     fitCameraToBox(box, padding);
   }
 
+  function setBackgroundColor(color: string | number) {
+    renderer.setClearColor(color);
+  }
+
   // Highlighting for DFM features
   let highlightMesh: THREE.Mesh | null = null;
 
-  function setHighlight(triangles: number[] | null, location?: { x: number; y: number; z: number }) {
+  function setHighlight(
+    triangles: number[] | null,
+    location?: { x: number; y: number; z: number },
+  ) {
     // Remove existing highlight
     if (highlightMesh) {
       scene.remove(highlightMesh);
@@ -722,14 +737,14 @@ export function createViewer(container: HTMLElement): Viewer {
     if (!triangles || triangles.length === 0) return;
 
     // Find the main mesh in the model
-    const mainMesh = modelRoot.children.find((child): child is THREE.Mesh => 
-      (child as THREE.Mesh).isMesh
+    const mainMesh = modelRoot.children.find(
+      (child): child is THREE.Mesh => (child as THREE.Mesh).isMesh,
     );
 
     if (!mainMesh || !mainMesh.geometry) return;
 
     const srcGeom = mainMesh.geometry;
-    const posAttr = srcGeom.getAttribute('position');
+    const posAttr = srcGeom.getAttribute("position");
     if (!posAttr) return;
 
     // Build highlight geometry from triangle indices
@@ -745,7 +760,7 @@ export function createViewer(container: HTMLElement): Viewer {
           positions.push(
             posAttr.getX(idx),
             posAttr.getY(idx),
-            posAttr.getZ(idx)
+            posAttr.getZ(idx),
           );
         }
       }
@@ -756,8 +771,8 @@ export function createViewer(container: HTMLElement): Viewer {
     // Create highlight geometry
     const highlightGeom = new THREE.BufferGeometry();
     highlightGeom.setAttribute(
-      'position',
-      new THREE.Float32BufferAttribute(positions, 3)
+      "position",
+      new THREE.Float32BufferAttribute(positions, 3),
     );
     highlightGeom.computeVertexNormals();
 
@@ -782,24 +797,24 @@ export function createViewer(container: HTMLElement): Viewer {
       const targetPos = new THREE.Vector3(location.x, location.y, location.z);
       const currentTarget = controls.target.clone();
       const targetDistance = activeCamera.position.distanceTo(targetPos);
-      
+
       // Smooth transition to the feature
       const duration = 1000; // ms
       const startTime = Date.now();
-      
-      function animateCamera() {
+
+      const animateCamera = () => {
         const elapsed = Date.now() - startTime;
         const progress = Math.min(elapsed / duration, 1);
         const eased = 1 - Math.pow(1 - progress, 3); // ease-out cubic
-        
+
         controls.target.lerpVectors(currentTarget, targetPos, eased);
         controls.update();
-        
+
         if (progress < 1) {
           requestAnimationFrame(animateCamera);
         }
-      }
-      
+      };
+
       animateCamera();
     }
   }
@@ -827,5 +842,6 @@ export function createViewer(container: HTMLElement): Viewer {
     setClipping,
     fitToScreen,
     setHighlight,
+    setBackgroundColor,
   };
 }

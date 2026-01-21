@@ -953,7 +953,7 @@ export function recommendOptimalMaterial(
     });
 
     // Steel for high strength requirements
-    if (volume < 50000 && features.includes("high-stress")) {
+    if (volume < 50000 && features?.includes("high-stress")) {
       recommendations.push({
         material: "steel-4140",
         score: 88,
@@ -964,7 +964,7 @@ export function recommendOptimalMaterial(
     }
 
     // Delrin for low friction
-    if (features.includes("sliding") || complexity === "simple") {
+    if (features?.includes("sliding") || complexity === "simple") {
       recommendations.push({
         material: "delrin",
         score: 85,
@@ -994,7 +994,7 @@ export function recommendTolerance(geometry: GeometryData): {
   const hasThreadedHoles = holes?.some(
     (h) => h.diameter < 10 && h.depth > h.diameter * 2,
   );
-  const hasThinWalls = features.includes("thin-wall");
+  const hasThinWalls = features?.includes("thin-wall");
   const hasCloseToleranceFeatures = pockets?.some(
     (p) => p.depth > 20 && p.width < 5,
   );
@@ -1260,7 +1260,7 @@ export function calculateManufacturabilityScore(
     }
 
     // Thin walls
-    if (features.includes("thin-wall")) {
+    if (features?.includes("thin-wall")) {
       score -= 18;
       factors.push({
         factor: "Thin wall features",
@@ -1571,12 +1571,12 @@ export function optimizeSheetMetalSetup(
 
   // Standard sheet size: 1220mm x 2440mm (4' x 8')
   const sheetArea = 1220 * 2440; // mm²
-  const partArea = features.flatArea;
+  const partArea = features?.flatArea;
 
   // Account for kerf width (3mm) and spacing (5mm minimum between parts)
   const kerfAndSpacing = 8; // mm
   const effectivePartArea =
-    partArea + features.perimeterLength * kerfAndSpacing;
+    partArea + features?.perimeterLength * kerfAndSpacing;
   const partsPerSheet = Math.max(
     1,
     Math.floor((sheetArea / effectivePartArea) * 0.85),
@@ -1612,7 +1612,7 @@ export function optimizeSheetMetalSetup(
     );
   }
 
-  if (features.complexCuts > 3) {
+  if (features?.complexCuts > 3) {
     recommendations.push(
       "Complex cuts detected - consider simplifying geometry for faster cutting",
     );
@@ -2898,7 +2898,7 @@ function calculateSheetMetalPricingInternal(
   }
 
   // 1. Material Cost (area-based)
-  const flatAreaM2 = features.flatArea / 1_000_000;
+  const flatAreaM2 = features?.flatArea / 1_000_000;
   const materialWeightKg =
     (flatAreaM2 * material.thickness * material.density) / 1000;
   const materialCostPerUnit = materialWeightKg * material.costPerKg * 1.15; // 15% scrap allowance
@@ -2915,7 +2915,7 @@ function calculateSheetMetalPricingInternal(
   const formingCosts = calculateFormingCosts(features, material, quantity);
 
   // 4. Deburring
-  const perimeterM = features.perimeterLength / 1000;
+  const perimeterM = features?.perimeterLength / 1000;
   const deburringCostPerUnit = perimeterM * 0.5 + flatAreaM2 * 2;
 
   // 5. Finishing Cost
@@ -2933,7 +2933,7 @@ function calculateSheetMetalPricingInternal(
   );
 
   // 7. Programming Cost
-  const complexityFactor = features.complexCuts + features.cornerCount * 0.1;
+  const complexityFactor = features?.complexCuts + features?.cornerCount * 0.1;
   const programmingCost = 25 + complexityFactor * 2;
   const programmingCostPerUnit = programmingCost / Math.max(1, quantity);
 
@@ -2993,7 +2993,7 @@ function calculateSheetMetalPricingInternal(
     quantity,
     cuttingMethod,
     leadTimeType,
-    features.bendCount > 0,
+    features?.bendCount > 0,
   );
 
   // 16. Apply lead time multiplier
@@ -3054,12 +3054,12 @@ function calculateCuttingCosts(
 } {
   const config = CUTTING_METHODS[method];
   const setup = config.setupCost / Math.max(1, quantity);
-  const perimeterM = features.perimeterLength / 1000;
+  const perimeterM = features?.perimeterLength / 1000;
   const perimeter = perimeterM * config.costPerMeter;
   const holes =
-    features.holeCount * 0.15 +
-    (features.totalHoleDiameter / 1000) * config.costPerMeter;
-  const complexCuts = features.complexCuts * (config.costPerMeter * 0.5);
+    features?.holeCount * 0.15 +
+    (features?.totalHoleDiameter / 1000) * config.costPerMeter;
+  const complexCuts = features?.complexCuts * (config.costPerMeter * 0.5);
   const thicknessMultiplier = 1 + (material.thickness / 10) * 0.3;
   const total = (setup + perimeter + holes + complexCuts) * thicknessMultiplier;
   return { setup, perimeter, holes, complexCuts, total };
@@ -3070,13 +3070,13 @@ function calculateFormingCosts(
   material: SheetMetalMaterialSpec,
   quantity: number,
 ): { setup: number; bending: number; tooling: number; total: number } {
-  if (features.bendCount === 0) {
+  if (features?.bendCount === 0) {
     return { setup: 0, bending: 0, tooling: 0, total: 0 };
   }
   const setup = 20 / Math.max(1, quantity);
   const costPerBend = 0.8 * material.bendability;
-  const bending = features.bendCount * costPerBend;
-  const hasSpecialFeatures = features.hasHems || features.hasCountersinks;
+  const bending = features?.bendCount * costPerBend;
+  const hasSpecialFeatures = features?.hasHems || features?.hasCountersinks;
   const tooling = hasSpecialFeatures ? 15 / Math.max(1, quantity) : 0;
   const total = setup + bending + tooling;
   return { setup, bending, tooling, total };
@@ -3132,14 +3132,14 @@ function calculateSheetMetalAdvancedAdjustments(
 
   // Advanced complexity assessment with higher premiums
   const totalComplexity =
-    features.bendCount + features.complexCuts + features.holeCount * 0.1;
+    features?.bendCount + features?.complexCuts + features?.holeCount * 0.1;
   let complexityLevel: "simple" | "moderate" | "complex";
   let complexityRate = 0;
 
-  if (totalComplexity > 25 || features.bendCount > 12) {
+  if (totalComplexity > 25 || features?.bendCount > 12) {
     complexityLevel = "complex";
     complexityRate = 0.1;
-  } else if (totalComplexity > 12 || features.bendCount > 6) {
+  } else if (totalComplexity > 12 || features?.bendCount > 6) {
     complexityLevel = "moderate";
     complexityRate = 0.06;
   } else if (totalComplexity > 5) {
@@ -3232,7 +3232,7 @@ function computeSheetMetalLeadTime(
 
   // Advanced programming time based on complexity
   const totalComplexity =
-    features.complexCuts + features.bendCount + features.holeCount * 0.1;
+    features?.complexCuts + features?.bendCount + features?.holeCount * 0.1;
   let programmingDays = 0;
   if (totalComplexity > 25) programmingDays = 2;
   else if (totalComplexity > 15) programmingDays = 1.5;
@@ -3241,7 +3241,7 @@ function computeSheetMetalLeadTime(
 
   const config = CUTTING_METHODS[cuttingMethod];
   const totalCuttingLength =
-    features.perimeterLength + features.totalHoleDiameter;
+    features?.perimeterLength + features?.totalHoleDiameter;
   const cuttingMinutes = totalCuttingLength / config.speedMmPerMin;
 
   // Advanced quantity optimization - better efficiency for larger batches
@@ -3259,19 +3259,20 @@ function computeSheetMetalLeadTime(
   if (hasBends) {
     const bendsPerHour = 30 / material.bendability;
     const formingHours =
-      (features.bendCount * quantity * quantityEfficiencyFactor) / bendsPerHour;
+      (features?.bendCount * quantity * quantityEfficiencyFactor) /
+      bendsPerHour;
     baseFormingDays = Math.ceil(formingHours / 8);
   }
 
   // Advanced finishing time based on part complexity and surface area
-  const flatAreaM2 = features.flatArea / 1_000_000;
+  const flatAreaM2 = features?.flatArea / 1_000_000;
   let finishingDays = 0.5;
   if (flatAreaM2 * quantity > 5) finishingDays = 1.5;
   else if (flatAreaM2 * quantity > 2) finishingDays = 1;
 
   // Quality inspection time for precision work
   const inspectionDays =
-    features.bendCount > 8 || features.complexCuts > 10 ? 0.5 : 0;
+    features?.bendCount > 8 || features?.complexCuts > 10 ? 0.5 : 0;
 
   // Use sheet metal specific lead times (expedited = 15 days base)
   let targetLeadTime: number;
@@ -3364,17 +3365,17 @@ function checkSheetMetalFeasibility(
     };
   }
 
-  if (features.bendCount > 0 && material.thickness > 6) {
+  if (features?.bendCount > 0 && material.thickness > 6) {
     return {
       isFeasible: false,
       reason: `Material thickness ${material.thickness}mm exceeds standard bending capability (max 6mm). Please request manual quote.`,
     };
   }
 
-  if (features.bendCount > 30) {
+  if (features?.bendCount > 30) {
     return {
       isFeasible: false,
-      reason: `Excessive bend count (${features.bendCount} bends) exceeds standard fabrication capacity. Please request manual quote.`,
+      reason: `Excessive bend count (${features?.bendCount} bends) exceeds standard fabrication capacity. Please request manual quote.`,
     };
   }
 

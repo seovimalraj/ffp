@@ -371,15 +371,18 @@ function generateDFMSuggestions(part: PartConfig): Suggestion[] {
     }
 
     // Tool access and multi-axis warnings
-    if (advancedFeatures.toolAccess.restrictedAreas > 3) {
+    if (
+      advancedFeatures?.toolAccess?.restrictedAreas &&
+      advancedFeatures?.toolAccess?.restrictedAreas > 3
+    ) {
       suggestions.push({
         id: `dfm-tool-access-${part.id}`,
         type: "dfm",
         title: "Ensure Feature Consistency",
-        description: `${advancedFeatures.toolAccess.restrictedAreas} restricted access areas require multiple setups${advancedFeatures.toolAccess.requiresMultiAxisMachining ? " and complex fixturing" : ""}. Multiple setups increase variation risk between features. Simplifying geometry ensures tighter dimensional consistency and better part-to-part repeatability.`,
+        description: `${advancedFeatures.toolAccess?.restrictedAreas} restricted access areas require multiple setups${advancedFeatures.toolAccess?.requiresMultiAxisMachining ? " and complex fixturing" : ""}. Multiple setups increase variation risk between features. Simplifying geometry ensures tighter dimensional consistency and better part-to-part repeatability.`,
         partId: part.id,
         partName: part.fileName,
-        currentValue: `${advancedFeatures.toolAccess.estimatedSetupCount} setups`,
+        currentValue: `${advancedFeatures.toolAccess?.estimatedSetupCount} setups`,
         suggestedValue: "Simplified geometry",
         preview: part.snapshot_2d_url,
 
@@ -399,17 +402,17 @@ function generateDFMSuggestions(part: PartConfig): Suggestion[] {
 
     // Surface finish requirements
     if (
-      advancedFeatures.surfaceFinish.requiresPolishing ||
-      advancedFeatures.surfaceFinish.criticalSurfaces > 5
+      advancedFeatures?.surfaceFinish?.requiresPolishing ||
+      advancedFeatures?.surfaceFinish?.criticalSurfaces > 5
     ) {
       suggestions.push({
         id: `dfm-surface-finish-${part.id}`,
         type: "secondary-ops",
         title: "Relax Surface Finish Requirements",
-        description: `${advancedFeatures.surfaceFinish.criticalSurfaces} surfaces require fine finish (Ra < 1.6μm). Accepting standard finish (Ra 3.2μm) on non-critical surfaces saves polishing/honing operations.`,
+        description: `${advancedFeatures?.surfaceFinish?.criticalSurfaces} surfaces require fine finish (Ra < 1.6μm). Accepting standard finish (Ra 3.2μm) on non-critical surfaces saves polishing/honing operations.`,
         partId: part.id,
         partName: part.fileName,
-        currentValue: `Ra ${advancedFeatures.surfaceFinish.estimatedRa}μm`,
+        currentValue: `Ra ${advancedFeatures?.surfaceFinish?.estimatedRa}μm`,
         suggestedValue: "Standard finish on non-critical",
         preview: part.snapshot_2d_url,
 

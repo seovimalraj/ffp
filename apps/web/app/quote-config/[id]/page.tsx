@@ -206,10 +206,10 @@ const THREAD_OPTIONS = [
 ];
 
 const INSPECTION_OPTIONS = [
-  { value: "standard", label: "Standard Inspection (Included)" },
-  { value: "first-article", label: "First Article Inspection (+$75)" },
-  { value: "full-cmm", label: "Full CMM Report (+$150)" },
-  { value: "material-cert", label: "Material Certification (+$25)" },
+  { value: "standard", label: "Standard Inspection" },
+  { value: "first-article", label: "First Article Inspection" },
+  { value: "full-cmm", label: "Full CMM Report" },
+  { value: "material-cert", label: "Material Certification" },
 ];
 
 type IRFQ = {

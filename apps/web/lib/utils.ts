@@ -25,6 +25,32 @@ export function formatCurrencyFixed(
   }).format(amount);
 }
 
+/**
+ * Validates whether the provided string is a syntactically reasonable email address.
+ * Designed for form validation and typical application use cases.
+ * Not fully RFC 5322 compliant (intentionally), but catches most invalid patterns
+ * while accepting common real-world addresses (including +tag, international domains).
+ *
+ * @param email - The email address to validate
+ * @returns `true` if it appears to be a valid email, `false` otherwise
+ */
+export function isValidEmail(email: string): boolean {
+  if (typeof email !== "string" || email.trim() === "") {
+    return false;
+  }
+
+  const normalized = email.toLowerCase().trim();
+
+  // Modern, practical regex for form validation (2025 standard)
+  // - No leading/trailing/consecutive dots in local part
+  // - Allows + - _ . % in local part
+  // - Domain: letters, digits, hyphens; TLD ≥ 2 chars
+  const emailRegex: RegExp =
+    /^(?!\.)(?!.*\.\.)[a-z0-9_'+\-%]+(?:\.[a-z0-9_'+\-%]+)*@[a-z0-9](?:[a-z0-9-]*[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]*[a-z0-9])?)*\.[a-z]{2,}$/;
+
+  return emailRegex.test(normalized);
+}
+
 export function safeValue<T>(value: T | null | undefined, defaultValue: T): T {
   if (value === null || value === undefined) {
     return defaultValue;

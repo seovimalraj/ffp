@@ -49,6 +49,9 @@ import Link from "next/link";
 import Logo from "@/components/ui/logo";
 import { User } from "@/components/Layouts/sidebar/icons";
 import Footer from "@/components/ui/footer";
+import PhoneInput from "react-phone-number-input";
+import "react-phone-number-input/style.css";
+import { isValidPostcode, getCountryCode } from "./postcode-validation";
 
 /* ------------------------------------------------------------------ */
 /* Types */
@@ -101,6 +104,14 @@ const COUNTRIES = [
   "France",
   "Japan",
   "Australia",
+  "Italy",
+  "Spain",
+  "Netherlands",
+  "Belgium",
+  "Denmark",
+  "Sweden",
+  "Norway",
+  "Singapore",
 ];
 
 const INDUSTRIES = [
@@ -124,6 +135,25 @@ const SHIPPING_METHODS = [
   "Next Day Air",
   "2nd Day Air",
 ];
+
+const POSTCODE_HINTS: Record<string, string> = {
+  US: "e.g. 12345 or 12345-6789",
+  GB: "e.g. SW1W 0NY",
+  IN: "e.g. 123456",
+  CA: "e.g. K1A 0B1",
+  DE: "e.g. 12345",
+  FR: "e.g. 75001",
+  JP: "e.g. 123-4567",
+  AU: "e.g. 2000",
+  IT: "e.g. 00100",
+  ES: "e.g. 28001",
+  NL: "e.g. 1011 AB",
+  BE: "e.g. 1000",
+  DK: "e.g. 1000",
+  SE: "e.g. 111 22",
+  NO: "e.g. 0001",
+  SG: "e.g. 018906",
+};
 
 /* ------------------------------------------------------------------ */
 /* Component */
@@ -161,21 +191,42 @@ export default function CheckoutPage() {
 
   const [editingAddressId, setEditingAddressId] = useState<string | null>(null);
   const [orderId, setOrderId] = useState("");
+  const [addressErrors, setAddressErrors] = useState<Record<string, string>>(
+    {},
+  );
 
   const selectedAddress = addresses.find((a) => a.id === selectedAddressId);
 
   const handleAddAddress = async () => {
+    const errors: Record<string, string> = {};
+
+    if (!newAddress.name) errors.name = "Full name is required";
+    if (!newAddress.street1) errors.street1 = "Street address is required";
+    if (!newAddress.city) errors.city = "City is required";
+    if (!newAddress.zip) errors.zip = "Zip code is required";
+    if (!newAddress.phone) errors.phone = "Phone number is required";
+    if (!newAddress.email) {
+      errors.email = "Email is required";
+    } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(newAddress.email)) {
+      errors.email = "Invalid email format";
+    }
+
+    const countryCode = getCountryCode(newAddress.country);
     if (
-      !newAddress.name ||
-      !newAddress.street1 ||
-      !newAddress.city ||
-      !newAddress.zip ||
-      !newAddress.phone ||
-      !newAddress.email
+      newAddress.zip &&
+      countryCode &&
+      !isValidPostcode(newAddress.zip, countryCode)
     ) {
-      notify.error("Please fill in all required fields");
+      errors.zip = `Invalid format for ${newAddress.country}`;
+    }
+
+    if (Object.keys(errors).length > 0) {
+      setAddressErrors(errors);
+      notify.error("Please fix the errors in the form");
       return;
     }
+
+    setAddressErrors({});
 
     try {
       if (editingAddressId) {
@@ -281,6 +332,7 @@ export default function CheckoutPage() {
   const handleCancelForm = () => {
     setShowAddressForm(false);
     setEditingAddressId(null);
+    setAddressErrors({});
     setNewAddress({
       name: "",
       country: "India",
@@ -448,12 +500,9 @@ export default function CheckoutPage() {
     setTimeout(() => {
       const element = document.getElementById("accordion-item-2");
       if (element) {
-        const yOffset = -100; // Offset for sticky header
-        const y =
-          element.getBoundingClientRect().top + window.pageYOffset + yOffset;
-        window.scrollTo({ top: y, behavior: "smooth" });
+        element.scrollIntoView({ behavior: "smooth", block: "center" });
       }
-    }, 100);
+    }, 400);
   };
 
   const handleNextFromCustoms = () => {
@@ -467,12 +516,9 @@ export default function CheckoutPage() {
     setTimeout(() => {
       const element = document.getElementById("accordion-item-3");
       if (element) {
-        const yOffset = -100; // Offset for sticky header
-        const y =
-          element.getBoundingClientRect().top + window.pageYOffset + yOffset;
-        window.scrollTo({ top: y, behavior: "smooth" });
+        element.scrollIntoView({ behavior: "smooth", block: "center" });
       }
-    }, 100);
+    }, 400);
   };
 
   const handleNextFromPayment = () => {
@@ -486,12 +532,9 @@ export default function CheckoutPage() {
     setTimeout(() => {
       const element = document.getElementById("accordion-item-4");
       if (element) {
-        const yOffset = -100; // Offset for sticky header
-        const y =
-          element.getBoundingClientRect().top + window.pageYOffset + yOffset;
-        window.scrollTo({ top: y, behavior: "smooth" });
+        element.scrollIntoView({ behavior: "smooth", block: "center" });
       }
-    }, 100);
+    }, 400);
   };
   // console.log(config, customsInfo, shippingMethod, paymentInfo);
   const createInternalOrder = async () => {
@@ -670,14 +713,14 @@ export default function CheckoutPage() {
                     </DropdownMenuLabel>
                     <DropdownMenuSeparator className="bg-slate-100 my-1" />
                     <DropdownMenuItem
-                      onClick={() => signOut()}
+                      onClick={() => router.push("/portal/dashboard")}
                       className="text-slate-700 cursor-pointer rounded-lg focus:bg-slate-50 focus:text-blue-600 p-2"
                     >
                       <LayoutDashboard className="w-4 h-4 mr-2" />
                       Dashboard
                     </DropdownMenuItem>
                     <DropdownMenuItem
-                      onClick={() => signOut()}
+                      onClick={() => router.push("/portal/orders")}
                       className="text-slate-700 cursor-pointer rounded-lg focus:bg-slate-50 focus:text-blue-600 p-2"
                     >
                       <Package2 className="w-4 h-4 mr-2" />
@@ -750,7 +793,7 @@ export default function CheckoutPage() {
                   title={
                     <div
                       id="accordion-item-1"
-                      className="flex items-center gap-3"
+                      className="flex items-center gap-3 scroll-mt-28"
                     >
                       <div className="w-8 h-8 rounded-full bg-blue-50 text-blue-600 flex items-center justify-center text-sm">
                         1
@@ -1020,30 +1063,57 @@ export default function CheckoutPage() {
                             Cancel
                           </Button>
                         </div>
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 bg-slate-50/50 p-6 rounded-2xl border border-slate-100">
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-4 bg-slate-50/50 p-6 rounded-2xl border border-slate-100">
                           <div className="space-y-2 md:col-span-2">
                             <Label htmlFor="ship-name">Full Name</Label>
                             <Input
                               id="ship-name"
                               placeholder="John Doe"
+                              className={cn(
+                                "bg-white border-slate-200",
+                                addressErrors.name &&
+                                  "border-red-500 focus-visible:ring-red-500",
+                              )}
                               value={newAddress.name}
-                              onChange={(e) =>
+                              onChange={(e) => {
                                 setNewAddress({
                                   ...newAddress,
                                   name: e.target.value,
-                                })
-                              }
+                                });
+                                if (addressErrors.name) {
+                                  setAddressErrors((prev) => ({
+                                    ...prev,
+                                    name: "",
+                                  }));
+                                }
+                              }}
                             />
+                            <AnimatePresence>
+                              {addressErrors.name && (
+                                <motion.p
+                                  initial={{ opacity: 0, y: -10 }}
+                                  animate={{ opacity: 1, y: 0 }}
+                                  exit={{ opacity: 0, y: -10 }}
+                                  className="text-xs text-red-500 font-medium ml-1"
+                                >
+                                  {addressErrors.name}
+                                </motion.p>
+                              )}
+                            </AnimatePresence>
                           </div>
                           <div className="space-y-2 md:col-span-2">
                             <Label htmlFor="ship-country">Country</Label>
                             <Select
                               value={newAddress.country}
-                              onValueChange={(v) =>
-                                setNewAddress({ ...newAddress, country: v })
-                              }
+                              onValueChange={(v) => {
+                                setNewAddress({ ...newAddress, country: v });
+                                setAddressErrors((prev) => ({
+                                  ...prev,
+                                  zip: "",
+                                }));
+                              }}
                             >
-                              <SelectTrigger>
+                              <SelectTrigger className="bg-white border-slate-200">
                                 <SelectValue placeholder="Select country" />
                               </SelectTrigger>
                               <SelectContent>
@@ -1057,21 +1127,47 @@ export default function CheckoutPage() {
                           </div>
                           <div className="space-y-2 md:col-span-2">
                             <Label htmlFor="ship-street1">Street Address</Label>
-                            <div className="space-y-2">
-                              <Input
-                                id="ship-street1"
-                                placeholder="Line 1"
-                                value={newAddress.street1}
-                                onChange={(e) =>
-                                  setNewAddress({
-                                    ...newAddress,
-                                    street1: e.target.value,
-                                  })
-                                }
-                              />
+                            <div className="space-y-3">
+                              <div className="space-y-1">
+                                <Input
+                                  id="ship-street1"
+                                  placeholder="House number and street name"
+                                  className={cn(
+                                    "bg-white border-slate-200",
+                                    addressErrors.street1 &&
+                                      "border-red-500 focus-visible:ring-red-500",
+                                  )}
+                                  value={newAddress.street1}
+                                  onChange={(e) => {
+                                    setNewAddress({
+                                      ...newAddress,
+                                      street1: e.target.value,
+                                    });
+                                    if (addressErrors.street1) {
+                                      setAddressErrors((prev) => ({
+                                        ...prev,
+                                        street1: "",
+                                      }));
+                                    }
+                                  }}
+                                />
+                                <AnimatePresence>
+                                  {addressErrors.street1 && (
+                                    <motion.p
+                                      initial={{ opacity: 0, y: -10 }}
+                                      animate={{ opacity: 1, y: 0 }}
+                                      exit={{ opacity: 0, y: -10 }}
+                                      className="text-xs text-red-500 font-medium ml-1"
+                                    >
+                                      {addressErrors.street1}
+                                    </motion.p>
+                                  )}
+                                </AnimatePresence>
+                              </div>
                               <Input
                                 id="ship-street2"
-                                placeholder="Line 2"
+                                placeholder="Apartment, suite, unit, etc. (optional)"
+                                className="bg-white border-slate-200"
                                 value={newAddress.street2}
                                 onChange={(e) =>
                                   setNewAddress({
@@ -1082,7 +1178,8 @@ export default function CheckoutPage() {
                               />
                               <Input
                                 id="ship-street3"
-                                placeholder="Line 3"
+                                placeholder="Building, floor, etc. (optional)"
+                                className="bg-white border-slate-200"
                                 value={newAddress.street3}
                                 onChange={(e) =>
                                   setNewAddress({
@@ -1093,90 +1190,199 @@ export default function CheckoutPage() {
                               />
                             </div>
                           </div>
-                          <div className="space-y-2 md:col-span-2">
+                          <div className="space-y-2">
                             <Label htmlFor="ship-city">City</Label>
                             <Input
                               id="ship-city"
                               placeholder="City"
+                              className={cn(
+                                "bg-white border-slate-200",
+                                addressErrors.city &&
+                                  "border-red-500 focus-visible:ring-red-500",
+                              )}
                               value={newAddress.city}
-                              onChange={(e) =>
+                              onChange={(e) => {
                                 setNewAddress({
                                   ...newAddress,
                                   city: e.target.value,
-                                })
-                              }
+                                });
+                                if (addressErrors.city) {
+                                  setAddressErrors((prev) => ({
+                                    ...prev,
+                                    city: "",
+                                  }));
+                                }
+                              }}
                             />
+                            <AnimatePresence>
+                              {addressErrors.city && (
+                                <motion.p
+                                  initial={{ opacity: 0, y: -10 }}
+                                  animate={{ opacity: 1, y: 0 }}
+                                  exit={{ opacity: 0, y: -10 }}
+                                  className="text-xs text-red-500 font-medium ml-1"
+                                >
+                                  {addressErrors.city}
+                                </motion.p>
+                              )}
+                            </AnimatePresence>
                           </div>
-                          <div className="space-y-2 md:col-span-2">
+                          <div className="space-y-2">
                             <Label htmlFor="ship-zip">Zip Code</Label>
                             <Input
                               id="ship-zip"
-                              placeholder="12345"
+                              placeholder="Zip code"
+                              className={cn(
+                                "bg-white border-slate-200",
+                                addressErrors.zip &&
+                                  "border-red-500 focus-visible:ring-red-500",
+                              )}
                               value={newAddress.zip}
-                              onChange={(e) =>
+                              onChange={(e) => {
                                 setNewAddress({
                                   ...newAddress,
                                   zip: e.target.value,
-                                })
-                              }
+                                });
+                                if (addressErrors.zip) {
+                                  setAddressErrors((prev) => ({
+                                    ...prev,
+                                    zip: "",
+                                  }));
+                                }
+                              }}
                             />
+                            <div className="flex flex-col gap-1">
+                              {newAddress.country &&
+                                getCountryCode(newAddress.country) && (
+                                  <p className="text-[10px] text-slate-400 font-medium ml-1 uppercase tracking-wider">
+                                    {
+                                      POSTCODE_HINTS[
+                                        getCountryCode(newAddress.country)!
+                                      ]
+                                    }
+                                  </p>
+                                )}
+                              <AnimatePresence>
+                                {addressErrors.zip && (
+                                  <motion.p
+                                    initial={{ opacity: 0, y: -10 }}
+                                    animate={{ opacity: 1, y: 0 }}
+                                    exit={{ opacity: 0, y: -10 }}
+                                    className="text-xs text-red-500 font-medium ml-1"
+                                  >
+                                    {addressErrors.zip}
+                                  </motion.p>
+                                )}
+                              </AnimatePresence>
+                            </div>
                           </div>
 
-                          <div className="md:col-span-2 pt-4">
-                            <h4 className="text-sm font-semibold text-slate-900 border-b border-slate-100 pb-2 mb-4">
+                          <div className="md:col-span-2 mt-4 pt-6 border-t border-slate-200/50">
+                            <h4 className="text-sm font-bold text-slate-900 mb-4">
                               Contact Information
                             </h4>
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                              <div className="space-y-2 md:col-span-2">
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                              <div className="space-y-2 phone-input-container">
                                 <Label htmlFor="ship-phone">Phone Number</Label>
-                                <Input
+                                <PhoneInput
                                   id="ship-phone"
+                                  international
+                                  className={cn(
+                                    "phone-input-custom",
+                                    addressErrors.phone && "phone-input-error",
+                                  )}
+                                  defaultCountry={
+                                    (getCountryCode(
+                                      newAddress.country,
+                                    ) as any) || "IN"
+                                  }
                                   value={newAddress.phone}
-                                  onChange={(e) =>
+                                  onChange={(value) => {
                                     setNewAddress({
                                       ...newAddress,
-                                      phone: e.target.value,
-                                    })
-                                  }
+                                      phone: value || "",
+                                    });
+                                    if (addressErrors.phone) {
+                                      setAddressErrors((prev) => ({
+                                        ...prev,
+                                        phone: "",
+                                      }));
+                                    }
+                                  }}
                                 />
+                                <AnimatePresence>
+                                  {addressErrors.phone && (
+                                    <motion.p
+                                      initial={{ opacity: 0, y: -10 }}
+                                      animate={{ opacity: 1, y: 0 }}
+                                      exit={{ opacity: 0, y: -10 }}
+                                      className="text-xs text-red-500 font-medium ml-1"
+                                    >
+                                      {addressErrors.phone}
+                                    </motion.p>
+                                  )}
+                                </AnimatePresence>
                               </div>
-                              <div className="space-y-2 md:col-span-2">
-                                <Label htmlFor="ship-ext">Phone Ext</Label>
-                                <Input
-                                  id="ship-ext"
-                                  value={newAddress.phoneExt}
-                                  onChange={(e) =>
-                                    setNewAddress({
-                                      ...newAddress,
-                                      phoneExt: e.target.value,
-                                    })
-                                  }
-                                />
-                              </div>
-                              <div className="space-y-2 md:col-span-2">
-                                <Label htmlFor="ship-email">Email</Label>
+
+                              <div className="space-y-2">
+                                <Label htmlFor="ship-email">
+                                  Email Address
+                                </Label>
                                 <Input
                                   id="ship-email"
+                                  placeholder="email@example.com"
+                                  className={cn(
+                                    "bg-white border-slate-200",
+                                    addressErrors.email &&
+                                      "border-red-500 focus-visible:ring-red-500",
+                                  )}
                                   value={newAddress.email}
-                                  onChange={(e) =>
+                                  onChange={(e) => {
                                     setNewAddress({
                                       ...newAddress,
                                       email: e.target.value,
-                                    })
-                                  }
+                                    });
+                                    if (addressErrors.email) {
+                                      setAddressErrors((prev) => ({
+                                        ...prev,
+                                        email: "",
+                                      }));
+                                    }
+                                  }}
                                 />
+                                <AnimatePresence>
+                                  {addressErrors.email && (
+                                    <motion.p
+                                      initial={{ opacity: 0, y: -10 }}
+                                      animate={{ opacity: 1, y: 0 }}
+                                      exit={{ opacity: 0, y: -10 }}
+                                      className="text-xs text-red-500 font-medium ml-1"
+                                    >
+                                      {addressErrors.email}
+                                    </motion.p>
+                                  )}
+                                </AnimatePresence>
                               </div>
                             </div>
                           </div>
                         </div>
-                        <Button
-                          onClick={handleAddAddress}
-                          className="w-full bg-blue-600 hover:bg-blue-700 h-12 rounded-xl font-bold"
-                        >
-                          {editingAddressId
-                            ? "Update Address"
-                            : "Save and Use This Address"}
-                        </Button>
+                        <div className="flex gap-4">
+                          <Button
+                            variant="outline"
+                            onClick={handleCancelForm}
+                            className="flex-1 h-12 rounded-xl font-bold border-slate-200 text-slate-600 hover:bg-slate-50"
+                          >
+                            Cancel
+                          </Button>
+                          <Button
+                            onClick={handleAddAddress}
+                            className="flex-[2] bg-blue-600 hover:bg-blue-700 h-12 rounded-xl font-bold shadow-lg shadow-blue-100"
+                          >
+                            {editingAddressId
+                              ? "Update Address"
+                              : "Save and Use This Address"}
+                          </Button>
+                        </div>
                       </div>
                     )}
                   </div>
@@ -1188,7 +1394,7 @@ export default function CheckoutPage() {
                   title={
                     <div
                       id="accordion-item-2"
-                      className="flex items-center gap-3"
+                      className="flex items-center gap-3 scroll-mt-28"
                     >
                       <div className="w-8 h-8 rounded-full bg-blue-50 text-blue-600 flex items-center justify-center text-sm">
                         2
@@ -1250,8 +1456,16 @@ export default function CheckoutPage() {
                             key={part.id}
                             className="flex gap-4 p-3 rounded-xl border border-slate-100 bg-slate-50/50"
                           >
-                            <div className="w-12 h-12 rounded-lg bg-white border border-slate-200 flex items-center justify-center shrink-0">
-                              <Package className="w-6 h-6 text-slate-400" />
+                            <div className="w-12 h-12 rounded-xl border border-slate-100 bg-slate-50/50 flex items-center justify-center">
+                              {part.snapshot_2d_url ? (
+                                <img
+                                  src={part.snapshot_2d_url}
+                                  alt={part.fileName}
+                                  className="h-full w-full object-contain"
+                                />
+                              ) : (
+                                <Package className="w-6 h-6 text-slate-300" />
+                              )}
                             </div>
                             <div className="flex-1">
                               <Label className="text-xs font-bold text-slate-500 truncate mb-1 block">
@@ -1295,7 +1509,7 @@ export default function CheckoutPage() {
                   title={
                     <div
                       id="accordion-item-3"
-                      className="flex items-center gap-3"
+                      className="flex items-center gap-3 scroll-mt-28"
                     >
                       <div className="w-8 h-8 rounded-full bg-blue-50 text-blue-600 flex items-center justify-center text-sm">
                         3
@@ -1327,7 +1541,7 @@ export default function CheckoutPage() {
                     </div>
                   </div>
 
-                  <div className="p-8 rounded-2xl bg-slate-50 border border-slate-200 text-center space-y-4">
+                  <div className="p-8 mt-4 rounded-2xl bg-slate-50 border border-slate-200 text-center space-y-4">
                     <p className="text-slate-600 font-medium">
                       You will be redirected to PayPal in the next step to
                       complete your payment securely.
@@ -1350,7 +1564,7 @@ export default function CheckoutPage() {
                   title={
                     <div
                       id="accordion-item-4"
-                      className="flex items-center gap-3"
+                      className="flex items-center gap-3 scroll-mt-28"
                     >
                       <div className="w-8 h-8 rounded-full bg-blue-50 text-blue-600 flex items-center justify-center text-sm">
                         4
