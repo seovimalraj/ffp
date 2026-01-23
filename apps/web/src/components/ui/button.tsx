@@ -93,39 +93,44 @@ const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
         className={cn(buttonVariants({ variant, size, className }))}
         {...props}
       >
-        {isStroke && (
-          <svg
-            className="absolute inset-0 h-full w-full pointer-events-none"
-            viewBox="0 0 300 80"
-            aria-hidden
-          >
-            <rect
-              className="btn-line btn-line--outer"
-              x="4"
-              y="4"
-              width="292"
-              height="72"
-              rx="36"
-            />
-            <rect
-              className="btn-line btn-line--inner"
-              x="4"
-              y="4"
-              width="292"
-              height="72"
-              rx="36"
-            />
-          </svg>
+        {asChild ? (
+          children
+        ) : (
+          <>
+            {isStroke && (
+              <svg
+                className="absolute inset-0 h-full w-full pointer-events-none"
+                viewBox="0 0 300 80"
+                aria-hidden
+              >
+                <rect
+                  className="btn-line btn-line--outer"
+                  x="4"
+                  y="4"
+                  width="292"
+                  height="72"
+                  rx="36"
+                />
+                <rect
+                  className="btn-line btn-line--inner"
+                  x="4"
+                  y="4"
+                  width="292"
+                  height="72"
+                  rx="36"
+                />
+              </svg>
+            )}
+            <span className="relative z-10 flex items-center">
+              {loading && <Loader className="mr-2 h-4 w-4 animate-spin" />}
+              {loading ? (
+                <span className="opacity-0">{children}</span>
+              ) : (
+                children
+              )}
+            </span>
+          </>
         )}
-
-        {!asChild && (
-          <span className="relative z-10 flex items-center">
-            {loading && <Loader className="mr-2 h-4 w-4 animate-spin" />}
-            {loading ? <span className="opacity-0">{children}</span> : children}
-          </span>
-        )}
-
-        {asChild && children}
       </Comp>
     );
   },

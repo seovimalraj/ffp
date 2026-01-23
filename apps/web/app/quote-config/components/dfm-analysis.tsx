@@ -2010,16 +2010,16 @@ function analyzeDFM(
           ? 5
           : 7;
 
-    checks.push({
-      id: "estimated-lead-time",
-      name: "Estimated Lead Time",
-      description: "Production timeline estimate",
-      status: "pass",
-      details: `Approximately ${estimatedLeadTime}-${estimatedLeadTime + 2} business days for standard delivery`,
-      icon: <Activity className="w-4 h-4" />,
-      category: "optimization",
-      severity: "low",
-    });
+    // checks.push({
+    //   id: "estimated-lead-time",
+    //   name: "Estimated Lead Time",
+    //   description: "Production timeline estimate",
+    //   status: "pass",
+    //   details: `Approximately ${estimatedLeadTime}-${estimatedLeadTime + 2} business days for standard delivery`,
+    //   icon: <Activity className="w-4 h-4" />,
+    //   category: "optimization",
+    //   severity: "low",
+    // });
   }
 
   // Calculate metrics

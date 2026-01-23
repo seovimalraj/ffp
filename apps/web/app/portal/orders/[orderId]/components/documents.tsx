@@ -54,7 +54,7 @@ type DocumentsProps = {
 const DOCUMENT_TYPES = [
   { value: "technical_drawing", label: "Technical Drawing" },
   { value: "quality_inspection", label: "Quality Inspection" },
-  { value: "compilance", label: "Compilance" },
+  { value: "compliance", label: "Compliance" },
   { value: "logistics", label: "Logistics" },
   { value: "finance", label: "Finance" },
 ];
