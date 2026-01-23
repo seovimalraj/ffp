@@ -107,6 +107,7 @@ export const FileCard: React.FC<FileCardProps> = ({
                 },
               })}
               zoom={0.8}
+              setShowViewCube={false}
             />
           </div>
         ) : (

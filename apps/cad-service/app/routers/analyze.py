@@ -107,16 +107,64 @@ def analyze_file_path(file_path: str, units_hint: Optional[str] = None) -> dict:
         if 'bend_report' in classification_metadata:
             print(classification_metadata['bend_report'])
         
+        # === ENTERPRISE COMPLEXITY CALCULATION ===
+        # Calculate complexity based on real geometric features
+        face_count = int(mesh.faces.shape[0])
+        bend_analysis = classification_metadata.get('bend_analysis', {})
+        bend_count = bend_analysis.get('bend_count', 0)
+        bend_complexity = bend_analysis.get('complexity', 0)
+        
+        # Complexity scoring for STL (no holes/pockets available from mesh)
+        # Based on: triangle count, bend count, aspect ratio, bend complexity
+        complexity_score = 0
+        
+        # Triangle complexity (mesh detail)
+        if face_count > 10000:
+            complexity_score += 30
+        elif face_count > 5000:
+            complexity_score += 20
+        elif face_count > 2000:
+            complexity_score += 10
+        
+        # Bend complexity for sheet metal
+        if process_type_str == 'sheet_metal':
+            if bend_count > 6:
+                complexity_score += 40
+            elif bend_count > 3:
+                complexity_score += 25
+            elif bend_count > 1:
+                complexity_score += 15
+            complexity_score += min(20, bend_complexity // 3)
+        else:
+            # CNC parts: aspect ratio and volume efficiency matter
+            bbox_dims.sort()
+            if len(bbox_dims) == 3:
+                aspect_ratio = bbox_dims[2] / max(bbox_dims[0], 0.1)
+                if aspect_ratio > 10:
+                    complexity_score += 20
+                elif aspect_ratio > 5:
+                    complexity_score += 10
+        
+        # Determine complexity level
+        if complexity_score >= 50:
+            complexity = 'complex'
+        elif complexity_score >= 25:
+            complexity = 'moderate'
+        else:
+            complexity = 'simple'
+        
         metrics = {
             "volume": vol_mm3 / 1000.0,  # convert to cm^3
             "surface_area": area_mm2 / 100.0,  # to cm^2
             "bbox": {"min": {"x": float(bbox_min[0]), "y": float(bbox_min[1]), "z": float(bbox_min[2])},
                      "max": {"x": float(bbox_max[0]), "y": float(bbox_max[1]), "z": float(bbox_max[2])}},
             "thickness": detected_thickness,
-            "primitive_features": {"holes": 0, "pockets": 0, "slots": 0, "faces": int(mesh.faces.shape[0])},
+            "primitive_features": {"holes": 0, "pockets": 0, "slots": 0, "faces": face_count},
             "material_usage": None,
             "process_type": process_type_str,
             "sheet_metal_score": classification_metadata.get('sheet_metal_score', 0),
+            "complexity": complexity,
+            "complexity_score": complexity_score,
             "advanced_metrics": advanced_metrics_dict
         }
         return metrics
@@ -258,15 +306,81 @@ def analyze_file_path(file_path: str, units_hint: Optional[str] = None) -> dict:
         holes = extract_holes_from_shape(shape)
         pockets = extract_pockets_from_shape(shape)
         
+        # === ENTERPRISE COMPLEXITY CALCULATION FOR STEP FILES ===
+        # Based on actual extracted features: holes, pockets, triangles, bends
+        hole_count = len(holes)
+        pocket_count = len(pockets)
+        bend_analysis = classification_metadata.get('bend_analysis', {})
+        bend_count = bend_analysis.get('bend_count', 0)
+        bend_complexity = bend_analysis.get('complexity', 0)
+        
+        complexity_score = 0
+        
+        # Feature-based complexity (STEP has actual feature extraction)
+        if hole_count > 20:
+            complexity_score += 35
+        elif hole_count > 10:
+            complexity_score += 25
+        elif hole_count > 5:
+            complexity_score += 15
+        elif hole_count > 0:
+            complexity_score += 8
+        
+        if pocket_count > 10:
+            complexity_score += 30
+        elif pocket_count > 5:
+            complexity_score += 20
+        elif pocket_count > 2:
+            complexity_score += 12
+        elif pocket_count > 0:
+            complexity_score += 6
+        
+        # Triangle/face complexity
+        if triangle_count > 15000:
+            complexity_score += 20
+        elif triangle_count > 8000:
+            complexity_score += 12
+        elif triangle_count > 3000:
+            complexity_score += 6
+        
+        # Sheet metal specific: bends add complexity
+        if process_type_str == 'sheet_metal':
+            if bend_count > 6:
+                complexity_score += 30
+            elif bend_count > 3:
+                complexity_score += 20
+            elif bend_count > 1:
+                complexity_score += 10
+            complexity_score += min(15, bend_complexity // 4)
+        else:
+            # CNC: aspect ratio adds to complexity
+            sorted_dims = sorted(bbox_dims)
+            if len(sorted_dims) == 3:
+                aspect_ratio = sorted_dims[2] / max(sorted_dims[0], 0.1)
+                if aspect_ratio > 10:
+                    complexity_score += 15
+                elif aspect_ratio > 5:
+                    complexity_score += 8
+        
+        # Determine complexity level
+        if complexity_score >= 50:
+            complexity = 'complex'
+        elif complexity_score >= 25:
+            complexity = 'moderate'
+        else:
+            complexity = 'simple'
+        
         metrics = {
             "volume": vol_mm3 / 1000.0,
             "surface_area": area_mm2 / 100.0,
             "bbox": {"min": {"x": xmin, "y": ymin, "z": zmin}, "max": {"x": xmax, "y": ymax, "z": zmax}},
             "thickness": actual_thickness,
-            "primitive_features": {"holes": len(holes), "pockets": len(pockets), "faces": triangle_count},
+            "primitive_features": {"holes": hole_count, "pockets": pocket_count, "faces": triangle_count},
             "material_usage": None,
             "process_type": process_type_str,
             "sheet_metal_score": classification_metadata.get('sheet_metal_score', 0),
+            "complexity": complexity,
+            "complexity_score": complexity_score,
             "advanced_metrics": advanced_metrics_dict
         }
         return metrics

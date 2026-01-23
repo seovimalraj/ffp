@@ -207,11 +207,51 @@ function transformBackendGeometry(backendData: any, fileName: string): any {
     volumeMm3 = bboxVolume * 0.6; // Estimate 60% fill for typical parts
   }
   
+  // === ENTERPRISE COMPLEXITY CALCULATION ===
+  // Use backend complexity if available, otherwise calculate from features
+  let complexity: 'simple' | 'moderate' | 'complex' = 'simple';
+  
+  if (backendData.complexity && ['simple', 'moderate', 'complex'].includes(backendData.complexity)) {
+    complexity = backendData.complexity;
+    console.log(`✅ Using backend complexity: ${complexity} (score: ${backendData.complexity_score || 'N/A'})`);
+  } else {
+    // Fallback: Calculate complexity from primitive features
+    const holeCount = backendData.primitive_features?.holes || 0;
+    const pocketCount = backendData.primitive_features?.pockets || 0;
+    const faceCount = backendData.primitive_features?.faces || 0;
+    
+    let complexityScore = 0;
+    
+    // Feature-based scoring
+    if (holeCount > 15) complexityScore += 30;
+    else if (holeCount > 8) complexityScore += 20;
+    else if (holeCount > 3) complexityScore += 10;
+    
+    if (pocketCount > 8) complexityScore += 25;
+    else if (pocketCount > 4) complexityScore += 15;
+    else if (pocketCount > 1) complexityScore += 8;
+    
+    // Triangle/face complexity
+    if (faceCount > 10000) complexityScore += 20;
+    else if (faceCount > 5000) complexityScore += 12;
+    else if (faceCount > 2000) complexityScore += 6;
+    
+    // Bend complexity for sheet metal
+    if (recommendedProcess === 'sheet-metal' && bendCount > 0) {
+      if (bendCount > 5) complexityScore += 25;
+      else if (bendCount > 2) complexityScore += 15;
+      else complexityScore += 8;
+    }
+    
+    complexity = complexityScore >= 45 ? 'complex' : complexityScore >= 20 ? 'moderate' : 'simple';
+    console.log(`📊 Calculated complexity: ${complexity} (score: ${complexityScore})`);
+  }
+  
   return {
     volume: volumeMm3,
     surfaceArea: (backendData.surface_area || 0) * 100, // Convert cm² to mm²
     boundingBox,
-    complexity: backendData.complexity || 'simple',
+    complexity,  // Use our calculated complexity, not the fallback
     estimatedMachiningTime: estimateMachiningTime(backendData),
     materialWeight: calculateMaterialWeight(backendData.volume || 0),
     recommendedProcess,

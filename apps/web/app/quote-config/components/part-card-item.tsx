@@ -303,6 +303,7 @@ export function PartCardItem({
               file={part.fileObject || part.filePath}
               className="h-full w-full"
               zoom={0.8}
+              showViewCube={false}
               {...(!part.snapshot_2d_url && {
                 onSnapshot: async (snapshot) => {
                   try {
@@ -333,9 +334,10 @@ export function PartCardItem({
             </div>
 
             <button
-              onClick={() =>
-                setExpandedFile(part.fileObject || part.filePath || null)
-              }
+              onClick={(e) => {
+                e.stopPropagation();
+                setExpandedFile(part.fileObject || part.filePath || null);
+              }}
               className="absolute bottom-4 right-4 rounded-full bg-black/10 p-2 text-black backdrop-blur-sm transition-colors hover:bg-black/20"
               title="Expand View"
             >

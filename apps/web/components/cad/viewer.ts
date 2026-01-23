@@ -4,7 +4,9 @@ import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 export type Viewer = {
   loadMeshFromGeometry: (geom: THREE.BufferGeometry) => void;
   clear: () => void;
-  setView: (preset: "top" | "front" | "right" | "iso") => void;
+  setView: (
+    preset: "top" | "front" | "right" | "iso" | "bottom" | "left" | "back",
+  ) => void;
   setProjection: (mode: "perspective" | "orthographic") => void;
   resize: () => void;
   dispose: () => void;
@@ -29,6 +31,7 @@ export type Viewer = {
     location?: { x: number; y: number; z: number },
   ) => void;
   setBackgroundColor: (color: string | number) => void;
+  setShowViewCube: (visible: boolean) => void;
 };
 
 export function createViewer(container: HTMLElement): Viewer {
@@ -45,6 +48,397 @@ export function createViewer(container: HTMLElement): Viewer {
   renderer.setClearColor(0xffffff);
   renderer.localClippingEnabled = true;
   container.appendChild(renderer.domElement);
+  // Ensure container can host absolutely positioned overlays (view cube)
+  try {
+    const computed = window.getComputedStyle(container);
+    if (!computed || computed.position === "static") {
+      container.style.position = "relative";
+    }
+  } catch (e) {
+    // ignore (server-side or testing)
+  }
+
+  // --- View Cube Overlay ---
+  const VIEW_CUBE_SIZE = 140; // CSS size for quick tweak
+  const cubeSizePx = VIEW_CUBE_SIZE;
+  // wrapper ensures we can control pointer events / z-order independently of container
+  const cubeWrapper = document.createElement("div");
+  cubeWrapper.style.position = "absolute";
+  cubeWrapper.style.bottom = "12px";
+  cubeWrapper.style.right = "12px";
+  cubeWrapper.style.width = `${cubeSizePx}px`;
+  cubeWrapper.style.height = `${cubeSizePx}px`;
+  cubeWrapper.style.pointerEvents = "auto";
+  cubeWrapper.style.zIndex = "50";
+
+  const cubeCanvas = document.createElement("canvas");
+  cubeCanvas.style.position = "absolute";
+  cubeCanvas.style.left = "0";
+  cubeCanvas.style.top = "0";
+  cubeCanvas.style.width = "100%";
+  cubeCanvas.style.height = "100%";
+  cubeCanvas.style.pointerEvents = "auto";
+  cubeCanvas.style.touchAction = "none";
+  cubeCanvas.width = Math.floor(
+    cubeSizePx * Math.min(window.devicePixelRatio, 2),
+  );
+  cubeCanvas.height = Math.floor(
+    cubeSizePx * Math.min(window.devicePixelRatio, 2),
+  );
+  cubeWrapper.appendChild(cubeCanvas);
+  container.appendChild(cubeWrapper);
+
+  // pointerdown handler (was missing) — prevent events from falling through to main canvas
+  function onCubePointerDown(e: PointerEvent) {
+    try {
+      // capture pointer if available
+      (e.target as Element)?.setPointerCapture?.(e.pointerId);
+    } catch (err) {
+      // ignore
+    }
+    e.preventDefault();
+    e.stopPropagation();
+  }
+
+  // attach pointer listeners directly to the canvas (non-passive pointermove)
+  cubeCanvas.addEventListener("pointermove", onCubePointerMove as any);
+  cubeCanvas.addEventListener("pointerdown", onCubePointerDown as any, {
+    passive: false,
+  });
+  cubeCanvas.addEventListener("click", onCubeClick as any);
+
+  const cubeRenderer = new THREE.WebGLRenderer({
+    canvas: cubeCanvas,
+    antialias: true,
+    alpha: true,
+    preserveDrawingBuffer: false,
+  });
+  cubeRenderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+  cubeRenderer.setSize(cubeCanvas.clientWidth, cubeCanvas.clientHeight, false);
+
+  const cubeScene = new THREE.Scene();
+  const cubeCamera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0.1, 10);
+  cubeCamera.position.set(0, 0, 2);
+
+  const cubeRoot = new THREE.Group();
+  cubeScene.add(cubeRoot);
+
+  // Create labeled face materials (px, nx, py, ny, pz, nz)
+  const faceLabels = ["Right", "Left", "Top", "Bottom", "Front", "Back"];
+  function createLabelTexture(text: string) {
+    const size = 256;
+    const canvas2 = document.createElement("canvas");
+    canvas2.width = size;
+    canvas2.height = size;
+    const ctx = canvas2.getContext("2d")!;
+    // white background
+    ctx.fillStyle = "#ffffff";
+    ctx.fillRect(0, 0, size, size);
+    // border
+    ctx.strokeStyle = "#d1d5db"; // gray-300
+    ctx.lineWidth = 4;
+    ctx.strokeRect(2, 2, size - 4, size - 4);
+    // label
+    ctx.fillStyle = "#6b7280"; // slate-500
+    ctx.font = "700 48px sans-serif";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillText(text.toUpperCase(), size / 2, size / 2 + 6);
+    const tex = new THREE.CanvasTexture(canvas2);
+    try {
+      const maxAniso = cubeRenderer.capabilities?.getMaxAnisotropy
+        ? cubeRenderer.capabilities.getMaxAnisotropy()
+        : 1;
+      tex.anisotropy = maxAniso;
+    } catch (e) {}
+    tex.needsUpdate = true;
+    return tex;
+  }
+
+  const baseFaceColor = 0xf8fafc; // soft off-white
+  const faceMaterials = faceLabels.map((lbl) => {
+    const mat = new THREE.MeshBasicMaterial({
+      color: baseFaceColor,
+      map: createLabelTexture(lbl),
+      side: THREE.FrontSide,
+    });
+    return mat;
+  });
+
+  const cubeGeom = new THREE.BoxGeometry(1, 1, 1);
+  const cubeMesh = new THREE.Mesh(cubeGeom, faceMaterials as any);
+  const cubeScale = 0.8;
+  cubeMesh.scale.set(cubeScale, cubeScale, cubeScale);
+  cubeRoot.add(cubeMesh);
+
+  // Edges outline
+  const edgesGeom = new THREE.EdgesGeometry(cubeGeom);
+  const edgesMat = new THREE.LineBasicMaterial({
+    color: 0x9ca3af, // gray-400
+    transparent: true,
+    opacity: 0.85,
+  });
+  const edges = new THREE.LineSegments(edgesGeom, edgesMat);
+  // match the mesh scale so the outline sits exactly on the cube edges
+  edges.scale.copy(cubeMesh.scale);
+  edges.renderOrder = 1001;
+  cubeRoot.add(edges);
+
+  // Axis triad anchored at the back-left-bottom cube corner (-half, -half, -half)
+  const triad = new THREE.Group();
+  const triMaterialX = new THREE.LineBasicMaterial({ color: 0xff0000 });
+  const triMaterialY = new THREE.LineBasicMaterial({ color: 0x00ff00 });
+  const triMaterialZ = new THREE.LineBasicMaterial({ color: 0x0000ff });
+  // half-size of the scaled cube (in cube local space)
+  const half = 0.5 * cubeScale;
+  // axis length proportional to cube scale
+  const triLength = 0.6 * cubeScale;
+  // corner at back-left-bottom of the cube
+  const corner = new THREE.Vector3(-half, -half, -half);
+  // tiny outward offset along the corner diagonal to avoid z-fighting (very small)
+  const eps = 0.02 * cubeScale;
+  const cornerOffset = corner
+    .clone()
+    .add(new THREE.Vector3(-1, -1, -1).normalize().multiplyScalar(eps));
+
+  // Create axes relative to triad origin (0,0,0). Parent triad to cubeRoot and position it at the corner.
+  const makeAxis = (dir: THREE.Vector3, mat: THREE.LineBasicMaterial) => {
+    const start = new THREE.Vector3(0, 0, 0);
+    const end = dir.clone().multiplyScalar(triLength);
+    const g = new THREE.BufferGeometry().setFromPoints([start, end]);
+    return new THREE.Line(g, mat);
+  };
+
+  triad.add(makeAxis(new THREE.Vector3(1, 0, 0), triMaterialX));
+  triad.add(makeAxis(new THREE.Vector3(0, 1, 0), triMaterialY));
+  triad.add(makeAxis(new THREE.Vector3(0, 0, 1), triMaterialZ));
+  // position triad origin at the cube corner (parented to cubeRoot so it rotates with the cube)
+  triad.position.copy(cornerOffset);
+  cubeRoot.add(triad);
+
+  const cubeRaycaster = new THREE.Raycaster();
+  const cubePointer = new THREE.Vector2();
+  let hoveredFaceIndex: number | null = null;
+
+  function updateCubeSize() {
+    const cssW = cubeCanvas.clientWidth || cubeSizePx;
+    const cssH = cubeCanvas.clientHeight || cubeSizePx;
+    const dpr = Math.min(window.devicePixelRatio || 1, 2);
+    cubeRenderer.setPixelRatio(dpr);
+    cubeRenderer.setSize(cssW, cssH, false);
+  }
+
+  updateCubeSize();
+
+  // Highlight multiple faces at once (supports edges/corners)
+  function highlightFaces(indices: number[] | null) {
+    // reset all faces
+    for (let i = 0; i < faceMaterials.length; i++) {
+      (faceMaterials[i] as THREE.MeshBasicMaterial).color.setHex(baseFaceColor);
+    }
+    if (!indices || indices.length === 0) {
+      hoveredFaceIndex = null;
+      return;
+    }
+    // Apply highlight color to requested indices
+    for (const idx of indices) {
+      if (faceMaterials[idx]) {
+        (faceMaterials[idx] as THREE.MeshBasicMaterial).color.setHex(0xdbeafe); // light blue
+      }
+    }
+    hoveredFaceIndex = indices[0] ?? null;
+  }
+
+  // Helper: map preset name back to face material index (robust, doesn't assume order)
+  function faceIndexForPreset(
+    preset: "top" | "front" | "right" | "iso" | "bottom" | "left" | "back",
+  ) {
+    for (let i = 0; i < 6; i++) {
+      if (mapFaceToPreset(i) === preset) return i;
+    }
+    return 0;
+  }
+  const X_POS = faceIndexForPreset("right");
+  const X_NEG = faceIndexForPreset("left");
+  const Y_POS = faceIndexForPreset("top");
+  const Y_NEG = faceIndexForPreset("bottom");
+  const Z_POS = faceIndexForPreset("front");
+  const Z_NEG = faceIndexForPreset("back");
+
+  function onCubePointerMove(e: PointerEvent) {
+    const rect = cubeCanvas.getBoundingClientRect();
+    const x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
+    const y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
+    cubePointer.set(x, y);
+    cubeRaycaster.setFromCamera(cubePointer, cubeCamera);
+    const intersects = cubeRaycaster.intersectObject(cubeMesh, false);
+
+    if (intersects.length === 0) {
+      highlightFaces(null);
+      cubeCanvas.style.cursor = "default";
+      e.stopPropagation();
+      return;
+    }
+
+    const intr = intersects[0] as any;
+    const faceIndex = intr.face?.materialIndex ?? 0;
+
+    // classify hover region using local cube coords
+    const pLocal = cubeRoot.worldToLocal(intr.point.clone());
+    const halfSize = half; // half defined earlier
+    const nx = pLocal.x / Math.max(1e-6, halfSize);
+    const ny = pLocal.y / Math.max(1e-6, halfSize);
+    const nz = pLocal.z / Math.max(1e-6, halfSize);
+
+    const EDGE_THRESH_HOVER = 0.7; // easier hover targeting
+    const nearX = Math.abs(nx) > EDGE_THRESH_HOVER;
+    const nearY = Math.abs(ny) > EDGE_THRESH_HOVER;
+    const nearZ = Math.abs(nz) > EDGE_THRESH_HOVER;
+    const nearCount = (nearX ? 1 : 0) + (nearY ? 1 : 0) + (nearZ ? 1 : 0);
+
+    cubeCanvas.style.cursor = "pointer";
+
+    if (nearCount === 3) {
+      // corner: highlight three faces based on sign
+      const ix = nx >= 0 ? X_POS : X_NEG;
+      const iy = ny >= 0 ? Y_POS : Y_NEG;
+      const iz = nz >= 0 ? Z_POS : Z_NEG;
+      highlightFaces([ix, iy, iz]);
+    } else if (nearCount === 2) {
+      // edge: highlight the two near faces
+      const faces: number[] = [];
+      if (nearX) faces.push(nx >= 0 ? X_POS : X_NEG);
+      if (nearY) faces.push(ny >= 0 ? Y_POS : Y_NEG);
+      if (nearZ) faces.push(nz >= 0 ? Z_POS : Z_NEG);
+      highlightFaces(faces);
+    } else {
+      // face center
+      highlightFaces([faceIndex]);
+    }
+
+    e.stopPropagation();
+  }
+
+  function mapFaceToPreset(idx: number) {
+    // material indices: 0:+X Right, 1:-X Left, 2:+Y Top, 3:-Y Bottom, 4:+Z Front, 5:-Z Back
+    switch (idx) {
+      case 2:
+        return "top";
+      case 3:
+        return "bottom";
+      case 4:
+        return "front";
+      case 5:
+        return "back";
+      case 0:
+        return "right";
+      case 1:
+        return "left";
+      default:
+        return "iso";
+    }
+  }
+
+  function onCubeClick(e: MouseEvent) {
+    // click handler (no debug logging)
+    const rect = cubeCanvas.getBoundingClientRect();
+    const x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
+    const y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
+    cubePointer.set(x, y);
+    cubeRaycaster.setFromCamera(cubePointer, cubeCamera);
+    const intersects = cubeRaycaster.intersectObject(cubeMesh, false);
+    if (intersects.length === 0) {
+      e.stopPropagation();
+      e.preventDefault();
+      return;
+    }
+
+    // classify click as FACE / EDGE / CORNER using local cube coordinates
+    const intr = intersects[0] as any;
+    const faceIndex = intr.face?.materialIndex ?? 0;
+
+    // convert hit point to cubeRoot local space
+    const pLocal = cubeRoot.worldToLocal(intr.point.clone());
+    const halfSize = half; // half defined earlier (0.5 * cubeScale)
+    const nx = pLocal.x / Math.max(1e-6, halfSize);
+    const ny = pLocal.y / Math.max(1e-6, halfSize);
+    const nz = pLocal.z / Math.max(1e-6, halfSize);
+
+    const EDGE_THRESH = 0.78; // near-edge/corner threshold
+    const nearX = Math.abs(nx) > EDGE_THRESH;
+    const nearY = Math.abs(ny) > EDGE_THRESH;
+    const nearZ = Math.abs(nz) > EDGE_THRESH;
+    const nearCount = (nearX ? 1 : 0) + (nearY ? 1 : 0) + (nearZ ? 1 : 0);
+
+    // helper: smooth snap camera to direction (dir is world-space vector from target toward camera)
+    const snapToDirection = (dirWorld: THREE.Vector3) => {
+      const target = controls.target.clone();
+      // compute suitable distance
+      let distance = activeCamera.position.distanceTo(target);
+      // if distance is tiny or NaN, compute a fallback
+      if (!isFinite(distance) || distance < 1e-3) distance = 300;
+
+      // try to get a reasonable distance based on model extents
+      const box = new THREE.Box3().setFromObject(modelRoot);
+      if (!box.isEmpty()) {
+        const size = box.getSize(new THREE.Vector3());
+        const maxDim = Math.max(size.x, size.y, size.z, 1);
+        const fov = ((persp as THREE.PerspectiveCamera).fov * Math.PI) / 180;
+        const suggested = (maxDim / 2 / Math.tan(fov / 2)) * 1.25;
+        distance = Math.max(distance, suggested);
+      }
+
+      const dest = target
+        .clone()
+        .add(dirWorld.clone().multiplyScalar(distance));
+
+      // animate camera position over short duration
+      const duration = 300;
+      const startTime = performance.now();
+      const startPersp = persp.position.clone();
+      const startOrtho = ortho.position.clone();
+
+      const animate = () => {
+        const t = Math.min(1, (performance.now() - startTime) / duration);
+        const ease = 1 - Math.pow(1 - t, 3);
+        // lerp both cameras to keep them in sync
+        persp.position.lerpVectors(startPersp, dest, ease);
+        ortho.position.lerpVectors(startOrtho, dest, ease);
+        // ensure cameras look at target and have correct up
+        persp.up.set(0, 1, 0);
+        ortho.up.set(0, 1, 0);
+        persp.lookAt(target);
+        ortho.lookAt(target);
+        persp.updateProjectionMatrix();
+        ortho.updateProjectionMatrix();
+        controls.update();
+        if (t < 1) {
+          requestAnimationFrame(animate);
+        }
+      };
+
+      animate();
+    };
+
+    if (nearCount >= 2) {
+      // EDGE or CORNER -> isometric snap
+      const sx = nearX ? Math.sign(nx) || 1 : 0;
+      const sy = nearY ? Math.sign(ny) || 1 : 0;
+      const sz = nearZ ? Math.sign(nz) || 1 : 0;
+      // keep axis-based direction (do NOT apply cubeRoot/camera quaternion)
+      const dirWorld = new THREE.Vector3(sx, sy, sz).normalize();
+      snapToDirection(dirWorld);
+    } else {
+      // FACE: preserve existing mapping for exact face snaps
+      const preset = mapFaceToPreset(faceIndex) as any;
+      setView(preset);
+    }
+
+    e.stopPropagation();
+    e.preventDefault();
+  }
+
+  // --- end view cube overlay ---
 
   const scene = new THREE.Scene();
 
@@ -587,7 +981,9 @@ export function createViewer(container: HTMLElement): Viewer {
     modelRoot.position.set(0, 0, 0);
   }
 
-  function setView(preset: "top" | "front" | "right" | "iso") {
+  function setView(
+    preset: "top" | "front" | "right" | "iso" | "bottom" | "left" | "back",
+  ) {
     const target = controls.target.clone();
     const dist = (activeCamera as any).position?.distanceTo?.(target) ?? 300;
     const up = new THREE.Vector3(0, 1, 0);
@@ -597,14 +993,29 @@ export function createViewer(container: HTMLElement): Viewer {
           target.clone().add(new THREE.Vector3(0, dist, 0)),
         );
         break;
+      case "bottom":
+        (activeCamera as THREE.PerspectiveCamera).position.copy(
+          target.clone().add(new THREE.Vector3(0, -dist, 0)),
+        );
+        break;
       case "front":
         (activeCamera as THREE.PerspectiveCamera).position.copy(
           target.clone().add(new THREE.Vector3(0, 0, dist)),
         );
         break;
+      case "back":
+        (activeCamera as THREE.PerspectiveCamera).position.copy(
+          target.clone().add(new THREE.Vector3(0, 0, -dist)),
+        );
+        break;
       case "right":
         (activeCamera as THREE.PerspectiveCamera).position.copy(
           target.clone().add(new THREE.Vector3(dist, 0, 0)),
+        );
+        break;
+      case "left":
+        (activeCamera as THREE.PerspectiveCamera).position.copy(
+          target.clone().add(new THREE.Vector3(-dist, 0, 0)),
         );
         break;
       case "iso":
@@ -616,10 +1027,8 @@ export function createViewer(container: HTMLElement): Viewer {
     }
     activeCamera.up.copy(up);
     (activeCamera as THREE.PerspectiveCamera).updateProjectionMatrix?.();
-
-    // Fit to model after setting view
-    fitToScreen(1);
-
+    // Do not call fitToScreen here — keep the exact direction set by the preset.
+    // The user may call fitToScreen separately; controls should reflect new position.
     controls.update();
   }
 
@@ -634,11 +1043,20 @@ export function createViewer(container: HTMLElement): Viewer {
     const aspect = w / Math.max(1, h);
     persp.aspect = aspect;
     persp.updateProjectionMatrix();
+    updateCubeSize();
   }
 
   const render = () => {
     controls.update();
     renderer.render(scene, activeCamera);
+    // Sync cube rotation to inverse of active camera
+    try {
+      const inv = activeCamera.quaternion.clone().invert();
+      cubeRoot.quaternion.copy(inv);
+    } catch (e) {
+      // ignore
+    }
+    cubeRenderer.render(cubeScene, cubeCamera);
   };
   renderer.setAnimationLoop(render);
 
@@ -824,6 +1242,31 @@ export function createViewer(container: HTMLElement): Viewer {
     renderer.setAnimationLoop(null);
     renderer.dispose();
     container.removeChild(renderer.domElement);
+    try {
+      cubeCanvas.removeEventListener("pointermove", onCubePointerMove as any);
+      cubeCanvas.removeEventListener("click", onCubeClick as any);
+      cubeCanvas.removeEventListener("pointerdown", onCubePointerDown as any);
+    } catch (e) {}
+    cubeRenderer.dispose();
+    // remove the whole wrapper (which contains the canvas)
+    try {
+      cubeWrapper.remove();
+    } catch (e) {}
+    // dispose cube materials/geometry by traversing cubeRoot
+    cubeRoot.traverse((obj: any) => {
+      if (obj.geometry) obj.geometry.dispose();
+      if (obj.material) {
+        if (Array.isArray(obj.material)) {
+          obj.material.forEach((mm: any) => {
+            if (mm.map) mm.map.dispose();
+            mm.dispose();
+          });
+        } else {
+          if (obj.material.map) obj.material.map.dispose();
+          obj.material.dispose();
+        }
+      }
+    });
   }
 
   return {
@@ -843,5 +1286,8 @@ export function createViewer(container: HTMLElement): Viewer {
     fitToScreen,
     setHighlight,
     setBackgroundColor,
+    setShowViewCube: (visible: boolean) => {
+      cubeWrapper.style.display = visible ? "block" : "none";
+    },
   };
 }

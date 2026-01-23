@@ -265,13 +265,13 @@ export default function QuotesListPage() {
             icon: File,
             color: "gray",
           },
-          {
-            label: "Pending Quotes",
-            value: quotes.filter((quote) => quote.status === "pending approval")
-              .length,
-            icon: Clock,
-            color: "lime",
-          },
+          // {
+          //   label: "Pending Quotes",
+          //   value: quotes.filter((quote) => quote.status === "pending approval")
+          //     .length,
+          //   icon: Clock,
+          //   color: "lime",
+          // },
           {
             label: "Submitted Quotes",
             value: quotes.filter((quote) => quote.status === "submitted")

@@ -229,6 +229,7 @@ export function EditPartModal({
                 className="w-full rounded-2xl"
                 showControls={false}
                 zoom={0.8}
+                showViewCube={false}
                 selectedHighlight={selectedHighlight?.selectionHint}
               />
             </div>
@@ -506,9 +507,11 @@ export function EditPartModal({
                             // Sheet Metal Materials - Categorized (filter out manual review materials)
                             <>
                               {Object.entries(SHEET_METAL_MATERIALS)
-                                .filter(([category, materials]) => 
+                                .filter(([category, materials]) =>
                                   // Only show categories that have at least one non-manual material
-                                  materials.some((m: any) => !m.requiresManualQuote)
+                                  materials.some(
+                                    (m: any) => !m.requiresManualQuote,
+                                  ),
                                 )
                                 .map(([category, materials]) => (
                                   <SelectGroup key={category}>
@@ -516,9 +519,14 @@ export function EditPartModal({
                                       {category.replace(/-/g, " ")}
                                     </SelectLabel>
                                     {materials
-                                      .filter((m: any) => !m.requiresManualQuote)
+                                      .filter(
+                                        (m: any) => !m.requiresManualQuote,
+                                      )
                                       .map((m: any) => (
-                                        <SelectItem key={m.code || m.value} value={m.code || m.value}>
+                                        <SelectItem
+                                          key={m.code || m.value}
+                                          value={m.code || m.value}
+                                        >
                                           {m.name || m.label}
                                         </SelectItem>
                                       ))}
@@ -712,8 +720,7 @@ export function EditPartModal({
                               complexity: "moderate",
                               advancedFeatures: {},
                             } as any);
-                          const toleranceRec =
-                            recommendTolerance(geometry);
+                          const toleranceRec = recommendTolerance(geometry);
 
                           return (
                             <div className="grid lg:grid-cols-[240px_1fr] gap-8 items-start">
@@ -725,8 +732,7 @@ export function EditPartModal({
                                   Define the required dimensional accuracy for
                                   CNC machining.
                                 </p>
-                                {toleranceRec.tolerance !==
-                                  "standard" && (
+                                {toleranceRec.tolerance !== "standard" && (
                                   <div className="mt-2 text-xs bg-blue-50 border border-blue-200 rounded-lg p-2">
                                     <span className="font-semibold text-blue-700">
                                       AI Suggestion:
@@ -741,8 +747,7 @@ export function EditPartModal({
                               <div className="grid lg:grid-cols-3 gap-3">
                                 {CNC_TOLERANCES.map((t) => {
                                   const isRecommended =
-                                    t.value ===
-                                    (toleranceRec?.tolerance ?? "");
+                                    t.value === (toleranceRec?.tolerance ?? "");
                                   return (
                                     <div
                                       key={t.value}
