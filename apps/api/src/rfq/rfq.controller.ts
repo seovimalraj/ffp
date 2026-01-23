@@ -309,10 +309,16 @@ export class RfqController {
       throw new HttpException('Drawing not found', HttpStatus.NOT_FOUND);
     }
 
+    const formattedDrawings = {
+      file_name: drawing.file_name,
+      file_url: drawing.file_url,
+      mime_type: drawing.mime_type,
+    };
+
     // 2. Insert into abandoned table
     const { error: insertError } = await client
       .from(Tables.AbandonedPartDrawing2DTable)
-      .insert(drawing);
+      .insert(formattedDrawings);
 
     if (insertError) {
       console.error('Error archiving drawing:', insertError);
