@@ -6,9 +6,10 @@ CREATE TABLE rfq (
   status VARCHAR(50) NOT NULL,
   organization_id UUID NOT NULL REFERENCES organizations(id),
   order_id UUID NOT NULL REFERENCES orders(id),
-  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  rfq_type TEXT NOT NULL DEFAULT 'general' CONSTRAINT check_rfq_type CHECK (rfq_type IN ('general', 'manual')) created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
+CREATE INDEX idx_rfq_type ON rfq(rfq_type);
 CREATE TABLE rfq_parts (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   rfq_id UUID NOT NULL REFERENCES rfq(id) ON DELETE CASCADE,
@@ -18,6 +19,7 @@ CREATE TABLE rfq_parts (
   cad_file_type VARCHAR(50) NOT NULL,
   snapshot_2d_url TEXT,
   material VARCHAR(50) NOT NULL,
+  process VARCHAR(50) DEFAULT 'cnc-milling',
   quantity INT NOT NULL,
   tolerance VARCHAR(50) NOT NULL,
   finish VARCHAR(50) NOT NULL,
@@ -30,6 +32,8 @@ CREATE TABLE rfq_parts (
   geometry JSONB,
   pricing JSONB,
   certificates JSONB,
+  thickness BIGINT,
+  sheet_thickness_mm NUMERIC(5, 2),
   is_archived BOOLEAN DEFAULT FALSE,
   organization_id UUID NOT NULL REFERENCES organizations(id),
   final_price numeric(10, 2),

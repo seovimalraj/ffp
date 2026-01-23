@@ -15,7 +15,24 @@ export type StatusItem = {
     value: string | number;
     isPositive: boolean;
   };
-  color?: "gray" | "blue" | "green" | "purple" | "orange" | "rose" | "indigo";
+  color?:
+    | "gray"
+    | "blue"
+    | "green"
+    | "purple"
+    | "orange"
+    | "rose"
+    | "indigo"
+    | "emerald"
+    | "amber"
+    | "sky"
+    | "pink"
+    | "teal"
+    | "violet"
+    | "cyan"
+    | "slate"
+    | "red"
+    | "lime";
 };
 
 type StatusCardsProps = {
@@ -36,6 +53,22 @@ const colorVariants = {
   indigo:
     "from-indigo-500/20 to-indigo-600/5 text-indigo-600 border-indigo-200/50 dark:border-indigo-500/20",
   gray: "from-gray-500/20 to-gray-600/5 text-gray-600 border-gray-200/50 dark:border-gray-500/20",
+
+  // New Additions
+  emerald:
+    "from-emerald-500/20 to-emerald-600/5 text-emerald-600 border-emerald-200/50 dark:border-emerald-500/20",
+  amber:
+    "from-amber-500/20 to-amber-600/5 text-amber-600 border-amber-200/50 dark:border-amber-500/20",
+  sky: "from-sky-500/20 to-sky-600/5 text-sky-600 border-sky-200/50 dark:border-sky-500/20",
+  pink: "from-pink-500/20 to-pink-600/5 text-pink-600 border-pink-200/50 dark:border-pink-500/20",
+  teal: "from-teal-500/20 to-teal-600/5 text-teal-600 border-teal-200/50 dark:border-teal-500/20",
+  violet:
+    "from-violet-500/20 to-violet-600/5 text-violet-600 border-violet-200/50 dark:border-violet-500/20",
+  cyan: "from-cyan-500/20 to-cyan-600/5 text-cyan-600 border-cyan-200/50 dark:border-cyan-500/20",
+  slate:
+    "from-slate-500/20 to-slate-600/5 text-slate-600 border-slate-200/50 dark:border-slate-500/20",
+  red: "from-red-500/20 to-red-600/5 text-red-600 border-red-200/50 dark:border-red-500/20",
+  lime: "from-lime-500/20 to-lime-600/5 text-lime-600 border-lime-200/50 dark:border-lime-500/20",
 };
 
 const iconBgVariants = {
@@ -46,6 +79,16 @@ const iconBgVariants = {
   rose: "bg-rose-100 dark:bg-rose-500/20 text-rose-600",
   indigo: "bg-indigo-100 dark:bg-indigo-500/20 text-indigo-600",
   gray: "bg-gray-100 dark:bg-gray-500/20 text-gray-600",
+  emerald: "bg-emerald-100 dark:bg-emerald-500/20 text-emerald-600",
+  amber: "bg-amber-100 dark:bg-amber-500/20 text-amber-600",
+  sky: "bg-sky-100 dark:bg-sky-500/20 text-sky-600",
+  pink: "bg-pink-100 dark:bg-pink-500/20 text-pink-600",
+  teal: "bg-teal-100 dark:bg-teal-500/20 text-teal-600",
+  violet: "bg-violet-100 dark:bg-violet-500/20 text-violet-600",
+  cyan: "bg-cyan-100 dark:bg-cyan-500/20 text-cyan-600",
+  slate: "bg-slate-100 dark:bg-slate-500/20 text-slate-600",
+  red: "bg-red-100 dark:bg-red-500/20 text-red-600",
+  lime: "bg-lime-100 dark:bg-lime-500/20 text-lime-600",
 };
 
 export function StatusCards({ items, isLoading, className }: StatusCardsProps) {

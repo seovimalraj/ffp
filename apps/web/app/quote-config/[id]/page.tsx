@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { useRouter, useParams } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import {
@@ -71,6 +71,8 @@ import { PartConfig } from "@/types/part-config";
 import Logo from "@/components/ui/logo";
 import ArchiveModal from "../components/archive-modal";
 import { SuggestionSidebar } from "../components/suggestion-sidebar";
+import ManualQuoteModal from "../../quote-config/components/manual-quote-modal";
+import { ManualExceededModal } from "../components/manual-exceeded-modal";
 
 /**
  * Normalize process string from database/API to clean format.
@@ -261,6 +263,7 @@ type IRFQ = {
   rfq_code: string;
   status: string;
   user_id: string;
+  rfq_type: "general" | "manual";
 };
 
 // --- Moved Helper Functions ---
@@ -427,6 +430,7 @@ export default function QuoteConfigPage() {
 
   const [rfq, setRfq] = useState<IRFQ>({} as IRFQ);
   const [parts, setParts] = useState<PartConfig[]>([]);
+
   // currentPartIndex removed as we list all parts
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -434,13 +438,26 @@ export default function QuoteConfigPage() {
 
   const [archivedParts, setArchivedParts] = useState<PartConfig[]>([]);
   const [showArchiveModal, setShowArchiveModal] = useState(false);
-
+  const [showManualQuoteModal, setShowManualQuoteModal] = useState(false);
+  const [isManualQuote, setIsManualQuote] = useState(false);
   // Bulk selection state
   const [selectedParts, setSelectedParts] = useState<Set<string>>(new Set());
   const [unsavedChanges, setUnsavedChanges] = useState<Set<string>>(new Set()); // Track parts with pending changes
   const [showUploadModal, setShowUploadModal] = useState(false);
   const [showScrollIndicator, setShowScrollIndicator] = useState(false);
+  const [hasDismissedExceededModal, setHasDismissedExceededModal] =
+    useState(false);
+  const [showManualExceededModal, setShowManualExceededModal] = useState(false);
   const partsContainerRef = useRef<HTMLDivElement>(null);
+
+  const manualParts = useMemo(
+    () => parts.filter((p) => p.process === "manual-quote"),
+    [parts],
+  );
+  const manualPartIds = useMemo(
+    () => manualParts.map((p) => p.id),
+    [manualParts],
+  );
 
   useEffect(() => {
     const checkScroll = () => {
@@ -562,6 +579,7 @@ export default function QuoteConfigPage() {
             "cnc-milling": "cnc-milling",
             "cnc-turning": "cnc-turning",
             "injection-molding": "injection-molding",
+            "manual-quote": "manual-quote",
           };
           const detectedProcess = geometry?.recommendedProcess
             ? processMap[geometry.recommendedProcess] || "cnc-milling"
@@ -676,6 +694,53 @@ export default function QuoteConfigPage() {
       console.error(error);
       notify.error("Failed to delete parts");
     }
+  };
+
+  const handleManualParts = async (partIds: string[], metadata?: any) => {
+    const isFullManual = partIds.length === parts.length;
+    try {
+      const { data } = await apiClient.post(`/rfq/manual`, {
+        partIds,
+        metadata,
+        rfqId: isFullManual ? rfq.id : undefined,
+      });
+
+      console.log(data);
+
+      if (!data) {
+        notify.error("Failed to create manual quote");
+        return;
+      }
+
+      if (isFullManual) {
+        notify.success("Quote converted to manual review");
+        router.push(`/portal/quotes/${rfq.id}`);
+      } else {
+        setParts((prev) => prev.filter((p) => !partIds.includes(p.id)));
+        notify.success(`Successfully created manual quote`);
+      }
+    } catch (error) {
+      console.log(error);
+      notify.error("Failed to create manual quote");
+    }
+  };
+
+  const hasManualPartExceededThreshold = (maxAllowed: number): boolean => {
+    let count = 0;
+
+    for (const part of parts) {
+      if (part.process !== "manual-quote") continue;
+
+      count++;
+      if (count >= maxAllowed) {
+        return true; // early exit
+      }
+    }
+
+    if (count === parts.length) setIsManualQuote(true);
+    else setIsManualQuote(false);
+
+    return false;
   };
 
   // Handle deleting a part
@@ -831,6 +896,7 @@ export default function QuoteConfigPage() {
     }
 
     await deleteParts(Array.from(selectedParts));
+    setParts((prev) => prev.filter((p) => !selectedParts.has(p.id)));
     setSelectedParts(new Set());
     notify.success(`Deleted ${selectedParts.size} part(s)`);
   };
@@ -1042,6 +1108,14 @@ export default function QuoteConfigPage() {
     loadQuote();
   }, [quoteId, router, session.status]);
 
+  const exceeded = useMemo(() => hasManualPartExceededThreshold(4), [parts]);
+
+  useEffect(() => {
+    if (!exceeded) {
+      setHasDismissedExceededModal(false);
+    }
+  }, [exceeded]);
+
   // Lead Time & Pricing Calculations
 
   const updatePartFields = async (
@@ -1240,6 +1314,12 @@ export default function QuoteConfigPage() {
         return;
       }
 
+      // Check for manual parts before checkout
+      if (manualParts.length > 0) {
+        setShowManualExceededModal(true);
+        return;
+      }
+
       if (!checkFor2DDiagrams()) {
         return;
       }
@@ -1253,7 +1333,9 @@ export default function QuoteConfigPage() {
     }
   };
 
-  const handleManualQuote = () => {};
+  const handleManualQuote = async (metadata: any) => {
+    await handleManualParts(manualPartIds, metadata);
+  };
 
   // Handle applying suggestions
   const handleApplySuggestion = (suggestion: any) => {
@@ -1304,9 +1386,19 @@ export default function QuoteConfigPage() {
     return null;
   }
 
-  if (rfq && rfq.status == "paid") {
-    notify.error("This quote has already been paid");
+  if (rfq && rfq.status === "paid") {
+    notify.info(
+      "This quote has already been paid and processed. Redirecting to your orders.",
+    );
     router.push("/portal/orders");
+    return null;
+  }
+
+  if (rfq && rfq.status === "pending approval") {
+    notify.info(
+      "This quote is currently pending approval. We'll notify you once the review is complete.",
+    );
+    router.push(`/portal/quotes/${rfq.id}`);
     return null;
   }
 
@@ -1428,14 +1520,14 @@ export default function QuoteConfigPage() {
                   </DropdownMenuLabel>
                   <DropdownMenuSeparator className="bg-slate-100 my-1" />
                   <DropdownMenuItem
-                    onClick={() => signOut()}
+                    onClick={() => router.push("/portal/dashboard")}
                     className="text-slate-700 cursor-pointer rounded-lg focus:bg-slate-50 focus:text-blue-600 p-2"
                   >
                     <LayoutDashboard className="w-4 h-4 mr-2" />
                     Dashboard
                   </DropdownMenuItem>
                   <DropdownMenuItem
-                    onClick={() => signOut()}
+                    onClick={() => router.push("/portal/orders")}
                     className="text-slate-700 cursor-pointer rounded-lg focus:bg-slate-50 focus:text-blue-600 p-2"
                   >
                     <Package2 className="w-4 h-4 mr-2" />
@@ -1657,6 +1749,7 @@ export default function QuoteConfigPage() {
               <div className="space-y-3 max-h-[calc(100vh-85px)] overflow-y-auto custom-scrollbar pr-1">
                 {parts.map((p, i) => {
                   console.log(p, "p");
+                  const isManual = p.process === "manual-quote";
                   const pPrice = p.final_price || 0;
                   const calculatedLeadTime = p.leadTime || 0;
                   return (
@@ -1672,13 +1765,16 @@ export default function QuoteConfigPage() {
                             </span>
                           </span>
                         </div>
-                        <span className="text-xs text-slate-500">
-                          Qty: {p.quantity} | {LEAD_TIME_SHORT[p.leadTimeType]}{" "}
-                          ({calculatedLeadTime} Business Days)
-                        </span>
+                        {!isManual && (
+                          <span className="text-xs text-slate-500">
+                            Qty: {p.quantity} |{" "}
+                            {LEAD_TIME_SHORT[p.leadTimeType]} (
+                            {calculatedLeadTime} Business Days)
+                          </span>
+                        )}
                       </div>
                       <span className="font-semibold mt-0.5 text-slate-700">
-                        {formatCurrencyFixed(pPrice)}
+                        {isManual ? "-" : formatCurrencyFixed(pPrice)}
                       </span>
                     </div>
                   );
@@ -1725,39 +1821,60 @@ export default function QuoteConfigPage() {
               </div>
 
               <div className="flex flex-col gap-4 mt-6">
-                {/* Primary Checkout Button */}
-                <Button
-                  size="lg"
-                  onClick={handleCheckout}
-                  disabled={saving}
-                  className="w-full bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white shadow-[0_10px_20px_-10px_rgba(37,99,235,0.5)] rounded-2xl h-16 text-lg font-bold transition-all hover:scale-[1.02] active:scale-[0.98] group relative overflow-hidden"
-                >
-                  <div className="flex items-center justify-center w-full">
-                    {saving ? (
-                      <Loader2 className="w-6 h-6 animate-spin" />
-                    ) : (
-                      <>
-                        Make Payment
-                        <div className="ml-3 bg-white/20 p-1.5 rounded-xl group-hover:bg-white/30 transition-colors">
-                          <ArrowRight className="w-4 h-4 transition-transform group-hover:translate-x-0.5" />
-                        </div>
-                      </>
-                    )}
-                  </div>
-                </Button>
+                {!isManualQuote ? (
+                  <>
+                    {/* Primary Checkout Button */}
+                    <Button
+                      size="lg"
+                      onClick={handleCheckout}
+                      disabled={saving}
+                      className="w-full bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white shadow-[0_10px_20px_-10px_rgba(37,99,235,0.5)] rounded-2xl h-16 text-lg font-bold transition-all hover:scale-[1.02] active:scale-[0.98] group relative overflow-hidden"
+                    >
+                      <div className="flex items-center justify-center w-full">
+                        {saving ? (
+                          <Loader2 className="w-6 h-6 animate-spin" />
+                        ) : (
+                          <>
+                            Make Payment
+                            <div className="ml-3 bg-white/20 p-1.5 rounded-xl group-hover:bg-white/30 transition-colors">
+                              <ArrowRight className="w-4 h-4 transition-transform group-hover:translate-x-0.5" />
+                            </div>
+                          </>
+                        )}
+                      </div>
+                    </Button>
 
-                {/* Secondary Manual Quote Button */}
-                {/* <Button
-                  size="lg"
-                  variant="outline"
-                  onClick={handleManualQuote}
-                  disabled={saving}
-                  className="w-full bg-white border-2 border-slate-100 hover:border-blue-200 hover:bg-blue-50/50 text-slate-600 hover:text-blue-600 rounded-2xl h-14 text-base font-bold transition-all"
-                >
-                  <div className="flex items-center justify-center w-full">
-                    Request Manual Quote
-                  </div>
-                </Button> */}
+                    {/* Secondary Manual Quote Button (Ghost style when not all parts are manual) */}
+                    <Button
+                      variant="ghost"
+                      className="w-full text-slate-500 hover:text-blue-600 hover:bg-blue-50 font-semibold border border-dashed border-slate-300 hover:border-blue-300 h-10 rounded-xl"
+                      onClick={() => setShowManualQuoteModal(true)}
+                    >
+                      Request Manual Quote
+                    </Button>
+                  </>
+                ) : (
+                  /* Primary Manual Quote Button (Full style when all parts are manual) */
+                  <Button
+                    size="lg"
+                    onClick={() => setShowManualQuoteModal(true)}
+                    disabled={saving}
+                    className="w-full bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white shadow-[0_10px_20px_-10px_rgba(37,99,235,0.5)] rounded-2xl h-16 text-lg font-bold transition-all hover:scale-[1.02] active:scale-[0.98] group relative overflow-hidden"
+                  >
+                    <div className="flex items-center justify-center w-full">
+                      {saving ? (
+                        <Loader2 className="w-6 h-6 animate-spin" />
+                      ) : (
+                        <>
+                          Request Manual Quote
+                          <div className="ml-3 bg-white/20 p-1.5 rounded-xl group-hover:bg-white/30 transition-colors">
+                            <ArrowRight className="w-4 h-4 transition-transform group-hover:translate-x-0.5" />
+                          </div>
+                        </>
+                      )}
+                    </div>
+                  </Button>
+                )}
               </div>
             </div>
           </div>
@@ -1783,6 +1900,29 @@ export default function QuoteConfigPage() {
         </p>
       </footer>
 
+      <ManualExceededModal
+        isOpen={
+          showManualExceededModal || (exceeded && !hasDismissedExceededModal)
+        }
+        manualPartsCount={manualParts.length}
+        title={
+          showManualExceededModal
+            ? "Action Required: Manual Parts Detected"
+            : undefined
+        }
+        description={
+          showManualExceededModal
+            ? "There are parts in the quote that require manual quotation. Please move these parts into a separate quote to proceed with checkout."
+            : undefined
+        }
+        onMoveToManual={async () => {
+          // await handleManualParts(manualPartIds);
+          setHasDismissedExceededModal(true);
+          setShowManualExceededModal(false);
+          setShowManualQuoteModal(true);
+        }}
+      />
+
       <UploadFileModal
         open={showUploadModal}
         setOpen={setShowUploadModal}
@@ -1800,6 +1940,14 @@ export default function QuoteConfigPage() {
         FINISHES_LIST={FINISHES_LIST}
         handleUnarchivePart={handleUnarchivePart}
         handleUnarchiveAll={handleUnarchiveAll}
+      />
+
+      <ManualQuoteModal
+        showManualQuoteModal={showManualQuoteModal}
+        setShowManualQuoteModal={setShowManualQuoteModal}
+        isSubmitting={false}
+        handleSubmit={handleManualQuote}
+        submitLable="Submit Request"
       />
 
       {/* Suggestion Sidebar */}

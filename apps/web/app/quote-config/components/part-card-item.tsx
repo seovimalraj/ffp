@@ -66,35 +66,44 @@ import { formatCurrencyFixed, processTranslator } from "@/lib/utils";
 import { leadTimeMeta, markupMap } from "@cnc-quote/shared";
 
 // Valid sheet metal thicknesses in mm
-const VALID_SHEET_THICKNESSES = [0.5, 0.8, 1.0, 1.2, 1.5, 2.0, 2.5, 3.0, 4.0, 5.0, 6.0];
+const VALID_SHEET_THICKNESSES = [
+  0.5, 0.8, 1.0, 1.2, 1.5, 2.0, 2.5, 3.0, 4.0, 5.0, 6.0,
+];
 
 // Helper to get valid sheet thickness (clamp bbox-derived values to valid sheet sizes)
 function getValidSheetThickness(part: PartConfig): number {
   // Priority 1: User-configured sheet_thickness_mm
-  if (part.sheet_thickness_mm && part.sheet_thickness_mm > 0 && part.sheet_thickness_mm <= 25) {
+  if (
+    part.sheet_thickness_mm &&
+    part.sheet_thickness_mm > 0 &&
+    part.sheet_thickness_mm <= 25
+  ) {
     return part.sheet_thickness_mm;
   }
-  
+
   // Priority 2: Geometry-detected thickness from advanced metrics (from CAD service ray-casting)
-  const advancedThickness = (part.geometry as any)?.advancedMetrics?.detected_thickness_mm;
+  const advancedThickness = (part.geometry as any)?.advancedMetrics
+    ?.detected_thickness_mm;
   if (advancedThickness && advancedThickness > 0 && advancedThickness <= 25) {
     // Find closest standard thickness
-    const closest = VALID_SHEET_THICKNESSES.reduce((prev, curr) => 
-      Math.abs(curr - advancedThickness) < Math.abs(prev - advancedThickness) ? curr : prev
+    const closest = VALID_SHEET_THICKNESSES.reduce((prev, curr) =>
+      Math.abs(curr - advancedThickness) < Math.abs(prev - advancedThickness)
+        ? curr
+        : prev,
     );
     return closest;
   }
-  
+
   // Priority 3: SheetMetalFeatures thickness (may be from bbox - validate range)
   const smThickness = part.geometry?.sheetMetalFeatures?.thickness;
   if (smThickness && smThickness > 0 && smThickness <= 25) {
     // Find closest standard thickness
-    const closest = VALID_SHEET_THICKNESSES.reduce((prev, curr) => 
-      Math.abs(curr - smThickness) < Math.abs(prev - smThickness) ? curr : prev
+    const closest = VALID_SHEET_THICKNESSES.reduce((prev, curr) =>
+      Math.abs(curr - smThickness) < Math.abs(prev - smThickness) ? curr : prev,
     );
     return closest;
   }
-  
+
   // Default to 2.0mm (matches AL5052-2.0 default material)
   return 2.0;
 }
@@ -264,6 +273,9 @@ export function PartCardItem({
     updatePart(index, "files2d", updatedFiles);
   };
 
+  // Disable interactive controls for manual-quote parts
+  const isManual = part.process === "manual-quote";
+
   /* New Layout Design */
   return (
     <Card
@@ -313,7 +325,7 @@ export function PartCardItem({
             />
             {/* Overlay Badges */}
             <div className="absolute top-2 right-2 flex flex-col gap-1 items-end">
-              {part.geometry && (
+              {part.geometry && !isManual && (
                 <span className="bg-black/70 backdrop-blur-sm text-white text-[10px] font-bold px-2 py-0.5 rounded-full">
                   {part.geometry.volume.toFixed(2)} mm³
                 </span>
@@ -331,142 +343,146 @@ export function PartCardItem({
             </button>
           </div>
 
-          {part.geometry && (
-            <div className="flex flex-wrap gap-0.5">
-              <div className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-slate-100/50 border border-slate-200 text-[10px] font-bold text-slate-600 uppercase tracking-wider">
-                <Maximize2 className="w-3.5 h-3.5 text-slate-400" />
-                {part.geometry.boundingBox.x.toFixed(1)}×
-                {part.geometry.boundingBox.y.toFixed(1)}×
-                {part.geometry.boundingBox.z.toFixed(1)}
-              </div>
-              <div className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-slate-100/50 border border-slate-200 text-[10px] font-bold text-slate-600 uppercase tracking-wider">
-                <CubeIcon className="w-3.5 h-3.5 text-slate-400" />
-                {part.geometry.volume.toFixed(0)} mm³
-              </div>
-              <div className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-slate-100/50 border border-slate-200 text-[10px] font-bold text-slate-600 uppercase tracking-wider">
-                <Ruler className="w-3.5 h-3.5 text-slate-400" />
-                {part.geometry.surfaceArea.toFixed(0)} mm²
-              </div>
-            </div>
-          )}
+          {!isManual && (
+            <>
+              {part.geometry && (
+                <div className="flex flex-wrap gap-0.5">
+                  <div className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-slate-100/50 border border-slate-200 text-[10px] font-bold text-slate-600 uppercase tracking-wider">
+                    <Maximize2 className="w-3.5 h-3.5 text-slate-400" />
+                    {part.geometry.boundingBox.x.toFixed(1)}×
+                    {part.geometry.boundingBox.y.toFixed(1)}×
+                    {part.geometry.boundingBox.z.toFixed(1)}
+                  </div>
+                  <div className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-slate-100/50 border border-slate-200 text-[10px] font-bold text-slate-600 uppercase tracking-wider">
+                    <CubeIcon className="w-3.5 h-3.5 text-slate-400" />
+                    {part.geometry.volume.toFixed(0)} mm³
+                  </div>
+                  <div className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-slate-100/50 border border-slate-200 text-[10px] font-bold text-slate-600 uppercase tracking-wider">
+                    <Ruler className="w-3.5 h-3.5 text-slate-400" />
+                    {part.geometry.surfaceArea.toFixed(0)} mm²
+                  </div>
+                </div>
+              )}
 
-          {part.files2d && part.files2d.length > 0 ? (
-            <div className="space-y-3">
-              {/* Show first 2 files */}
-              {part.files2d.slice(0, 1).map((file2d, fileIndex) => {
-                const isPdfFile = file2d.file.type === "application/pdf";
-                return (
-                  <div
-                    key={fileIndex}
-                    className="flex items-center gap-4 cursor-pointer group hover:bg-blue-50/50 p-3 rounded-lg transition-all border border-transparent hover:border-blue-200"
-                    onClick={() => handleFileClick(file2d)}
-                  >
-                    <div className="relative overflow-hidden rounded-md border border-slate-200 bg-white h-16 w-16 sm:h-20 sm:w-20 flex-shrink-0 flex items-center justify-center">
-                      {isPdfFile ? (
-                        <FileText className="w-8 h-8 text-red-500" />
-                      ) : (
-                        <img
-                          src={file2d.preview}
-                          alt="Technical Drawing"
-                          className="object-contain max-h-full max-w-full p-1"
-                        />
-                      )}
-                      <div className="absolute inset-0 bg-blue-900/0 group-hover:bg-blue-900/10 transition-colors flex items-center justify-center">
-                        <Maximize2 className="w-5 h-5 text-blue-600 opacity-0 group-hover:opacity-100 transform scale-75 group-hover:scale-100 transition-all" />
+              {part.files2d && part.files2d.length > 0 ? (
+                <div className="space-y-3">
+                  {/* Show first 2 files */}
+                  {part.files2d.slice(0, 1).map((file2d, fileIndex) => {
+                    const isPdfFile = file2d.file.type === "application/pdf";
+                    return (
+                      <div
+                        key={fileIndex}
+                        className="flex items-center gap-4 cursor-pointer group hover:bg-blue-50/50 p-3 rounded-lg transition-all border border-transparent hover:border-blue-200"
+                        onClick={() => handleFileClick(file2d)}
+                      >
+                        <div className="relative overflow-hidden rounded-md border border-slate-200 bg-white h-16 w-16 sm:h-20 sm:w-20 flex-shrink-0 flex items-center justify-center">
+                          {isPdfFile ? (
+                            <FileText className="w-8 h-8 text-red-500" />
+                          ) : (
+                            <img
+                              src={file2d.preview}
+                              alt="Technical Drawing"
+                              className="object-contain max-h-full max-w-full p-1"
+                            />
+                          )}
+                          <div className="absolute inset-0 bg-blue-900/0 group-hover:bg-blue-900/10 transition-colors flex items-center justify-center">
+                            <Maximize2 className="w-5 h-5 text-blue-600 opacity-0 group-hover:opacity-100 transform scale-75 group-hover:scale-100 transition-all" />
+                          </div>
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <h4 className="text-sm font-bold text-slate-900 truncate mb-0.5">
+                            {file2d.file.name}
+                          </h4>
+                          <div className="flex items-center gap-2 mb-1">
+                            {isPdfFile && (
+                              <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold bg-red-100 text-red-700 uppercase tracking-wider">
+                                PDF
+                              </span>
+                            )}
+                            <p className="text-[10px] font-semibold text-blue-600 flex items-center gap-1 uppercase tracking-wider">
+                              <Maximize2 className="w-2.5 h-2.5" /> Preview
+                            </p>
+                          </div>
+                        </div>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="text-slate-400 hover:text-red-500 hover:bg-red-50"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleDeleteFile(fileIndex);
+                          }}
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </Button>
                       </div>
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <h4 className="text-sm font-bold text-slate-900 truncate mb-0.5">
-                        {file2d.file.name}
-                      </h4>
-                      <div className="flex items-center gap-2 mb-1">
-                        {isPdfFile && (
-                          <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold bg-red-100 text-red-700 uppercase tracking-wider">
-                            PDF
-                          </span>
-                        )}
-                        <p className="text-[10px] font-semibold text-blue-600 flex items-center gap-1 uppercase tracking-wider">
-                          <Maximize2 className="w-2.5 h-2.5" /> Preview
+                    );
+                  })}
+
+                  {/* Show More Button if more than 1 file */}
+                  {part.files2d.length > 1 && (
+                    <Button
+                      variant="outline"
+                      className="w-full border-blue-200 text-blue-600 hover:bg-blue-50 hover:border-blue-300"
+                      onClick={() => setIsFilesModalOpen(true)}
+                    >
+                      <FileIcon className="w-4 h-4 mr-2" />
+                      Show all {part.files2d.length} files
+                    </Button>
+                  )}
+
+                  {/* Add More Files Button */}
+                  <div
+                    {...getRootProps()}
+                    className="border border-dashed border-slate-300 rounded-lg p-4 bg-slate-50/50 hover:bg-slate-50 hover:border-blue-400 transition-all cursor-pointer text-center group flex flex-col items-center justify-center gap-2"
+                  >
+                    <input
+                      {...getInputProps()}
+                      key={`file-input-${part.files2d?.length || 0}`}
+                    />
+                    {isUploading ? (
+                      <Loader2 className="w-5 h-5 text-blue-600 animate-spin" />
+                    ) : (
+                      <div className="flex items-center gap-2">
+                        <div className="p-1.5 bg-white rounded-full border border-slate-200 shadow-sm group-hover:border-blue-300">
+                          <Upload className="w-3.5 h-3.5 text-slate-400 group-hover:text-blue-500" />
+                        </div>
+                        <p className="text-xs font-medium text-slate-600 group-hover:text-blue-700 transition-colors">
+                          Add More Files
                         </p>
                       </div>
-                    </div>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="text-slate-400 hover:text-red-500 hover:bg-red-50"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        handleDeleteFile(fileIndex);
-                      }}
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </Button>
+                    )}
                   </div>
-                );
-              })}
-
-              {/* Show More Button if more than 1 file */}
-              {part.files2d.length > 1 && (
-                <Button
-                  variant="outline"
-                  className="w-full border-blue-200 text-blue-600 hover:bg-blue-50 hover:border-blue-300"
-                  onClick={() => setIsFilesModalOpen(true)}
-                >
-                  <FileIcon className="w-4 h-4 mr-2" />
-                  Show all {part.files2d.length} files
-                </Button>
-              )}
-
-              {/* Add More Files Button */}
-              <div
-                {...getRootProps()}
-                className="border border-dashed border-slate-300 rounded-lg p-4 bg-slate-50/50 hover:bg-slate-50 hover:border-blue-400 transition-all cursor-pointer text-center group flex flex-col items-center justify-center gap-2"
-              >
-                <input
-                  {...getInputProps()}
-                  key={`file-input-${part.files2d?.length || 0}`}
-                />
-                {isUploading ? (
-                  <Loader2 className="w-5 h-5 text-blue-600 animate-spin" />
-                ) : (
-                  <div className="flex items-center gap-2">
-                    <div className="p-1.5 bg-white rounded-full border border-slate-200 shadow-sm group-hover:border-blue-300">
-                      <Upload className="w-3.5 h-3.5 text-slate-400 group-hover:text-blue-500" />
-                    </div>
-                    <p className="text-xs font-medium text-slate-600 group-hover:text-blue-700 transition-colors">
-                      Add More Files
-                    </p>
-                  </div>
-                )}
-              </div>
-            </div>
-          ) : (
-            <div
-              {...getRootProps()}
-              className="border border-dashed border-slate-300 rounded-lg p-8 bg-slate-50/50 hover:bg-slate-50 hover:border-blue-400 transition-all cursor-pointer text-center group flex flex-col items-center justify-center gap-3"
-            >
-              <input {...getInputProps()} />
-              {isUploading ? (
-                <div className="flex flex-col items-center justify-center">
-                  <Loader2 className="w-8 h-8 text-blue-600 animate-spin mb-2" />
-                  <p className="text-sm font-medium text-blue-600">
-                    Uploading...
-                  </p>
                 </div>
               ) : (
-                <>
-                  <div className="p-2 bg-white rounded-full border border-slate-200 shadow-sm group-hover:border-blue-300">
-                    <Upload className="w-4 h-4 text-slate-400 group-hover:text-blue-500" />
-                  </div>
-                  <p className="text-xs font-medium text-slate-600 group-hover:text-blue-700 transition-colors">
-                    Upload 2D Drawings <br />
-                    <span className="text-slate-400 font-normal">
-                      (PDF, JPG, PNG, DXF, DWG - Multiple files supported)
-                    </span>
-                  </p>
-                </>
+                <div
+                  {...getRootProps()}
+                  className="border border-dashed border-slate-300 rounded-lg p-8 bg-slate-50/50 hover:bg-slate-50 hover:border-blue-400 transition-all cursor-pointer text-center group flex flex-col items-center justify-center gap-3"
+                >
+                  <input {...getInputProps()} />
+                  {isUploading ? (
+                    <div className="flex flex-col items-center justify-center">
+                      <Loader2 className="w-8 h-8 text-blue-600 animate-spin mb-2" />
+                      <p className="text-sm font-medium text-blue-600">
+                        Uploading...
+                      </p>
+                    </div>
+                  ) : (
+                    <>
+                      <div className="p-2 bg-white rounded-full border border-slate-200 shadow-sm group-hover:border-blue-300">
+                        <Upload className="w-4 h-4 text-slate-400 group-hover:text-blue-500" />
+                      </div>
+                      <p className="text-xs font-medium text-slate-600 group-hover:text-blue-700 transition-colors">
+                        Upload 2D Drawings <br />
+                        <span className="text-slate-400 font-normal">
+                          (PDF, JPG, PNG, DXF, DWG - Multiple files supported)
+                        </span>
+                      </p>
+                    </>
+                  )}
+                </div>
               )}
-            </div>
+            </>
           )}
         </div>
 
@@ -493,14 +509,18 @@ export function PartCardItem({
                       {/* Process Badge - Dynamic based on part.process */}
                       <div
                         className={`inline-flex items-center gap-1.5 rounded-md px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider ring-1 ring-inset ${
-                          part.process === "sheet-metal" ||
-                          part.process?.includes("sheet")
-                            ? "bg-green-50 text-green-700 ring-green-200"
-                            : "bg-amber-50 text-amber-700 ring-amber-200"
+                          part.process === "manual-quote"
+                            ? "bg-purple-50 text-purple-700 ring-purple-200"
+                            : part.process === "sheet-metal" ||
+                                part.process?.includes("sheet")
+                              ? "bg-green-50 text-green-700 ring-green-200"
+                              : "bg-amber-50 text-amber-700 ring-amber-200"
                         }`}
                       >
-                        {part.process === "sheet-metal" ||
-                        part.process?.includes("sheet") ? (
+                        {part.process === "manual-quote" ? (
+                          <FileText className="h-3.5 w-3.5" />
+                        ) : part.process === "sheet-metal" ||
+                          part.process?.includes("sheet") ? (
                           <Layers className="h-3.5 w-3.5" />
                         ) : (
                           <Zap className="h-3.5 w-3.5" />
@@ -569,6 +589,7 @@ export function PartCardItem({
                     variant="blueCta"
                     onClick={() => setIsEditModalOpen(true)}
                     title="Configure Part"
+                    disabled={isManual}
                     className="
                       h-11 px-5 gap-2.5 rounded-xl
                       border-slate-300 text-slate-700
@@ -587,7 +608,9 @@ export function PartCardItem({
                     </span>
                   </Button>
                   {/* Action Buttons: Standardized h-11 */}
-                  <div className="flex h-11 items-center rounded-xl border border-slate-200 bg-white px-2 shadow-sm transition-all hover:border-blue-200">
+                  <div
+                    className={`flex h-11 items-center rounded-xl border border-slate-200 bg-white px-2 shadow-sm transition-all hover:border-blue-200 ${isManual ? "opacity-60 cursor-not-allowed" : ""}`}
+                  >
                     {/* Label */}
                     <span className="mx-2 text-[10px] font-black uppercase tracking-widest text-slate-400">
                       Qty
@@ -598,8 +621,10 @@ export function PartCardItem({
                       <Button
                         variant="ghost"
                         size="icon"
-                        className="h-7 w-7 rounded-md text-slate-500 hover:bg-white hover:text-blue-600 transition-colors shadow-sm"
+                        disabled={isManual}
+                        className="h-7 w-7 rounded-md text-slate-500 disabled:bg-gray-700 disabled:text-white hover:bg-white hover:text-blue-600 transition-colors shadow-sm"
                         onClick={() => {
+                          if (isManual) return;
                           const newQ = part.quantity - 1;
                           if (newQ >= 1)
                             updatePart(index, "quantity", newQ, false);
@@ -614,6 +639,7 @@ export function PartCardItem({
                         type="number"
                         value={part.quantity}
                         onChange={(e) => {
+                          if (isManual) return;
                           const val = parseInt(e.target.value || "1");
                           if (!isNaN(val) && val >= 1) {
                             updatePart(index, "quantity", val, false);
@@ -621,20 +647,23 @@ export function PartCardItem({
                         }}
                         className="mx-1 w-12 bg-transparent text-center text-sm font-bold text-slate-900 focus:outline-none"
                         min="1"
+                        disabled={isManual}
                       />
 
                       <Button
                         variant="ghost"
                         size="icon"
+                        disabled={isManual}
                         className="h-7 w-7 rounded-md text-slate-500 hover:bg-white hover:text-blue-600 transition-colors shadow-sm"
-                        onClick={() =>
+                        onClick={() => {
+                          if (isManual) return;
                           updatePart(
                             index,
                             "quantity",
                             part.quantity + 1,
                             false,
-                          )
-                        }
+                          );
+                        }}
                       >
                         <span className="text-sm font-bold leading-none">
                           +
@@ -646,101 +675,109 @@ export function PartCardItem({
               </div>
             </div>
           </div>
-          <div className="flex flex-col xl:flex-row gap-8">
-            {/* Content Area */}
-            <div className="flex-1 space-y-4">
-              <div className="flex flex-col">
-                {/* Material */}
-                <div className="flex items-center gap-4 py-4 group">
-                  <div className="h-10 w-10 shrink-0 rounded-lg bg-slate-50 flex items-center justify-center text-slate-500 group-hover:text-blue-600 group-hover:bg-blue-50 transition-colors">
-                    <Layers className="w-5 h-5" />
+          {part.process !== "manual-quote" ? (
+            <div className="flex flex-col xl:flex-row gap-8">
+              {/* Content Area */}
+              <div className="flex-1 space-y-4">
+                <div className="flex flex-col">
+                  {/* Material */}
+                  <div className="flex items-center gap-4 py-4 group">
+                    <div className="h-10 w-10 shrink-0 rounded-lg bg-slate-50 flex items-center justify-center text-slate-500 group-hover:text-blue-600 group-hover:bg-blue-50 transition-colors">
+                      <Layers className="w-5 h-5" />
+                    </div>
+                    <div className="min-w-0">
+                      <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-0.5">
+                        Material
+                      </p>
+                      <p className="text-sm font-bold text-slate-900 truncate">
+                        {MATERIALS_LIST.find((m) => m.value === part.material)
+                          ?.label ||
+                          getMaterialDisplayName(part.material, part.process) ||
+                          "Not specified"}
+                      </p>
+                    </div>
                   </div>
-                  <div className="min-w-0">
-                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-0.5">
-                      Material
-                    </p>
-                    <p className="text-sm font-bold text-slate-900 truncate">
-                      {MATERIALS_LIST.find((m) => m.value === part.material)
-                        ?.label ||
-                        getMaterialDisplayName(part.material, part.process) ||
-                        "Not specified"}
-                    </p>
-                  </div>
-                </div>
 
-                {/* Finish */}
-                <div className="flex items-center gap-4 py-4 group">
-                  <div className="h-10 w-10 shrink-0 rounded-lg bg-slate-50 flex items-center justify-center text-slate-500 group-hover:text-blue-600 group-hover:bg-blue-50 transition-colors">
-                    <Droplet className="w-5 h-5" />
+                  {/* Finish */}
+                  <div className="flex items-center gap-4 py-4 group">
+                    <div className="h-10 w-10 shrink-0 rounded-lg bg-slate-50 flex items-center justify-center text-slate-500 group-hover:text-blue-600 group-hover:bg-blue-50 transition-colors">
+                      <Droplet className="w-5 h-5" />
+                    </div>
+                    <div className="min-w-0">
+                      <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-0.5">
+                        Finish
+                      </p>
+                      <p className="text-sm font-bold text-slate-900 truncate">
+                        {FINISHES_LIST.find((f) => f.value === part.finish)
+                          ?.label ||
+                          part.finish ||
+                          "As Machined"}
+                      </p>
+                    </div>
                   </div>
-                  <div className="min-w-0">
-                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-0.5">
-                      Finish
-                    </p>
-                    <p className="text-sm font-bold text-slate-900 truncate">
-                      {FINISHES_LIST.find((f) => f.value === part.finish)
-                        ?.label ||
-                        part.finish ||
-                        "As Machined"}
-                    </p>
-                  </div>
-                </div>
 
-                {/* Tolerance for CNC / Thickness for Sheet Metal */}
-                <div className="flex items-center gap-4 py-4 group">
-                  <div className="h-10 w-10 shrink-0 rounded-lg bg-slate-50 flex items-center justify-center text-slate-500 group-hover:text-blue-600 group-hover:bg-blue-50 transition-colors">
-                    <Ruler className="w-5 h-5" />
+                  {/* Tolerance for CNC / Thickness for Sheet Metal */}
+                  <div className="flex items-center gap-4 py-4 group">
+                    <div className="h-10 w-10 shrink-0 rounded-lg bg-slate-50 flex items-center justify-center text-slate-500 group-hover:text-blue-600 group-hover:bg-blue-50 transition-colors">
+                      <Ruler className="w-5 h-5" />
+                    </div>
+                    <div className="min-w-0">
+                      <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-0.5">
+                        {isSheetMetalProcess(part.process)
+                          ? "Thickness"
+                          : "Tolerance"}
+                      </p>
+                      <p className="text-sm font-bold text-slate-900 truncate capitalize">
+                        {isSheetMetalProcess(part.process)
+                          ? `${getValidSheetThickness(part)}mm`
+                          : part.tolerance || "Standard"}
+                      </p>
+                    </div>
                   </div>
-                  <div className="min-w-0">
-                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-0.5">
-                      {isSheetMetalProcess(part.process) ? "Thickness" : "Tolerance"}
-                    </p>
-                    <p className="text-sm font-bold text-slate-900 truncate capitalize">
-                      {isSheetMetalProcess(part.process) 
-                        ? `${getValidSheetThickness(part)}mm`
-                        : (part.tolerance || "Standard")}
-                    </p>
-                  </div>
-                </div>
 
-                {/* Inspection */}
-                <div className="flex items-center gap-4 py-4 group">
-                  <div className="h-10 w-10 shrink-0 rounded-lg bg-slate-50 flex items-center justify-center text-slate-500 group-hover:text-blue-600 group-hover:bg-blue-50 transition-colors">
-                    <ClipboardCheck className="w-5 h-5" />
-                  </div>
-                  <div className="min-w-0">
-                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-0.5">
-                      Inspection
-                    </p>
-                    <p className="text-sm font-bold text-slate-900 truncate capitalize">
-                      {part.inspection || "Standard"}
-                    </p>
+                  {/* Inspection */}
+                  <div className="flex items-center gap-4 py-4 group">
+                    <div className="h-10 w-10 shrink-0 rounded-lg bg-slate-50 flex items-center justify-center text-slate-500 group-hover:text-blue-600 group-hover:bg-blue-50 transition-colors">
+                      <ClipboardCheck className="w-5 h-5" />
+                    </div>
+                    <div className="min-w-0">
+                      <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-0.5">
+                        Inspection
+                      </p>
+                      <p className="text-sm font-bold text-slate-900 truncate capitalize">
+                        {part.inspection || "Standard"}
+                      </p>
+                    </div>
                   </div>
                 </div>
               </div>
-            </div>
-            {/* Row 2: Lead Time Pricing Options */}
-            <div className="w-full xl:w-[240px] shrink-0">
-              <div className="grid grid-cols-1 gap-3">
-                {(["economy", "standard", "expedited"] as const).map(
-                  (leadTimeType) => {
-                    const realPrice =
-                      calculatePrice(part, leadTimeType) / part.quantity;
+              {/* Row 2: Lead Time Pricing Options */}
+              <div className="w-full xl:w-[240px] shrink-0">
+                <div className="grid grid-cols-1 gap-3">
+                  {(["economy", "standard", "expedited"] as const).map(
+                    (leadTimeType) => {
+                      const realPrice =
+                        calculatePrice(part, leadTimeType) / part.quantity;
 
-                    const uplift = markupMap[leadTimeType];
-                    const marketingPrice = realPrice * (1 + uplift);
+                      const uplift = markupMap[leadTimeType];
+                      const marketingPrice = realPrice * (1 + uplift);
 
-                    const isSelected = part.leadTimeType === leadTimeType;
-                    const icon = `/icons/${leadTimeType}.png`;
-                    const leadTime = calculateLeadTime(part, leadTimeType);
+                      const isSelected = part.leadTimeType === leadTimeType;
+                      const icon = `/icons/${leadTimeType}.png`;
+                      const leadTime = calculateLeadTime(part, leadTimeType);
 
-                    return (
-                      <div
-                        key={leadTimeType}
-                        onClick={() =>
-                          updatePart(index, "leadTimeType", leadTimeType, false)
-                        }
-                        className={`
+                      return (
+                        <div
+                          key={leadTimeType}
+                          onClick={() =>
+                            updatePart(
+                              index,
+                              "leadTimeType",
+                              leadTimeType,
+                              false,
+                            )
+                          }
+                          className={`
                               relative cursor-pointer rounded-xl sm:rounded-2xl
                               border p-3 transition-all
                               active:scale-[0.98]
@@ -750,70 +787,106 @@ export function PartCardItem({
                                   : "border-slate-200 bg-white hover:border-slate-300 hover:shadow-sm"
                               }
                             `}
-                      >
-                        {/* Badge */}
-                        <div className="absolute right-2 top-2 sm:-right-3 sm:-top-2">
-                          <span
-                            className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide
+                        >
+                          {/* Badge */}
+                          <div className="absolute right-2 top-2 sm:-right-3 sm:-top-2">
+                            <span
+                              className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide
                                 ${
                                   isSelected
                                     ? "bg-blue-100 text-blue-700"
                                     : "bg-slate-200 text-slate-600"
                                 }
                               `}
-                          >
-                            {leadTimeMeta[leadTimeType].badge}
-                          </span>
-                        </div>
+                            >
+                              {leadTimeMeta[leadTimeType].badge}
+                            </span>
+                          </div>
 
-                        {/* Header */}
-                        <div className="mb-3 sm:mb-4 flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3">
-                          <img
-                            src={icon}
-                            alt=""
-                            className="h-8 w-8 sm:h-9 sm:w-9 shrink-0"
-                          />
+                          {/* Header */}
+                          <div className="mb-3 sm:mb-4 flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3">
+                            <img
+                              src={icon}
+                              alt=""
+                              className="h-8 w-8 sm:h-9 sm:w-9 shrink-0"
+                            />
 
-                          <div className="leading-tight">
-                            <div className="text-sm font-semibold capitalize text-slate-700">
-                              {leadTimeType}
+                            <div className="leading-tight">
+                              <div className="text-sm font-semibold capitalize text-slate-700">
+                                {leadTimeType}
+                              </div>
+                              <div className="text-xs text-slate-400">
+                                {leadTime} Business Days
+                              </div>
                             </div>
-                            <div className="text-xs text-slate-400">
-                              {leadTime} Business Days
+                          </div>
+
+                          {/* Pricing */}
+                          <div className="space-y-1">
+                            <div
+                              className={`text-xl sm:text-2xl font-bold leading-none ${
+                                isSelected ? "text-blue-700" : "text-slate-700"
+                              }`}
+                            >
+                              {formatCurrencyFixed(realPrice)}
+                            </div>
+                            <div className="flex items-baseline gap-x-2">
+                              <div className="text-xs sm:text-sm text-red-500 line-through">
+                                {formatCurrencyFixed(marketingPrice)}
+                              </div>
+                              <div className="text-xs text-slate-500">
+                                Save{" "}
+                                <span className="font-semibold text-green-700">
+                                  {formatCurrencyFixed(
+                                    marketingPrice - realPrice,
+                                  )}
+                                </span>
+                              </div>
                             </div>
                           </div>
                         </div>
-
-                        {/* Pricing */}
-                        <div className="space-y-1">
-                          <div
-                            className={`text-xl sm:text-2xl font-bold leading-none ${
-                              isSelected ? "text-blue-700" : "text-slate-700"
-                            }`}
-                          >
-                            {formatCurrencyFixed(realPrice)}
-                          </div>
-                          <div className="flex items-baseline gap-x-2">
-                            <div className="text-xs sm:text-sm text-red-500 line-through">
-                              {formatCurrencyFixed(marketingPrice)}
-                            </div>
-                            <div className="text-xs text-slate-500">
-                              Save{" "}
-                              <span className="font-semibold text-green-700">
-                                {formatCurrencyFixed(
-                                  marketingPrice - realPrice,
-                                )}
-                              </span>
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-                    );
-                  },
-                )}
+                      );
+                    },
+                  )}
+                </div>
               </div>
             </div>
-          </div>
+          ) : (
+            <div className="space-y-4">
+              <div className="relative overflow-hidden rounded-2xl border border-purple-200/50 bg-white p-[1px] shadow-xl shadow-purple-500/10">
+                {/* The "Glow" background */}
+                <div className="absolute -left-10 -top-10 h-32 w-32 bg-purple-200/50 blur-3xl" />
+
+                <div className="relative flex items-center gap-5 rounded-[15px] bg-white/80 backdrop-blur-sm p-5">
+                  <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-purple-500 to-indigo-600 text-white shadow-lg shadow-purple-200">
+                    <FileText size={24} strokeWidth={2.5} />
+                  </div>
+
+                  <div className="flex flex-col gap-1">
+                    <div className="mb-1 flex items-center gap-2">
+                      <span className="text-[10px] font-black uppercase tracking-[0.2em] text-purple-600/70">
+                        Status
+                      </span>
+                      <span className="h-[1px] flex-1 bg-slate-200" />
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="h-2 w-2 animate-pulse rounded-full bg-purple-500" />
+                      <h3 className="font-bold uppercase text-sm leading-relaxed tracking-tight text-slate-900">
+                        Manual review required
+                      </h3>
+                    </div>
+                    <p className="mt-1 text-xs uppercase text-slate-500">
+                      This file is unique. Our team will provide a
+                      <span className="mx-1 font-medium text-slate-900 underline decoration-purple-400 decoration-2 underline-offset-2">
+                        custom price
+                      </span>
+                      within 24 hours.
+                    </p>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
 
           {/* Sheet Metal Lead Time Breakdown - Hidden per user request */}
           {/* Lead time breakdown and AI optimization removed for sheet metal parts */}

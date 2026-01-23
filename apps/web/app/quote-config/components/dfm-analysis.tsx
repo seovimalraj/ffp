@@ -1430,7 +1430,10 @@ function analyzeDFM(
     }
 
     // Tool access analysis
-    if ((features?.toolAccess?.restrictedAreas ?? 0) > 2) {
+    if (
+      (features?.toolAccess?.restrictedAreas ?? 0) > 2 &&
+      features?.toolAccess?.estimatedSetupCount
+    ) {
       checks.push({
         id: "tool-access",
         name: "Tool Accessibility",
@@ -1456,14 +1459,14 @@ function analyzeDFM(
     // Surface finish requirements (CNC only)
     if (
       isCNC &&
-      (features.surfaceFinish.requiresPolishing ||
-        features.surfaceFinish.criticalSurfaces > 5)
+      (features?.surfaceFinish?.requiresPolishing ||
+        features?.surfaceFinish?.criticalSurfaces > 5)
     ) {
       checks.push({
         id: "surface-finish",
         name: "Surface Finish Requirements",
         description: "Finish achievability check",
-        status: features.surfaceFinish.requiresPolishing ? "warning" : "pass",
+        status: features?.surfaceFinish?.requiresPolishing ? "warning" : "pass",
         details: `Ra ${features.surfaceFinish.estimatedRa}μm, ${features.surfaceFinish.criticalSurfaces} critical surfaces`,
         icon: <Sparkles className="w-4 h-4" />,
         category: "manufacturability",
@@ -1765,7 +1768,7 @@ function analyzeDFM(
         (features.pockets.count > 5 ? 1 : 0) +
         (features.threads.count > 8 ? 1 : 0) +
         (features.undercuts.requires5Axis ? 2 : 0) +
-        (features.toolAccess.estimatedSetupCount > 2 ? 1 : 0);
+        (features?.toolAccess?.estimatedSetupCount > 2 ? 1 : 0);
     } else if (isSheetMetal) {
       const bends = geometry.sheetMetalFeatures?.bends?.count || 0;
       const flanges = geometry.sheetMetalFeatures?.flanges?.count || 0;

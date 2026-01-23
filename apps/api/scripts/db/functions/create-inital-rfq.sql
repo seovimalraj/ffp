@@ -37,6 +37,8 @@ INSERT INTO rfq_parts (
         lead_time_type,
         lead_time,
         geometry,
+        sheet_thickness_mm,
+        thickness,
         process
     )
 VALUES (
@@ -56,7 +58,16 @@ VALUES (
         part->>'lead_time_type',
         (part->>'lead_time')::INT,
         part->'geometry',
-        part->'process'
+        -- Sheet-metal only fields (safe casting)
+        CASE
+            WHEN part->>'process' = 'sheet-metal' THEN NULLIF(part->>'sheet_thickness_mm', '')::NUMERIC
+            ELSE NULL
+        END,
+        CASE
+            WHEN part->>'process' = 'sheet-metal' THEN NULLIF(part->>'thickness', '')::NUMERIC
+            ELSE NULL
+        END,
+        part->>'process'
     );
 END LOOP;
 RETURN QUERY

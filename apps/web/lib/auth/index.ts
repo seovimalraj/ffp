@@ -15,7 +15,7 @@ async function refreshAccessToken(token: any) {
     // Use internal API URL for server-side calls
     // IMPORTANT: Use INTERNAL_API_URL first (server-side), not NEXT_PUBLIC_API_URL (client-side relative path)
     const apiUrl =
-      process.env.INTERNA_API_URL ||
+      process.env.INTERNAL_API_URL ||
       process.env.NEXT_PUBLIC_API_URL ||
       "http://api:4001";
 
