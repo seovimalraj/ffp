@@ -29,18 +29,18 @@ import { CubeIcon } from "@heroicons/react/24/outline";
 import { CadViewer } from "@/components/cad/cad-viewer";
 import ExpandFileModal from "./expand-file-modal";
 import { EditPartModal } from "./edit-part-modal";
-import { SheetMetalFields } from "./sheet-metal-fields";
-import { SheetMetalLeadTimeBreakdown } from "./sheet-metal-lead-time-breakdown";
+// import { SheetMetalFields } from "./sheet-metal-fields";
+// import { SheetMetalLeadTimeBreakdown } from "./sheet-metal-lead-time-breakdown";
 import { useFileUpload } from "@/lib/hooks/use-file-upload";
 import { notify } from "@/lib/toast";
 import { calculateLeadTime } from "../[id]/page";
 import {
   getProcessDisplayName,
-  isCNCProcess,
+  // isCNCProcess,
   isSheetMetalProcess,
-  getDefaultMaterialForProcess,
-  getDefaultFinishForProcess,
-  getDefaultToleranceForProcess,
+  // getDefaultMaterialForProcess,
+  // getDefaultFinishForProcess,
+  // getDefaultToleranceForProcess,
   getMaterialDisplayName,
 } from "@/lib/pricing-engine";
 
@@ -585,14 +585,15 @@ export function PartCardItem({
               </div>
 
               {/* Row 2: Quantity & Configure Actions */}
-              <div className="flex items-center justify-between gap-4 w-full">
-                <div className="flex items-center gap-3 w-full justify-between">
-                  <Button
-                    variant="blueCta"
-                    onClick={() => setIsEditModalOpen(true)}
-                    title="Configure Part"
-                    disabled={isManual}
-                    className="
+              {!isManual && (
+                <div className="flex items-center justify-between gap-4 w-full">
+                  <div className="flex items-center gap-3 w-full justify-between">
+                    <Button
+                      variant="blueCta"
+                      onClick={() => setIsEditModalOpen(true)}
+                      title="Configure Part"
+                      disabled={isManual}
+                      className="
                       h-11 px-5 gap-2.5 rounded-xl
                       border-slate-300 text-slate-700
                       bg-white shadow-sm
@@ -600,81 +601,82 @@ export function PartCardItem({
                       focus-visible:ring-2 focus-visible:ring-blue-500
                       group
                     "
-                  >
-                    <Edit
-                      stroke="white"
-                      className="h-4.5 w-4.5 text-white group-hover:text-blue-600 transition-colors"
-                    />
-                    <span className="text-xs text-white ml-1 font-bold tracking-wide">
-                      Edit Specification
-                    </span>
-                  </Button>
-                  {/* Action Buttons: Standardized h-11 */}
-                  <div
-                    className={`flex h-11 items-center rounded-xl border border-slate-200 bg-white px-2 shadow-sm transition-all hover:border-blue-200 ${isManual ? "opacity-60 cursor-not-allowed" : ""}`}
-                  >
-                    {/* Label */}
-                    <span className="mx-2 text-[10px] font-black uppercase tracking-widest text-slate-400">
-                      Qty
-                    </span>
-
-                    {/* Stepper */}
-                    <div className="flex items-center rounded-lg bg-slate-50 p-0.5 ml-1">
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        disabled={isManual}
-                        className="h-7 w-7 rounded-md text-slate-500 disabled:bg-gray-700 disabled:text-white hover:bg-white hover:text-blue-600 transition-colors shadow-sm"
-                        onClick={() => {
-                          if (isManual) return;
-                          const newQ = part.quantity - 1;
-                          if (newQ >= 1)
-                            updatePart(index, "quantity", newQ, false);
-                        }}
-                      >
-                        <span className="text-sm font-bold leading-none">
-                          −
-                        </span>
-                      </Button>
-
-                      <input
-                        type="number"
-                        value={part.quantity}
-                        onChange={(e) => {
-                          if (isManual) return;
-                          const val = parseInt(e.target.value || "1");
-                          if (!isNaN(val) && val >= 1) {
-                            updatePart(index, "quantity", val, false);
-                          }
-                        }}
-                        className="mx-1 w-12 bg-transparent text-center text-sm font-bold text-slate-900 focus:outline-none"
-                        min="1"
-                        disabled={isManual}
+                    >
+                      <Edit
+                        stroke="white"
+                        className="h-4.5 w-4.5 text-white group-hover:text-blue-600 transition-colors"
                       />
+                      <span className="text-xs text-white ml-1 font-bold tracking-wide">
+                        Edit Specification
+                      </span>
+                    </Button>
+                    {/* Action Buttons: Standardized h-11 */}
+                    <div
+                      className={`flex h-11 items-center rounded-xl border border-slate-200 bg-white px-2 shadow-sm transition-all hover:border-blue-200 ${isManual ? "opacity-60 cursor-not-allowed" : ""}`}
+                    >
+                      {/* Label */}
+                      <span className="mx-2 text-[10px] font-black uppercase tracking-widest text-slate-400">
+                        Qty
+                      </span>
 
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        disabled={isManual}
-                        className="h-7 w-7 rounded-md text-slate-500 hover:bg-white hover:text-blue-600 transition-colors shadow-sm"
-                        onClick={() => {
-                          if (isManual) return;
-                          updatePart(
-                            index,
-                            "quantity",
-                            part.quantity + 1,
-                            false,
-                          );
-                        }}
-                      >
-                        <span className="text-sm font-bold leading-none">
-                          +
-                        </span>
-                      </Button>
+                      {/* Stepper */}
+                      <div className="flex items-center rounded-lg bg-slate-50 p-0.5 ml-1">
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          disabled={isManual}
+                          className="h-7 w-7 rounded-md text-slate-500 disabled:bg-gray-700 disabled:text-white hover:bg-white hover:text-blue-600 transition-colors shadow-sm"
+                          onClick={() => {
+                            if (isManual) return;
+                            const newQ = part.quantity - 1;
+                            if (newQ >= 1)
+                              updatePart(index, "quantity", newQ, false);
+                          }}
+                        >
+                          <span className="text-sm font-bold leading-none">
+                            −
+                          </span>
+                        </Button>
+
+                        <input
+                          type="number"
+                          value={part.quantity}
+                          onChange={(e) => {
+                            if (isManual) return;
+                            const val = parseInt(e.target.value || "1");
+                            if (!isNaN(val) && val >= 1) {
+                              updatePart(index, "quantity", val, false);
+                            }
+                          }}
+                          className="mx-1 w-12 bg-transparent text-center text-sm font-bold text-slate-900 focus:outline-none"
+                          min="1"
+                          disabled={isManual}
+                        />
+
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          disabled={isManual}
+                          className="h-7 w-7 rounded-md text-slate-500 hover:bg-white hover:text-blue-600 transition-colors shadow-sm"
+                          onClick={() => {
+                            if (isManual) return;
+                            updatePart(
+                              index,
+                              "quantity",
+                              part.quantity + 1,
+                              false,
+                            );
+                          }}
+                        >
+                          <span className="text-sm font-bold leading-none">
+                            +
+                          </span>
+                        </Button>
+                      </div>
                     </div>
                   </div>
                 </div>
-              </div>
+              )}
             </div>
           </div>
           {part.process !== "manual-quote" ? (

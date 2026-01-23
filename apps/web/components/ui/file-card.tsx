@@ -85,6 +85,7 @@ export const FileCard: React.FC<FileCardProps> = ({
           <div className="w-full h-full relative">
             <CadViewer
               file={cadFileUrl}
+              showViewCube={false}
               {...(!thumbnailUrl && {
                 onSnapshot: async (snap) => {
                   try {
@@ -107,7 +108,6 @@ export const FileCard: React.FC<FileCardProps> = ({
                 },
               })}
               zoom={0.8}
-              setShowViewCube={false}
             />
           </div>
         ) : (
