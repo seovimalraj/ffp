@@ -62,7 +62,7 @@ import {
 } from "@/types/part-config";
 import { apiClient } from "@/lib/api";
 import FileManagementModal from "./file-management-modal";
-import { formatCurrencyFixed, processTranslator } from "@/lib/utils";
+import { formatCurrencyFixed } from "@/lib/utils";
 import { leadTimeMeta, markupMap } from "@cnc-quote/shared";
 
 // Valid sheet metal thicknesses in mm
@@ -954,6 +954,7 @@ export function PartCardItem({
         <ExpandFileModal
           expandedFile={expandedFile}
           setExpandedFile={setExpandedFile}
+          part={part}
         />
       )}
     </Card>
