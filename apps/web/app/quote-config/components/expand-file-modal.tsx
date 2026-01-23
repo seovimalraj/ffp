@@ -6,17 +6,19 @@ import { CadViewer } from "@/components/cad/cad-viewer";
 type ExpandFileModalProps = {
   expandedFile: File | string | null;
   setExpandedFile: (file: File | string | null) => void;
+  part?: any;
 };
 
 const ExpandFileModal = ({
   expandedFile,
   setExpandedFile,
+  part,
 }: ExpandFileModalProps) => {
   const fileName =
     expandedFile instanceof File
       ? expandedFile.name
       : typeof expandedFile === "string"
-        ? expandedFile.split("/").pop()
+        ? expandedFile.split("/").pop()?.split("?")[0] || ""
         : "";
 
   useEffect(() => {
@@ -44,9 +46,6 @@ const ExpandFileModal = ({
       >
         {/* Modal Header */}
         <div className="absolute left-0 right-0 top-0 z-10 flex items-center justify-between bg-gradient-to-b from-black/50 to-transparent p-4">
-          <h2 className="text-lg font-medium text-white drop-shadow-md">
-            {fileName}
-          </h2>
           <button
             onClick={() => setExpandedFile(null)}
             className="rounded-full bg-white/10 p-2 text-white backdrop-blur-md transition-colors hover:bg-white/20"
@@ -74,6 +73,23 @@ const ExpandFileModal = ({
           className="h-full w-full"
           showControls={true}
         />
+
+        {(part?.rfq_part?.file_name ||
+          part?.fileName ||
+          part?.file_name ||
+          fileName) && (
+          <div className="absolute bottom-8 left-8 z-10 p-4 bg-black/40 backdrop-blur-xl rounded-2xl border border-white/10 text-white pointer-events-none">
+            <div className="text-[10px] text-slate-100 uppercase font-bold tracking-[0.2em] mb-1">
+              Component Source
+            </div>
+            <div className="text-sm font-semibold tracking-wide">
+              {part?.rfq_part?.file_name ||
+                part?.fileName ||
+                part?.file_name ||
+                fileName}
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
