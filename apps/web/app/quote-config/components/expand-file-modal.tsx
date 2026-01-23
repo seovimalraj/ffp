@@ -1,3 +1,6 @@
+"use client";
+
+import { useEffect } from "react";
 import { CadViewer } from "@/components/cad/cad-viewer";
 
 type ExpandFileModalProps = {
@@ -16,9 +19,29 @@ const ExpandFileModal = ({
         ? expandedFile.split("/").pop()
         : "";
 
+  useEffect(() => {
+    const handleEscape = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        setExpandedFile(null);
+      }
+    };
+    window.addEventListener("keydown", handleEscape);
+    document.body.style.overflow = "hidden";
+    return () => {
+      window.removeEventListener("keydown", handleEscape);
+      document.body.style.overflow = "unset";
+    };
+  }, [setExpandedFile]);
+
   return (
-    <div className="animate-fade-in fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4 backdrop-blur-sm">
-      <div className="animate-scale-in relative h-[90vh] w-[90vw] overflow-hidden rounded-2xl bg-[#0b1220] shadow-2xl">
+    <div
+      onClick={() => setExpandedFile(null)}
+      className="animate-fade-in fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4 backdrop-blur-sm"
+    >
+      <div
+        onClick={(e) => e.stopPropagation()}
+        className="animate-scale-in relative h-[90vh] w-[90vw] overflow-hidden rounded-2xl bg-[#0b1220] shadow-2xl"
+      >
         {/* Modal Header */}
         <div className="absolute left-0 right-0 top-0 z-10 flex items-center justify-between bg-gradient-to-b from-black/50 to-transparent p-4">
           <h2 className="text-lg font-medium text-white drop-shadow-md">

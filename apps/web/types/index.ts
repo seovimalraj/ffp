@@ -6,7 +6,8 @@ export type IRFQStatuses =
   | "accepted"
   | "rejected"
   | "payment pending"
-  | "paid";
+  | "paid"
+  | "pending approval";
 
 export type ICategory = {
   id: string;
@@ -63,6 +64,7 @@ export type IGroupRFQs = {
   final_price: number | null;
   status: IRFQStatuses;
   parts_count: number;
+  rfq_type: "general" | "manual";
   created_at: Date;
   updated_at: Date;
 };

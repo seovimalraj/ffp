@@ -148,10 +148,10 @@ export default function InstantQuotePage() {
         // Analyze CAD geometry - use backend for STEP files
         console.log(`🔬 Analyzing CAD file: ${file.name}`);
         let geometry: GeometryData;
-        
+
         const fileExt = file.name.toLowerCase().split(".").pop();
         const isStepFile = fileExt === "step" || fileExt === "stp";
-        
+
         if (isStepFile) {
           // Use backend analysis for STEP files (accurate bend detection)
           console.log(`📡 Using backend analysis for ${file.name}`);
@@ -168,15 +168,19 @@ export default function InstantQuotePage() {
             if (analysisResponse.ok) {
               // Backend returns geometry data directly, NOT nested under .geometry
               geometry = await analysisResponse.json();
-              
+
               // Check if this is an assembly (multi-body part)
               if (geometry.isAssembly) {
-                console.log(`⚠️ Assembly detected for ${file.name}:`, geometry.assemblyInfo);
+                console.log(
+                  `⚠️ Assembly detected for ${file.name}:`,
+                  geometry.assemblyInfo,
+                );
                 // Mark for manual quote - assemblies cannot be auto-quoted
                 geometry.requiresManualQuote = true;
-                geometry.manualQuoteReason = geometry.assemblyInfo?.reason || "Assembly detected";
+                geometry.manualQuoteReason =
+                  geometry.assemblyInfo?.reason || "Assembly detected";
               }
-              
+
               // Log with type assertion for custom backend properties
               const features = geometry.sheetMetalFeatures as any;
               console.log(`✅ Backend analysis complete for ${file.name}:`, {
@@ -194,7 +198,11 @@ export default function InstantQuotePage() {
               });
             } else {
               const errorText = await analysisResponse.text();
-              console.error("❌ Backend analysis failed:", analysisResponse.status, errorText);
+              console.error(
+                "❌ Backend analysis failed:",
+                analysisResponse.status,
+                errorText,
+              );
               console.warn("⚠️ Falling back to client-side analysis");
               geometry = await analyzeCADFile(file);
             }
@@ -208,7 +216,7 @@ export default function InstantQuotePage() {
           console.log(`⚡ Using client-side analysis for ${file.name}`);
           geometry = await analyzeCADFile(file);
         }
-        
+
         console.log(`Geometry analysis complete:`, geometry);
 
         return {
@@ -236,10 +244,12 @@ export default function InstantQuotePage() {
         user_id: session.data.user.id,
         parts: uploadResults.map((r) => {
           const process = r?.geometry?.recommendedProcess || "cnc-milling";
-          const isSheetMetal = process === "sheet-metal" || process.includes("sheet");
-          const isAssembly = r?.geometry?.isAssembly || false;
-          const requiresManualQuote = r?.geometry?.requiresManualQuote || isAssembly;
-          
+          const isSheetMetal =
+            process === "sheet-metal" || process.includes("sheet");
+          const isAssembly = r?.geometry?.isAssembly ?? false;
+          const requiresManualQuote =
+            r?.geometry?.requiresManualQuote ?? isAssembly;
+
           return {
             file_name: r?.name,
             cad_file_url: r?.uploadedPath,
@@ -250,7 +260,9 @@ export default function InstantQuotePage() {
             finish: isSheetMetal ? "as-cut" : "as-machined",
             threads: "none",
             inspection: "standard",
-            notes: isAssembly ? `Assembly detected: ${r?.geometry?.assemblyInfo?.reason || 'Multi-body part'}` : "",
+            notes: isAssembly
+              ? `Assembly detected: ${r?.geometry?.assemblyInfo?.reason || "Multi-body part"}`
+              : "",
             lead_time_type: "standard",
             lead_time: 7,
             geometry: r?.geometry,
@@ -260,10 +272,11 @@ export default function InstantQuotePage() {
             manual_quote_reason: r?.geometry?.manualQuoteReason,
             is_assembly: isAssembly,
             // Sheet metal specific fields
-            ...(isSheetMetal && r?.geometry?.sheetMetalFeatures && {
-              sheet_thickness_mm: r.geometry.sheetMetalFeatures.thickness,
-              bend_count: r.geometry.sheetMetalFeatures.bendCount,
-            }),
+            ...(isSheetMetal &&
+              r?.geometry?.sheetMetalFeatures && {
+                sheet_thickness_mm: r.geometry.sheetMetalFeatures.thickness,
+                bend_count: r.geometry.sheetMetalFeatures.bendCount,
+              }),
           };
         }),
       };

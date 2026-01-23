@@ -19,9 +19,7 @@ import React, { useEffect, useState, useRef } from "react";
 import { cn } from "@/lib/utils";
 import { PartConfig } from "@/types/part-config";
 import { motion, AnimatePresence } from "framer-motion";
-import {
-  GeometryFeatureMap,
-} from "@/lib/geometry-feature-locator";
+import { GeometryFeatureMap } from "@/lib/geometry-feature-locator";
 
 // DFM Check Status Types
 type CheckStatus =
@@ -503,7 +501,10 @@ function analyzeDFM(
         name: "Slot Features",
         description: `${slotCount} elongated slot${slotCount !== 1 ? "s" : ""} detected`,
         status: slotStatus,
-        details: slotCount > 3 ? `Consider simplifying if possible` : `Standard machining required`,
+        details:
+          slotCount > 3
+            ? `Consider simplifying if possible`
+            : `Standard machining required`,
         icon: <Layers className="w-4 h-4" />,
         category: "features",
         severity: slotCount > 3 ? "medium" : "low",
@@ -578,7 +579,10 @@ function analyzeDFM(
         name: "Curved Surfaces",
         description: `${complexCount} complex curved surface${complexCount !== 1 ? "s" : ""}`,
         status: complexStatus,
-        details: complexCount > 3 ? `Consider simplifying if not functionally required` : `Curved surfaces will be machined with ball end mills`,
+        details:
+          complexCount > 3
+            ? `Consider simplifying if not functionally required`
+            : `Curved surfaces will be machined with ball end mills`,
         icon: <Sparkles className="w-4 h-4" />,
         category: "manufacturability",
         severity: complexCount > 3 ? "medium" : "low",
@@ -740,7 +744,10 @@ function analyzeDFM(
         name: "Sharp Corners",
         description: `${cornerCount} sharp corner${cornerCount !== 1 ? "s" : ""} in your design`,
         status: cornerStatus,
-        details: cornerCount > 15 ? `Consider adding small radii for durability` : `Sharp corners noted`,
+        details:
+          cornerCount > 15
+            ? `Consider adding small radii for durability`
+            : `Sharp corners noted`,
         icon: <Maximize2 className="w-4 h-4" />,
         category: "features",
         severity: cornerCount > 15 ? "medium" : "low",
@@ -981,7 +988,8 @@ function analyzeDFM(
           name: "Powder Coating Preparation",
           description: "Design considerations for powder coating",
           status: "info",
-          details: "Coating adds approximately 0.08-0.12mm thickness per surface",
+          details:
+            "Coating adds approximately 0.08-0.12mm thickness per surface",
           icon: <Droplet className="w-4 h-4" />,
           category: "manufacturability",
           severity: "low",
@@ -1395,7 +1403,8 @@ function analyzeDFM(
       checks.push({
         id: "undercuts",
         name: "Undercut Features",
-        description: "Features that are difficult to access with standard tools",
+        description:
+          "Features that are difficult to access with standard tools",
         status: features.undercuts.requires5Axis ? "warning" : "pass",
         details: `${features.undercuts.count} undercut${features.undercuts.count !== 1 ? "s" : ""} detected`,
         icon: <Zap className="w-4 h-4" />,
@@ -1426,7 +1435,10 @@ function analyzeDFM(
     }
 
     // Tool access analysis
-    if ((features?.toolAccess?.restrictedAreas ?? 0) > 2) {
+    if (
+      (features?.toolAccess?.restrictedAreas ?? 0) > 2 &&
+      features?.toolAccess?.estimatedSetupCount
+    ) {
       checks.push({
         id: "tool-access",
         name: "Tool Access",
@@ -1452,8 +1464,8 @@ function analyzeDFM(
     // Surface finish requirements (CNC only)
     if (
       isCNC &&
-      (features.surfaceFinish.requiresPolishing ||
-        features.surfaceFinish.criticalSurfaces > 5)
+      (features?.surfaceFinish?.requiresPolishing ||
+        features?.surfaceFinish?.criticalSurfaces > 5)
     ) {
       checks.push({
         id: "surface-finish",
@@ -1491,7 +1503,9 @@ function analyzeDFM(
         name: "Tolerance Requirements",
         description: "Checking if specified tolerances can be achieved",
         status: tolStatus,
-        details: tol.isAchievable ? "Tolerances achievable" : "Tolerance review needed",
+        details: tol.isAchievable
+          ? "Tolerances achievable"
+          : "Tolerance review needed",
         icon: <CheckCheck className="w-4 h-4" />,
         category: "tolerances",
         severity: !tol.isAchievable
@@ -1666,7 +1680,10 @@ function analyzeDFM(
           name: "Material Efficiency",
           description: `Your part uses ${materialUtilization.toFixed(1)}% of the raw material`,
           status: materialUtilization < 20 ? "warning" : "info",
-          details: materialUtilization < 20 ? "Consider design optimization" : "Typical for complex parts",
+          details:
+            materialUtilization < 20
+              ? "Consider design optimization"
+              : "Typical for complex parts",
           icon: <TrendingDown className="w-4 h-4" />,
           category: "optimization",
           severity: materialUtilization < 20 ? "medium" : "low",
@@ -1759,7 +1776,7 @@ function analyzeDFM(
         (features.pockets.count > 5 ? 1 : 0) +
         (features.threads.count > 8 ? 1 : 0) +
         (features.undercuts.requires5Axis ? 2 : 0) +
-        (features.toolAccess.estimatedSetupCount > 2 ? 1 : 0);
+        (features?.toolAccess?.estimatedSetupCount > 2 ? 1 : 0);
     } else if (isSheetMetal) {
       const bends = geometry.sheetMetalFeatures?.bends?.count || 0;
       const flanges = geometry.sheetMetalFeatures?.flanges?.count || 0;
@@ -1788,10 +1805,14 @@ function analyzeDFM(
 
     // Aspect Ratio Check - Important for both CNC and Sheet Metal
     if (geometry.boundingBox) {
-      const dims = [geometry.boundingBox.x, geometry.boundingBox.y, geometry.boundingBox.z].sort((a, b) => a - b);
+      const dims = [
+        geometry.boundingBox.x,
+        geometry.boundingBox.y,
+        geometry.boundingBox.z,
+      ].sort((a, b) => a - b);
       const aspectRatio = dims[2] / Math.max(dims[0], 0.1);
       const hasExtremeAspectRatio = aspectRatio > 10;
-      
+
       if (hasExtremeAspectRatio) {
         checks.push({
           id: "aspect-ratio-check",
@@ -1837,7 +1858,7 @@ function analyzeDFM(
     if (geometry.materialWeight) {
       const weightKg = geometry.materialWeight / 1000;
       const isHeavy = weightKg > 25; // Over 25kg may need special handling
-      
+
       if (isHeavy) {
         checks.push({
           id: "part-weight",
@@ -1871,16 +1892,24 @@ function analyzeDFM(
     }
 
     // Secondary Operations Check
-    if (geometry.recommendedSecondaryOps && geometry.recommendedSecondaryOps.length > 0) {
+    if (
+      geometry.recommendedSecondaryOps &&
+      geometry.recommendedSecondaryOps.length > 0
+    ) {
       const secondaryOps = geometry.recommendedSecondaryOps;
-      const _totalSecondaryTime = secondaryOps.reduce((sum, op) => sum + (op.leadTimeAddition || 0), 0);
-      
+      const _totalSecondaryTime = secondaryOps.reduce(
+        (sum, op) => sum + (op.leadTimeAddition || 0),
+        0,
+      );
+
       checks.push({
         id: "secondary-operations",
         name: "Additional Processing",
         description: `${secondaryOps.length} secondary operation${secondaryOps.length !== 1 ? "s" : ""} recommended`,
         status: secondaryOps.length > 2 ? "warning" : "info",
-        details: secondaryOps.map(op => op.type.replaceAll("-", " ")).join(", "),
+        details: secondaryOps
+          .map((op) => op.type.replaceAll("-", " "))
+          .join(", "),
         icon: <Layers className="w-4 h-4" />,
         category: "features",
         severity: secondaryOps.length > 2 ? "medium" : "low",
@@ -1888,13 +1917,17 @@ function analyzeDFM(
 
       if (secondaryOps.length > 2) {
         recommendations.push(
-          `Your design requires ${secondaryOps.length} secondary operations (${secondaryOps.map(op => op.type.replaceAll("-", " ")).join(", ")}). Consider if all are necessary for your application.`,
+          `Your design requires ${secondaryOps.length} secondary operations (${secondaryOps.map((op) => op.type.replaceAll("-", " ")).join(", ")}). Consider if all are necessary for your application.`,
         );
       }
     }
 
     // Material Selection Guidance (if finish specified)
-    if (part.finish && part.finish !== "as-machined" && part.finish !== "none") {
+    if (
+      part.finish &&
+      part.finish !== "as-machined" &&
+      part.finish !== "none"
+    ) {
       checks.push({
         id: "finish-compatibility",
         name: "Surface Finish",
@@ -1908,7 +1941,11 @@ function analyzeDFM(
     }
 
     // Minimum Order Quantity Consideration for Complex Parts
-    if (geometry.complexity === "complex" && part.quantity && part.quantity < 5) {
+    if (
+      geometry.complexity === "complex" &&
+      part.quantity &&
+      part.quantity < 5
+    ) {
       checks.push({
         id: "quantity-efficiency",
         name: "Quantity Consideration",
@@ -1926,7 +1963,11 @@ function analyzeDFM(
     }
 
     // Internal Corner Radius Check for CNC
-    if (isCNC && features.pockets.count > 0 && features.pockets.minCornerRadius < 1.5) {
+    if (
+      isCNC &&
+      features.pockets.count > 0 &&
+      features.pockets.minCornerRadius < 1.5
+    ) {
       checks.push({
         id: "internal-corners",
         name: "Internal Corner Radii",
@@ -1962,11 +2003,13 @@ function analyzeDFM(
     }
 
     // Lead Time Estimation Based on Complexity
-    const estimatedLeadTime = 
-      geometry.complexity === "simple" ? 3 :
-      geometry.complexity === "moderate" ? 5 :
-      7;
-    
+    const estimatedLeadTime =
+      geometry.complexity === "simple"
+        ? 3
+        : geometry.complexity === "moderate"
+          ? 5
+          : 7;
+
     checks.push({
       id: "estimated-lead-time",
       name: "Estimated Lead Time",

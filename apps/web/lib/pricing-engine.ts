@@ -829,6 +829,7 @@ export const PROCESSES: Record<string, ProcessConfig> = {
 // Helper function to get display name for process
 export function getProcessDisplayName(process: string | undefined): string {
   if (!process) return "CNC Machining";
+  if (process === "manual-quote") return "Manual Quote";
 
   // Both CNC milling and turning show as "CNC Machining"
   if (process === "cnc-milling" || process === "cnc-turning") {

@@ -39,7 +39,8 @@ CREATE OR REPLACE FUNCTION get_user_rfqs_with_parts_count_infinite(
             r.status,
             r.created_at,
             r.updated_at,
-            r.order_id
+            r.order_id,
+            r.rfq_type
         FROM rfq r
         WHERE r.user_id = p_user_id
             AND (
@@ -56,6 +57,7 @@ CREATE OR REPLACE FUNCTION get_user_rfqs_with_parts_count_infinite(
         FROM base_rfqs
         WHERE (
                 p_cursor_created_at IS NULL
+                OR p_cursor_id IS NULL
                 OR (created_at, id) < (p_cursor_created_at, p_cursor_id)
             )
         ORDER BY created_at DESC,
@@ -76,6 +78,7 @@ CREATE OR REPLACE FUNCTION get_user_rfqs_with_parts_count_infinite(
             r.created_at,
             r.updated_at,
             r.order_id,
+            r.rfq_type,
             COUNT(p.id) AS parts_count
         FROM rfq_limited r
             LEFT JOIN rfq_parts p ON p.rfq_id = r.id
@@ -87,7 +90,8 @@ CREATE OR REPLACE FUNCTION get_user_rfqs_with_parts_count_infinite(
             r.status,
             r.created_at,
             r.updated_at,
-            r.order_id
+            r.order_id,
+            r.rfq_type
     )
 SELECT jsonb_build_object(
         'data',

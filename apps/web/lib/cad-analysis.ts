@@ -393,28 +393,30 @@ function analyzeBinarySTL(dataView: DataView): GeometryData {
 
   // ENTERPRISE COMPLEXITY CALCULATION - based on multiple geometric factors
   // Not just file size or triangle count - use actual geometry metrics
-  const dims = [boundingBox.x, boundingBox.y, boundingBox.z].sort((a, b) => a - b);
+  const dims = [boundingBox.x, boundingBox.y, boundingBox.z].sort(
+    (a, b) => a - b,
+  );
   const aspectRatio = dims[2] / Math.max(dims[0], 0.1);
   const svRatio = surfaceArea / Math.max(volume / 1000, 0.001);
   const trianglesPerMm3 = triangleCount / Math.max(volume, 1);
-  
+
   let complexityScore = 0;
-  
+
   // Aspect ratio factor
   if (aspectRatio > 10) complexityScore += 20;
   else if (aspectRatio > 5) complexityScore += 12;
   else if (aspectRatio > 3) complexityScore += 6;
-  
+
   // Surface complexity (high S/V = thin features or complex surfaces)
   if (svRatio > 80) complexityScore += 25;
   else if (svRatio > 40) complexityScore += 15;
   else if (svRatio > 20) complexityScore += 8;
-  
+
   // Mesh detail (triangle density indicates fine features)
   if (triangleCount > 15000) complexityScore += 20;
   else if (triangleCount > 8000) complexityScore += 12;
   else if (triangleCount > 3000) complexityScore += 6;
-  
+
   const complexity: GeometryData["complexity"] =
     complexityScore >= 45
       ? "complex"
@@ -557,11 +559,7 @@ function analyzeBinarySTL(dataView: DataView): GeometryData {
   );
 
   // ENTERPRISE-LEVEL: Add thickness detection metadata for transparency
-  const dims = [boundingBox.x, boundingBox.y, boundingBox.z].sort(
-    (a, b) => a - b,
-  );
   const bboxMinDim = dims[0];
-  const aspectRatio = dims[2] / Math.max(dims[0], 0.1);
 
   // Warn if using bbox approximation on potentially bent sheet metal
   let thicknessWarning: string | undefined;
@@ -1129,23 +1127,30 @@ function detectAdvancedFeatures(
   const totalHoles = geometryFeatures?.holes.length ?? 0;
   const throughHoles = geometryFeatures ? Math.floor(totalHoles * 0.5) : 0;
   const blindHoles = totalHoles - throughHoles;
-  const tappedHoles = geometryFeatures?.threads.filter((t) =>
-    geometryFeatures.holes.some(
-      (h) =>
-        Math.abs(h.centroid.x - t.centroid.x) < 5 &&
-        Math.abs(h.centroid.y - t.centroid.y) < 5,
-    ),
-  ).length ?? 0;
+  const tappedHoles =
+    geometryFeatures?.threads.filter((t) =>
+      geometryFeatures.holes.some(
+        (h) =>
+          Math.abs(h.centroid.x - t.centroid.x) < 5 &&
+          Math.abs(h.centroid.y - t.centroid.y) < 5,
+      ),
+    ).length ?? 0;
   const reamedHoles = totalHoles > 0 ? Math.floor(totalHoles * 0.1) : 0;
   const countersunkHoles = geometryFeatures?.countersinks.length ?? 0;
   const counterboredHoles = geometryFeatures?.counterbores.length ?? 0;
   const avgHoleDiameter = totalHoles > 0 ? (minDim + midDim) / 15 : 0;
-  const minHoleDiameter = totalHoles > 0 ? Math.max(0.5, avgHoleDiameter * 0.3) : 0;
+  const minHoleDiameter =
+    totalHoles > 0 ? Math.max(0.5, avgHoleDiameter * 0.3) : 0;
   const maxHoleDiameter = totalHoles > 0 ? avgHoleDiameter * 2.5 : 0;
   const deepHoleCount = totalHoles > 0 ? Math.floor(totalHoles * 0.2) : 0;
-  const microHoleCount = minHoleDiameter < 1 && totalHoles > 0 ? Math.floor(totalHoles * 0.15) : 0;
+  const microHoleCount =
+    minHoleDiameter < 1 && totalHoles > 0 ? Math.floor(totalHoles * 0.15) : 0;
   const avgDepthRatio = deepHoleCount > 0 ? 6.5 : 3.0;
-  const drillingMethod: "standard-drill" | "deep-hole-drill" | "gun-drill" | "boring" =
+  const drillingMethod:
+    | "standard-drill"
+    | "deep-hole-drill"
+    | "gun-drill"
+    | "boring" =
     deepHoleCount > 2
       ? "deep-hole-drill"
       : microHoleCount > 0
@@ -1179,9 +1184,16 @@ function detectAdvancedFeatures(
   const ribCount = geometryFeatures?.ribs.length ?? 0;
   const avgRibThickness = ribCount > 0 ? (minDim < 5 ? minDim * 0.8 : 2.5) : 0;
   const minRibThickness = ribCount > 0 ? avgRibThickness * 0.6 : 0;
-  const thinRibCount = ribCount > 0 && avgRibThickness < 1.5 ? Math.floor(ribCount * 0.7) : 0;
+  const thinRibCount =
+    ribCount > 0 && avgRibThickness < 1.5 ? Math.floor(ribCount * 0.7) : 0;
   const ribDeflectionRisk: "low" | "medium" | "high" =
-    ribCount > 0 ? (minRibThickness < 1 ? "high" : minRibThickness < 1.5 ? "medium" : "low") : "low";
+    ribCount > 0
+      ? minRibThickness < 1
+        ? "high"
+        : minRibThickness < 1.5
+          ? "medium"
+          : "low"
+      : "low";
 
   // Thread detection - ONLY use real geometry data, no heuristics
   const totalThreads = geometryFeatures?.threads.length ?? 0;
@@ -1232,26 +1244,41 @@ function detectAdvancedFeatures(
   // Fillet detection - ONLY use real geometry data, no heuristics
   const filletCount = geometryFeatures?.fillets.length ?? 0;
   const avgFilletRadius = filletCount > 0 ? minDim * 0.05 : 0;
-  const minFilletRadius = filletCount > 0 ? Math.max(0.5, avgFilletRadius * 0.4) : 0;
+  const minFilletRadius =
+    filletCount > 0 ? Math.max(0.5, avgFilletRadius * 0.4) : 0;
   // Missing fillets = sharp corners that should be filleted
-  const missingFilletCount = sharpCornersCount > 0 ? Math.max(0, sharpCornersCount - filletCount) : 0;
+  const missingFilletCount =
+    sharpCornersCount > 0 ? Math.max(0, sharpCornersCount - filletCount) : 0;
   const stressConcentrationRisk =
     missingFilletCount > 3 ? 8 : missingFilletCount > 1 ? 5 : 2;
   const blendRadiusCount =
-    complexity === "complex" && filletCount > 0 ? Math.floor(filletCount * 0.2) : 0;
+    complexity === "complex" && filletCount > 0
+      ? Math.floor(filletCount * 0.2)
+      : 0;
 
   // Chamfer detection - ONLY use real geometry data, no heuristics
   const chamferCount = geometryFeatures?.chamfers.length ?? 0;
   const avgChamferSize = chamferCount > 0 ? avgFilletRadius * 0.8 : 0;
-  const deburringRequired = (totalHoles + pocketCount) > 0 && chamferCount < (totalHoles + pocketCount) * 0.5;
+  const deburringRequired =
+    totalHoles + pocketCount > 0 &&
+    chamferCount < (totalHoles + pocketCount) * 0.5;
 
   // Thin wall detection - ONLY use real geometry data, no heuristics
   const thinWallCount = geometryFeatures?.thinWalls.length ?? 0;
-  const minThickness = thinWallCount > 0 ? (minDim < 10 ? minDim : minDim * 0.1) : minDim;
-  const avgThickness = thinWallCount > 0 ? (minDim < 10 ? minDim * 1.5 : minDim * 0.15) : minDim;
+  const minThickness =
+    thinWallCount > 0 ? (minDim < 10 ? minDim : minDim * 0.1) : minDim;
+  const avgThickness =
+    thinWallCount > 0 ? (minDim < 10 ? minDim * 1.5 : minDim * 0.15) : minDim;
   const thinWallRisk: "low" | "medium" | "high" =
-    thinWallCount > 0 ? (minThickness < 1 ? "high" : minThickness < 2 ? "medium" : "low") : "low";
-  const requiresSupportFixture = thinWallCount > 0 && (thinWallRisk === "high" || minThickness < 1.5);
+    thinWallCount > 0
+      ? minThickness < 1
+        ? "high"
+        : minThickness < 2
+          ? "medium"
+          : "low"
+      : "low";
+  const requiresSupportFixture =
+    thinWallCount > 0 && (thinWallRisk === "high" || minThickness < 1.5);
 
   // Tool access analysis (REAL GEOMETRY - enhanced accuracy)
   const restrictedAreas = toolAccessIssues;
@@ -1968,30 +1995,36 @@ function buildGeometryData(
 
   // Calculate complexity based on geometry, not file size
   // Factors: aspect ratio, surface-to-volume ratio, triangle density
-  const dims = [boundingBox.x, boundingBox.y, boundingBox.z].sort((a, b) => a - b);
+  const dims = [boundingBox.x, boundingBox.y, boundingBox.z].sort(
+    (a, b) => a - b,
+  );
   const aspectRatio = dims[2] / Math.max(dims[0], 0.1);
   const svRatio = surfaceArea / Math.max(volume / 1000, 0.001);
   const trianglesPerMm3 = estimatedTriangleCount / Math.max(volume, 1);
-  
+
   let complexityScore = 0;
-  
+
   // High aspect ratio indicates complex machining
   if (aspectRatio > 10) complexityScore += 25;
   else if (aspectRatio > 5) complexityScore += 15;
   else if (aspectRatio > 3) complexityScore += 8;
-  
+
   // High surface/volume ratio indicates thin features or complex surfaces
   if (svRatio > 100) complexityScore += 25;
   else if (svRatio > 50) complexityScore += 15;
   else if (svRatio > 25) complexityScore += 8;
-  
+
   // Triangle density indicates geometric detail
   if (trianglesPerMm3 > 0.1) complexityScore += 20;
   else if (trianglesPerMm3 > 0.05) complexityScore += 12;
   else if (trianglesPerMm3 > 0.02) complexityScore += 6;
-  
+
   const complexity: GeometryData["complexity"] =
-    complexityScore >= 45 ? "complex" : complexityScore >= 20 ? "moderate" : "simple";
+    complexityScore >= 45
+      ? "complex"
+      : complexityScore >= 20
+        ? "moderate"
+        : "simple";
 
   // Analyze part characteristics for process identification
   const partCharacteristics = analyzePartCharacteristics(

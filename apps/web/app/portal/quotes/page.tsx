@@ -2,7 +2,6 @@
 
 import React, { useState, useEffect, useMemo } from "react";
 import { useRouter } from "next/navigation";
-import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -15,7 +14,7 @@ import Link from "next/link";
 import { formatDate } from "@/lib/format";
 import { useMetaStore } from "@/components/store/title-store";
 import { StatusCards } from "@/components/ui/status-cards";
-import { CheckCircle, File, Wallet } from "lucide-react";
+import { CheckCircle, Clock, File, Wallet } from "lucide-react";
 
 // Types based on RFQ API response
 interface Quote {
@@ -27,6 +26,7 @@ interface Quote {
   order_id: string | null;
   created_at: string;
   updated_at: string;
+  rfq_type: "general" | "manual";
   parts_count: number;
 }
 
@@ -147,11 +147,35 @@ export default function QuotesListPage() {
     pending: { label: "Pending", variant: "warning" },
     submitted: { label: "Submitted", variant: "default" },
     "payment pending": { label: "Payment Pending", variant: "warning" },
+    "pending approval": { label: "Pending Approval", variant: "secondary" },
     paid: { label: "Paid", variant: "success" },
+  };
+
+  const TYPE_CONFIG: Record<
+    "general" | "manual",
+    {
+      label: string;
+      variant:
+        | "success"
+        | "warning"
+        | "default"
+        | "secondary"
+        | "destructive"
+        | "outline";
+    }
+  > = {
+    general: { label: "General", variant: "outline" },
+    manual: { label: "Manual", variant: "secondary" },
   };
 
   const getStatusChip = (status: IRFQStatuses) => {
     const config = STATUS_CONFIG[status];
+
+    return <Badge variant={config.variant}>{config.label}</Badge>;
+  };
+
+  const getTypeChip = (type: "general" | "manual") => {
+    const config = TYPE_CONFIG[type || "general"];
 
     return <Badge variant={config.variant}>{config.label}</Badge>;
   };
@@ -203,6 +227,11 @@ export default function QuotesListPage() {
       render: (row) => getStatusChip(row.status),
     },
     {
+      key: "rfq_type",
+      header: "Type",
+      render: (row) => getTypeChip(row.rfq_type),
+    },
+    {
       key: "parts_count",
       header: "Parts Count",
       render: (row) => row.parts_count,
@@ -236,6 +265,13 @@ export default function QuotesListPage() {
             icon: File,
             color: "gray",
           },
+          // {
+          //   label: "Pending Quotes",
+          //   value: quotes.filter((quote) => quote.status === "pending approval")
+          //     .length,
+          //   icon: Clock,
+          //   color: "lime",
+          // },
           {
             label: "Submitted Quotes",
             value: quotes.filter((quote) => quote.status === "submitted")

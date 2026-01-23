@@ -64,6 +64,8 @@ export enum Tables {
   organizationAgreementsTable = 'organization_agreements',
 
   OrderDocumentsTable = 'order_documents',
+
+  ManualQuoteApproval = 'manual_quote_approval',
 }
 
 /**
@@ -92,6 +94,7 @@ export enum SQLFunctions {
   abandonRFQPart = 'abandon_rfq_part',
   abandonRFQParts = 'abandon_rfq_parts',
   getUserRFQsWithPartsCount = 'get_user_rfqs_with_parts_count',
+  CreateManualQuotes = 'create_manual_quotes',
 
   createOrder = 'create_order',
   markOrderPaid = 'mark_order_paid',

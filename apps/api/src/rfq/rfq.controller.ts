@@ -11,6 +11,7 @@ import {
   Delete,
   InternalServerErrorException,
   Query,
+  Logger,
 } from '@nestjs/common';
 import { RoleNames, SQLFunctions, Tables } from '../../libs/constants';
 import { Roles } from '../auth/roles.decorator';
@@ -33,7 +34,10 @@ import { CurrentUserDto } from '../auth/auth.dto';
 @Controller('rfq')
 @UseGuards(AuthGuard)
 export class RfqController {
-  constructor(private readonly supbaseService: SupabaseService) {}
+  constructor(
+    private readonly supbaseService: SupabaseService,
+    private readonly logger: Logger,
+  ) {}
 
   @Get('')
   @Roles(RoleNames.Admin, RoleNames.Customer)
@@ -151,6 +155,75 @@ export class RfqController {
     return {
       success: true,
       rfqs: results,
+    };
+  }
+
+  @Post('manual')
+  @Roles(RoleNames.Customer)
+  async makeManualQuote(
+    @Body()
+    body: {
+      rfqId?: string;
+      partIds: string[];
+      metadata: Record<string, string>;
+    },
+    @CurrentUser() user: CurrentUserDto,
+  ) {
+    const client = this.supbaseService.getClient();
+
+    if (body.rfqId) {
+      // 1. Update Existing RFQ
+      const { error: rfqError } = await client
+        .from(Tables.RFQTable)
+        .update({
+          rfq_type: 'manual',
+          status: 'pending approval',
+          manual_quote_metadata: body.metadata,
+        } as any)
+        .eq('id', body.rfqId)
+        .eq('user_id', user.id);
+
+      if (rfqError) {
+        throw new HttpException(rfqError.message, HttpStatus.BAD_REQUEST);
+      }
+
+      // 2. Add parts to manual_quote_approval table
+      const { error: approvalError } = await client
+        .from(Tables.ManualQuoteApproval)
+        .upsert(
+          body.partIds.map((pid) => ({
+            rfq_id: body.rfqId,
+            rfq_part_id: pid,
+          })),
+          { onConflict: 'rfq_part_id' },
+        );
+
+      if (approvalError) {
+        throw new HttpException(approvalError.message, HttpStatus.BAD_REQUEST);
+      }
+
+      return {
+        success: true,
+        message: 'RFQ converted to manual quote successfully',
+      };
+    }
+
+    const { data, error } = await client.rpc(SQLFunctions.CreateManualQuotes, {
+      p_user_id: user.id,
+      p_parts: body.partIds,
+      p_meta: body.metadata,
+    });
+
+    if (error) {
+      this.logger.error(error);
+      throw new HttpException(
+        `Failed to create manual quote ${error}`,
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
+
+    return {
+      data,
     };
   }
 

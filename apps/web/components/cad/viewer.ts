@@ -31,6 +31,7 @@ export type Viewer = {
     location?: { x: number; y: number; z: number },
   ) => void;
   setBackgroundColor: (color: string | number) => void;
+  setShowViewCube: (visible: boolean) => void;
 };
 
 export function createViewer(container: HTMLElement): Viewer {
@@ -63,7 +64,7 @@ export function createViewer(container: HTMLElement): Viewer {
   // wrapper ensures we can control pointer events / z-order independently of container
   const cubeWrapper = document.createElement("div");
   cubeWrapper.style.position = "absolute";
-  cubeWrapper.style.top = "12px";
+  cubeWrapper.style.bottom = "12px";
   cubeWrapper.style.right = "12px";
   cubeWrapper.style.width = `${cubeSizePx}px`;
   cubeWrapper.style.height = `${cubeSizePx}px`;
@@ -78,8 +79,12 @@ export function createViewer(container: HTMLElement): Viewer {
   cubeCanvas.style.height = "100%";
   cubeCanvas.style.pointerEvents = "auto";
   cubeCanvas.style.touchAction = "none";
-  cubeCanvas.width = Math.floor(cubeSizePx * Math.min(window.devicePixelRatio, 2));
-  cubeCanvas.height = Math.floor(cubeSizePx * Math.min(window.devicePixelRatio, 2));
+  cubeCanvas.width = Math.floor(
+    cubeSizePx * Math.min(window.devicePixelRatio, 2),
+  );
+  cubeCanvas.height = Math.floor(
+    cubeSizePx * Math.min(window.devicePixelRatio, 2),
+  );
   cubeWrapper.appendChild(cubeCanvas);
   container.appendChild(cubeWrapper);
 
@@ -97,7 +102,9 @@ export function createViewer(container: HTMLElement): Viewer {
 
   // attach pointer listeners directly to the canvas (non-passive pointermove)
   cubeCanvas.addEventListener("pointermove", onCubePointerMove as any);
-  cubeCanvas.addEventListener("pointerdown", onCubePointerDown as any, { passive: false });
+  cubeCanvas.addEventListener("pointerdown", onCubePointerDown as any, {
+    passive: false,
+  });
   cubeCanvas.addEventListener("click", onCubeClick as any);
 
   const cubeRenderer = new THREE.WebGLRenderer({
@@ -243,7 +250,9 @@ export function createViewer(container: HTMLElement): Viewer {
   }
 
   // Helper: map preset name back to face material index (robust, doesn't assume order)
-  function faceIndexForPreset(preset: "top" | "front" | "right" | "iso" | "bottom" | "left" | "back") {
+  function faceIndexForPreset(
+    preset: "top" | "front" | "right" | "iso" | "bottom" | "left" | "back",
+  ) {
     for (let i = 0; i < 6; i++) {
       if (mapFaceToPreset(i) === preset) return i;
     }
@@ -257,12 +266,12 @@ export function createViewer(container: HTMLElement): Viewer {
   const Z_NEG = faceIndexForPreset("back");
 
   function onCubePointerMove(e: PointerEvent) {
-     const rect = cubeCanvas.getBoundingClientRect();
-     const x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
-     const y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
-     cubePointer.set(x, y);
-     cubeRaycaster.setFromCamera(cubePointer, cubeCamera);
-     const intersects = cubeRaycaster.intersectObject(cubeMesh, false);
+    const rect = cubeCanvas.getBoundingClientRect();
+    const x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
+    const y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
+    cubePointer.set(x, y);
+    cubeRaycaster.setFromCamera(cubePointer, cubeCamera);
+    const intersects = cubeRaycaster.intersectObject(cubeMesh, false);
 
     if (intersects.length === 0) {
       highlightFaces(null);
@@ -281,7 +290,7 @@ export function createViewer(container: HTMLElement): Viewer {
     const ny = pLocal.y / Math.max(1e-6, halfSize);
     const nz = pLocal.z / Math.max(1e-6, halfSize);
 
-    const EDGE_THRESH_HOVER = 0.70; // easier hover targeting
+    const EDGE_THRESH_HOVER = 0.7; // easier hover targeting
     const nearX = Math.abs(nx) > EDGE_THRESH_HOVER;
     const nearY = Math.abs(ny) > EDGE_THRESH_HOVER;
     const nearZ = Math.abs(nz) > EDGE_THRESH_HOVER;
@@ -332,100 +341,102 @@ export function createViewer(container: HTMLElement): Viewer {
 
   function onCubeClick(e: MouseEvent) {
     // click handler (no debug logging)
-     const rect = cubeCanvas.getBoundingClientRect();
-     const x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
-     const y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
-     cubePointer.set(x, y);
-     cubeRaycaster.setFromCamera(cubePointer, cubeCamera);
-     const intersects = cubeRaycaster.intersectObject(cubeMesh, false);
-     if (intersects.length === 0) {
-       e.stopPropagation();
-       e.preventDefault();
-       return;
-     }
- 
-     // classify click as FACE / EDGE / CORNER using local cube coordinates
-     const intr = intersects[0] as any;
-     const faceIndex = intr.face?.materialIndex ?? 0;
- 
-     // convert hit point to cubeRoot local space
-     const pLocal = cubeRoot.worldToLocal(intr.point.clone());
-     const halfSize = half; // half defined earlier (0.5 * cubeScale)
-     const nx = pLocal.x / Math.max(1e-6, halfSize);
-     const ny = pLocal.y / Math.max(1e-6, halfSize);
-     const nz = pLocal.z / Math.max(1e-6, halfSize);
- 
-     const EDGE_THRESH = 0.78; // near-edge/corner threshold
-     const nearX = Math.abs(nx) > EDGE_THRESH;
-     const nearY = Math.abs(ny) > EDGE_THRESH;
-     const nearZ = Math.abs(nz) > EDGE_THRESH;
-     const nearCount = (nearX ? 1 : 0) + (nearY ? 1 : 0) + (nearZ ? 1 : 0);
- 
-     // helper: smooth snap camera to direction (dir is world-space vector from target toward camera)
-     const snapToDirection = (dirWorld: THREE.Vector3) => {
-       const target = controls.target.clone();
-       // compute suitable distance
-       let distance = activeCamera.position.distanceTo(target);
-       // if distance is tiny or NaN, compute a fallback
-       if (!isFinite(distance) || distance < 1e-3) distance = 300;
- 
-       // try to get a reasonable distance based on model extents
-       const box = new THREE.Box3().setFromObject(modelRoot);
-       if (!box.isEmpty()) {
-         const size = box.getSize(new THREE.Vector3());
-         const maxDim = Math.max(size.x, size.y, size.z, 1);
-         const fov = ((persp as THREE.PerspectiveCamera).fov * Math.PI) / 180;
-         const suggested = (maxDim / 2 / Math.tan(fov / 2)) * 1.25;
-         distance = Math.max(distance, suggested);
-       }
- 
-       const dest = target.clone().add(dirWorld.clone().multiplyScalar(distance));
- 
-       // animate camera position over short duration
-       const duration = 300;
-       const startTime = performance.now();
-       const startPersp = persp.position.clone();
-       const startOrtho = ortho.position.clone();
- 
-       const animate = () => {
-         const t = Math.min(1, (performance.now() - startTime) / duration);
-         const ease = 1 - Math.pow(1 - t, 3);
-         // lerp both cameras to keep them in sync
-         persp.position.lerpVectors(startPersp, dest, ease);
-         ortho.position.lerpVectors(startOrtho, dest, ease);
-         // ensure cameras look at target and have correct up
-         persp.up.set(0, 1, 0);
-         ortho.up.set(0, 1, 0);
-         persp.lookAt(target);
-         ortho.lookAt(target);
-         persp.updateProjectionMatrix();
-         ortho.updateProjectionMatrix();
-         controls.update();
-         if (t < 1) {
-           requestAnimationFrame(animate);
-         }
-       };
- 
-       animate();
-     };
- 
-     if (nearCount >= 2) {
-       // EDGE or CORNER -> isometric snap
-       const sx = nearX ? Math.sign(nx) || 1 : 0;
-       const sy = nearY ? Math.sign(ny) || 1 : 0;
-       const sz = nearZ ? Math.sign(nz) || 1 : 0;
-       // keep axis-based direction (do NOT apply cubeRoot/camera quaternion)
-       const dirWorld = new THREE.Vector3(sx, sy, sz).normalize();
-       snapToDirection(dirWorld);
-     } else {
-       // FACE: preserve existing mapping for exact face snaps
-       const preset = mapFaceToPreset(faceIndex) as any;
-       setView(preset);
-     }
- 
-     e.stopPropagation();
-     e.preventDefault();
-   }
+    const rect = cubeCanvas.getBoundingClientRect();
+    const x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
+    const y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
+    cubePointer.set(x, y);
+    cubeRaycaster.setFromCamera(cubePointer, cubeCamera);
+    const intersects = cubeRaycaster.intersectObject(cubeMesh, false);
+    if (intersects.length === 0) {
+      e.stopPropagation();
+      e.preventDefault();
+      return;
+    }
+
+    // classify click as FACE / EDGE / CORNER using local cube coordinates
+    const intr = intersects[0] as any;
+    const faceIndex = intr.face?.materialIndex ?? 0;
+
+    // convert hit point to cubeRoot local space
+    const pLocal = cubeRoot.worldToLocal(intr.point.clone());
+    const halfSize = half; // half defined earlier (0.5 * cubeScale)
+    const nx = pLocal.x / Math.max(1e-6, halfSize);
+    const ny = pLocal.y / Math.max(1e-6, halfSize);
+    const nz = pLocal.z / Math.max(1e-6, halfSize);
+
+    const EDGE_THRESH = 0.78; // near-edge/corner threshold
+    const nearX = Math.abs(nx) > EDGE_THRESH;
+    const nearY = Math.abs(ny) > EDGE_THRESH;
+    const nearZ = Math.abs(nz) > EDGE_THRESH;
+    const nearCount = (nearX ? 1 : 0) + (nearY ? 1 : 0) + (nearZ ? 1 : 0);
+
+    // helper: smooth snap camera to direction (dir is world-space vector from target toward camera)
+    const snapToDirection = (dirWorld: THREE.Vector3) => {
+      const target = controls.target.clone();
+      // compute suitable distance
+      let distance = activeCamera.position.distanceTo(target);
+      // if distance is tiny or NaN, compute a fallback
+      if (!isFinite(distance) || distance < 1e-3) distance = 300;
+
+      // try to get a reasonable distance based on model extents
+      const box = new THREE.Box3().setFromObject(modelRoot);
+      if (!box.isEmpty()) {
+        const size = box.getSize(new THREE.Vector3());
+        const maxDim = Math.max(size.x, size.y, size.z, 1);
+        const fov = ((persp as THREE.PerspectiveCamera).fov * Math.PI) / 180;
+        const suggested = (maxDim / 2 / Math.tan(fov / 2)) * 1.25;
+        distance = Math.max(distance, suggested);
+      }
+
+      const dest = target
+        .clone()
+        .add(dirWorld.clone().multiplyScalar(distance));
+
+      // animate camera position over short duration
+      const duration = 300;
+      const startTime = performance.now();
+      const startPersp = persp.position.clone();
+      const startOrtho = ortho.position.clone();
+
+      const animate = () => {
+        const t = Math.min(1, (performance.now() - startTime) / duration);
+        const ease = 1 - Math.pow(1 - t, 3);
+        // lerp both cameras to keep them in sync
+        persp.position.lerpVectors(startPersp, dest, ease);
+        ortho.position.lerpVectors(startOrtho, dest, ease);
+        // ensure cameras look at target and have correct up
+        persp.up.set(0, 1, 0);
+        ortho.up.set(0, 1, 0);
+        persp.lookAt(target);
+        ortho.lookAt(target);
+        persp.updateProjectionMatrix();
+        ortho.updateProjectionMatrix();
+        controls.update();
+        if (t < 1) {
+          requestAnimationFrame(animate);
+        }
+      };
+
+      animate();
+    };
+
+    if (nearCount >= 2) {
+      // EDGE or CORNER -> isometric snap
+      const sx = nearX ? Math.sign(nx) || 1 : 0;
+      const sy = nearY ? Math.sign(ny) || 1 : 0;
+      const sz = nearZ ? Math.sign(nz) || 1 : 0;
+      // keep axis-based direction (do NOT apply cubeRoot/camera quaternion)
+      const dirWorld = new THREE.Vector3(sx, sy, sz).normalize();
+      snapToDirection(dirWorld);
+    } else {
+      // FACE: preserve existing mapping for exact face snaps
+      const preset = mapFaceToPreset(faceIndex) as any;
+      setView(preset);
+    }
+
+    e.stopPropagation();
+    e.preventDefault();
+  }
 
   // --- end view cube overlay ---
 
@@ -970,7 +981,9 @@ export function createViewer(container: HTMLElement): Viewer {
     modelRoot.position.set(0, 0, 0);
   }
 
-  function setView(preset: "top" | "front" | "right" | "iso" | "bottom" | "left" | "back") {
+  function setView(
+    preset: "top" | "front" | "right" | "iso" | "bottom" | "left" | "back",
+  ) {
     const target = controls.target.clone();
     const dist = (activeCamera as any).position?.distanceTo?.(target) ?? 300;
     const up = new THREE.Vector3(0, 1, 0);
@@ -1273,5 +1286,8 @@ export function createViewer(container: HTMLElement): Viewer {
     fitToScreen,
     setHighlight,
     setBackgroundColor,
+    setShowViewCube: (visible: boolean) => {
+      cubeWrapper.style.display = visible ? "block" : "none";
+    },
   };
 }

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { useRouter, useParams } from "next/navigation";
 import { PayPalButtons, PayPalScriptProvider } from "@paypal/react-paypal-js";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -389,6 +389,7 @@ export default function CheckoutPage() {
           id: p.id,
           fileName: p.file_name,
           material: p.material,
+          process: p.process,
           quantity: p.quantity,
           tolerance: p.tolerance,
           finish: p.finish,
@@ -629,6 +630,18 @@ export default function CheckoutPage() {
     return null;
   }
 
+  // const hasManualPartExceededThreshold = () => {
+
+  //  }
+
+  //   const exceeded = useMemo(() => hasManualPartExceededThreshold(), [config.parts]);
+
+  //   useEffect(() => {
+  //     if (!exceeded) {
+  //       setHasDismissedExceededModal(false);
+  //     }
+  //   }, [exceeded]);
+
   console.log(config);
   return (
     <PayPalScriptProvider
@@ -817,7 +830,7 @@ export default function CheckoutPage() {
                                 className={cn(
                                   "flex items-start gap-4 p-4 rounded-xl border-2 transition-all cursor-pointer",
                                   selectedAddressId === addr.id
-                                    ? "border-blue-600 bg-blue-50/30"
+                                    ? "border-blue-500/30 bg-white/60 backdrop-blur-xl shadow-lg shadow-blue-900/5 ring-1 ring-white/50"
                                     : "border-transparent hover:bg-slate-50",
                                 )}
                               >

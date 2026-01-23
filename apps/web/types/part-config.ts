@@ -19,7 +19,8 @@ export interface PartConfig {
     | "cnc-milling"
     | "cnc-turning"
     | "sheet-metal"
-    | "injection-molding";
+    | "injection-molding"
+    | "manual-quote";
   material: string;
   quantity: number;
   tolerance: string;

@@ -51,6 +51,7 @@ interface CadViewerProps {
     description?: string;
   };
   backgroundColor?: string | number;
+  showViewCube?: boolean;
 }
 
 export interface CadViewerRef {
@@ -70,6 +71,7 @@ export const CadViewer = forwardRef<CadViewerRef, CadViewerProps>(
       onSnapshot,
       selectedHighlight,
       backgroundColor,
+      showViewCube = true,
     },
     ref,
   ) => {
@@ -145,6 +147,9 @@ export const CadViewer = forwardRef<CadViewerRef, CadViewerProps>(
       if (backgroundColor && viewerRef.current.setBackgroundColor) {
         viewerRef.current.setBackgroundColor(backgroundColor);
       }
+      if (viewerRef.current.setShowViewCube) {
+        viewerRef.current.setShowViewCube(showViewCube);
+      }
 
       // Initialize worker
       try {
@@ -201,12 +206,14 @@ export const CadViewer = forwardRef<CadViewerRef, CadViewerProps>(
     }, [dimScale]);
 
     useEffect(() => {
-      if (
-        viewerRef.current &&
-        backgroundColor &&
-        (viewerRef.current as any).setBackgroundColor
-      ) {
-        (viewerRef.current as any).setBackgroundColor(backgroundColor);
+      if (viewerRef.current?.setShowViewCube) {
+        viewerRef.current.setShowViewCube(showViewCube);
+      }
+    }, [showViewCube]);
+
+    useEffect(() => {
+      if (backgroundColor && viewerRef.current?.setBackgroundColor) {
+        viewerRef.current.setBackgroundColor(backgroundColor);
       }
     }, [backgroundColor]);
 
