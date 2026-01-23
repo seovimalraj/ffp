@@ -405,40 +405,7 @@ export const CadViewer = forwardRef<CadViewerRef, CadViewerProps>(
         {/* Controls Overlay */}
         {showControls && (
           <div className="absolute top-6 left-6 z-10 flex flex-col gap-3 rounded-2xl bg-white/80 p-4 backdrop-blur-xl shadow-[0_8px_30px_rgba(0,0,0,0.08)] border border-slate-200/50 min-w-[220px] text-sm text-slate-600 ring-1 ring-black/[0.02]">
-            {/* Views */}
-            <div className="grid grid-cols-3 gap-1.5">
-              <button
-                onClick={() => viewerRef.current?.setView("iso")}
-                className="rounded-lg bg-slate-50 border border-slate-200/60 py-1.5 hover:bg-white hover:border-blue-200 hover:text-blue-600 transition-all text-xs font-medium"
-              >
-                Iso
-              </button>
-              <button
-                onClick={() => viewerRef.current?.setView("top")}
-                className="rounded-lg bg-slate-50 border border-slate-200/60 py-1.5 hover:bg-white hover:border-blue-200 hover:text-blue-600 transition-all text-xs font-medium"
-              >
-                Top
-              </button>
-              <button
-                onClick={() => viewerRef.current?.setView("front")}
-                className="rounded-lg bg-slate-50 border border-slate-200/60 py-1.5 hover:bg-white hover:border-blue-200 hover:text-blue-600 transition-all text-xs font-medium"
-              >
-                Front
-              </button>
-              <button
-                onClick={() => viewerRef.current?.setView("right")}
-                className="rounded-lg bg-slate-50 border border-slate-200/60 py-1.5 hover:bg-white hover:border-blue-200 hover:text-blue-600 transition-all text-xs font-medium"
-              >
-                Right
-              </button>
-              <button
-                onClick={() => viewerRef.current?.fitToScreen(1)}
-                className="col-span-2 rounded-lg bg-blue-50 border border-blue-100 py-1.5 hover:bg-blue-100 text-blue-600 transition-all text-xs font-medium flex items-center justify-center gap-1.5"
-                title="Fit to Screen"
-              >
-                Fit Model
-              </button>
-            </div>
+            {/* Views: replaced by corner view cube */}
 
             <div className="h-px bg-slate-200/60 mx-1" />
 
