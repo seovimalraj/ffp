@@ -1,70 +1,53 @@
 # =========================
-# 1. Prune stage
+# Base image
 # =========================
-FROM node:20-alpine AS pruner
+FROM node:20-alpine AS base
+
+# Install pnpm (same as API)
+RUN npm install -g pnpm
+
+# =========================
+# Build stage
+# =========================
+FROM base AS builder
 WORKDIR /app
 
-# Use repo-local turbo if available
-RUN corepack enable
-RUN pnpm add -g turbo
+# Copy workspace files (same pattern as API)
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
+COPY packages/ ./packages/
+COPY apps/workflow-service/ ./apps/workflow-service/
 
-COPY . .
+# Install all dependencies (workspace-aware)
+RUN pnpm install --frozen-lockfile
 
-# Prune monorepo to workflow-service only
-RUN turbo prune --scope=workflow-service --docker
-
-# =========================
-# 2. Install stage
-# =========================
-FROM node:20-alpine AS installer
-WORKDIR /app
-
-RUN corepack enable
-
-# Copy pruned package manifests + lockfile
-COPY --from=pruner /app/out/json/ .
-COPY --from=pruner /app/out/pnpm-lock.yaml ./pnpm-lock.yaml
-
-# Install prod deps only (important)
-RUN pnpm install --frozen-lockfile --prod
+# Build workflow service
+WORKDIR /app/apps/workflow-service
+RUN pnpm build
 
 # =========================
-# 3. Build stage
+# Production stage
 # =========================
-FROM node:20-alpine AS builder
-WORKDIR /app
-
-RUN corepack enable
-
-# Bring installed deps + full pruned source
-COPY --from=installer /app/ .
-COPY --from=pruner /app/out/full/ .
-
-# Build only workflow-service
-RUN pnpm turbo run build --filter=workflow-service
-
-# =========================
-# 4. Runtime stage
-# =========================
-FROM node:20-alpine AS runner
+FROM base AS runner
 WORKDIR /app
 
 ENV NODE_ENV=production
 ENV PORT=3004
 
-# Optional: health/debug tools
+# Install curl for health checks / debugging
 RUN apk add --no-cache curl
 
-# Non-root user
-RUN addgroup -S inngest -g 1001 && \
-    adduser -S inngest -u 1001 -G inngest
+# Copy entire workspace to preserve pnpm layout (critical)
+COPY --from=builder /app ./
 
-# Copy ONLY what is required at runtime
-COPY --from=builder --chown=inngest:inngest /app/apps/workflow-service/dist ./dist
-COPY --from=builder --chown=inngest:inngest /app/apps/workflow-service/package.json ./package.json
-COPY --from=builder --chown=inngest:inngest /app/apps/workflow-service/node_modules ./node_modules
+# Run as non-root user (same security model)
+RUN addgroup -g 1001 -S inngest && \
+    adduser -S workflow -u 1001 && \
+    chown -R workflow:inngest /app
 
-USER inngest
+USER workflow
+
+WORKDIR /app/apps/workflow-service
+
 EXPOSE 3004
 
 CMD ["node", "dist/index.js"]

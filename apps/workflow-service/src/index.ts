@@ -12,9 +12,32 @@ import { supabase } from "./lib/supabase.js";
 const app = new Hono();
 const port = config.port;
 
+import { cors } from "hono/cors";
+
+// ...
+
 app.use(
   pinoLogger({
     pino: logger,
+  }),
+);
+
+app.use(
+  "/*",
+  cors({
+    origin: (origin) => {
+      if (config.allowedOrigins.includes("*")) return origin;
+      if (config.allowedOrigins.includes(origin)) return origin;
+      return null;
+    },
+    credentials: true,
+    allowMethods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    allowHeaders: [
+      "Content-Type",
+      "Authorization",
+      "x-inngest-env",
+      "x-inngest-signature",
+    ],
   }),
 );
 

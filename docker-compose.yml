@@ -124,6 +124,7 @@ services:
 
       # Other
       VERIFIER_EMAIL: vimalraj@frigate.ai
+      ALLOWED_ORIGINS: "https://ffp-inngest.frigate.ai,https://app.frigate.ai,https://ffp-api.frigate.ai"
     labels:
       - "traefik.enable=true"
       - "traefik.http.routers.ffp-workflow.rule=Host(`ffp-workflow.frigate.ai`)"
