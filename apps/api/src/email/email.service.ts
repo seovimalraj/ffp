@@ -1,10 +1,12 @@
-import { InjectQueue } from '@nestjs/bullmq';
-import { BadRequestException, Injectable } from '@nestjs/common';
-import { Queue } from 'bullmq';
+// import { InjectQueue } from '@nestjs/bullmq';
+import { BadRequestException, Injectable, Logger } from '@nestjs/common';
+// import { Queue } from 'bullmq';
 
 @Injectable()
 export class EmailService {
-  constructor(@InjectQueue('email') private readonly emailQueue: Queue) {}
+  private readonly logger = new Logger(EmailService.name);
+
+  // constructor(@InjectQueue('email') private readonly emailQueue: Queue) {}
 
   private validateEmail(email: string): boolean {
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -34,17 +36,20 @@ export class EmailService {
       throw new BadRequestException('Email body (text or html) is required');
     }
 
-    await this.emailQueue.add(
-      'send-email',
-      {
-        to: this.sanitizeInput(to),
-        subject: this.sanitizeInput(subject),
-        text: this.sanitizeInput(text),
-        html: this.sanitizeInput(html),
-        name: this.sanitizeInput(name),
-        sendAt: new Date(),
-      },
-      { attempts: 3, backoff: { type: 'exponential', delay: 2000 } },
+    // await this.emailQueue.add(
+    //   'send-email',
+    //   {
+    //     to: this.sanitizeInput(to),
+    //     subject: this.sanitizeInput(subject),
+    //     text: this.sanitizeInput(text),
+    //     html: this.sanitizeInput(html),
+    //     name: this.sanitizeInput(name),
+    //     sendAt: new Date(),
+    //   },
+    //   { attempts: 3, backoff: { type: 'exponential', delay: 2000 } },
+    // );
+    this.logger.log(
+      `Email service disabled (Redis removed). Would have sent to: ${to}, valid input.`,
     );
   }
 }
