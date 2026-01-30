@@ -4,7 +4,7 @@ import { ConfigModule, ConfigService } from '@nestjs/config';
 import { AuthController } from './auth.controller';
 import { AuthGuard } from './auth.guard';
 import { SupabaseModule } from '../supabase/supabase.module';
-import { BullModule } from '@nestjs/bullmq';
+// import { BullModule } from '@nestjs/bullmq';
 import { EmailService } from 'src/email/email.service';
 
 @Module({
@@ -19,9 +19,6 @@ import { EmailService } from 'src/email/email.service';
         },
       }),
       inject: [ConfigService],
-    }),
-    BullModule.registerQueue({
-      name: 'email',
     }),
   ],
   controllers: [AuthController],

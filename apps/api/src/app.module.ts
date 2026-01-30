@@ -17,7 +17,7 @@ import { DashboardModule } from './dashboard/dashboard.module';
 import { OrgModule } from './org/org.module';
 // import { BullModule } from '@nestjs/bullmq';
 // import { ConfigService } from '@nestjs/config';
-import { EmailModule } from './email/email.module';
+// import { EmailModule } from './email/email.module';
 import configuration from './config/configuration';
 import { InngestModule } from './inngest/inngest.module';
 
@@ -55,7 +55,7 @@ import { InngestModule } from './inngest/inngest.module';
     OrdersModule,
     DashboardModule,
     OrgModule,
-    EmailModule,
+    // EmailModule,
     InngestModule,
   ],
   controllers: [AppController],

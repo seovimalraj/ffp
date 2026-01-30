@@ -17,8 +17,6 @@ import { compare, hash } from 'bcrypt';
 import { randomBytes } from 'crypto';
 import { SQLFunctions, Tables } from '../../libs/constants';
 import { AuthDto, LogoutDto, RefreshTokenDto } from './auth.dto';
-import { InjectQueue } from '@nestjs/bullmq';
-import { Queue } from 'bullmq';
 import { EmailService } from 'src/email/email.service';
 
 @Controller('auth')
@@ -27,7 +25,6 @@ export class AuthController {
     private readonly supabaseService: SupabaseService,
     private readonly jwtService: JwtService,
     private readonly logger: Logger,
-    @InjectQueue('email') private readonly emailQueue: Queue,
     private readonly emailService: EmailService,
   ) {}
 
