@@ -15,8 +15,8 @@ import { RfqModule } from './rfq/rfq.module';
 import { OrdersModule } from './orders/orders.module';
 import { DashboardModule } from './dashboard/dashboard.module';
 import { OrgModule } from './org/org.module';
-import { BullModule } from '@nestjs/bullmq';
-import { ConfigService } from '@nestjs/config';
+// import { BullModule } from '@nestjs/bullmq';
+// import { ConfigService } from '@nestjs/config';
 import { EmailModule } from './email/email.module';
 import configuration from './config/configuration';
 import { InngestModule } from './inngest/inngest.module';
@@ -43,27 +43,7 @@ import { InngestModule } from './inngest/inngest.module';
       validate,
       cache: true,
     }),
-    BullModule.forRootAsync({
-      inject: [ConfigService],
-      useFactory: async (configService: ConfigService) => {
-        const host = configService.get<string>('redis.host');
-        const port = configService.get<number>('redis.port');
-        const password = configService.get<string>('redis.password');
 
-        // Upstash and many cloud providers require TLS
-        // If connecting to Upstash, we enforce TLS
-        const isUpstash = host?.includes('upstash');
-
-        return {
-          connection: {
-            host,
-            port,
-            password,
-            ...(isUpstash ? { tls: { servername: host } } : {}),
-          },
-        };
-      },
-    }),
     SupabaseModule,
     AuthModule,
     PermissionsModule,
