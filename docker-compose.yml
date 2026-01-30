@@ -54,12 +54,7 @@ services:
       - "traefik.http.routers.ffp-api.rule=Host(`ffp-api.frigate.ai`)"
       - "traefik.http.routers.ffp-api.entrypoints=websecure"
       - "traefik.http.routers.ffp-api.tls.certresolver=letsencrypt"
-      # Combined URL - app.frigate.ai/api
-      - "traefik.http.routers.ffp-api-combined.rule=Host(`app.frigate.ai`) && PathPrefix(`/api`)"
-      - "traefik.http.routers.ffp-api-combined.entrypoints=websecure"
-      - "traefik.http.routers.ffp-api-combined.tls.certresolver=letsencrypt"
-      - "traefik.http.routers.ffp-api-combined.middlewares=ffp-api-stripprefix"
-      - "traefik.http.middlewares.ffp-api-stripprefix.stripprefix.prefixes=/api"
+
       - "traefik.http.services.ffp-api.loadbalancer.server.port=3001"
     networks:
       - dokploy-network
