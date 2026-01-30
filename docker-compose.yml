@@ -15,13 +15,6 @@ services:
 
       # External Supabase Database
       DATABASE_URL: postgresql://postgres:nt1hoziaodxredplrvxpevqdmkhacl1w@supabase.frigate.ai:5432/postgres
-
-      # External Redis
-      REDIS_URL: redis://default:8ysnsuqspjdjzpza@ffp-redis-o6ngzu:6379
-      REDIS_HOST: ffp-redis-o6ngzu
-      REDIS_PORT: 6379
-      REDIS_PASSWORD: 8ysnsuqspjdjzpza
-
       # Inngest
       INNGEST_EVENT_KEY: "wfObvkjHtesq+h+rJTf1AzC+pO+zm8QA1hvOtbTAkxQ="
 
