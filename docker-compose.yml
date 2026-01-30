@@ -38,9 +38,9 @@ services:
 
       # Service URLs
       CAD_SERVICE_URL: http://cad-service:10001
-      WORKFLOW_SERVICE_URL: http://workflow.frigate.ai/api/inngest
+      WORKFLOW_SERVICE_URL: http://ffp-workflow.frigate.ai/api/inngest
       APP_URL: https://app.frigate.ai
-      ALLOWED_ORIGINS: https://app.frigate.ai,https://ffp-web.frigate.ai,https://ffp-api.frigate.ai,https://ffp-cad.frigate.ai,https://dokploy.frigate.ai,http://workflow.frigate.ai
+      ALLOWED_ORIGINS: https://app.frigate.ai,https://ffp-web.frigate.ai,https://ffp-api.frigate.ai,https://ffp-cad.frigate.ai,https://dokploy.frigate.ai,http://ffp-workflow.frigate.ai
 
       # Inngest Configuration
       # INNGEST_EVENT_KEY:
@@ -126,7 +126,7 @@ services:
       VERIFIER_EMAIL: vimalraj@frigate.ai
     labels:
       - "traefik.enable=true"
-      - "traefik.http.routers.ffp-workflow.rule=Host(`workflow.frigate.ai`)"
+      - "traefik.http.routers.ffp-workflow.rule=Host(`ffp-workflow.frigate.ai`)"
       - "traefik.http.routers.ffp-workflow.entrypoints=websecure"
       - "traefik.http.routers.ffp-workflow.tls.certresolver=letsencrypt"
       - "traefik.http.services.ffp-workflow.loadbalancer.server.port=3004"
