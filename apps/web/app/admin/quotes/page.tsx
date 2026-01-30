@@ -1,393 +1,334 @@
-'use client';
-/**
- * @module AdminQuotesPage
- * @ownership web/admin
- * @purpose Display the admin-facing quote list with filtering and drill-down entry points.
- */
+"use client";
 
-import { Suspense, useCallback, useEffect, useMemo, useState } from 'react';
-import { usePathname, useRouter, useSearchParams } from 'next/navigation';
-import { AlertTriangle, Loader2, RefreshCw, Search as SearchIcon } from 'lucide-react';
-import { ContractsVNext } from '@cnc-quote/shared';
+import React, { useState, useEffect, useMemo } from "react";
+import { useRouter } from "next/navigation";
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import { Skeleton } from "@/components/ui/skeleton";
+import { EyeIcon, CubeIcon } from "@heroicons/react/24/outline";
+import { apiClient } from "@/lib/api";
+import { DataTable, Column } from "@/components/ui/data-table";
+import { IRFQStatuses } from "@/types";
+import Link from "next/link";
+import { formatDate, formatCurrencyGeneric } from "@/lib/format";
+import { useMetaStore } from "@/components/store/title-store";
+import { StatusCards } from "@/components/ui/status-cards";
+import { CheckCircle, Clock, Wallet, Building2, Search } from "lucide-react";
+import { RequireAnyRole } from "@/components/auth/RequireAnyRole";
+import { Input } from "@/components/ui/input";
 
-import { RequireAnyRole } from '@/components/auth/RequireAnyRole';
-import { AdminQuotesTable } from '@/components/admin/quotes/AdminQuotesTable';
-import { QuoteStatsCards } from '@/components/admin/quotes/QuoteStatsCards';
-import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Input } from '@/components/ui/input';
-import { useAdminQuotesList } from '@/hooks/useAdminQuotesList';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+// Types based on Admin RFQ API response
+interface AdminQuote {
+  id: string;
+  rfq_code: string;
+  user_id: string;
+  final_price: number | null;
+  status: IRFQStatuses;
+  order_id: string | null;
+  created_at: string;
+  updated_at: string;
+  rfq_type: "general" | "manual";
+  parts_count: number;
+  organization_name: string;
+  user_email: string;
+  user_name: string;
+}
 
 export default function AdminQuotesPage() {
   return (
     <RequireAnyRole
-      roles={['admin', 'org_admin', 'reviewer', 'finance']}
+      roles={["admin", "org_admin", "reviewer", "finance"]}
       fallback={<div className="p-6 text-sm text-red-600">Access denied</div>}
     >
-      <Suspense fallback={<LoadingState />}>
-        <AdminQuotesContent />
-      </Suspense>
+      <AdminQuotesContent />
     </RequireAnyRole>
   );
 }
 
 function AdminQuotesContent() {
   const router = useRouter();
-  const pathname = usePathname() ?? '/admin/quotes';
-  const searchParams = useSearchParams();
-  const [searchValue, setSearchValue] = useState(() => searchParams?.get('search') ?? '');
-
-  const laneOptions = useMemo<ContractsVNext.AdminReviewLaneVNext[]>(
-    () => ['NEW', 'IN_REVIEW', 'APPROVED', 'REJECTED'],
-    [],
-  );
-  const priorityOptions = useMemo<ContractsVNext.AdminReviewPriorityVNext[]>(
-    () => ['LOW', 'MED', 'HIGH', 'EXPEDITE'],
-    [],
-  );
-
-  const {
-    data,
-    stats,
-    filters,
-    isLoading,
-    isFetching,
-    isError,
-    error,
-    hasNextPage,
-    fetchNextPage,
-    refetch,
-  } = useAdminQuotesList();
-
-  const selectedLanes = useMemo(() => toArray(filters.lane), [filters.lane]);
-  const selectedPriorities = useMemo(() => toArray(filters.priority), [filters.priority]);
-  const assigneeValue = useMemo(() => {
-    const values = toArray(filters.assignee);
-    return values[0] ?? '';
-  }, [filters.assignee]);
-
-  const assigneeOptions = useMemo(() => {
-    const unique = new Set<string>();
-    for (const row of data) {
-      if (row.assignee) {
-        unique.add(row.assignee);
-      }
-    }
-    if (assigneeValue) {
-      unique.add(assigneeValue);
-    }
-    return Array.from(unique).sort((a, b) => a.localeCompare(b));
-  }, [assigneeValue, data]);
+  const [quotes, setQuotes] = useState<AdminQuote[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [hasMore, setHasMore] = useState(true);
+  const [isFetchingMore, setIsFetchingMore] = useState(false);
+  const [statusFilter] = useState("Any");
+  const [searchQuery, setSearchQuery] = useState("");
+  const { setPageTitle, resetTitle } = useMetaStore();
+  const QUOTE_LIMIT = 20;
 
   useEffect(() => {
-    setSearchValue(searchParams?.get('search') ?? '');
-  }, [searchParams]);
+    setPageTitle("Quotes");
+    return () => resetTitle();
+  }, []);
 
-  const applyParams = useCallback(
-    (updater: (params: URLSearchParams) => void) => {
-      const params = new URLSearchParams(searchParams?.toString() ?? '');
-      updater(params);
-      const query = params.toString();
-      if (query.length > 0) {
-        router.replace(`${pathname}?${query}`, { scroll: false });
-      } else {
-        router.replace(pathname, { scroll: false });
+  const fetchQuotes = React.useCallback(
+    async (isNext = false) => {
+      if (isNext) setIsFetchingMore(true);
+      else setLoading(true);
+
+      try {
+        const lastQuote = isNext ? quotes[quotes.length - 1] : null;
+        const params: any = {
+          limit: QUOTE_LIMIT,
+          status:
+            statusFilter !== "Any" ? statusFilter.toLowerCase() : undefined,
+        };
+
+        if (isNext && lastQuote) {
+          params.cursorCreatedAt = lastQuote.created_at;
+          params.cursorId = lastQuote.id;
+        }
+
+        const response = await apiClient.get("/rfq/admin/all", { params });
+        const newData = response.data.data || [];
+
+        setQuotes((prev) => (isNext ? [...prev, ...newData] : newData));
+        setHasMore(response.data.hasMore);
+      } catch (error) {
+        console.error("Failed to fetch admin quotes:", error);
+      } finally {
+        setLoading(false);
+        setIsFetchingMore(false);
       }
     },
-    [pathname, router, searchParams],
+    [quotes, statusFilter],
   );
 
-  const handleSearchSubmit = useCallback(
-    (event: React.FormEvent<HTMLFormElement>) => {
-      event.preventDefault();
-      const value = searchValue.trim();
-      applyParams((params) => {
-        if (value.length > 0) {
-          params.set('search', value);
-        } else {
-          params.delete('search');
-        }
-        params.delete('cursor');
-      });
+  useEffect(() => {
+    fetchQuotes();
+  }, [statusFilter]);
+
+  const filteredQuotes = useMemo(() => {
+    if (!searchQuery) return quotes;
+    const q = searchQuery.toLowerCase();
+    return quotes.filter(
+      (quote) =>
+        quote.rfq_code.toLowerCase().includes(q) ||
+        quote.organization_name.toLowerCase().includes(q) ||
+        quote.user_email?.toLowerCase().includes(q) ||
+        quote.user_name?.toLowerCase().includes(q),
+    );
+  }, [quotes, searchQuery]);
+
+  const STATUS_CONFIG: Record<string, { label: string; variant: any }> = {
+    accepted: { label: "Accepted", variant: "success" },
+    quoted: { label: "Quoted", variant: "secondary" },
+    draft: { label: "Draft", variant: "warning" },
+    rejected: { label: "Rejected", variant: "destructive" },
+    pending: { label: "Pending", variant: "warning" },
+    submitted: { label: "Submitted", variant: "default" },
+    "payment pending": { label: "Payment Pending", variant: "warning" },
+    "pending approval": { label: "Pending Approval", variant: "secondary" },
+    paid: { label: "Paid", variant: "success" },
+  };
+
+  const TYPE_CONFIG: Record<
+    "general" | "manual",
+    { label: string; variant: any }
+  > = {
+    general: { label: "General", variant: "outline" },
+    manual: { label: "Manual", variant: "secondary" },
+  };
+
+  const columns: Column<AdminQuote>[] = [
+    {
+      key: "rfq_code",
+      header: "RFQ Code",
+      render: (row) => (
+        <Link
+          href={`/admin/quotes/${row.id}`}
+          className="text-indigo-600 hover:text-indigo-800 font-bold underline"
+        >
+          {row.rfq_code}
+        </Link>
+      ),
     },
-    [applyParams, searchValue],
-  );
-
-  const handleClearSearch = useCallback(() => {
-    setSearchValue('');
-    applyParams((params) => {
-      params.delete('search');
-      params.delete('cursor');
-    });
-  }, [applyParams]);
-
-  const handleRefresh = useCallback(() => {
-    refetch();
-  }, [refetch]);
-
-  const handleLoadMore = useCallback(() => {
-    fetchNextPage();
-  }, [fetchNextPage]);
-
-  const toggleLane = useCallback(
-    (lane: ContractsVNext.AdminReviewLaneVNext) => {
-      applyParams((params) => {
-        const existing = params.getAll('lane');
-        params.delete('lane');
-        const next = existing.includes(lane)
-          ? existing.filter((value) => value !== lane)
-          : [...existing, lane];
-        for (const value of next) {
-          params.append('lane', value);
-        }
-        params.delete('cursor');
-      });
+    {
+      key: "organization_name",
+      header: "Company",
+      render: (row) => (
+        <div className="flex items-center gap-2">
+          <div className="w-7 h-7 rounded-lg bg-slate-100 flex items-center justify-center">
+            <Building2 className="w-3.5 h-3.5 text-slate-500" />
+          </div>
+          <span className="font-semibold text-slate-900">
+            {row.organization_name}
+          </span>
+        </div>
+      ),
     },
-    [applyParams],
-  );
-
-  const togglePriority = useCallback(
-    (priority: ContractsVNext.AdminReviewPriorityVNext) => {
-      applyParams((params) => {
-        const existing = params.getAll('priority');
-        params.delete('priority');
-        const next = existing.includes(priority)
-          ? existing.filter((value) => value !== priority)
-          : [...existing, priority];
-        for (const value of next) {
-          params.append('priority', value);
-        }
-        params.delete('cursor');
-      });
+    {
+      key: "user_name",
+      header: "Customer",
+      render: (row) => (
+        <div className="flex flex-col">
+          <span className="text-sm font-medium text-slate-700">
+            {row.user_name || "N/A"}
+          </span>
+          <span className="text-[10px] text-slate-500 font-mono tracking-tighter">
+            {row.user_email}
+          </span>
+        </div>
+      ),
     },
-    [applyParams],
-  );
-
-  const handleAssigneeChange = useCallback(
-    (value: string) => {
-      applyParams((params) => {
-        params.delete('assignee');
-        params.delete('cursor');
-        if (value && value !== '__ALL__') {
-          params.append('assignee', value);
-        }
-      });
+    {
+      key: "final_price",
+      header: "Value",
+      render: (row) => (
+        <span className="font-bold text-slate-900">
+          {row.final_price ? formatCurrencyGeneric(row.final_price) : "Pending"}
+        </span>
+      ),
     },
-    [applyParams],
-  );
-
-  const handleClearFilters = useCallback(() => {
-    applyParams((params) => {
-      params.delete('lane');
-      params.delete('priority');
-      params.delete('assignee');
-      params.delete('cursor');
-    });
-  }, [applyParams]);
-
-  const activeFilters = useMemo(() => {
-    const entries: Array<{ label: string; value: string }> = [];
-    if (filters.search) {
-      entries.push({ label: 'Search', value: filters.search });
-    }
-    for (const lane of selectedLanes) {
-      entries.push({ label: 'Lane', value: lane });
-    }
-    for (const priority of selectedPriorities) {
-      entries.push({ label: 'Priority', value: priority });
-    }
-    if (assigneeValue) {
-      entries.push({ label: 'Assignee', value: assigneeValue });
-    }
-    return entries;
-  }, [assigneeValue, selectedLanes, selectedPriorities, filters.search]);
-
-  const hasResults = data.length > 0;
-  const initialLoading = isLoading && !hasResults;
+    {
+      key: "status",
+      header: "Status",
+      render: (row) => {
+        const config = STATUS_CONFIG[row.status] || {
+          label: row.status,
+          variant: "outline",
+        };
+        return (
+          <Badge variant={config.variant} className="capitalize">
+            {config.label}
+          </Badge>
+        );
+      },
+    },
+    {
+      key: "rfq_type",
+      header: "Type",
+      render: (row) => {
+        const config = TYPE_CONFIG[row.rfq_type] || {
+          label: row.rfq_type,
+          variant: "outline",
+        };
+        return (
+          <Badge variant={config.variant} className="capitalize">
+            {config.label}
+          </Badge>
+        );
+      },
+    },
+    {
+      key: "parts_count",
+      header: "Parts",
+      render: (row) => (
+        <span className="inline-flex items-center px-2 py-0.5 rounded-md bg-slate-100 text-slate-600 text-xs font-bold">
+          {row.parts_count}
+        </span>
+      ),
+    },
+    {
+      key: "created_at",
+      header: "Created Date",
+      render: (row) => {
+        return (
+          <div className="flex flex-col">
+            <span className="text-slate-700 text-sm font-medium">
+              {formatDate(row.created_at)}
+            </span>
+            <span className="text-[10px] text-slate-400 capitalize">
+              Modified {new Date(row.updated_at).toLocaleDateString()}
+            </span>
+          </div>
+        );
+      },
+    },
+  ];
 
   return (
-      <div className="space-y-6 p-6">
-        <header className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-          <div>
-            <h1 className="text-2xl font-bold text-foreground">Quotes</h1>
-            <p className="text-sm text-muted-foreground">
-              Explore every active quote, review status, and drill into details when intervention is required.
-            </p>
+    <div className="min-h-screen space-y-6 p-6 max-w-7xl mx-auto">
+      <div className="flex flex-col md:flex-row md:items-end justify-between gap-4">
+        <div className="space-y-1">
+          <h1 className="text-3xl font-black text-slate-900 tracking-tight">
+            Quotations
+          </h1>
+          <p className="text-slate-500 text-sm">
+            Centralized management for all platform manufacture requests.
+          </p>
+        </div>
+        <div className="flex items-center gap-3">
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+            <Input
+              placeholder="Search by ID, Company..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="pl-10 h-11 w-64 rounded-xl border-slate-200 focus:ring-indigo-500"
+            />
           </div>
-          <div className="flex items-center gap-2">
-            <form onSubmit={handleSearchSubmit} className="relative flex items-center">
-              <SearchIcon className="absolute left-3 h-4 w-4 text-muted-foreground" />
-              <Input
-                value={searchValue}
-                onChange={(event) => setSearchValue(event.target.value)}
-                placeholder="Search quotes, customers, companies"
-                className="w-72 pl-9"
-                aria-label="Search quotes"
-              />
-              {searchValue.length > 0 && (
-                <Button type="button" variant="ghost" size="sm" className="ml-2" onClick={handleClearSearch}>
-                  Clear
-                </Button>
-              )}
-            </form>
-            <Button type="button" variant="outline" onClick={handleRefresh} disabled={isFetching}>
-              <RefreshCw className="mr-2 h-4 w-4" aria-hidden="true" />
-              Refresh
-            </Button>
-          </div>
-        </header>
+          <Button
+            onClick={() => fetchQuotes()}
+            variant="outline"
+            className="h-11 rounded-xl gap-2 border-slate-200"
+          >
+            Refresh
+          </Button>
+        </div>
+      </div>
 
-        <QuoteStatsCards stats={stats} isFetching={isFetching} />
+      <StatusCards
+        isLoading={loading}
+        items={[
+          {
+            label: "Total Quotes",
+            value: quotes.length,
+            icon: CubeIcon,
+            color: "blue",
+          },
+          {
+            label: "Manual Reviews",
+            value: quotes.filter((q) => q.status === "pending approval").length,
+            icon: Clock,
+            color: "orange",
+          },
+          {
+            label: "Active RFQs",
+            value: quotes.filter((q) => q.status === "submitted").length,
+            icon: CheckCircle,
+            color: "indigo",
+          },
+          {
+            label: "Total Published",
+            value: quotes.filter((q) => q.status === "quoted").length,
+            icon: Wallet,
+            color: "green",
+          },
+        ]}
+      />
 
-        <Card>
-          <CardHeader className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
-            <div>
-              <CardTitle className="text-base font-semibold">Filters</CardTitle>
-              <p className="text-xs text-muted-foreground">Refine the quote list by lane, priority, or current assignee.</p>
-            </div>
-            <Button variant="ghost" size="sm" onClick={handleClearFilters} disabled={!selectedLanes.length && !selectedPriorities.length && !assigneeValue}>
-              Clear filters
-            </Button>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="space-y-2">
-              <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Lane</p>
-              <div className="flex flex-wrap gap-2">
-                {laneOptions.map((lane) => {
-                  const selected = selectedLanes.includes(lane);
-                  return (
-                    <Button
-                      key={lane}
-                      type="button"
-                      variant={selected ? 'default' : 'outline'}
-                      size="sm"
-                      aria-pressed={selected}
-                      onClick={() => toggleLane(lane)}
-                    >
-                      {formatLaneLabel(lane)}
-                    </Button>
-                  );
-                })}
-              </div>
-            </div>
-
-            <div className="space-y-2">
-              <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Priority</p>
-              <div className="flex flex-wrap gap-2">
-                {priorityOptions.map((priority) => {
-                  const selected = selectedPriorities.includes(priority);
-                  return (
-                    <Button
-                      key={priority}
-                      type="button"
-                      variant={selected ? 'default' : 'outline'}
-                      size="sm"
-                      aria-pressed={selected}
-                      onClick={() => togglePriority(priority)}
-                    >
-                      {priority}
-                    </Button>
-                  );
-                })}
-              </div>
-            </div>
-
-            <div className="space-y-2">
-              <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Assignee</p>
-              <div className="w-full max-w-xs">
-                <Select value={assigneeValue || '__ALL__'} onValueChange={handleAssigneeChange}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="All assignees" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="__ALL__">All assignees</SelectItem>
-                    {assigneeOptions.map((option) => (
-                      <SelectItem key={option} value={option}>
-                        {option}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-
-        {activeFilters.length > 0 ? (
-          <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-            <span className="font-medium uppercase tracking-wide">Active filters</span>
-            {activeFilters.map((entry) => (
-              <Badge key={`${entry.label}-${entry.value}`} variant="outline" className="bg-muted/50 text-xs">
-                {entry.label}: {entry.value}
-              </Badge>
+      <div className="bg-white rounded-[32px] border border-slate-200 overflow-hidden shadow-xl shadow-slate-200/50">
+        {loading && quotes.length === 0 ? (
+          <div className="p-12 space-y-6">
+            {Array.from({ length: 5 }).map((_, i) => (
+              <Skeleton key={i} className="h-16 w-full rounded-2xl" />
             ))}
           </div>
-        ) : null}
-
-        {isError ? (
-          <ErrorState error={error} onRetry={handleRefresh} />
-        ) : initialLoading ? (
-          <LoadingState />
         ) : (
-          <AdminQuotesTable
-            rows={data}
-            isFetching={isFetching}
-            hasNextPage={hasNextPage}
-            onLoadMore={handleLoadMore}
+          <DataTable
+            columns={columns}
+            data={filteredQuotes}
+            keyExtractor={(m) => m.id}
+            emptyMessage="No Quotations Found"
+            isLoading={loading || isFetchingMore}
+            numbering={true}
+            hasMore={hasMore}
+            onEndReached={() => {
+              if (hasMore && !isFetchingMore) {
+                fetchQuotes(true);
+              }
+            }}
+            actions={[
+              {
+                label: "Admin Review",
+                icon: <EyeIcon className="w-4 h-4" />,
+                onClick: (quote) => router.push(`/admin/quotes/${quote.id}`),
+              },
+            ]}
           />
         )}
       </div>
-  );
-}
-
-function toArray<T>(value: T | T[] | undefined | null): T[] {
-  if (value === undefined || value === null) {
-    return [];
-  }
-  return Array.isArray(value) ? value : [value];
-}
-
-function formatLaneLabel(lane: ContractsVNext.AdminReviewLaneVNext): string {
-  switch (lane) {
-    case 'NEW':
-      return 'Needs Triage';
-    case 'IN_REVIEW':
-      return 'In Review';
-    case 'APPROVED':
-      return 'Approved';
-    case 'REJECTED':
-      return 'Blocked';
-    default:
-      return lane;
-  }
-}
-
-function LoadingState() {
-  return (
-    <div className="flex h-48 items-center justify-center rounded border bg-card text-sm text-muted-foreground">
-      <Loader2 className="mr-2 h-4 w-4 animate-spin" aria-hidden="true" />
-      Loading quotes…
     </div>
-  );
-}
-
-function ErrorState({ error, onRetry }: { readonly error: Error | null; readonly onRetry: () => void }) {
-  return (
-    <Card className="border-destructive/40 bg-destructive/10">
-      <CardHeader className="flex flex-row items-start gap-3">
-        <AlertTriangle className="h-5 w-5 text-destructive" aria-hidden="true" />
-        <div>
-          <CardTitle className="text-base">Failed to load quotes</CardTitle>
-          <p className="text-xs text-destructive/80">{error?.message ?? 'Please try again in a moment.'}</p>
-        </div>
-      </CardHeader>
-      <CardContent>
-        <Button variant="outline" onClick={onRetry}>
-          Retry
-        </Button>
-      </CardContent>
-    </Card>
   );
 }

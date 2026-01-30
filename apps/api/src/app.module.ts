@@ -19,6 +19,7 @@ import { BullModule } from '@nestjs/bullmq';
 import { ConfigService } from '@nestjs/config';
 import { EmailModule } from './email/email.module';
 import configuration from './config/configuration';
+import { InngestModule } from './inngest/inngest.module';
 
 @Module({
   imports: [
@@ -75,6 +76,7 @@ import configuration from './config/configuration';
     DashboardModule,
     OrgModule,
     EmailModule,
+    InngestModule,
   ],
   controllers: [AppController],
   providers: [AppService],

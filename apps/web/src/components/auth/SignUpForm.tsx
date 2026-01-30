@@ -9,7 +9,16 @@ import { trackEvent } from "@/lib/analytics/posthog";
 import { getSession, signIn } from "next-auth/react";
 import { useRouter } from "next/navigation";
 import { notify } from "@/lib/toast";
-import { Eye, EyeOff, Loader2, Building2, User, Phone } from "lucide-react";
+import {
+  Eye,
+  EyeOff,
+  Loader2,
+  Building2,
+  User,
+  Phone as PhoneIcon,
+} from "lucide-react";
+import PhoneInput, { isValidPhoneNumber } from "react-phone-number-input";
+import "react-phone-number-input/style.css";
 
 export function SignUpForm() {
   const [showPassword, setShowPassword] = useState(false);
@@ -59,8 +68,11 @@ export function SignUpForm() {
     if (!formData.organization_name)
       newErrors.organization_name = "Organization name is required";
 
-    if (!formData.phone_number)
+    if (!formData.phone_number) {
       newErrors.phone_number = "Phone number is required";
+    } else if (!isValidPhoneNumber(formData.phone_number)) {
+      newErrors.phone_number = "Invalid phone number";
+    }
 
     if (!formData.agreeToTerms) {
       newErrors.agreeToTerms = "You must agree to the terms";
@@ -77,6 +89,17 @@ export function SignUpForm() {
       setErrors((prev) => {
         const next = { ...prev };
         delete next[name];
+        return next;
+      });
+    }
+  };
+
+  const handlePhoneChange = (value: string | undefined) => {
+    setFormData((prev) => ({ ...prev, phone_number: value || "" }));
+    if (errors.phone_number) {
+      setErrors((prev) => {
+        const next = { ...prev };
+        delete next.phone_number;
         return next;
       });
     }
@@ -215,17 +238,20 @@ export function SignUpForm() {
 
             <div>
               <label className="text-sm font-medium text-gray-700 mb-1.5 flex items-center gap-2">
-                <Phone className="w-4 h-4 text-gray-400" />
+                <PhoneIcon className="w-4 h-4 text-gray-400" />
                 Phone Number
               </label>
-              <Input
-                name="phone_number"
-                type="tel"
-                placeholder="+1 (555) 000-0000"
-                value={formData.phone_number}
-                onChange={handleChange}
-                className={`h-12 border-gray-200 focus:ring-purple-500 ${errors.phone_number ? "border-red-500" : ""}`}
-              />
+              <div
+                className={`phone-input-container ${errors.phone_number ? "phone-input-error" : ""}`}
+              >
+                <PhoneInput
+                  placeholder="Enter phone number"
+                  value={formData.phone_number}
+                  onChange={handlePhoneChange}
+                  defaultCountry="IN"
+                  className="h-12"
+                />
+              </div>
               {errors.phone_number && (
                 <p className="text-red-500 text-xs mt-1">
                   {errors.phone_number}

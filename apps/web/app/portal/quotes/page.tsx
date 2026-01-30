@@ -147,6 +147,7 @@ export default function QuotesListPage() {
     pending: { label: "Pending", variant: "warning" },
     submitted: { label: "Submitted", variant: "default" },
     "payment pending": { label: "Payment Pending", variant: "warning" },
+    "under review": { label: "Under Review", variant: "outline" },
     "pending approval": { label: "Pending Approval", variant: "secondary" },
     paid: { label: "Paid", variant: "success" },
   };
@@ -169,7 +170,7 @@ export default function QuotesListPage() {
   };
 
   const getStatusChip = (status: IRFQStatuses) => {
-    const config = STATUS_CONFIG[status];
+    const config = STATUS_CONFIG[status] || STATUS_CONFIG["pending"];
 
     return <Badge variant={config.variant}>{config.label}</Badge>;
   };
@@ -208,7 +209,9 @@ export default function QuotesListPage() {
               ? `/quote-config/${row.id}`
               : row.status === "paid"
                 ? `/portal/orders/${row.order_id}`
-                : `/checkout/${row.id}`
+                : row.status === "submitted" || row.status === "payment pending"
+                  ? `/checkout/${row.id}`
+                  : `/portal/quotes/${row.id}`
           }
           className="text-blue-600 hover:text-blue-800 underline"
         >

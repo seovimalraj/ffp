@@ -10,6 +10,9 @@ CREATE TABLE rfq (
   updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 CREATE INDEX idx_rfq_type ON rfq(rfq_type);
+create index idx_rfq_organization on rfq (organization_id);
+create index idx_rfq_status on rfq (status);
+create index idx_rfq_code on rfq (rfq_code);
 CREATE TABLE rfq_parts (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   rfq_id UUID NOT NULL REFERENCES rfq(id) ON DELETE CASCADE,

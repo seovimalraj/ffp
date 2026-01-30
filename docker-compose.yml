@@ -1,4 +1,4 @@
-version: '3.8'
+version: "3.8"
 
 services:
   api:
@@ -9,35 +9,42 @@ services:
     environment:
       NODE_ENV: production
       PORT: 3001
-      
+
       # Required Frontend URL
       FRONTEND_URL: https://app.frigate.ai
-      
+
       # External Supabase Database
       DATABASE_URL: postgresql://postgres:nt1hoziaodxredplrvxpevqdmkhacl1w@supabase.frigate.ai:5432/postgres
-      
+
       # External Redis
       REDIS_URL: redis://default:8ysnsuqspjdjzpza@ffp-redis-o6ngzu:6379
       REDIS_HOST: ffp-redis-o6ngzu
       REDIS_PORT: 6379
       REDIS_PASSWORD: 8ysnsuqspjdjzpza
-      
+
+      # Inngest
+      INNGEST_EVENT_KEY: "wfObvkjHtesq+h+rJTf1AzC+pO+zm8QA1hvOtbTAkxQ="
+
       # Supabase Configuration
       SUPABASE_URL: https://supabase.frigate.ai
       SUPABASE_KEY: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpYXQiOjE3NjgyNTIxNTksImV4cCI6MTg5MzQ1NjAwMCwicm9sZSI6ImFub24iLCJpc3MiOiJzdXBhYmFzZSJ9.AQGFy8cbWjB53FzmLW3BILn8gxkLHU5RTy13kWt0d2k
       SUPABASE_SERVICE_KEY: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpYXQiOjE3NjgyNTIxNTksImV4cCI6MTg5MzQ1NjAwMCwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlzcyI6InN1cGFiYXNlIn0.TLX_zlAqairJaJqidxgwjJygZXdwVq4XGDYH1srSNHo
       SUPABASE_ANON_KEY: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpYXQiOjE3NjgyNTIxNTksImV4cCI6MTg5MzQ1NjAwMCwicm9sZSI6ImFub24iLCJpc3MiOiJzdXBhYmFzZSJ9.AQGFy8cbWjB53FzmLW3BILn8gxkLHU5RTy13kWt0d2k
       SUPABASE_STORAGE_BUCKET: cad-files
-      
+
       # JWT Configuration
       JWT_SECRET: yqoi04dc0cwjzz7pvdd3qnxpxi6vrgea
       JWT_EXPIRES_IN: 7d
-      
+
       # Service URLs
       CAD_SERVICE_URL: http://cad-service:10001
+      WORKFLOW_SERVICE_URL: http://workflow.frigate.ai/api/inngest
       APP_URL: https://app.frigate.ai
-      ALLOWED_ORIGINS: https://app.frigate.ai,https://ffp-web.frigate.ai,https://ffp-api.frigate.ai,https://ffp-cad.frigate.ai,https://dokploy.frigate.ai
-      
+      ALLOWED_ORIGINS: https://app.frigate.ai,https://ffp-web.frigate.ai,https://ffp-api.frigate.ai,https://ffp-cad.frigate.ai,https://dokploy.frigate.ai,http://workflow.frigate.ai
+
+      # Inngest Configuration
+      # INNGEST_EVENT_KEY:
+
       # File Upload Settings
       MAX_FILE_SIZE: 100MB
       ALLOWED_FILE_TYPES: .step,.stp,.stl,.iges,.igs,.obj
@@ -66,18 +73,18 @@ services:
     environment:
       PYTHONUNBUFFERED: 1
       PORT: 10001
-      
+
       # External Supabase Database
       DATABASE_URL: postgresql://postgres:nt1hoziaodxredplrvxpevqdmkhacl1w@supabase.frigate.ai:5432/postgres
-      
+
       # External Redis
       REDIS_URL: redis://default:8ysnsuqspjdjzpza@ffp-redis-o6ngzu:6379
-      
+
       # Processing Settings
       MAX_FILE_SIZE: 100MB
       TEMP_DIR: /tmp/cad-uploads
       PROCESSING_TIMEOUT: 300
-      
+
       # Security
       API_KEY: yqoi04dc0cwjzz7pvdd3qnxpxi6vrgea
       CORS_ORIGINS: https://app.frigate.ai,https://ffp-web.frigate.ai,https://ffp-api.frigate.ai,https://ffp-cad.frigate.ai,https://dokploy.frigate.ai
@@ -87,6 +94,42 @@ services:
       - "traefik.http.routers.ffp-cad.entrypoints=websecure"
       - "traefik.http.routers.ffp-cad.tls.certresolver=letsencrypt"
       - "traefik.http.services.ffp-cad.loadbalancer.server.port=10001"
+    networks:
+      - dokploy-network
+    restart: unless-stopped
+
+  workflow:
+    build:
+      context: https://github.com/seovimalraj/ffp.git#main
+      dockerfile: apps/workflow-service/Dockerfile
+    container_name: ffp-workflow
+    environment:
+      NODE_ENV: production
+      PORT: 3004
+      FRONTEND_URL: "https://app.frigate.ai"
+
+      SMTP_HOST: smtp-pulse.com
+      SMTP_PORT: 465
+      SMTP_USER: vimalraj@frigate.ai
+      SMTP_PASSWORD: 6RdsKmEbmmWG
+      SMTP_FROM: vimalraj@frigate.ai
+
+      # Supabase Configuration
+      SUPABASE_URL: https://supabase.frigate.ai
+      SUPABASE_ANON_KEY: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpYXQiOjE3NjgyNTIxNTksImV4cCI6MTg5MzQ1NjAwMCwicm9sZSI6ImFub24iLCJpc3MiOiJzdXBhYmFzZSJ9.AQGFy8cbWjB53FzmLW3BILn8gxkLHU5RTy13kWt0d2k
+
+      # Inngest Configuration
+      # Note: Set these keys in your deployment environment
+      INNGEST_SIGNING_KEY: cc0bb97c7cf6ff321c8c44b2c1733385903ed26a83f382be2a28617ac097ef41
+
+      # Other
+      VERIFIER_EMAIL: vimalraj@frigate.ai
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.ffp-workflow.rule=Host(`workflow.frigate.ai`)"
+      - "traefik.http.routers.ffp-workflow.entrypoints=websecure"
+      - "traefik.http.routers.ffp-workflow.tls.certresolver=letsencrypt"
+      - "traefik.http.services.ffp-workflow.loadbalancer.server.port=3004"
     networks:
       - dokploy-network
     restart: unless-stopped

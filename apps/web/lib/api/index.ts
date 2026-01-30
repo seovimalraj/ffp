@@ -1,5 +1,6 @@
 import axios, { AxiosInstance, AxiosResponse } from "axios";
 import { getSession, signOut } from "next-auth/react";
+import { useMetaStore } from "@/components/store/title-store";
 
 console.log(
   process.env.NEXT_PUBLIC_NEST_API,
@@ -47,10 +48,16 @@ apiClient.interceptors.response.use(
     return response;
   },
   (error) => {
-    if (error.response?.status === 401) {
+    let isSigningOut = false;
+    if (error.response?.status === 401 && !isSigningOut) {
       console.error("Unauthorized request - redirecting to login");
       // You could redirect to login here if needed
-      signOut({ callbackUrl: "/signin" });
+      isSigningOut = true;
+      const returnUrl = window.location.pathname + window.location.search;
+      useMetaStore.getState().setRedirectUrl(returnUrl);
+      signOut({
+        callbackUrl: `/signin?returnUrl=${encodeURIComponent(returnUrl)}`,
+      });
     }
 
     console.error("API Error:", {

@@ -1,0 +1,36 @@
+{
+  "name": "inngest-service",
+  "version": "1.0.0",
+  "description": "",
+  "type": "module",
+  "main": "index.js",
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "dev:inngest": "inngest dev -u http://127.0.0.1:6001/api/inngest",
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "packageManager": "pnpm@10.16.1",
+  "devDependencies": {
+    "@types/node": "^25.0.10",
+    "@types/nodemailer": "^7.0.5",
+    "dotenv": "^17.2.3",
+    "inngest-cli": "^1.16.1",
+    "pino-pretty": "^13.1.3",
+    "tsx": "^4.21.0",
+    "typescript": "^5.9.3"
+  },
+  "dependencies": {
+    "@hono/node-server": "^1.19.9",
+    "@supabase/supabase-js": "^2.93.2",
+    "hono": "^4.11.7",
+    "hono-pino": "^0.10.3",
+    "inngest": "^3.49.3",
+    "nodemailer": "^7.0.12",
+    "pino": "^10.3.0"
+  }
+}

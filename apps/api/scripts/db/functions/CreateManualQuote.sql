@@ -24,7 +24,7 @@ INSERT INTO rfq (
 VALUES (
         p_user_id,
         v_organization_id,
-        'pending approval',
+        'under review',
         'manual',
         p_meta
     )

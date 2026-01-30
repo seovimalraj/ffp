@@ -49,6 +49,11 @@ export type IOrderFull = {
     total_price: number;
     lead_time: number;
     lead_time_type: string;
+    drawings_2d: Array<{
+      file_name: string;
+      file_url: string;
+      mime_type: string;
+    }>;
     status: string;
     order_part_code: string;
     rfq_part: {

@@ -10,6 +10,7 @@ export interface Step {
   id: string;
   title: string;
   description?: string;
+  [key: string]: any; // Allow for custom properties like snapshot_2d_url
 }
 
 interface VerticalSteppedModalProps {
@@ -70,7 +71,7 @@ export function VerticalSteppedModal({
 
   return (
     <AnimatePresence>
-      <div className="fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-6">
+      <div className="fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-6 text-slate-900">
         {/* Backdrop */}
         <motion.div
           initial={{ opacity: 0 }}
@@ -87,64 +88,31 @@ export function VerticalSteppedModal({
           exit={{ opacity: 0, scale: 0.9, y: 30 }}
           transition={{ type: "spring", stiffness: 400, damping: 30 }}
           className={cn(
-            "relative w-full max-w-5xl rounded-[32px] border border-white/20 bg-white/95 shadow-2xl overflow-hidden flex flex-col md:flex-row h-[750px] max-h-[92vh]",
+            "relative w-full max-w-5xl rounded-[32px] border border-white/20 bg-white shadow-2xl overflow-hidden flex flex-col md:flex-row h-[800px] max-h-[95vh]",
             sidebarPosition === "right" ? "md:flex-row-reverse" : "md:flex-row",
           )}
         >
           {!hideSidebar && (
             <div
               className={cn(
-                "relative w-full md:w-85 bg-white/10 backdrop-blur-2xl p-12 flex flex-col z-10 overflow-hidden shadow-[inset_-20px_0_40px_rgba(255,255,255,0.2)]",
+                "relative w-full md:w-85 bg-slate-50 border-r border-slate-100 p-8 flex flex-col z-10 overflow-hidden",
                 sidebarPosition === "left"
-                  ? "border-b border-white/10 md:border-b-0 md:border-r"
-                  : "border-t border-white/10 md:border-t-0 md:border-l",
+                  ? "border-b md:border-b-0 md:border-r"
+                  : "border-t md:border-t-0 md:border-l",
               )}
             >
-              {/* Liquid Background Blobs - Restricted to Sidebar */}
-              <div className="absolute inset-0 overflow-hidden pointer-events-none opacity-60">
-                <motion.div
-                  animate={{
-                    x: [0, 30, 0],
-                    y: [0, 40, 0],
-                    scale: [1, 1.1, 1],
-                  }}
-                  transition={{
-                    duration: 12,
-                    repeat: Infinity,
-                    ease: "easeInOut",
-                  }}
-                  className="absolute -top-[10%] -left-[10%] w-[120%] h-[60%] bg-blue-300/30 rounded-full blur-[60px]"
-                />
-                <motion.div
-                  animate={{
-                    x: [0, -20, 0],
-                    y: [0, -30, 0],
-                    scale: [1, 1.2, 1],
-                  }}
-                  transition={{
-                    duration: 15,
-                    repeat: Infinity,
-                    ease: "easeInOut",
-                  }}
-                  className="absolute -bottom-[10%] -right-[10%] w-[100%] h-[50%] bg-purple-300/30 rounded-full blur-[60px]"
-                />
-              </div>
-
-              {/* Glass Overlay for Sidebar */}
-              <div className="absolute inset-0 bg-gradient-to-b from-white/20 to-transparent pointer-events-none" />
-
-              <div className="relative z-10 mb-12">
-                <h2 className="text-3xl font-black text-slate-900 tracking-tight leading-tight">
+              <div className="relative z-10 mb-8">
+                <h2 className="text-2xl font-bold text-slate-900 tracking-tight leading-tight">
                   {title}
                 </h2>
                 {subtitle && (
-                  <p className="text-sm text-slate-500 mt-3 font-medium leading-relaxed">
+                  <p className="text-xs text-slate-500 mt-2 font-medium leading-relaxed uppercase tracking-wider">
                     {subtitle}
                   </p>
                 )}
               </div>
 
-              <nav className="flex-1 space-y-10 relative z-10">
+              <nav className="flex-1 space-y-4 relative z-10 overflow-y-auto custom-scrollbar pr-2">
                 {steps.map((step, index) => {
                   const isActive = currentStep === index;
                   const isCompleted = currentStep > index;
@@ -152,67 +120,66 @@ export function VerticalSteppedModal({
                   return (
                     <button
                       key={step.id}
-                      onClick={() => isCompleted && onStepChange(index)}
-                      disabled={!isCompleted}
+                      onClick={() => onStepChange(index)}
                       className={cn(
-                        "group relative flex items-start gap-6 w-full text-left transition-all outline-none",
-                        isCompleted ? "cursor-pointer" : "cursor-default",
+                        "group relative flex items-center gap-4 w-full p-3 rounded-2xl transition-all outline-none border text-left",
+                        isActive
+                          ? "bg-white border-indigo-200 shadow-sm ring-1 ring-indigo-100"
+                          : "bg-transparent border-transparent hover:bg-white/50 hover:border-slate-200",
                       )}
                     >
-                      {/* Progress Line */}
-                      {index !== steps.length - 1 && (
-                        <div
-                          className={cn(
-                            "absolute left-[17px] top-9 w-0.5 h-13 -ml-px transition-all duration-500",
-                            isCompleted
-                              ? "bg-blue-600 shadow-[0_0_8px_rgba(37,99,235,0.4)]"
-                              : "bg-slate-200/50",
-                          )}
-                        />
-                      )}
-
                       <div
                         className={cn(
-                          "relative z-10 flex h-9 w-9 shrink-0 items-center justify-center rounded-2xl border-2 transition-all duration-500",
+                          "relative z-10 flex h-14 w-14 shrink-0 items-center justify-center rounded-xl border bg-white overflow-hidden transition-all duration-300",
                           isActive
-                            ? "border-blue-600 bg-blue-600/10 text-blue-600 shadow-lg shadow-blue-600/20 scale-110"
-                            : isCompleted
-                              ? "border-blue-600 bg-blue-600 text-white shadow-md shadow-blue-600/20"
-                              : "border-slate-300/60 text-slate-400",
+                            ? "border-indigo-200 shadow-md"
+                            : "border-slate-200",
                         )}
                       >
-                        {isCompleted ? (
-                          <Check className="h-4 w-4 stroke-[3px]" />
+                        {step.snapshot_2d_url ? (
+                          <img
+                            src={step.snapshot_2d_url}
+                            alt=""
+                            className={cn(
+                              "w-full h-full object-contain p-1 mix-blend-multiply transition-transform duration-500",
+                              isActive ? "scale-110" : "scale-100 opacity-60",
+                            )}
+                          />
                         ) : (
-                          <span className="text-xs font-black tracking-tighter">
+                          <span
+                            className={cn(
+                              "text-xs font-bold",
+                              isActive ? "text-indigo-600" : "text-slate-400",
+                            )}
+                          >
                             0{index + 1}
                           </span>
                         )}
+
+                        {isCompleted && !isActive && (
+                          <div className="absolute inset-0 bg-indigo-600/10 flex items-center justify-center">
+                            <Check className="w-4 h-4 text-indigo-600" />
+                          </div>
+                        )}
                       </div>
 
-                      <div className="flex flex-col pt-1">
+                      <div className="flex flex-col min-w-0">
                         <span
                           className={cn(
-                            "text-sm font-bold tracking-tight transition-all duration-300",
-                            isActive
-                              ? "text-slate-900 scale-105 origin-left"
-                              : isCompleted
-                                ? "text-slate-700"
-                                : "text-slate-400",
+                            "text-sm font-bold tracking-tight truncate transition-all duration-300",
+                            isActive ? "text-slate-900" : "text-slate-500",
                           )}
                         >
                           {step.title}
                         </span>
-                        {step.description && (
-                          <span
-                            className={cn(
-                              "text-[11px] mt-1.5 font-medium transition-colors duration-300 max-w-[180px]",
-                              isActive ? "text-slate-500" : "text-slate-400",
-                            )}
-                          >
-                            {step.description}
-                          </span>
-                        )}
+                        <span
+                          className={cn(
+                            "text-[10px] mt-0.5 font-medium truncate transition-colors duration-300",
+                            isActive ? "text-indigo-500" : "text-slate-400",
+                          )}
+                        >
+                          {step.description}
+                        </span>
                       </div>
                     </button>
                   );

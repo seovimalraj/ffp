@@ -25,8 +25,13 @@ const UserDropdown = () => {
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
+  useEffect(() => {
+    if (status === "unauthenticated") {
+      router.push("/signin");
+    }
+  }, [status, router]);
+
   if (status === "unauthenticated") {
-    router.push("/signin");
     return null;
   }
 
