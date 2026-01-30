@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect } from "react";
 import { useRouter, useParams } from "next/navigation";
 import { PayPalButtons, PayPalScriptProvider } from "@paypal/react-paypal-js";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -630,6 +630,14 @@ export default function CheckoutPage() {
     return null;
   }
 
+  if (config && config.status === "under review") {
+    notify.info(
+      "This quote is currently under review. We'll notify you once the review is complete.",
+    );
+    router.push(`/portal/quotes/${config.quoteId}`);
+    return null;
+  }
+
   // const hasManualPartExceededThreshold = () => {
 
   //  }
@@ -642,7 +650,6 @@ export default function CheckoutPage() {
   //     }
   //   }, [exceeded]);
 
-  console.log(config);
   return (
     <PayPalScriptProvider
       options={{
@@ -1508,7 +1515,7 @@ export default function CheckoutPage() {
                     <div className="flex justify-end pt-4">
                       <Button
                         onClick={handleNextFromCustoms}
-                        className="bg-blue-600 hover:bg-blue-700"
+                        className="bg-blue-600 hover:bg-blue-700 font-bold h-11 px-8 rounded-lg shadow-lg shadow-blue-200"
                       >
                         Continue to Payment
                       </Button>
@@ -1582,7 +1589,7 @@ export default function CheckoutPage() {
                       <div className="w-8 h-8 rounded-full bg-blue-50 text-blue-600 flex items-center justify-center text-sm">
                         4
                       </div>
-                      <span>Review Order</span>
+                      <span>Review Order & Checkout</span>
                     </div>
                   }
                 >
@@ -1655,95 +1662,212 @@ export default function CheckoutPage() {
                         {config.parts.map((part) => (
                           <div
                             key={part.id}
-                            className="flex items-center justify-between p-4 hover:bg-slate-50 transition-colors"
+                            className="grid grid-cols-[1fr_auto_auto] items-center gap-8 p-4 hover:bg-slate-50/50 transition-colors group"
                           >
-                            <div className="flex gap-4 items-center">
-                              <div className="w-12 h-12 rounded-xl border border-slate-100 bg-slate-50/50 flex items-center justify-center">
+                            <div className="flex gap-4 items-center min-w-0">
+                              <div className="w-12 h-12 rounded-xl border border-slate-100 bg-slate-50/50 flex-shrink-0 flex items-center justify-center group-hover:bg-white transition-colors">
                                 {part.snapshot_2d_url ? (
                                   <img
                                     src={part.snapshot_2d_url}
                                     alt={part.fileName}
-                                    className="h-full w-full object-contain"
+                                    className="h-full w-full object-contain p-1"
                                   />
                                 ) : (
-                                  <Package className="w-6 h-6 text-slate-300" />
+                                  <Package className="w-5 h-5 text-slate-400" />
                                 )}
                               </div>
-                              <div>
+                              <div className="min-w-0">
                                 <Link
                                   href={`/quote-config/${quoteId}?partId=${part.id}`}
-                                  className="text-sm font-bold text-slate-900 hover:text-blue-600 hover:underline transition-colors"
+                                  className="text-sm font-semibold text-slate-900 hover:text-blue-600 transition-colors truncate block"
                                 >
                                   {part.fileName}
                                 </Link>
-                                <div className="flex items-center gap-2 mt-0.5">
+                                <div className="flex items-center gap-2 mt-1">
                                   <Badge
                                     variant="secondary"
-                                    className="bg-slate-100 text-slate-600 border-none text-[10px] px-1.5 py-0 h-4"
+                                    className="bg-slate-100 text-slate-500 border-none text-[10px] px-1.5 py-0 h-4 font-medium"
                                   >
                                     {part.material}
                                   </Badge>
-                                  <span className="text-[10px] text-slate-500 font-medium">
-                                    Qty: {part.quantity}
+                                  <span className="text-[11px] text-slate-400 font-medium">
+                                    Qty:{" "}
+                                    <span className="text-slate-600 font-bold">
+                                      {part.quantity}
+                                    </span>
                                   </span>
                                 </div>
                               </div>
                             </div>
-                            <div className="text-right">
-                              <p className="text-sm font-black text-slate-900 font-mono">
+
+                            <div className="w-24 text-right">
+                              <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mb-0.5">
+                                Unit
+                              </p>
+                              <p className="text-sm font-medium text-slate-900 font-mono">
                                 ${part.finalPrice.toLocaleString()}
                               </p>
-                              <p className="text-[10px] text-slate-400 font-bold uppercase tracking-tighter">
-                                Unit Cost
+                            </div>
+
+                            <div className="w-28 text-right">
+                              <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mb-0.5">
+                                Total
+                              </p>
+                              <p className="text-sm font-bold text-slate-900 font-mono">
+                                ${(part.finalPrice * part.quantity).toFixed(2)}
                               </p>
                             </div>
                           </div>
                         ))}
                       </div>
                     </div>
-                    <div className="pt-4 mt-6 border-t border-slate-100">
-                      <div
-                        className="flex items-center space-x-3 group cursor-pointer p-5 rounded-[2rem] bg-slate-50 border border-slate-200 hover:border-blue-200 transition-all duration-300 shadow-inner"
-                        onClick={() =>
-                          setPriceConcentAccepted(!priceConcentAccepted)
-                        }
-                      >
-                        <div className="pt-1">
+                    <div className="mt-12 pt-10 border-t border-slate-200">
+                      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6 mb-8">
+                        <div className="space-y-1">
+                          <h3 className="text-xl font-bold text-slate-900">
+                            Final Commitment
+                          </h3>
+                          <p className="text-sm text-slate-500">
+                            Includes all components, logistics, and taxes
+                          </p>
+                        </div>
+                        <div className="text-right">
+                          <p className="text-[10px] text-slate-400 uppercase font-black tracking-widest mb-1">
+                            Total Amount Due
+                          </p>
+                          <div className="flex items-baseline justify-end gap-2 text-blue-600">
+                            <span className="text-3xl font-black tracking-tight font-mono">
+                              ${total.toFixed(2)}
+                            </span>
+                            <span className="text-xs font-bold text-slate-400 uppercase">
+                              USD
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="space-y-4 mb-10">
+                        <div className="flex items-start space-x-3 p-4 rounded-xl border border-slate-100 bg-slate-50/50">
                           <Checkbox
                             id="review-terms"
                             checked={priceConcentAccepted}
                             onCheckedChange={(c) =>
                               setPriceConcentAccepted(!!c)
                             }
-                            className="h-6 w-6 rounded-lg border-slate-300 data-[state=checked]:bg-blue-600 data-[state=checked]:border-blue-600 shadow-sm transition-all"
+                            className="mt-1"
                           />
+                          <Label
+                            htmlFor="review-terms"
+                            className="text-sm text-slate-600 leading-normal cursor-pointer select-none font-semibold"
+                          >
+                            I confirm that I have reviewed the pricing for these
+                            parts and agree to the final price.
+                          </Label>
                         </div>
-                        <Label
-                          htmlFor="review-terms"
-                          className="text-sm text-slate-600 leading-relaxed cursor-pointer select-none font-semibold"
-                        >
-                          I confirm that I have reviewed the pricing for this
-                          parts and agree to the final price.
-                        </Label>
-                      </div>
-                    </div>
 
-                    <div className="p-6 rounded-2xl bg-blue-600 text-white shadow-xl shadow-blue-200">
-                      <div className="flex justify-between items-center mb-6">
-                        <div>
-                          <h3 className="text-lg font-bold">
-                            Total Commitment
-                          </h3>
-                          <p className="text-blue-100 text-xs">
-                            Includes all parts and shipping
-                          </p>
+                        <div className="flex items-start space-x-3 p-4 rounded-xl border border-slate-100 bg-slate-50/50">
+                          <Checkbox
+                            id="terms"
+                            checked={termsAccepted}
+                            onCheckedChange={(c) => setTermsAccepted(!!c)}
+                            className="mt-1"
+                          />
+                          <Label
+                            htmlFor="terms"
+                            className="text-sm text-slate-600 leading-normal cursor-pointer select-none font-semibold"
+                          >
+                            I agree to the{" "}
+                            <span className="text-blue-600 underline">
+                              Terms of Service
+                            </span>{" "}
+                            and{" "}
+                            <span className="text-blue-600 underline">
+                              Manufacturing Guidelines
+                            </span>
+                            .
+                          </Label>
                         </div>
-                        <div className="text-right">
-                          <span className="text-3xl font-black tracking-tighter font-mono">
-                            ${total.toFixed(2)}
-                          </span>
-                          <p className="text-[10px] text-blue-100 uppercase font-black">
-                            USD
+                      </div>
+
+                      <div className="space-y-6">
+                        <PayPalButtons
+                          style={{
+                            layout: "vertical",
+                            color: "blue",
+                            shape: "rect",
+                            label: "pay",
+                            height: 50,
+                          }}
+                          disabled={isProcessing}
+                          onClick={(data, actions) => {
+                            if (!termsAccepted || !priceConcentAccepted) {
+                              notify.error(
+                                "Please accept the terms and conditions in the summary",
+                              );
+                              return actions.reject();
+                            }
+                            return actions.resolve();
+                          }}
+                          createOrder={async (data, actions) => {
+                            const orderId = await createInternalOrder();
+                            if (!orderId) {
+                              throw new Error("Order creation failed");
+                            }
+                            setOrderId(orderId);
+                            return actions.order.create({
+                              purchase_units: [
+                                {
+                                  amount: {
+                                    currency_code: "USD",
+                                    value: total.toFixed(2),
+                                  },
+                                  description: `Manufacturing Order ${orderId}`,
+                                  custom_id: orderId,
+                                },
+                              ],
+                              intent: "CAPTURE",
+                            });
+                          }}
+                          onApprove={async (data) => {
+                            try {
+                              setIsProcessing(true);
+                              const response = await apiClient.post(
+                                `/orders/${orderId}/paypal-capture`,
+                                { orderID: data.orderID },
+                              );
+
+                              if (response.data.success) {
+                                notify.success("Payment successful");
+                                setOrderPlaced(true);
+                                router.push(`/portal/orders/${orderId}`);
+                              } else {
+                                notify.error("Payment not completed");
+                              }
+                            } catch (err) {
+                              console.error("Capture error:", err);
+                              notify.error("Payment capture failed");
+                              await apiClient.post(
+                                `/orders/${orderId}/failure`,
+                              );
+                            } finally {
+                              setIsProcessing(false);
+                            }
+                          }}
+                          onCancel={() => {
+                            notify.error("Payment cancelled");
+                            setIsProcessing(false);
+                          }}
+                          onError={(err) => {
+                            console.error("PayPal error:", err);
+                            notify.error("PayPal encountered an error");
+                            setIsProcessing(false);
+                          }}
+                        />
+                        <div className="py-4 text-center">
+                          <p className="text-[11px] text-slate-400 font-medium">
+                            Secure payment processing via PayPal. Your order
+                            status will be automatically updated upon
+                            confirmation.
                           </p>
                         </div>
                       </div>
@@ -1856,117 +1980,6 @@ export default function CheckoutPage() {
                             minimumFractionDigits: 2,
                           })}
                         </span>
-                      </div>
-                    </div>
-
-                    <div className="space-y-6">
-                      <div
-                        className="flex items-start space-x-3 group cursor-pointer p-4 rounded-2xl bg-slate-50/50 border border-transparent hover:border-slate-200 transition-all"
-                        onClick={() => setTermsAccepted(!termsAccepted)}
-                      >
-                        <div className="pt-0.5">
-                          <Checkbox
-                            id="terms"
-                            checked={termsAccepted}
-                            onCheckedChange={(c) => setTermsAccepted(!!c)}
-                            className="rounded-md border-slate-300 data-[state=checked]:bg-blue-600 shadow-sm"
-                          />
-                        </div>
-                        <Label
-                          htmlFor="terms"
-                          className="text-[11px] text-slate-500 leading-relaxed cursor-pointer select-none font-medium"
-                        >
-                          I agree to the{" "}
-                          <span className="text-blue-600 font-bold hover:underline transition-all">
-                            Terms of Service
-                          </span>{" "}
-                          and{" "}
-                          <span className="text-blue-600 font-bold hover:underline transition-all">
-                            Manufacturing Guidelines
-                          </span>
-                          .
-                        </Label>
-                      </div>
-
-                      <div className="space-y-4">
-                        <PayPalButtons
-                          style={{
-                            layout: "vertical",
-                            color: "blue",
-                            shape: "rect",
-                            label: "pay",
-                            height: 55,
-                          }}
-                          disabled={isProcessing}
-                          onClick={(data, actions) => {
-                            if (!termsAccepted || !priceConcentAccepted) {
-                              notify.error(
-                                "Please accept the terms and conditions in the summary",
-                              );
-                              return actions.reject();
-                            }
-                            return actions.resolve();
-                          }}
-                          createOrder={async (data, actions) => {
-                            const orderId = await createInternalOrder();
-                            if (!orderId) {
-                              throw new Error("Order creation failed");
-                            }
-                            setOrderId(orderId);
-                            return actions.order.create({
-                              purchase_units: [
-                                {
-                                  amount: {
-                                    currency_code: "USD",
-                                    value: total.toFixed(2),
-                                  },
-                                  description: `Manufacturing Order ${orderId}`,
-                                  custom_id: orderId,
-                                },
-                              ],
-                              intent: "CAPTURE",
-                            });
-                          }}
-                          onApprove={async (data) => {
-                            try {
-                              setIsProcessing(true);
-                              const response = await apiClient.post(
-                                `/orders/${orderId}/paypal-capture`,
-                                { orderID: data.orderID },
-                              );
-
-                              if (response.data.success) {
-                                notify.success("Payment successful");
-                                setOrderPlaced(true);
-                                router.push(`/portal/orders/${orderId}`);
-                              } else {
-                                notify.error("Payment not completed");
-                              }
-                            } catch (err) {
-                              console.error("Capture error:", err);
-                              notify.error("Payment capture failed");
-                              await apiClient.post(
-                                `/orders/${orderId}/failure`,
-                              );
-                            } finally {
-                              setIsProcessing(false);
-                            }
-                          }}
-                          onCancel={() => {
-                            notify.error("Payment cancelled");
-                            setIsProcessing(false);
-                          }}
-                          onError={(err) => {
-                            console.error("PayPal error:", err);
-                            notify.error("PayPal encountered an error");
-                            setIsProcessing(false);
-                          }}
-                        />
-                        <p className="text-[10px] text-slate-400 text-center font-medium">
-                          Secure payment processing via PayPal. Your order
-                          status will be automatically updated upon
-                          confirmation.
-                        </p>
                       </div>
                     </div>
                   </div>

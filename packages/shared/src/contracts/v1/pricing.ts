@@ -1,6 +1,8 @@
 // Pricing cost factors & breakdown contracts (v1)
 
 export interface CostFactorsV1 {
+  material_id: any;
+  material_name: any;
   machine_rate_per_hour: number;
   setup_cost: number;
   material_price_per_kg?: number;
@@ -16,7 +18,7 @@ export interface PricingComputationInputV1 {
   process_type: string;
   geometry_signature: string; // hash of metrics & config driving pricing
   quantity: number;
-  lead_time_option: 'standard' | 'expedited';
+  lead_time_option: "standard" | "expedited";
   factors: CostFactorsV1;
 }
 

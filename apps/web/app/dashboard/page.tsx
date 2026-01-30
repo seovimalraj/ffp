@@ -77,6 +77,10 @@ export default async function DashboardPage() {
     redirect("/signin");
   }
 
+  if (user.role !== "customer") {
+    redirect(`/${user.role}`);
+  }
+
   return (
     <CustomerLayout>
       <div className="space-y-10">

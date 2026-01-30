@@ -3,7 +3,9 @@
 import React from "react";
 import { Detail, IOrderFull } from "../page";
 import { CadViewer } from "@/components/cad/cad-viewer";
-import { X, Package } from "lucide-react";
+import { X, Package, FileText, Image as ImageIcon, Eye } from "lucide-react";
+import dynamic from "next/dynamic";
+import { ImageViewerModal } from "@/components/image-viewer-modal";
 import { metalTranslation } from "@cnc-quote/shared";
 
 interface Props {
@@ -11,7 +13,23 @@ interface Props {
   onClose: () => void;
 }
 
+// Dynamically import PDF viewer to avoid SSR issues with DOMMatrix
+const PdfViewerModal = dynamic(
+  () =>
+    import("@/components/pdf-viewer-modal").then((mod) => mod.PdfViewerModal),
+  { ssr: false },
+);
+
 const RfqSideDrawer = ({ part, onClose }: Props) => {
+  const [viewingFile, setViewingFile] = React.useState<{
+    file_url: string;
+    file_name: string;
+    mime_type: string;
+  } | null>(null);
+
+  const isImage = viewingFile?.mime_type.startsWith("image/");
+  const isPdf = viewingFile?.mime_type.includes("pdf");
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-6 lg:p-10">
       {/* Overlay */}
@@ -169,6 +187,51 @@ const RfqSideDrawer = ({ part, onClose }: Props) => {
               </div>
             </section>
 
+            {/* 2D Diagrams */}
+            <section>
+              <h3 className="text-xs font-black text-slate-400 uppercase tracking-[0.2em] mb-4 flex items-center gap-2">
+                <div className="w-1 h-1 rounded-full bg-indigo-500" />
+                2D Diagrams
+              </h3>
+              <div className="grid grid-cols-1 gap-3">
+                {part.drawings_2d && part.drawings_2d.length > 0 ? (
+                  part.drawings_2d.map((file, idx) => (
+                    <button
+                      key={idx}
+                      onClick={() => setViewingFile(file)}
+                      className="group flex items-center gap-4 p-4 rounded-2xl bg-slate-50 border border-slate-100 hover:border-indigo-200 hover:bg-white transition-all duration-300 hover:shadow-lg hover:shadow-indigo-500/5 text-left"
+                    >
+                      <div className="h-10 w-10 rounded-xl bg-white border border-slate-100 flex items-center justify-center text-slate-400 group-hover:text-indigo-600 group-hover:border-indigo-100 transition-colors">
+                        {file.mime_type.includes("pdf") ? (
+                          <FileText className="h-5 w-5" />
+                        ) : (
+                          <ImageIcon className="h-5 w-5" />
+                        )}
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <p className="text-sm font-bold text-slate-900 truncate">
+                          {file.file_name}
+                        </p>
+                        <p className="text-[10px] text-slate-400 uppercase font-bold tracking-wider">
+                          {file.mime_type.split("/")[1]?.toUpperCase() ||
+                            "FILE"}
+                        </p>
+                      </div>
+                      <div className="h-8 w-8 rounded-full flex items-center justify-center text-slate-300 group-hover:text-indigo-500 group-hover:bg-indigo-50 transition-all">
+                        <Eye className="h-4 w-4" />
+                      </div>
+                    </button>
+                  ))
+                ) : (
+                  <div className="text-center py-8 rounded-[24px] border border-dashed border-slate-200">
+                    <p className="text-xs text-slate-400 font-medium">
+                      No 2D diagrams available
+                    </p>
+                  </div>
+                )}
+              </div>
+            </section>
+
             {/* Notes */}
             {part.rfq_part.notes && (
               <section className="pb-4">
@@ -184,6 +247,25 @@ const RfqSideDrawer = ({ part, onClose }: Props) => {
           </div>
         </div>
       </div>
+
+      {/* Media Viewers */}
+      {viewingFile && isImage && (
+        <ImageViewerModal
+          isOpen={!!viewingFile}
+          onClose={() => setViewingFile(null)}
+          imageSrc={viewingFile.file_url}
+          altText={viewingFile.file_name}
+        />
+      )}
+
+      {viewingFile && isPdf && (
+        <PdfViewerModal
+          isOpen={!!viewingFile}
+          onClose={() => setViewingFile(null)}
+          pdfSrc={viewingFile.file_url}
+          fileName={viewingFile.file_name}
+        />
+      )}
     </div>
   );
 };

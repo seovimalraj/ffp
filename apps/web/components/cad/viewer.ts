@@ -933,26 +933,44 @@ export function createViewer(container: HTMLElement): Viewer {
   }
 
   function loadMeshFromGeometry(geom: THREE.BufferGeometry) {
-    // 1) Ensure normals
-    if (!geom.getAttribute("normal")) geom.computeVertexNormals();
+    // 1) Ensure normals if it looks like a mesh
+    // A simple heuristic: if it has enough vertices to form at least one triangle
+    // and we expect it to be a mesh.
+    // For DXF, we might have many vertices but they are for lines.
+    // If computeVertexNormals was called in mesh-loader, it might have normals.
+
     // 2) Recenter geometry at origin
     geom.computeBoundingBox();
     const gbox = geom.boundingBox!.clone();
     const gcenter = gbox.getCenter(new THREE.Vector3());
     geom.translate(-gcenter.x, -gcenter.y, -gcenter.z);
 
-    // 3) Create mesh and add to scene
-    const material = new THREE.MeshStandardMaterial({
-      color: 0xb8c2ff,
-      metalness: 0.1,
-      roughness: 0.8,
-    });
-    const mesh = new THREE.Mesh(geom, material);
+    // 3) Create object and add to scene
+    // Determine if we should use Mesh or LineSegments
+    // If it has normals, it's likely a mesh.
+    const hasNormals = !!geom.getAttribute("normal");
+
+    let object: THREE.Object3D;
+    if (hasNormals) {
+      const material = new THREE.MeshStandardMaterial({
+        color: 0xb8c2ff,
+        metalness: 0.1,
+        roughness: 0.8,
+        side: THREE.DoubleSide,
+      });
+      object = new THREE.Mesh(geom, material);
+    } else {
+      const material = new THREE.LineBasicMaterial({
+        color: 0xb8c2ff,
+      });
+      object = new THREE.LineSegments(geom, material);
+    }
+
     modelRoot.clear();
-    modelRoot.add(mesh);
+    modelRoot.add(object);
 
     // 4) Ground the model: lift so bottom sits on y = 0
-    mesh.updateWorldMatrix(true, true);
+    object.updateWorldMatrix(true, true);
     const box1 = new THREE.Box3().setFromObject(modelRoot);
     const lift = -box1.min.y;
     if (Math.abs(lift) > 1e-6) {
@@ -966,9 +984,6 @@ export function createViewer(container: HTMLElement): Viewer {
     setClipping(currentClippingValue); // Re-apply clipping to new material
 
     // 5) Fit camera to final bounds
-    // We defer the precise camera fit to the consumer or do a default one here.
-    // But since the consumer might want to apply custom zoom immediately,
-    // we can do a default fit here (zoom=1) to ensure something is visible.
     if (gridHelper) gridHelper.position.y = 0;
 
     // Default fit with zoom=1 (internally uses padding 1.5)
@@ -1070,20 +1085,36 @@ export function createViewer(container: HTMLElement): Viewer {
     xray: boolean,
   ) {
     modelRoot.traverse((child: any) => {
-      if (child.isMesh && child.material) {
+      if (
+        (child.isMesh || child.isLine || child.isLineSegments) &&
+        child.material
+      ) {
         const updateMaterial = (m: any) => {
           m.color.setHex(colorHex);
-          m.wireframe = wireframe;
-          if (xray) {
-            m.transparent = true;
-            m.opacity = 0.3;
-            m.depthWrite = false;
-            m.side = THREE.DoubleSide;
+          if (child.isMesh) {
+            m.wireframe = wireframe;
+            if (xray) {
+              m.transparent = true;
+              m.opacity = 0.3;
+              m.depthWrite = false;
+              m.side = THREE.DoubleSide;
+            } else {
+              m.transparent = false;
+              m.opacity = 1.0;
+              m.depthWrite = true;
+              m.side = THREE.DoubleSide;
+            }
           } else {
-            m.transparent = false;
-            m.opacity = 1.0;
-            m.depthWrite = true;
-            m.side = THREE.DoubleSide; // Keep DoubleSide or revert to FrontSide? Usually DoubleSide is safer for open meshes. StandardMaterial default is FrontSide.
+            // For lines, wireframe doesn't apply, but xray/transparency can
+            if (xray) {
+              m.transparent = true;
+              m.opacity = 0.3;
+              m.depthWrite = false;
+            } else {
+              m.transparent = false;
+              m.opacity = 1.0;
+              m.depthWrite = true;
+            }
           }
         };
 
@@ -1246,12 +1277,12 @@ export function createViewer(container: HTMLElement): Viewer {
       cubeCanvas.removeEventListener("pointermove", onCubePointerMove as any);
       cubeCanvas.removeEventListener("click", onCubeClick as any);
       cubeCanvas.removeEventListener("pointerdown", onCubePointerDown as any);
-    } catch (e) {}
+    } catch (_e) {}
     cubeRenderer.dispose();
     // remove the whole wrapper (which contains the canvas)
     try {
       cubeWrapper.remove();
-    } catch (e) {}
+    } catch (_e) {}
     // dispose cube materials/geometry by traversing cubeRoot
     cubeRoot.traverse((obj: any) => {
       if (obj.geometry) obj.geometry.dispose();

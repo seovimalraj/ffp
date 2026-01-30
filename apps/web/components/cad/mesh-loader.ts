@@ -5,6 +5,8 @@ import { OBJLoader } from "three/examples/jsm/loaders/OBJLoader.js";
 import { ThreeMFLoader } from "three/examples/jsm/loaders/3MFLoader.js";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 import * as BufferGeometryUtils from "three/examples/jsm/utils/BufferGeometryUtils.js";
+import { DXFLoader } from "three-dxf-loader";
+import { DxfParser } from "dxf-parser";
 
 type TessReq = {
   id: string;
@@ -27,19 +29,56 @@ type TessErr = { id: string; ok: false; error: string };
 
 type CADExt = "step" | "stp" | "iges" | "igs" | "brep";
 
-function mergeFromObject(root: THREE.Object3D) {
+function mergeFromObject(root: any) {
   const geos: THREE.BufferGeometry[] = [];
-  root.updateWorldMatrix(true, true);
-  root.traverse((child: any) => {
-    if (child.isMesh && child.geometry) {
-      const g = child.geometry.clone();
-      g.applyMatrix4(child.matrixWorld);
+
+  // Handle common loader return patterns (e.g. { scene: ... }) or arrays
+  const input = root.scene || root;
+  const roots = Array.isArray(input) ? input : [input];
+
+  for (const r of roots) {
+    if (!r) continue;
+
+    if (r.updateWorldMatrix) {
+      r.updateWorldMatrix(true, true);
+    }
+
+    if (r.traverse) {
+      r.traverse((child: any) => {
+        if (
+          (child.isMesh || child.isLine || child.isLineSegments) &&
+          child.geometry
+        ) {
+          const g = child.geometry.clone();
+          if (child.updateWorldMatrix) child.updateWorldMatrix(true, true);
+          g.applyMatrix4(child.matrixWorld);
+          geos.push(g);
+        }
+      });
+    } else if ((r.isMesh || r.isLine || r.isLineSegments) && r.geometry) {
+      const g = r.geometry.clone();
+      if (r.updateWorldMatrix) r.updateWorldMatrix(true, true);
+      g.applyMatrix4(r.matrixWorld);
       geos.push(g);
     }
-  });
+  }
+
+  if (geos.length === 0) throw new Error("No geometry found in file");
   const merged = BufferGeometryUtils.mergeGeometries(geos, true);
   if (!merged) throw new Error("No geometry found in file");
-  merged.computeVertexNormals();
+  // Don't compute normals for lines, only for meshes
+  const hasFaces =
+    merged.getAttribute("index") || merged.getAttribute("position").count > 0;
+  if (
+    hasFaces &&
+    geos.some((g: any) => g.index || g.attributes.position.count % 3 === 0)
+  ) {
+    try {
+      merged.computeVertexNormals();
+    } catch (_e) {
+      // ignore for non-manifold or line-based geometry
+    }
+  }
   return merged;
 }
 
@@ -75,6 +114,14 @@ async function loadMeshOnMainThread(file: File, ext: string) {
     } finally {
       URL.revokeObjectURL(url);
     }
+  }
+
+  if (ext === "dxf") {
+    const text = await file.text();
+    const loader = new DXFLoader();
+    // DXFLoader needs the parser
+    const dxf = loader.parse(text, new DxfParser());
+    return mergeFromObject(dxf);
   }
 
   throw new Error("Unsupported mesh format");
@@ -126,7 +173,8 @@ export async function loadMeshFile(
     ext === "obj" ||
     ext === "3mf" ||
     ext === "gltf" ||
-    ext === "glb"
+    ext === "glb" ||
+    ext === "dxf"
   ) {
     return loadMeshOnMainThread(fileObj, ext);
   }
@@ -167,6 +215,6 @@ export async function loadMeshFile(
   }
 
   throw new Error(
-    "Unsupported file. Try STL, OBJ, 3MF, glTF, GLB, STEP, IGES or BREP.",
+    "Unsupported file. Try STL, OBJ, 3MF, glTF, GLB, STEP, IGES, BREP or DXF.",
   );
 }

@@ -10,6 +10,7 @@ import { signIn, getSession } from "next-auth/react";
 import { useRouter } from "next/navigation";
 import { notify } from "@/lib/toast";
 import { Eye, EyeOff, Loader2, AlertCircle } from "lucide-react";
+import { useMetaStore } from "@/components/store/title-store";
 
 export function SignInForm() {
   const [showPassword, setShowPassword] = useState(false);
@@ -25,6 +26,7 @@ export function SignInForm() {
 
   const router = useRouter();
   const searchParams = useSearchParams();
+  const { redirectUrl, setRedirectUrl } = useMetaStore();
   const error = searchParams?.get("error");
 
   useEffect(() => {
@@ -130,9 +132,16 @@ export function SignInForm() {
         return;
       }
 
+      console.log(session.user.role, session.user, session);
+
       trackEvent("signin_success", { role: session.user.role });
       notify.success("Welcome back!");
-      router.push(`/${session.user.role}`);
+      if (redirectUrl) {
+        setRedirectUrl("");
+        router.push(redirectUrl);
+      } else {
+        router.push(`/${session.user.role}`);
+      }
     } catch (err) {
       trackEvent("signin_failure", {
         error: err instanceof Error ? err.message : "Unknown error",

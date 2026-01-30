@@ -1,0 +1,49 @@
+import nodemailer from "nodemailer";
+import { config } from "../config.js";
+import { logger } from "./logger.js";
+
+const transporter = nodemailer.createTransport({
+  host: config.email.smtpHost,
+  port: config.email.smtpPort,
+  secure: config.email.smtpPort === 465,
+  auth: {
+    user: config.email.smtpUser,
+    pass: config.email.smtpPassword,
+  },
+  connectionTimeout: 5000,
+  socketTimeout: 5000,
+});
+
+export interface SendEmailDetails {
+  to: string;
+  subject: string;
+  text?: string;
+  html?: string;
+  name?: string;
+}
+
+export const sendEmail = async ({
+  to,
+  subject,
+  text,
+  html,
+  name,
+}: SendEmailDetails) => {
+  try {
+    const mailOptions = {
+      from: config.email.smtpFrom,
+      to,
+      subject,
+      text,
+      html: html || text,
+      replyTo: config.email.smtpFrom,
+    };
+
+    const result = await transporter.sendMail(mailOptions);
+    logger.info({ messageId: result.messageId, to }, "Email sent successfully");
+    return result;
+  } catch (error: any) {
+    logger.error({ error: error.message, to }, "Failed to send email");
+    throw error;
+  }
+};

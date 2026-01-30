@@ -73,6 +73,7 @@ import ArchiveModal from "../components/archive-modal";
 import { SuggestionSidebar } from "../components/suggestion-sidebar";
 import ManualQuoteModal from "../../quote-config/components/manual-quote-modal";
 import { ManualExceededModal } from "../components/manual-exceeded-modal";
+import { ManualQuoteWarningModal } from "../components/manual-quote-warning-modal";
 
 /**
  * Normalize process string from database/API to clean format.
@@ -448,6 +449,7 @@ export default function QuoteConfigPage() {
   const [hasDismissedExceededModal, setHasDismissedExceededModal] =
     useState(false);
   const [showManualExceededModal, setShowManualExceededModal] = useState(false);
+  const [showManualWarningModal, setShowManualWarningModal] = useState(false);
   const partsContainerRef = useRef<HTMLDivElement>(null);
 
   const manualParts = useMemo(
@@ -1116,6 +1118,30 @@ export default function QuoteConfigPage() {
     }
   }, [exceeded]);
 
+  // Handle side-effect redirects (Paid, Under Review, etc.)
+  useEffect(() => {
+    if (!rfq) return;
+
+    if (rfq.status === "paid") {
+      notify.info(
+        "This quote has already been paid and processed. Redirecting to your orders.",
+      );
+      router.push("/portal/orders");
+    } else if (rfq.status === "under review") {
+      notify.info(
+        "This quote is currently under review. We'll notify you once the review is complete.",
+      );
+      router.push(`/portal/quotes/${rfq.id}`);
+    }
+  }, [rfq, router]);
+
+  // Handle Manual Quote Warning
+  useEffect(() => {
+    if (rfq?.rfq_type === "manual" && rfq.status !== "under review") {
+      setShowManualWarningModal(true);
+    }
+  }, [rfq]);
+
   // Lead Time & Pricing Calculations
 
   const updatePartFields = async (
@@ -1386,20 +1412,14 @@ export default function QuoteConfigPage() {
     return null;
   }
 
-  if (rfq && rfq.status === "paid") {
-    notify.info(
-      "This quote has already been paid and processed. Redirecting to your orders.",
-    );
-    router.push("/portal/orders");
-    return null;
-  }
-
-  if (rfq && rfq.status === "pending approval") {
-    notify.info(
-      "This quote is currently pending approval. We'll notify you once the review is complete.",
-    );
-    router.push(`/portal/quotes/${rfq.id}`);
-    return null;
+  // Prevent rendering if the quote status is not allowed for configuration
+  const restrictedStatuses = ["paid", "under review", "pending approval"];
+  if (rfq && restrictedStatuses.includes(rfq.status)) {
+    // Exception: Manual quotes in 'pending approval' should show the warning modal
+    // instead of returning null, so the user can interact with the options.
+    if (!(rfq.status === "pending approval" && rfq.rfq_type === "manual")) {
+      return null;
+    }
   }
 
   return (
@@ -1438,6 +1458,12 @@ export default function QuoteConfigPage() {
               <span className="px-2.5 py-1 bg-blue-50 text-blue-700 rounded-lg text-xs font-bold uppercase tracking-wider border border-blue-100">
                 Configuration
               </span>
+
+              {rfq.rfq_type === "manual" && (
+                <span className="px-2.5 py-1 bg-amber-50 text-amber-700 rounded-lg text-xs font-bold uppercase tracking-wider border border-amber-100">
+                  Manual Review
+                </span>
+              )}
 
               <ChevronRight className="w-4 h-4 text-slate-400" />
               <span>Checkout</span>
@@ -1948,6 +1974,13 @@ export default function QuoteConfigPage() {
         isSubmitting={false}
         handleSubmit={handleManualQuote}
         submitLable="Submit Request"
+      />
+
+      <ManualQuoteWarningModal
+        isOpen={showManualWarningModal}
+        onRedirectToQuotes={() => router.push("/portal/quotes")}
+        onRedirectToCheckout={() => router.push(`/checkout/${quoteId}`)}
+        showCheckout={rfq.status === "pending approval"}
       />
 
       {/* Suggestion Sidebar */}

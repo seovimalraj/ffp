@@ -13,7 +13,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { cn } from "@/lib/utils"; // Assuming utils exists, or I will use standard class strings
-import { useRef, useCallback } from "react";
+import { useRef, useCallback, useMemo } from "react";
 
 export type Column<T> = {
   key: string;
@@ -87,30 +87,35 @@ export function DataTable<T>({
 
   const observerTarget = useRef(null);
 
-  const sortedData = [...data].sort((a, b) => {
-    if (!sortConfig) return 0;
+  const sortedData = useMemo(() => {
+    const result = [...data];
+    if (!sortConfig) return result;
 
     const column = columns.find((col) => col.key === sortConfig.key);
-    if (!column || !column.sortable) return 0;
+    if (!column || !column.sortable) return result;
 
-    let result = 0;
-    if (sortComparator) {
-      result = sortComparator(a, b, column);
-    } else {
-      const aValue = (a as Record<string, unknown>)[column.key];
-      const bValue = (b as Record<string, unknown>)[column.key];
-
-      if (typeof aValue === "string" && typeof bValue === "string") {
-        result = aValue.localeCompare(bValue);
-      } else if (typeof aValue === "number" && typeof bValue === "number") {
-        result = aValue - bValue;
+    result.sort((a, b) => {
+      let comparison = 0;
+      if (sortComparator) {
+        comparison = sortComparator(a, b, column);
       } else {
-        result = String(aValue).localeCompare(String(bValue));
-      }
-    }
+        const aValue = (a as Record<string, unknown>)[column.key];
+        const bValue = (b as Record<string, unknown>)[column.key];
 
-    return sortConfig.direction === "asc" ? result : -result;
-  });
+        if (typeof aValue === "string" && typeof bValue === "string") {
+          comparison = aValue.localeCompare(bValue);
+        } else if (typeof aValue === "number" && typeof bValue === "number") {
+          comparison = aValue - bValue;
+        } else {
+          comparison = String(aValue).localeCompare(String(bValue));
+        }
+      }
+
+      return sortConfig.direction === "asc" ? comparison : -comparison;
+    });
+
+    return result;
+  }, [data, sortConfig, columns, sortComparator]);
 
   const handleSort = (columnKey: string) => {
     setSortConfig((prev) => {
@@ -123,30 +128,51 @@ export function DataTable<T>({
     });
   };
 
-  const filteredData = searchQuery
-    ? sortedData.filter((row) => {
-        if (!searchableColumns || searchableColumns.length === 0) return true;
+  const filteredData = useMemo(() => {
+    if (!searchQuery) return sortedData;
 
-        return searchableColumns.some((columnKey) => {
-          const value = (row as Record<string, unknown>)[columnKey];
-          return String(value)
-            .toLowerCase()
-            .includes(searchQuery.toLowerCase());
-        });
-      })
-    : sortedData;
+    return sortedData.filter((row) => {
+      if (!searchableColumns || searchableColumns.length === 0) return true;
+
+      return searchableColumns.some((columnKey) => {
+        const value = (row as Record<string, unknown>)[columnKey];
+        return String(value).toLowerCase().includes(searchQuery.toLowerCase());
+      });
+    });
+  }, [sortedData, searchQuery, searchableColumns]);
+
+  const prevDataRef = useRef(filteredData);
 
   useEffect(() => {
     onFilterChange?.(filteredData);
-    setVisibleCount(pageSize); // Reset visible count on filter change
+
+    // Only reset visibleCount if the data has fundamentally changed (e.g. filtered/searched)
+    // If it's just an append (new length > old length and old items match), don't reset.
+    const isAppend =
+      filteredData.length > prevDataRef.current.length &&
+      prevDataRef.current.every((item, i) => item === filteredData[i]);
+
+    if (!isAppend) {
+      setVisibleCount(pageSize);
+    } else {
+      // If it is an append, we want to make sure the new items are visible
+      setVisibleCount(filteredData.length);
+    }
+
+    prevDataRef.current = filteredData;
   }, [filteredData, onFilterChange, pageSize]);
 
-  // Infinite Scroll Logic
+  // Track visibleCount in a ref to keep handleObserver stable
+  const visibleCountRef = useRef(visibleCount);
+  useEffect(() => {
+    visibleCountRef.current = visibleCount;
+  }, [visibleCount]);
+
   const handleObserver = useCallback(
     (entries: IntersectionObserverEntry[]) => {
       const [target] = entries;
       if (target.isIntersecting) {
-        if (visibleCount < filteredData.length) {
+        if (visibleCountRef.current < filteredData.length) {
           setVisibleCount((prev) =>
             Math.min(prev + pageSize, filteredData.length),
           );
@@ -155,7 +181,7 @@ export function DataTable<T>({
         }
       }
     },
-    [visibleCount, filteredData.length, pageSize, onEndReached],
+    [filteredData.length, pageSize, onEndReached],
   );
 
   useEffect(() => {

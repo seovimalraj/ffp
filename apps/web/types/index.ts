@@ -7,7 +7,8 @@ export type IRFQStatuses =
   | "rejected"
   | "payment pending"
   | "paid"
-  | "pending approval";
+  | "pending approval"
+  | "under review";
 
 export type ICategory = {
   id: string;

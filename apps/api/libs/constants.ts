@@ -78,6 +78,11 @@ export enum StockMaterial {
   Plate = 'plate',
 }
 
+export enum InngestEvents {
+  EmailEvent = 'system/email.send',
+  ManualQuoteApproval = 'rfq/manual-quote.approval',
+}
+
 /**
  * Materialized view names for optimized queries
  */

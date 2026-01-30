@@ -1,498 +1,821 @@
-'use client';
-/**
- * @module AdminQuoteDetailPage
- * @ownership web/admin
- * @purpose Provide a consolidated view of quote metadata, pricing, DFM issues, and activity for admin analysts.
- */
+"use client";
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
-import Link from 'next/link';
-import { useParams } from 'next/navigation';
-import { AlertTriangle, ArrowLeft, Loader2, RefreshCw } from 'lucide-react';
-
-import { formatCurrency } from '@/lib/format';
-
-import { RequireAnyRole } from '@/components/auth/RequireAnyRole';
-import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
+import { useEffect, useState, useCallback, useMemo } from "react";
+import { useParams, useRouter } from "next/navigation";
+import { apiClient } from "@/lib/api";
+import { formatCurrencyGeneric } from "@/lib/format";
+import CustomLoader from "@/components/ui/loader/CustomLoader";
+import { useMetaStore } from "@/components/store/title-store";
+import { Badge } from "@/components/ui/badge";
 import {
-	Table,
-	TableBody,
-	TableCell,
-	TableHead,
-	TableHeader,
-	TableRow,
-} from '@/components/ui/table';
-import { useToast } from '@/components/ui/use-toast';
-import { useAdminQuoteDetail } from '@/hooks/useAdminQuoteDetail';
-import {
-	assignAbandonedQuote,
-	sendAbandonedQuoteReminder,
-	updateQuoteLifecycleStatus,
-} from '@/lib/admin/api';
-import { ContractsVNext } from '@cnc-quote/shared';
+  Package,
+  X,
+  Info,
+  CheckCircle2,
+  Save,
+  Clock,
+  DollarSign,
+  ArrowLeft,
+  Settings2,
+  Download,
+} from "lucide-react";
+import { CadViewer } from "@/components/cad/cad-viewer";
+import { metalTranslation } from "@cnc-quote/shared";
+import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
+import { useToast } from "@/components/ui/use-toast";
+import { isCNCProcess, isSheetMetalProcess } from "@/lib/pricing-engine";
+import EditPartSpecsModal from "./components/edit-part-specs-modal";
+import { notify } from "@/lib/toast";
 
-const ACTION_ROLES = ['admin', 'org_admin', 'reviewer', 'finance'] as const;
+/* =======================
+   TYPES
+======================= */
 
-type ActionRole = (typeof ACTION_ROLES)[number];
+export type IRFQFull = {
+  rfq: {
+    id: string;
+    rfq_code: string;
+    status: string;
+    final_price: number | null;
+    rfq_type: "general" | "manual";
+    created_at: string;
+    manual_quote_metadata?: Record<string, any>;
+    user_id: string;
+  };
+  parts: Array<{
+    id: string;
+    file_name: string;
+    material: string;
+    finish: string;
+    tolerance: string;
+    inspection: string;
+    notes: string;
+    cad_file_url: string;
+    snapshot_2d_url: string | null;
+    quantity: number;
+    final_price: number | null;
+    lead_time: number | null;
+    lead_time_type: string | null;
+    process?: string;
+    certificates?: string[];
+    sheet_thickness_mm?: number;
+  }>;
+};
+
+/* =======================
+   PAGE
+======================= */
 
 export default function AdminQuoteDetailPage() {
-	const params = useParams<{ id: string }>();
-	const quoteId = params?.id ?? '';
-	const { detail, summary, isLoading, isFetching, isError, error, refetch } = useAdminQuoteDetail(quoteId);
-	const item = detail?.item;
-	const workspace = detail?.workspace;
-	const lineSummaries = useMemo(() => (summary ? deriveLineSummaries(summary.lines) : []), [summary]);
-	const quoteCurrency = summary?.totals.currency ?? workspace?.pricingSummary.currency ?? 'USD';
-	const { toast } = useToast();
+  const params = useParams();
+  const id = (params?.id as string) || "";
+  const [data, setData] = useState<IRFQFull>();
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [selectedPart, setSelectedPart] = useState<
+    IRFQFull["parts"][number] | null
+  >(null);
 
-	const [assigneeInput, setAssigneeInput] = useState('');
-	const [assigning, setAssigning] = useState(false);
-	const [reminding, setReminding] = useState(false);
-	const [converting, setConverting] = useState(false);
+  // Admin Editing State
+  const [partPrices, setPartPrices] = useState<Record<string, number>>({});
+  const [partLeadTimes, setPartLeadTimes] = useState<Record<string, number>>(
+    {},
+  );
+  const [editingPart, setEditingPart] = useState<
+    IRFQFull["parts"][number] | null
+  >(null);
 
-	useEffect(() => {
-		setAssigneeInput(item?.assignee ?? '');
-	}, [item?.assignee]);
+  const { setPageTitle, resetTitle } = useMetaStore();
+  const router = useRouter();
+  const { toast } = useToast();
 
-	const handleAssign = useCallback(async () => {
-		const assignee = assigneeInput.trim();
-		if (!assignee) {
-			toast({
-				title: 'Assignment requires a user id',
-				description: 'Provide a valid user identifier before assigning.',
-				variant: 'destructive',
-			});
-			return;
-		}
-		if (!quoteId) {
-			toast({
-				title: 'Missing quote identifier',
-				description: 'Reload the quote detail and try again.',
-				variant: 'destructive',
-			});
-			return;
-		}
+  const fetchData = useCallback(async () => {
+    try {
+      setLoading(true);
+      const response = await apiClient.get(`/rfq/${id}`);
+      const rfqData = response.data as IRFQFull;
+      setData(rfqData);
 
-		setAssigning(true);
-		try {
-			await assignAbandonedQuote(quoteId, assignee);
-			toast({ title: 'Quote assigned', description: `Assigned to ${assignee}.` });
-			refetch();
-		} catch (assignError) {
-			const message = assignError instanceof Error ? assignError.message : 'Unable to assign quote';
-			toast({ title: 'Assignment failed', description: message, variant: 'destructive' });
-		} finally {
-			setAssigning(false);
-		}
-	}, [assigneeInput, quoteId, refetch, toast]);
+      // Initialize editing state
+      const prices: Record<string, number> = {};
+      const leadTimes: Record<string, number> = {};
+      rfqData.parts.forEach((part) => {
+        prices[part.id] = part.final_price || 0;
+        leadTimes[part.id] = part.lead_time || 0;
+      });
+      setPartPrices(prices);
+      setPartLeadTimes(leadTimes);
+    } catch (error) {
+      console.error(error);
+      toast({
+        title: "Error fetching quote",
+        description: "Could not load quote details.",
+        variant: "destructive",
+      });
+    } finally {
+      setLoading(false);
+    }
+  }, [id, toast]);
 
-	const handleReminder = useCallback(async () => {
-		if (!quoteId) {
-			toast({
-				title: 'Missing quote identifier',
-				description: 'Reload the quote detail and try again.',
-				variant: 'destructive',
-			});
-			return;
-		}
+  useEffect(() => {
+    setPageTitle("Quote");
+    return () => {
+      resetTitle();
+    };
+  }, []);
 
-		setReminding(true);
-		try {
-			await sendAbandonedQuoteReminder(quoteId);
-			toast({ title: 'Reminder sent', description: 'A follow-up reminder was triggered for the buyer.' });
-		} catch (reminderError) {
-			const message = reminderError instanceof Error ? reminderError.message : 'Unable to send reminder';
-			toast({ title: 'Reminder failed', description: message, variant: 'destructive' });
-		} finally {
-			setReminding(false);
-		}
-	}, [quoteId, toast]);
+  useEffect(() => {
+    fetchData();
+  }, [fetchData]);
 
-	const handleConvertToManual = useCallback(async () => {
-		if (!quoteId) {
-			toast({
-				title: 'Missing quote identifier',
-				description: 'Reload the quote detail and try again.',
-				variant: 'destructive',
-			});
-			return;
-		}
+  const totalCalculated = useMemo(() => {
+    if (!data) return 0;
+    return data.parts.reduce((acc, part) => {
+      const price = partPrices[part.id] || 0;
+      return acc + price * part.quantity;
+    }, 0);
+  }, [data, partPrices]);
 
-		setConverting(true);
-		try {
-			await updateQuoteLifecycleStatus(quoteId, 'Needs_Review');
-			toast({
-				title: 'Quote moved to manual review',
-				description: 'The quote is now flagged for manual intervention.',
-			});
-			refetch();
-		} catch (convertError) {
-			const message = convertError instanceof Error ? convertError.message : 'Unable to convert quote';
-			toast({ title: 'Conversion failed', description: message, variant: 'destructive' });
-		} finally {
-			setConverting(false);
-		}
-	}, [quoteId, refetch, toast]);
+  const handleDownload = (part: IRFQFull["parts"][number]) => {
+    const link = document.createElement("a");
+    link.href = part.cad_file_url;
+    link.download = part.file_name ?? "cad-file";
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
 
-	return (
-		<RequireAnyRole<ActionRole>
-			roles={ACTION_ROLES as ActionRole[]}
-			fallback={<div className="p-6 text-sm text-red-600">Access denied</div>}
-		>
-			{!quoteId ? (
-				<div className="p-6 text-sm text-red-600">Quote identifier is required.</div>
-			) : isLoading ? (
-				<div className="flex h-64 items-center justify-center text-muted-foreground">
-					<Loader2 className="mr-2 h-5 w-5 animate-spin" />
-					Loading quote...
-				</div>
-			) : isError || !detail || !summary || !item || !workspace ? (
-				<div className="p-6">
-					<Card className="border-destructive/40 bg-destructive/10">
-						<CardHeader className="flex flex-row items-start gap-3">
-							<AlertTriangle className="h-5 w-5 text-destructive" aria-hidden="true" />
-							<div>
-								<CardTitle className="text-base">Unable to load quote</CardTitle>
-								<p className="text-xs text-destructive/80">{error?.message ?? 'Please try again.'}</p>
-							</div>
-						</CardHeader>
-						<CardContent>
-							<Button variant="outline" onClick={() => refetch()}>
-								Retry
-							</Button>
-						</CardContent>
-					</Card>
-				</div>
-			) : (
-				<div className="space-y-6 p-6">
-					<header className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-						<div className="flex items-center gap-3 text-sm text-muted-foreground">
-							<Button asChild variant="ghost" size="sm" className="px-2">
-								<Link href="/admin/quotes" className="inline-flex items-center gap-1">
-									<ArrowLeft className="h-4 w-4" aria-hidden="true" />
-									Back to quotes
-								</Link>
-							</Button>
-							<span className="text-xs uppercase tracking-wide text-muted-foreground">Quote</span>
-							<span className="font-medium text-foreground">{item.quoteNumber ?? summary.id}</span>
-						</div>
-						<div className="flex items-center gap-2">
-							<Badge variant="outline" className="uppercase">
-								{item.lane.replace('_', ' ')}
-							</Badge>
-							<Badge className={priorityBadge(item.priority)}>{item.priority}</Badge>
-							<Button type="button" variant="outline" size="sm" onClick={() => refetch()} disabled={isFetching}>
-								<RefreshCw className="mr-2 h-4 w-4" aria-hidden="true" />
-								Refresh
-							</Button>
-						</div>
-					</header>
+  const handleSyncPricing = async (shouldApprove = false) => {
+    if (!data) return;
+    setSaving(true);
+    try {
+      // 1. Sync Pricing
+      await apiClient.post(`/rfq/${data.rfq.id}/sync-pricing`, {
+        rfq_final_price: totalCalculated,
+        parts: data.parts.map((p) => ({
+          id: p.id,
+          final_price: partPrices[p.id] || 0,
+          lead_time: partLeadTimes[p.id] || 0,
+        })),
+      });
 
-					<Card>
-						<CardHeader>
-							<CardTitle className="text-base font-semibold">Actions</CardTitle>
-						</CardHeader>
-						<CardContent className="space-y-4">
-							<div className="flex flex-col gap-3 md:flex-row md:items-end md:gap-4">
-								<div className="w-full md:w-64">
-									<Label htmlFor="assignee-input" className="text-xs uppercase tracking-wide text-muted-foreground">
-										Assign to
-									</Label>
-									<Input
-										id="assignee-input"
-										value={assigneeInput}
-										onChange={(event) => setAssigneeInput(event.target.value)}
-										placeholder="Enter user id or email"
-										className="mt-1"
-									/>
-								</div>
-								<Button type="button" onClick={handleAssign} disabled={assigning}>
-									{assigning ? 'Assigning...' : 'Assign Quote'}
-								</Button>
-							</div>
-							<div className="flex flex-wrap gap-2">
-								<Button type="button" variant="secondary" onClick={handleReminder} disabled={reminding}>
-									{reminding ? 'Sending...' : 'Send Reminder'}
-								</Button>
-								<Button type="button" variant="outline" onClick={handleConvertToManual} disabled={converting}>
-									{converting ? 'Converting...' : 'Convert to Manual Review'}
-								</Button>
-							</div>
-						</CardContent>
-					</Card>
+      // 2. If shouldApprove, update RFQ status to 'quoted'
+      if (shouldApprove) {
+        await apiClient.patch(`/rfq/${data.rfq.id}`, {
+          status: "quoted",
+        });
+      }
 
-					<section className="grid gap-4 lg:grid-cols-3">
-						<Card>
-							<CardHeader>
-								<CardTitle className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">
-									Customer
-								</CardTitle>
-							</CardHeader>
-							<CardContent className="space-y-2 text-sm">
-								<div>
-									<p className="text-base font-semibold text-foreground">{item.customerName ?? '—'}</p>
-									<p className="text-xs text-muted-foreground">{item.company ?? '—'}</p>
-								</div>
-								<SeparatorLine />
-								<div className="flex justify-between">
-									<span className="text-muted-foreground">Submitted</span>
-									<span>{formatAbsolute(item.createdAt)}</span>
-								</div>
-								<div className="flex justify-between">
-									<span className="text-muted-foreground">Last action</span>
-									<span>{formatAbsolute(item.lastActionAt)}</span>
-								</div>
-								<div className="flex justify-between">
-									<span className="text-muted-foreground">Assignee</span>
-									<span>{item.assignee ?? 'Unassigned'}</span>
-								</div>
-							</CardContent>
-						</Card>
+      toast({
+        title: shouldApprove ? "Quote Published" : "Changes Saved",
+        description: `Successfully updated pricing for ${data.rfq.rfq_code}`,
+      });
 
-						<Card>
-							<CardHeader>
-								<CardTitle className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">
-									Financials
-								</CardTitle>
-							</CardHeader>
-							<CardContent className="space-y-2 text-sm">
-								<div className="flex justify-between">
-									<span className="text-muted-foreground">Line items</span>
-									<span>{item.totalItems}</span>
-								</div>
-								<div className="flex justify-between">
-									<span className="text-muted-foreground">Total value</span>
-									<span className="font-medium text-foreground">
-										{formatCurrency(item.totalValue ?? 0, item.currency ?? 'USD')}
-									</span>
-								</div>
-								<div className="flex justify-between">
-									<span className="text-muted-foreground">DFM findings</span>
-									<span>{item.dfmFindingCount ?? 0}</span>
-								</div>
-								<SeparatorLine />
-								<div className="space-y-1 text-xs text-muted-foreground">
-									<p>Pricing snapshot</p>
-									<ul className="space-y-0.5 text-foreground">
-										<li className="flex justify-between">
-											<span>Material</span>
-											<span>
-												{formatCurrency(
-													workspace.pricingSummary.materialCost ?? 0,
-													workspace.pricingSummary.currency ?? quoteCurrency,
-												)}
-											</span>
-										</li>
-										<li className="flex justify-between">
-											<span>Machining</span>
-											<span>
-												{formatCurrency(
-													workspace.pricingSummary.machiningCost ?? 0,
-													workspace.pricingSummary.currency ?? quoteCurrency,
-												)}
-											</span>
-										</li>
-										<li className="flex justify-between">
-											<span>Finishing</span>
-											<span>
-												{formatCurrency(
-													workspace.pricingSummary.finishingCost ?? 0,
-													workspace.pricingSummary.currency ?? quoteCurrency,
-												)}
-											</span>
-										</li>
-										<li className="flex justify-between font-medium">
-											<span>Total</span>
-											<span>
-												{formatCurrency(
-													workspace.pricingSummary.total ?? 0,
-													workspace.pricingSummary.currency ?? quoteCurrency,
-												)}
-											</span>
-										</li>
-									</ul>
-								</div>
-							</CardContent>
-						</Card>
+      fetchData();
+    } catch (error) {
+      console.error(error);
+      toast({
+        title: "Update failed",
+        description: "An error occurred while saving pricing.",
+        variant: "destructive",
+      });
+    } finally {
+      setSaving(false);
+    }
+  };
 
-						<Card>
-							<CardHeader>
-								<CardTitle className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">
-									Notes
-								</CardTitle>
-							</CardHeader>
-							<CardContent className="space-y-3 text-sm">
-								{workspace.notes.length === 0 ? (
-									<p className="text-muted-foreground">No analyst notes yet.</p>
-								) : (
-									workspace.notes.slice(0, 3).map((note) => (
-										<div key={note.id} className="rounded border bg-muted/30 p-2">
-											<p className="text-xs text-muted-foreground">{formatAbsolute(note.at)}</p>
-											<p className="mt-1 text-sm text-foreground">{note.text ?? '—'}</p>
-										</div>
-									))
-								)}
-								{workspace.notes.length > 3 ? (
-									<p className="text-xs text-muted-foreground">{workspace.notes.length - 3} more note(s) not shown.</p>
-								) : null}
-							</CardContent>
-						</Card>
-					</section>
+  const handleSavePartSpecs = async (updatedFields: any) => {
+    if (!editingPart || !data) return;
+    setSaving(true);
+    try {
+      await apiClient.patch(
+        `/rfq/${data.rfq.id}/parts/${editingPart.id}`,
+        updatedFields,
+      );
 
-					<Card>
-						<CardHeader className="flex flex-row items-center justify-between">
-							<CardTitle className="text-base font-semibold">Quote Lines</CardTitle>
-							<Badge variant="outline">{lineSummaries.length} parts</Badge>
-						</CardHeader>
-						<CardContent className="overflow-x-auto">
-							<Table>
-								<TableHeader>
-									<TableRow>
-										<TableHead>Line</TableHead>
-										<TableHead>Process</TableHead>
-										<TableHead>Material</TableHead>
-										<TableHead className="text-right">Quantity</TableHead>
-										<TableHead className="text-right">Unit Price</TableHead>
-										<TableHead className="text-right">Lead (days)</TableHead>
-										<TableHead className="text-right">DFM Issues</TableHead>
-									</TableRow>
-								</TableHeader>
-								<TableBody>
-									{lineSummaries.map((line) => (
-										<TableRow key={line.id}>
-											<TableCell className="font-medium">{line.fileName ?? line.id}</TableCell>
-											<TableCell>{line.processType ?? '—'}</TableCell>
-											<TableCell>{line.material ?? '—'}</TableCell>
-											<TableCell className="text-right">{line.quantity ?? '—'}</TableCell>
-											<TableCell className="text-right">{formatCurrency(line.unitPrice ?? 0, quoteCurrency)}</TableCell>
-											<TableCell className="text-right">{line.leadTimeDays ?? '—'}</TableCell>
-											<TableCell className="text-right">{line.dfmIssues}</TableCell>
-										</TableRow>
-									))}
-									{lineSummaries.length === 0 ? (
-										<TableRow>
-											<TableCell colSpan={7} className="py-6 text-center text-sm text-muted-foreground">
-												No line items available for this quote.
-											</TableCell>
-										</TableRow>
-									) : null}
-								</TableBody>
-							</Table>
-						</CardContent>
-					</Card>
+      toast({
+        title: "Specifications Updated",
+        description: `Successfully updated details for ${editingPart.file_name}`,
+      });
 
-					<section className="grid gap-4 lg:grid-cols-2">
-						<Card>
-							<CardHeader>
-								<CardTitle className="text-base font-semibold">DFM Findings</CardTitle>
-							</CardHeader>
-							<CardContent className="space-y-3 text-sm">
-								{workspace.dfm.length === 0 ? (
-									<p className="text-muted-foreground">No DFM blockers recorded.</p>
-								) : (
-									workspace.dfm.map((issue) => (
-										<div key={issue.id} className="rounded border bg-muted/30 p-3">
-											<div className="flex items-center justify-between text-xs uppercase tracking-wide">
-												<span>{issue.rule ?? 'DFM Finding'}</span>
-												<Badge variant="outline">{issue.severity ?? 'MED'}</Badge>
-											</div>
-											<p className="mt-2 text-sm text-foreground">{issue.message}</p>
-											<p className="mt-1 text-xs text-muted-foreground">Recorded {formatAbsolute(issue.createdAt)}</p>
-										</div>
-									))
-								)}
-							</CardContent>
-						</Card>
+      setEditingPart(null);
+      fetchData();
+    } catch (error) {
+      console.error(error);
+      toast({
+        title: "Update failed",
+        description: "An error occurred while saving specifications.",
+        variant: "destructive",
+      });
+    } finally {
+      setSaving(false);
+    }
+  };
 
-						<Card>
-							<CardHeader>
-								<CardTitle className="text-base font-semibold">Activity Timeline</CardTitle>
-							</CardHeader>
-							<CardContent className="space-y-3 text-sm">
-								{workspace.activity.length === 0 ? (
-									<p className="text-muted-foreground">No activity captured for this quote yet.</p>
-								) : (
-									workspace.activity.map((event) => (
-										<div key={event.id} className="rounded border bg-muted/30 p-3">
-											<div className="flex items-center justify-between text-xs uppercase tracking-wide text-muted-foreground">
-												<span>{event.action}</span>
-												<span>{formatAbsolute(event.at)}</span>
-											</div>
-											<p className="mt-2 text-sm text-foreground">Actor: {event.actor ?? 'System'}</p>
-											{event.meta ? (
-												<pre className="mt-2 max-h-48 overflow-auto whitespace-pre-wrap rounded bg-background p-2 text-xs text-muted-foreground">
-													{JSON.stringify(event.meta, null, 2)}
-												</pre>
-											) : null}
-										</div>
-									))
-								)}
-							</CardContent>
-						</Card>
-					</section>
-				</div>
-			)}
-		</RequireAnyRole>
-	);
+  const processValidators: Record<string, (part: any) => boolean> = {
+    "sheet-metal": (part) => Boolean(part.sheet_thickness_mm),
+    "cnc-machining": (part) => Boolean(part.tolerance),
+  };
+
+  const validateParts = () => {
+    return (data?.parts ?? []).every((part) => {
+      const hasBasicSpecs =
+        part.quantity > 0 && part.material && part.finish && part.inspection;
+
+      const price = partPrices[part.id] || 0;
+      const leadTime = partLeadTimes[part.id] || 0;
+      const hasPricing = price > 0 && leadTime > 0;
+
+      if (!hasBasicSpecs || !hasPricing) {
+        return false;
+      }
+
+      // Determine which validator to use
+      let processKey = "cnc-machining"; // default
+      if (isSheetMetalProcess(part.process)) {
+        processKey = "sheet-metal";
+      } else if (isCNCProcess(part.process)) {
+        processKey = "cnc-machining";
+      }
+
+      const validator = processValidators[processKey];
+      return validator ? validator(part) : false;
+    });
+  };
+
+  const handleSendQuote = async () => {
+    // Prevent double-clicks
+    if (saving || !data?.rfq.id) return;
+
+    if (!validateParts()) {
+      notify.error("Part are incomplete please check all the values");
+      return;
+    }
+
+    setSaving(true);
+
+    try {
+      // 1. Save pricing first to ensure totals are updated
+      await apiClient.post(`/rfq/${data.rfq.id}/sync-pricing`, {
+        rfq_final_price: totalCalculated,
+        parts: data.parts.map((p) => ({
+          id: p.id,
+          final_price: partPrices[p.id] || 0,
+          lead_time: partLeadTimes[p.id] || 0,
+        })),
+      });
+
+      // 2. Send the quote
+      const res = await apiClient.post(`/rfq/send-quote/${data.rfq.id}`, {
+        userId: data.rfq.user_id,
+      });
+
+      if (res.status === 200 || res.status === 201 || res.data) {
+        notify.success("Quote sent successfully");
+        fetchData(); // Refresh data to show updated status/totals
+      } else {
+        throw new Error("Unexpected response");
+      }
+    } catch (error) {
+      console.error("Quote Sending Error:", error);
+      notify.error("Failed to send quote. Please try again.");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  if (loading) {
+    return (
+      <div className="h-screen flex items-center justify-center">
+        <CustomLoader />
+      </div>
+    );
+  }
+
+  if (!data) {
+    return (
+      <div className="h-screen flex flex-col items-center justify-center space-y-4">
+        <div className="text-xl font-semibold text-slate-600">
+          Quote not found
+        </div>
+        <button
+          onClick={() => router.push("/admin/quotes")}
+          className="text-indigo-600 hover:underline"
+        >
+          Back to Admin Quotes
+        </button>
+      </div>
+    );
+  }
+
+  const isManual = data.rfq.rfq_type === "manual";
+
+  return (
+    <div className="relative max-w-7xl h-full mx-auto px-4 py-8 space-y-8">
+      {/* Top Navigation */}
+      <div className="flex items-center gap-4">
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={() => router.back()}
+          className="rounded-full h-10 w-10 p-0"
+        >
+          <ArrowLeft className="w-5 h-5" />
+        </Button>
+        <div className="flex flex-col">
+          <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">
+            Quote Administration
+          </span>
+          <h1 className="text-2xl font-bold text-slate-900">
+            {data.rfq.rfq_code}
+          </h1>
+        </div>
+        <div className="ml-auto flex items-center gap-3">
+          <StatusPill status={data.rfq.status} />
+          {isManual && (
+            <>
+              <Button
+                variant="outline"
+                onClick={() => handleSyncPricing(false)}
+                disabled={saving}
+                className="gap-2"
+              >
+                <Save className="w-4 h-4" />
+                Save Draft
+              </Button>
+              <Button
+                onClick={() => handleSendQuote()}
+                disabled={saving}
+                className="gap-2 bg-indigo-600 hover:bg-indigo-700"
+              >
+                <CheckCircle2 className="w-4 h-4" />
+                Submit Quote
+              </Button>
+            </>
+          )}
+        </div>
+      </div>
+
+      {/* Admin Information Banner */}
+      <div className="bg-slate-900 text-white rounded-2xl p-6 flex gap-6 items-center shadow-xl shadow-slate-200">
+        <div className="bg-white/10 p-3 rounded-2xl">
+          <Package className="w-8 h-8 text-indigo-400" />
+        </div>
+        <div className="flex-1">
+          <h2 className="text-lg font-bold">Pricing Overview</h2>
+          <p className="text-slate-400 text-sm">
+            Review parts, set unit prices, and lead times for this request.
+          </p>
+        </div>
+        <div className="h-12 w-px bg-white/10" />
+        <div className="text-right">
+          <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">
+            Total Quote Value
+          </p>
+          <p className="text-3xl font-black text-white">
+            {formatCurrencyGeneric(totalCalculated)}
+          </p>
+        </div>
+      </div>
+
+      {/* Minimal Banner (Similar to Portal) */}
+      {isManual && (
+        <div className="bg-indigo-50/50 border border-indigo-100 rounded-xl p-4 flex gap-3 items-start">
+          <div className="bg-indigo-100/50 p-1.5 rounded-lg text-indigo-600">
+            <Info className="w-5 h-5" />
+          </div>
+          <div className="space-y-1">
+            <h3 className="font-semibold text-indigo-900 text-sm">
+              Manual Review Mode
+            </h3>
+            <p className="text-indigo-800/70 text-sm">
+              This quote was flagged for manual review by the customer for
+              custom engineering specifications.
+            </p>
+            {data.rfq.manual_quote_metadata && (
+              <div className="mt-3 flex flex-wrap gap-2">
+                {Object.entries(data.rfq.manual_quote_metadata).map(
+                  ([key, value]) => (
+                    <div
+                      key={key}
+                      className="bg-white/60 border border-indigo-200/30 rounded-lg px-3 py-1.5 flex items-center gap-2"
+                    >
+                      <span className="text-[9px] uppercase font-bold text-indigo-600/60 tracking-wider">
+                        {key.replace(/_/g, " ")}:
+                      </span>
+                      <span className="text-xs text-indigo-900 font-medium">
+                        {String(value)}
+                      </span>
+                    </div>
+                  ),
+                )}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* PARTS LIST WITH EDITING */}
+      <section className="space-y-4 mb-4">
+        <SectionTitle title="Parts & Quotation Details" />
+        <div className="grid grid-cols-1 gap-6">
+          {data.parts.map((part) => (
+            <div
+              key={part.id}
+              className="group flex bg-white border border-slate-200 rounded-2xl overflow-hidden hover:border-indigo-400/50 transition-all duration-300"
+            >
+              {/* Part Visual */}
+              <div
+                onClick={() => setSelectedPart(part)}
+                className="w-48 bg-slate-50 flex items-center justify-center cursor-pointer hover:bg-slate-100 transition-colors border-r"
+              >
+                {part.snapshot_2d_url ? (
+                  <img
+                    src={part.snapshot_2d_url}
+                    alt={part.file_name}
+                    className="max-h-full max-w-full object-contain p-4 mix-blend-multiply"
+                  />
+                ) : (
+                  <div className="w-12 h-12 rounded-2xl bg-slate-200 flex items-center justify-center text-slate-400">
+                    <Package className="w-6 h-6" />
+                  </div>
+                )}
+              </div>
+
+              {/* Part Details */}
+              <div className="p-6 flex-1 grid grid-cols-1 xl:grid-cols-12 gap-8 items-center">
+                {/* Technical Specs - Cols 1-5 */}
+                <div className="xl:col-span-5 space-y-4">
+                  <div>
+                    <div className="flex items-center gap-2 mb-2">
+                      <h3 className="font-bold text-slate-900 truncate text-lg">
+                        {part.file_name}
+                      </h3>
+                      {part.process && (
+                        <Badge
+                          variant="outline"
+                          className="text-[10px] font-bold uppercase tracking-wider bg-slate-50 text-slate-600 border-slate-200"
+                        >
+                          {part.process.replace(/-/g, " ")}
+                        </Badge>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-2 text-xs text-slate-500 font-medium">
+                      <span>Qty: {part.quantity} units</span>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-y-3 gap-x-6 p-4 bg-slate-50/50 rounded-xl border border-slate-100">
+                    <div>
+                      <span className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">
+                        Material
+                      </span>
+                      <span className="text-sm font-semibold text-slate-700">
+                        {(metalTranslation as any)[part.material] ??
+                          part.material}
+                      </span>
+                    </div>
+                    <div>
+                      <span className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">
+                        Finish
+                      </span>
+                      <span className="text-sm font-semibold text-slate-700">
+                        {part.finish}
+                      </span>
+                    </div>
+                    <div>
+                      <span className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">
+                        {part.sheet_thickness_mm ? "Thickness" : "Tolerance"}
+                      </span>
+                      <span className="text-sm font-semibold text-slate-700">
+                        {part.sheet_thickness_mm
+                          ? `${part.sheet_thickness_mm} mm`
+                          : part.tolerance}
+                      </span>
+                    </div>
+                    <div>
+                      <span className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">
+                        Inspection
+                      </span>
+                      <span className="text-sm font-semibold text-slate-700">
+                        {part.inspection || "Standard"}
+                      </span>
+                    </div>
+                    {part.certificates && part.certificates.length > 0 && (
+                      <div className="col-span-2 border-t border-slate-100 pt-2 mt-1">
+                        <span className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">
+                          Certifications
+                        </span>
+                        <div className="flex flex-wrap gap-1.5">
+                          {part.certificates.map((cert) => (
+                            <span
+                              key={cert}
+                              className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-white border border-slate-200 text-slate-600 shadow-sm"
+                            >
+                              {cert.replace(/_/g, " ")}
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {/* Commercials - Cols 6-9 */}
+                <div className="xl:col-span-4 flex flex-col justify-center space-y-4 border-t border-slate-100 pt-6 xl:border-t-0 xl:pt-0 xl:border-l xl:pl-8">
+                  {isManual ? (
+                    <>
+                      <div className="space-y-2">
+                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-1.5">
+                          <DollarSign className="w-3 h-3 text-indigo-500" />
+                          Unit Price (USD)
+                        </label>
+                        <Input
+                          type="number"
+                          value={partPrices[part.id] || ""}
+                          onChange={(e) =>
+                            setPartPrices((prev) => ({
+                              ...prev,
+                              [part.id]: parseFloat(e.target.value) || 0,
+                            }))
+                          }
+                          placeholder="0.00"
+                          className="h-11 rounded-xl border-slate-200 focus:ring-indigo-500 font-semibold text-base"
+                        />
+                        <div className="flex justify-between items-center text-xs">
+                          <span className="text-slate-500">Total:</span>
+                          <span className="font-bold text-slate-900 bg-slate-100 px-2 py-0.5 rounded">
+                            {formatCurrencyGeneric(
+                              (partPrices[part.id] || 0) * part.quantity,
+                            )}
+                          </span>
+                        </div>
+                      </div>
+
+                      <div className="space-y-2">
+                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-1.5">
+                          <Clock className="w-3 h-3 text-indigo-500" />
+                          Lead Time (Days)
+                        </label>
+                        <Input
+                          type="number"
+                          value={partLeadTimes[part.id] || ""}
+                          onChange={(e) =>
+                            setPartLeadTimes((prev) => ({
+                              ...prev,
+                              [part.id]: parseInt(e.target.value) || 0,
+                            }))
+                          }
+                          placeholder="0"
+                          className="h-11 rounded-xl border-slate-200 focus:ring-indigo-500 font-semibold"
+                        />
+                      </div>
+                    </>
+                  ) : (
+                    <>
+                      <div className="space-y-1">
+                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-1.5">
+                          <DollarSign className="w-3 h-3 text-slate-400" />
+                          Quote Price
+                        </label>
+                        <div className="flex items-baseline gap-2">
+                          <span className="text-2xl font-bold text-slate-900">
+                            {formatCurrencyGeneric(part.final_price || 0)}
+                          </span>
+                          <span className="text-xs font-medium text-slate-500">
+                            / unit
+                          </span>
+                        </div>
+                        <div className="text-xs text-slate-500 font-medium">
+                          Total:{" "}
+                          {formatCurrencyGeneric(
+                            (part.final_price || 0) * part.quantity,
+                          )}
+                        </div>
+                      </div>
+
+                      <div className="space-y-1 mt-4">
+                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-1.5">
+                          <Clock className="w-3 h-3 text-slate-400" />
+                          Lead Time
+                        </label>
+                        <div className="flex items-baseline gap-2">
+                          <span className="text-xl font-bold text-slate-900">
+                            {part.lead_time || "-"}
+                          </span>
+                          <span className="text-sm font-medium text-slate-500">
+                            days
+                          </span>
+                        </div>
+                      </div>
+                    </>
+                  )}
+                </div>
+
+                {/* Actions - Cols 10-12 */}
+                <div className="xl:col-span-3 flex flex-col justify-center gap-3 border-t border-slate-100 pt-6 xl:border-t-0 xl:pt-0 xl:border-l xl:pl-8">
+                  <div className="flex gap-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="flex-1 h-10 text-indigo-600 hover:text-indigo-700 hover:bg-indigo-50 text-xs font-bold uppercase tracking-widest border-indigo-100"
+                      onClick={() => setSelectedPart(part)}
+                    >
+                      View 3D
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="h-10 w-10 p-0 text-slate-400 hover:text-indigo-600 border-slate-200 hover:border-indigo-200"
+                      onClick={() => handleDownload(part)}
+                      title="Download CAD File"
+                    >
+                      <Download className="w-4 h-4" />
+                    </Button>
+                  </div>
+                  {isManual && (
+                    <Button
+                      variant="default"
+                      size="sm"
+                      className="h-10 bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold uppercase tracking-widest w-full gap-2 shadow-lg shadow-slate-200"
+                      onClick={() => setEditingPart(part)}
+                    >
+                      <Settings2 className="w-3 h-3" />
+                      Edit Specs
+                    </Button>
+                  )}
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      {/* SIDE DRAWER (Same as Portal) */}
+      {selectedPart && (
+        <RfqDetailDrawer
+          part={selectedPart}
+          onClose={() => setSelectedPart(null)}
+        />
+      )}
+
+      {/* SPECS EDIT MODAL */}
+      {editingPart && (
+        <EditPartSpecsModal
+          isOpen={!!editingPart}
+          onClose={() => setEditingPart(null)}
+          part={editingPart}
+          onSave={handleSavePartSpecs}
+          isSaving={saving}
+        />
+      )}
+    </div>
+  );
 }
 
-function deriveLineSummaries(lines: ContractsVNext.QuoteLineVNext[]) {
-	return lines.map((line) => {
-		const selectedQuantity = line.selection.selectedQuantity ?? line.selection.quantities[0] ?? null;
-		const pricingEntry = selectedQuantity
-			? line.pricing.matrix.find((entry) => entry.quantity === selectedQuantity) ?? line.pricing.matrix[0]
-			: line.pricing.matrix[0];
-		const dfmIssueCount = Array.isArray(line.dfm?.issues) ? line.dfm.issues.length : 0;
+/* =======================
+   REUSABLE COMPONENTS
+======================= */
 
-		return {
-			id: line.id,
-			fileName: line.selection?.processType ? `${line.selection.processType} part` : line.id,
-			processType: line.selection.processType,
-			material: line.selection.materialSpec ?? line.selection.materialId,
-			quantity: selectedQuantity,
-			unitPrice: pricingEntry?.unitPrice ?? null,
-			leadTimeDays: pricingEntry?.leadTimeDays ?? null,
-			dfmIssues: dfmIssueCount,
-		};
-	});
+function StatusPill({ status }: { status: string }) {
+  const getStatusColor = (s: string) => {
+    switch (s.toLowerCase()) {
+      case "draft":
+        return "bg-slate-100 text-slate-700 border-slate-200";
+      case "submitted":
+        return "bg-blue-100 text-blue-700 border-blue-200";
+      case "quoted":
+        return "bg-indigo-100 text-indigo-700 border-indigo-200";
+      case "accepted":
+        return "bg-emerald-100 text-emerald-700 border-emerald-200";
+      case "paid":
+        return "bg-emerald-100 text-emerald-700 border-emerald-200";
+      case "pending":
+      case "pending approval":
+      case "payment pending":
+        return "bg-amber-100 text-amber-700 border-amber-200";
+      case "rejected":
+        return "bg-rose-100 text-rose-700 border-rose-200";
+      default:
+        return "bg-slate-100 text-slate-700 border-slate-200";
+    }
+  };
+
+  return (
+    <span
+      className={`px-4 py-1.5 rounded-full text-xs font-bold uppercase tracking-wider border shadow-sm ${getStatusColor(status)}`}
+    >
+      {status}
+    </span>
+  );
 }
 
-function formatAbsolute(value?: string | null): string {
-	if (!value) {
-		return '—';
-	}
-
-	const date = new Date(value);
-	if (Number.isNaN(date.getTime())) {
-		return value;
-	}
-
-	return new Intl.DateTimeFormat(undefined, {
-		dateStyle: 'medium',
-		timeStyle: 'short',
-	}).format(date);
+function SectionTitle({ title }: { title: string }) {
+  return (
+    <h2 className="text-xs font-black uppercase tracking-[0.2em] text-slate-400 flex items-center gap-2">
+      <div className="w-1.5 h-1.5 rounded-full bg-indigo-500" />
+      {title}
+    </h2>
+  );
 }
 
-function priorityBadge(priority: ContractsVNext.AdminReviewPriorityVNext): string {
-	switch (priority) {
-		case 'LOW':
-			return 'bg-slate-100 text-slate-700 border border-slate-200';
-		case 'MED':
-			return 'bg-blue-100 text-blue-800 border border-blue-200';
-		case 'HIGH':
-			return 'bg-amber-100 text-amber-900 border border-amber-200';
-		case 'EXPEDITE':
-			return 'bg-red-100 text-red-800 border border-red-200';
-		default:
-			return 'bg-slate-100 text-slate-700 border border-slate-200';
-	}
+function Detail({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="flex justify-between items-center py-3 border-b border-slate-100 last:border-0">
+      <span className="text-sm text-slate-500">{label}</span>
+      <span className="text-sm font-semibold text-slate-900">{value}</span>
+    </div>
+  );
 }
 
-function SeparatorLine() {
-	return <div className="h-px w-full bg-border" role="presentation" />;
+function RfqDetailDrawer({
+  part,
+  onClose,
+}: {
+  part: IRFQFull["parts"][number];
+  onClose: () => void;
+}) {
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-6 lg:p-10">
+      <div
+        className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm"
+        onClick={onClose}
+      />
+      <div className="relative w-full max-w-[1400px] h-full max-h-[850px] bg-white rounded-[32px] shadow-2xl flex flex-col md:flex-row overflow-hidden border border-white/20">
+        <div className="flex-1 bg-[#0a0a0f] relative min-h-[300px]">
+          <div className="absolute inset-0">
+            <CadViewer
+              file={part.cad_file_url}
+              showControls={true}
+              autoResize={true}
+              zoom={0.5}
+            />
+          </div>
+          <div className="absolute top-6 right-6 z-10">
+            <Button
+              variant="ghost"
+              size="sm"
+              className="bg-white/10 hover:bg-white/20 text-white border border-white/20 backdrop-blur-md gap-2 h-9 px-4 text-xs font-bold uppercase tracking-wider"
+              onClick={() => window.open(part.cad_file_url, "_blank")}
+            >
+              <Download className="w-3.5 h-3.5" />
+              Download Source
+            </Button>
+          </div>
+        </div>
+        <div className="w-full md:w-[450px] flex flex-col h-full bg-white border-l border-slate-100">
+          <div className="p-8 border-b border-slate-100 flex justify-between items-start">
+            <div>
+              <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-indigo-50 text-indigo-600 text-[10px] font-black uppercase tracking-widest mb-3">
+                <Package className="w-3 h-3" /> Technical Specification
+              </div>
+              <h2 className="text-2xl font-bold text-slate-900 tracking-tight">
+                {part.file_name.split(".")[0]}
+              </h2>
+            </div>
+            <button
+              onClick={onClose}
+              className="p-3 hover:bg-slate-50 rounded-2xl transition-all duration-200 text-slate-400 hover:text-slate-900"
+            >
+              <X className="w-5 h-5" />
+            </button>
+          </div>
+          <div className="flex-1 overflow-y-auto p-8 space-y-10 custom-scrollbar">
+            <section>
+              <h3 className="text-xs font-black text-slate-400 uppercase tracking-[0.2em] mb-6 flex items-center gap-2">
+                <div className="w-1 h-1 rounded-full bg-indigo-500" /> Technical
+                Details
+              </h3>
+              <div className="grid gap-y-1">
+                <Detail
+                  label="Material"
+                  value={
+                    (metalTranslation as any)[part.material] ?? part.material
+                  }
+                />
+                <Detail label="Finishing" value={part.finish} />
+                <Detail label="Tolerance" value={part.tolerance} />
+                <Detail
+                  label="Inspection"
+                  value={part.inspection || "Standard"}
+                />
+              </div>
+            </section>
+            {part.notes && (
+              <section>
+                <h3 className="text-xs font-black text-slate-400 uppercase tracking-[0.2em] mb-4 flex items-center gap-2">
+                  <div className="w-1 h-1 rounded-full bg-indigo-500" />{" "}
+                  Additional Notes
+                </h3>
+                <div className="p-6 bg-slate-50 rounded-[28px] text-sm text-slate-600 leading-relaxed italic border border-slate-100">
+                  "{part.notes}"
+                </div>
+              </section>
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
 }
-

@@ -47,7 +47,6 @@ export type SyncPricingDto = {
 export type UpdatePartDto = Partial<InitialPartDto> & {
   final_price?: number;
   is_archived?: boolean;
-  rfq_final_price?: number;
   // Sheet metal support (explicit for clarity)
   process?: string;
   sheet_thickness_mm?: number;

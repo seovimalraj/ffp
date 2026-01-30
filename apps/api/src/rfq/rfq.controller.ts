@@ -13,7 +13,12 @@ import {
   Query,
   Logger,
 } from '@nestjs/common';
-import { RoleNames, SQLFunctions, Tables } from '../../libs/constants';
+import {
+  InngestEvents,
+  RoleNames,
+  SQLFunctions,
+  Tables,
+} from '../../libs/constants';
 import { Roles } from '../auth/roles.decorator';
 import { SupabaseService } from '../supabase/supabase.service';
 import {
@@ -30,6 +35,8 @@ import {
 import { AuthGuard } from '../auth/auth.guard';
 import { CurrentUser } from '../auth/user.decorator';
 import { CurrentUserDto } from '../auth/auth.dto';
+import { InngestService } from 'src/inngest/inngest.service';
+import { RFQStatuses } from './rfq.helpers';
 
 @Controller('rfq')
 @UseGuards(AuthGuard)
@@ -37,6 +44,7 @@ export class RfqController {
   constructor(
     private readonly supbaseService: SupabaseService,
     private readonly logger: Logger,
+    private readonly inngestService: InngestService,
   ) {}
 
   @Get('')
@@ -71,6 +79,67 @@ export class RfqController {
     };
   }
 
+  @Get('admin/all')
+  @Roles(RoleNames.Admin)
+  async getAdminRfqs(
+    @Query('status') status?: string,
+    @Query('limit') limit?: number,
+    @Query('cursorCreatedAt') cursorCreatedAt?: string,
+    @Query('cursorId') cursorId?: string,
+  ) {
+    const client = this.supbaseService.getClient();
+
+    let query = client
+      .from(Tables.RFQTable)
+      .select(
+        `
+        *,
+        organization:${Tables.OrganizationTable}(name),
+        user:${Tables.UserTable}(email, name),
+        parts:${Tables.RFQPartsTable}(id)
+      `,
+      )
+      .order('created_at', { ascending: false })
+      .order('id', { ascending: false });
+
+    if (status && status.toLowerCase() !== 'any') {
+      query = query.eq('status', status.toLowerCase());
+    }
+
+    if (cursorCreatedAt && cursorId) {
+      query = query.or(
+        `created_at.lt."${cursorCreatedAt}",and(created_at.eq."${cursorCreatedAt}",id.lt."${cursorId}")`,
+      );
+    }
+
+    const { data, error } = await query.limit((limit || 20) + 1);
+
+    if (error) {
+      this.logger.error('Failed to fetch admin RFQs:', error);
+      throw new HttpException(error.message, HttpStatus.BAD_REQUEST);
+    }
+
+    const hasMore = data.length > (limit || 20);
+    const resultData = hasMore ? data.slice(0, limit || 20) : data;
+
+    const processedData = resultData.map((rfq) => ({
+      ...rfq,
+      parts_count: rfq.parts?.length || 0,
+      organization_name: rfq.organization?.name || 'Unknown',
+      user_email: rfq.user?.email,
+      user_name: rfq.user?.name,
+      parts: undefined,
+      organization: undefined,
+      user: undefined,
+    }));
+
+    return {
+      success: true,
+      data: processedData,
+      hasMore,
+    };
+  }
+
   @Post('')
   @Roles(RoleNames.Customer)
   async createRfq(
@@ -78,8 +147,6 @@ export class RfqController {
     @CurrentUser() user: CurrentUserDto,
   ) {
     const client = this.supbaseService.getClient();
-
-    console.log(user.id);
 
     // check the code in the create-inital-rfq.sql file
     // for SQL function code
@@ -92,9 +159,12 @@ export class RfqController {
       throw error;
     }
 
+    const rfqId = data[0].out_rfq_id;
+    await this.recalculateRfqTotal(rfqId);
+
     return {
       ...data,
-      rfq_id: data[0].out_rfq_id,
+      rfq_id: rfqId,
       rfq_code: data[0].out_rfq_code,
       success: true,
     };
@@ -158,6 +228,36 @@ export class RfqController {
     };
   }
 
+  private async notifyVerifier(rfqId: string, userEmail: string) {
+    await this.inngestService.sendEvent(InngestEvents.EmailEvent, {
+      to: process.env.VERIFIER_EMAIL,
+      subject: 'New Manual Quote Request',
+      body: `
+      A new manual quote request has been submitted and requires review.
+
+      ----------------------------------------
+      RFQ DETAILS
+      ----------------------------------------
+      RFQ ID      : ${rfqId}
+      Customer   : ${userEmail}
+
+      ----------------------------------------
+      ACTION REQUIRED
+      ----------------------------------------
+      Review and process the quote using the link below:
+      ${process.env.FRONTEND_URL}/admin/quotes/${rfqId}
+
+      ----------------------------------------
+      NOTIFICATION DETAILS
+      ----------------------------------------
+      Submitted by : ${userEmail}
+
+      This is an automated message.
+    `.trim(),
+      name: 'Manual Quote System',
+    });
+  }
+
   @Post('manual')
   @Roles(RoleNames.Customer)
   async makeManualQuote(
@@ -165,35 +265,46 @@ export class RfqController {
     body: {
       rfqId?: string;
       partIds: string[];
-      metadata: Record<string, string>;
+      metadata?: Record<string, string>;
     },
     @CurrentUser() user: CurrentUserDto,
   ) {
-    const client = this.supbaseService.getClient();
+    if (!body.partIds?.length) {
+      throw new HttpException(
+        'At least one part is required for manual quote',
+        HttpStatus.BAD_REQUEST,
+      );
+    }
 
+    const client = this.supbaseService.getClient();
+    let rfqId: string;
+
+    // -------------------------
+    // Existing RFQ → manual
+    // -------------------------
     if (body.rfqId) {
-      // 1. Update Existing RFQ
+      rfqId = body.rfqId;
+
       const { error: rfqError } = await client
         .from(Tables.RFQTable)
         .update({
           rfq_type: 'manual',
-          status: 'pending approval',
-          manual_quote_metadata: body.metadata,
-        } as any)
-        .eq('id', body.rfqId)
+          status: RFQStatuses.UnderReview,
+          manual_quote_metadata: body.metadata ?? {},
+        })
+        .eq('id', rfqId)
         .eq('user_id', user.id);
 
       if (rfqError) {
         throw new HttpException(rfqError.message, HttpStatus.BAD_REQUEST);
       }
 
-      // 2. Add parts to manual_quote_approval table
       const { error: approvalError } = await client
         .from(Tables.ManualQuoteApproval)
         .upsert(
-          body.partIds.map((pid) => ({
-            rfq_id: body.rfqId,
-            rfq_part_id: pid,
+          body.partIds.map((partId) => ({
+            rfq_id: rfqId,
+            rfq_part_id: partId,
           })),
           { onConflict: 'rfq_part_id' },
         );
@@ -201,34 +312,74 @@ export class RfqController {
       if (approvalError) {
         throw new HttpException(approvalError.message, HttpStatus.BAD_REQUEST);
       }
-
-      return {
-        success: true,
-        message: 'RFQ converted to manual quote successfully',
-      };
     }
 
-    const { data, error } = await client.rpc(SQLFunctions.CreateManualQuotes, {
-      p_user_id: user.id,
-      p_parts: body.partIds,
-      p_meta: body.metadata,
-    });
-
-    if (error) {
-      this.logger.error(error);
-      throw new HttpException(
-        `Failed to create manual quote ${error}`,
-        HttpStatus.INTERNAL_SERVER_ERROR,
+    // -------------------------
+    // New RFQ (RPC)
+    // -------------------------
+    else {
+      const { data, error } = await client.rpc(
+        SQLFunctions.CreateManualQuotes,
+        {
+          p_user_id: user.id,
+          p_parts: body.partIds,
+          p_meta: body.metadata ?? {},
+        },
       );
+
+      if (error || !data?.[0]?.out_rfq_id) {
+        this.logger.error(error);
+        throw new HttpException(
+          'Failed to create manual quote',
+          HttpStatus.INTERNAL_SERVER_ERROR,
+        );
+      }
+
+      rfqId = data[0].out_rfq_id;
+    }
+
+    // -------------------------
+    // Side effect (non-blocking)
+    // -------------------------
+    try {
+      await this.notifyVerifier(rfqId, user.email);
+    } catch (err) {
+      this.logger.error(
+        { err, rfqId },
+        'Failed to send manual quote notification',
+      );
+      // Do NOT fail the request
     }
 
     return {
-      data,
+      success: true,
+      rfqId,
+      message: 'Manual quote request submitted successfully',
+    };
+  }
+
+  @Post('send-quote/:rfqId')
+  @Roles(RoleNames.Admin)
+  async sendQuote(
+    @Param('rfqId') rfqId: string,
+    @Body() body: { userId: string }, // Consider adding a ValidationPipe here
+  ) {
+    // 1. Trigger the event
+    // Note: We return the result of the event trigger (usually just a messageId)
+    // so the Admin knows the "command" was accepted.
+    await this.inngestService.sendEvent('rfq/manual-quote.approval', {
+      quoteId: rfqId,
+      userId: body.userId,
+    });
+
+    return {
+      success: true,
+      message: 'Quote approval process started',
     };
   }
 
   @Post(':rfqId/add-parts')
-  @Roles(RoleNames.Customer)
+  @Roles(RoleNames.Admin, RoleNames.Customer)
   async addParts(
     @Param('rfqId') rfqId: string,
     @Body() body: { parts: InitialPartDto[] },
@@ -250,6 +401,8 @@ export class RfqController {
     if (error) {
       throw new HttpException(error.message, HttpStatus.BAD_REQUEST);
     }
+
+    await this.recalculateRfqTotal(rfqId);
 
     return {
       success: true,
@@ -368,6 +521,8 @@ export class RfqController {
       );
     }
 
+    await this.recalculateRfqTotal(rfqId);
+
     return {
       success: true,
       removedCount: data,
@@ -375,7 +530,7 @@ export class RfqController {
   }
 
   @Patch(':rfqId/parts/:partId')
-  @Roles(RoleNames.Customer)
+  @Roles(RoleNames.Admin, RoleNames.Customer)
   async updatePart(
     @Param('rfqId') rfqId: string,
     @Param('partId') partId: string,
@@ -395,6 +550,10 @@ export class RfqController {
       throw new HttpException(error.message, HttpStatus.BAD_REQUEST);
     }
 
+    if (body.final_price !== undefined || body.quantity !== undefined) {
+      await this.recalculateRfqTotal(rfqId);
+    }
+
     return {
       success: true,
       part: data,
@@ -402,7 +561,7 @@ export class RfqController {
   }
 
   @Patch(':rfq_id')
-  @Roles(RoleNames.Customer)
+  @Roles(RoleNames.Admin, RoleNames.Customer)
   async updateRfq(@Body() body: UpdateRfqDto, @Param('rfq_id') rfq_id: string) {
     const client = this.supbaseService.getClient();
 
@@ -417,6 +576,8 @@ export class RfqController {
       throw new HttpException(error.message, HttpStatus.BAD_REQUEST);
     }
 
+    await this.recalculateRfqTotal(rfq_id);
+
     return {
       success: true,
       rfq: data,
@@ -424,7 +585,7 @@ export class RfqController {
   }
 
   @Get(':rfqId')
-  @Roles(RoleNames.Customer)
+  @Roles(RoleNames.Admin, RoleNames.Customer)
   async getRfqById(@Param('rfqId') rfqId: string) {
     const client = this.supbaseService.getClient();
 
@@ -520,7 +681,7 @@ export class RfqController {
   }
 
   @Post(':rfqId/sync-pricing')
-  @Roles(RoleNames.Customer)
+  @Roles(RoleNames.Admin, RoleNames.Customer)
   async syncPricing(
     @Param('rfqId') rfqId: string,
     @Body() body: SyncPricingDto,
@@ -540,21 +701,77 @@ export class RfqController {
     }
 
     // 2. Update Parts Pricing
-    // Using Promise.all for parallel updates
-    const updatePromises = body.parts.map((p) =>
-      client
-        .from(Tables.RFQPartsTable)
-        .update({
-          final_price: p.final_price,
-          lead_time: p.lead_time,
-        })
-        .eq('id', p.id),
+    const results = await Promise.all(
+      body.parts.map((p) =>
+        client
+          .from(Tables.RFQPartsTable)
+          .update({
+            final_price: p.final_price,
+            lead_time: p.lead_time,
+          })
+          .eq('id', p.id),
+      ),
     );
 
-    await Promise.all(updatePromises);
+    // Check for errors in part updates
+    const errors = results.filter((r) => r.error);
+    if (errors.length > 0) {
+      this.logger.error(
+        `Some parts failed to update: ${JSON.stringify(errors)}`,
+      );
+    }
+
+    // 3. Recalculate to be absolutely sure
+    await this.recalculateRfqTotal(rfqId);
 
     return {
       success: true,
     };
+  }
+
+  @Post(':rfqId/recalculate')
+  @Roles(RoleNames.Admin, RoleNames.Customer)
+  async manualRecalculate(@Param('rfqId') rfqId: string) {
+    const total = await this.recalculateRfqTotal(rfqId);
+    return {
+      success: true,
+      total,
+    };
+  }
+
+  private async recalculateRfqTotal(rfqId: string) {
+    const client = this.supbaseService.getClient();
+
+    // Fetch all active parts for this RFQ
+    const { data: parts, error: fetchError } = await client
+      .from(Tables.RFQPartsTable)
+      .select('final_price, quantity')
+      .eq('rfq_id', rfqId)
+      .eq('is_archived', false);
+
+    if (fetchError) {
+      this.logger.error(
+        `Error fetching parts for recalculation: ${fetchError.message}`,
+      );
+      return 0;
+    }
+
+    const total = parts.reduce((acc, part) => {
+      const price = part.final_price || 0;
+      const qty = part.quantity || 0;
+      return acc + price * qty;
+    }, 0);
+
+    // Update the RFQ total
+    const { error: updateError } = await client
+      .from(Tables.RFQTable)
+      .update({ final_price: total })
+      .eq('id', rfqId);
+
+    if (updateError) {
+      this.logger.error(`Error updating RFQ total: ${updateError.message}`);
+    }
+
+    return total;
   }
 }

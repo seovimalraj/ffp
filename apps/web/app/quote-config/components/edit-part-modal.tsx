@@ -507,7 +507,7 @@ export function EditPartModal({
                             // Sheet Metal Materials - Categorized (filter out manual review materials)
                             <>
                               {Object.entries(SHEET_METAL_MATERIALS)
-                                .filter(([category, materials]) =>
+                                .filter(([_, materials]) =>
                                   // Only show categories that have at least one non-manual material
                                   materials.some(
                                     (m: any) => !m.requiresManualQuote,

@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect } from "react";
+import { X } from "lucide-react";
 import { CadViewer } from "@/components/cad/cad-viewer";
 
 type ExpandFileModalProps = {
@@ -38,34 +39,23 @@ const ExpandFileModal = ({
   return (
     <div
       onClick={() => setExpandedFile(null)}
-      className="animate-fade-in fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4 backdrop-blur-sm"
+      className="animate-fade-in fixed inset-0 z-[100] flex items-center justify-center bg-black/80 p-4 backdrop-blur-sm"
     >
       <div
         onClick={(e) => e.stopPropagation()}
         className="animate-scale-in relative h-[90vh] w-[90vw] overflow-hidden rounded-2xl bg-[#0b1220] shadow-2xl"
       >
-        {/* Modal Header */}
-        <div className="absolute left-0 right-0 top-0 z-10 flex items-center justify-between bg-gradient-to-b from-black/50 to-transparent p-4">
-          <button
-            onClick={() => setExpandedFile(null)}
-            className="rounded-full bg-white/10 p-2 text-white backdrop-blur-md transition-colors hover:bg-white/20"
-          >
-            <svg
-              xmlns="http://www.w3.org/2000/svg"
-              width="24"
-              height="24"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            >
-              <line x1="18" y1="6" x2="6" y2="18" />
-              <line x1="6" y1="6" x2="18" y2="18" />
-            </svg>
-          </button>
-        </div>
+        {/* Close Button */}
+        <button
+          onClick={() => setExpandedFile(null)}
+          className="absolute right-6 top-6 z-[110] flex h-12 w-12 items-center justify-center rounded-full bg-white/10 text-white backdrop-blur-xl transition-all hover:scale-110 hover:bg-white/20 active:scale-95 border border-white/10 shadow-lg"
+          aria-label="Close modal"
+        >
+          <X className="h-6 w-6" />
+        </button>
+
+        {/* Modal Header Gradient Overlay */}
+        <div className="absolute left-0 right-0 top-0 z-10 h-32 bg-gradient-to-b from-black/60 to-transparent pointer-events-none" />
 
         {/* Fullscreen Viewer */}
         <CadViewer

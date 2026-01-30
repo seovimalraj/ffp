@@ -1,7 +1,7 @@
 "use client";
 import React, { useState } from "react";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import AppHeader from "@/layout/AppHeader";
 import { cn } from "@/lib/utils";
 import {
@@ -17,6 +17,7 @@ import {
 import Logo from "@/components/ui/logo";
 import UserDropdown from "@/components/Header/UserDropdown";
 import NotificationDropdown from "@/components/Header/NotificationDropdown";
+import { useSession } from "next-auth/react";
 
 interface CustomerLayoutProps {
   readonly children: React.ReactNode;
@@ -49,6 +50,15 @@ export default function CustomerLayout({
   const pathname = usePathname();
   const [mobileOpen, setMobileOpen] = useState(false);
   const [desktopOpen, setDesktopOpen] = useState(true);
+  const router = useRouter();
+
+  const { data, status } = useSession();
+
+  React.useEffect(() => {
+    if (status === "authenticated" && data?.user?.role !== "customer") {
+      router.push(`/${data?.user?.role}`);
+    }
+  }, [data, status, router]);
 
   return (
     <div className="flex h-screen w-full overflow-hidden bg-[#F8FAFC]">

@@ -33,7 +33,7 @@ import {
   LogOut,
 } from "lucide-react";
 import { Button } from "./ui/button";
-import { signOut } from "next-auth/react";
+import { signOut, useSession } from "next-auth/react";
 
 interface AdminLayoutProps {
   readonly children: React.ReactNode;
@@ -97,6 +97,14 @@ export default function AdminLayout({ children }: Readonly<AdminLayoutProps>) {
     signOut();
     router.push("/signin");
   };
+
+  const { data, status } = useSession();
+
+  React.useEffect(() => {
+    if (status === "authenticated" && data?.user?.role !== "admin") {
+      router.push(`/${data?.user?.role}`);
+    }
+  }, [data, status, router]);
 
   return (
     <div className="flex h-screen w-full overflow-hidden bg-gradient-to-br from-slate-50 via-gray-50 to-slate-100 dark:from-gray-950 dark:via-slate-950 dark:to-gray-900">

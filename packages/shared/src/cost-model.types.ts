@@ -134,7 +134,7 @@ export interface CostSelectionContext {
 export function deriveCostFactorsV1(
   model: CostModel,
   selection: CostSelectionContext,
-  _metrics: GeometryMetricsV1
+  _metrics: GeometryMetricsV1,
 ): CostFactorsV1 {
   // Machine & setup
   const machine_rate_per_hour = model.machine.machine_rate_per_hour;
@@ -162,7 +162,7 @@ export function deriveCostFactorsV1(
 
   // Inspection
   const inspection = model.inspection_levels.find(
-    (l) => l.level === (selection.inspection_level || "basic")
+    (l) => l.level === (selection.inspection_level || "basic"),
   );
   const inspection_cost_per_part = inspection ? inspection.cost_per_part : 0;
 
@@ -172,7 +172,7 @@ export function deriveCostFactorsV1(
 
   // Rush / lead time multiplier
   const leadTier = model.lead_time_tiers.find(
-    (t) => t.code === selection.lead_time_option
+    (t) => t.code === selection.lead_time_option,
   );
   const rush_multiplier =
     leadTier?.price_multiplier && leadTier.price_multiplier > 1
@@ -206,6 +206,8 @@ export function deriveCostFactorsV1(
           discount_percent: q.discount_percent,
         }))
       : undefined,
+    material_id: "",
+    material_name: "",
   };
 }
 
