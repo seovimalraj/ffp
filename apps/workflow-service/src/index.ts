@@ -14,12 +14,36 @@ import { supabase } from "./lib/supabase.js";
 const app = new Hono();
 const port = config.port;
 
+/**
+ * =====================================================
+ * 1️⃣ INNGEST — MUST BE FIRST (NO MIDDLEWARE BEFORE THIS)
+ * =====================================================
+ */
+app.on(
+  ["GET", "PUT", "POST"],
+  "/api/inngest",
+  serveInngest({
+    client: inngest,
+    functions,
+  }),
+);
+
+/**
+ * ==========================
+ * 2️⃣ LOGGER (AFTER INNGEST)
+ * ==========================
+ */
 app.use(
   pinoLogger({
     pino: logger,
   }),
 );
 
+/**
+ * ======================
+ * 3️⃣ CORS (AFTER INNGEST)
+ * ======================
+ */
 app.use(
   "/*",
   cors({
@@ -39,6 +63,11 @@ app.use(
   }),
 );
 
+/**
+ * =========
+ * 4️⃣ ROUTES
+ * =========
+ */
 app.get("/", (c) => {
   return c.text("FFP Workflow Service is running!");
 });
@@ -59,18 +88,16 @@ app.get("/health", async (c) => {
   }
 });
 
-app.on(
-  ["GET", "PUT", "POST"],
-  "/api/inngest",
-  serveInngest({
-    client: inngest,
-    functions,
-    servePath: "/api/inngest",
-    ...(process.env.INNGEST_SIGNING_KEY
-      ? { signingKey: process.env.INNGEST_SIGNING_KEY }
-      : {}),
-  }),
-);
+console.log({
+  eventKey: process.env.INNGEST_EVENT_KEY,
+
+  // @ts-ignore
+  // REQUIRED for verifying Inngest → app requests
+  signingKey: process.env.INNGEST_SIGNING_KEY,
+
+  // REQUIRED ONLY for self-hosted Inngest
+  baseUrl: process.env.INNGEST_BASE_URL || "https://ffp-workflow.frigate.ai", // undefined in Cloud → OK
+});
 
 logger.info(`FFP Workflow Service is running at http://localhost:${port}`);
 
