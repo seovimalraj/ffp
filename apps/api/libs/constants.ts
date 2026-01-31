@@ -112,6 +112,8 @@ export enum SQLFunctions {
   getRFQPartsInfinite = 'get_rfq_parts_infinite',
   getUserRFQsWithPartsCountInfinite = 'get_user_rfqs_with_parts_count_infinite',
   getOrdersInfinite = 'get_orders_infinite',
+
+  getRfqStatusCounts = 'get_rfq_status_counts',
 }
 
 /**

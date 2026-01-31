@@ -312,7 +312,7 @@ export default function AdminQuoteDetailPage() {
   const isManual = data.rfq.rfq_type === "manual";
 
   return (
-    <div className="relative max-w-7xl h-full mx-auto px-4 py-8 space-y-8">
+    <div className="relative max-w-7xl h-full mx-auto px-4 py-4 space-y-8">
       {/* Top Navigation */}
       <div className="flex items-center gap-4">
         <Button

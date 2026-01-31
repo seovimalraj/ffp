@@ -116,3 +116,36 @@ SELECT jsonb_build_object(
     )
 FROM rfqs_with_parts;
 $$;
+--
+----
+------- RFQ Status Summary
+----
+--
+CREATE OR REPLACE FUNCTION get_rfq_status_summary(p_organization_id UUID) RETURNS json LANGUAGE sql STABLE AS $$
+SELECT json_build_object(
+        'total',
+        (
+            SELECT COUNT(*)
+            FROM rfq
+            WHERE organization_id = p_organization_id
+        ),
+        'by_status',
+        (
+            SELECT json_agg(
+                    json_build_object(
+                        'status',
+                        status,
+                        'count',
+                        count
+                    )
+                )
+            FROM (
+                    SELECT status,
+                        COUNT(*) AS count
+                    FROM rfq
+                    WHERE organization_id = p_organization_id
+                    GROUP BY status
+                ) s
+        )
+    );
+$$;
