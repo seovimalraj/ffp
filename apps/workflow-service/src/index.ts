@@ -96,7 +96,7 @@ console.log({
   signingKey: process.env.INNGEST_SIGNING_KEY,
 
   // REQUIRED ONLY for self-hosted Inngest
-  baseUrl: process.env.INNGEST_BASE_URL || "https://ffp-workflow.frigate.ai", // undefined in Cloud → OK
+  baseUrl: process.env.INNGEST_BASE_URL || "https://ffp-inngest.frigate.ai", // undefined in Cloud → OK
 });
 
 logger.info(`FFP Workflow Service is running at http://localhost:${port}`);
