@@ -17,7 +17,7 @@ async function refreshAccessToken(token: any) {
     const apiUrl =
       process.env.INTERNAL_API_URL ||
       process.env.NEXT_PUBLIC_API_URL ||
-      "https://app.frigate.ai";
+      "https://ffp-api.frigate.ai";
 
     console.log("Refreshing token via API:", apiUrl);
 
@@ -102,7 +102,7 @@ const authOptions: NextAuthOptions = {
           // Use internal API URL for server-side calls
           // IMPORTANT: INTERNAL_API_URL first (absolute), not NEXT_PUBLIC_API_URL (relative path)
           const apiUrl =
-            process.env.INTERNAL_API_URL || "https://app.frigate.ai";
+            process.env.INTERNAL_API_URL || "https://ffp-api.frigate.ai";
           console.log("Auth API URL:", apiUrl);
           const res = await fetch(`${apiUrl}/auth/login`, {
             method: "POST",
@@ -196,7 +196,7 @@ const authOptions: NextAuthOptions = {
       if (token?.id) {
         try {
           const apiUrl =
-            process.env.INTERNAL_API_URL || "https://app.frigate.ai";
+            process.env.INTERNAL_API_URL || "https://ffp-api.frigate.ai";
           await fetch(`${apiUrl}/auth/logout`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
@@ -220,7 +220,7 @@ const getSession = () => getServerSession(authOptions);
 
 const AuthService = {
   login: async (email: string, pass: string) => {
-    const apiUrl = process.env.INTERNAL_API_URL || "https://app.frigate.ai";
+    const apiUrl = process.env.INTERNAL_API_URL || "https://ffp-api.frigate.ai";
     const res = await fetch(`${apiUrl}/auth/login`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -230,7 +230,7 @@ const AuthService = {
     return res.json();
   },
   register: async (data: any) => {
-    const apiUrl = process.env.INTERNAL_API_URL || "https://app.frigate.ai";
+    const apiUrl = process.env.INTERNAL_API_URL || "https://ffp-api.frigate.ai";
 
     const res = await fetch(`${apiUrl}/auth/register`, {
       method: "POST",

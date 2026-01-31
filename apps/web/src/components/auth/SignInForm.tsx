@@ -152,6 +152,10 @@ export function SignInForm() {
     }
   };
 
+  const apiUrl = process.env.INTERNAL_API_URL || "https://ffp-api.frigate.ai";
+
+  console.log("API:", apiUrl);
+
   return (
     <div className="w-full lg:w-1/2 bg-white p-8 lg:p-12 flex flex-col justify-center">
       <div className="max-w-md mx-auto w-full">

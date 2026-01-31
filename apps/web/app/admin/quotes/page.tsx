@@ -238,36 +238,7 @@ function AdminQuotesContent() {
   ];
 
   return (
-    <div className="min-h-screen space-y-6 p-6 max-w-7xl mx-auto">
-      <div className="flex flex-col md:flex-row md:items-end justify-between gap-4">
-        <div className="space-y-1">
-          <h1 className="text-3xl font-black text-slate-900 tracking-tight">
-            Quotations
-          </h1>
-          <p className="text-slate-500 text-sm">
-            Centralized management for all platform manufacture requests.
-          </p>
-        </div>
-        <div className="flex items-center gap-3">
-          <div className="relative">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-            <Input
-              placeholder="Search by ID, Company..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="pl-10 h-11 w-64 rounded-xl border-slate-200 focus:ring-indigo-500"
-            />
-          </div>
-          <Button
-            onClick={() => fetchQuotes()}
-            variant="outline"
-            className="h-11 rounded-xl gap-2 border-slate-200"
-          >
-            Refresh
-          </Button>
-        </div>
-      </div>
-
+    <div className="min-h-screen space-y-6 px-3 py-1 mx-auto">
       <StatusCards
         isLoading={loading}
         items={[

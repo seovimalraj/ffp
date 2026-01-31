@@ -58,24 +58,35 @@ export class RfqController {
   ) {
     const client = this.supbaseService.getClient();
 
-    const { data, error } = await client.rpc(
-      SQLFunctions.getUserRFQsWithPartsCountInfinite,
-      {
+    const [rfqResponse, statusResponse] = await Promise.all([
+      client.rpc(SQLFunctions.getUserRFQsWithPartsCountInfinite, {
         p_user_id: user.id,
         p_status: status || null,
         p_limit: limit || 20,
         p_cursor_created_at: cursorCreatedAt || null,
         p_cursor_id: cursorId || null,
-      },
-    );
+      }),
+
+      client.rpc(SQLFunctions.getRfqStatusCounts, {
+        p_organization_id: user.organizationId,
+      }),
+    ]);
+
+    const { data, error } = rfqResponse;
+    const { data: statusData, error: statusError } = statusResponse;
 
     if (error) {
       throw new HttpException(error.message, HttpStatus.BAD_REQUEST);
     }
 
+    if (statusError) {
+      throw new HttpException(statusError.message, HttpStatus.BAD_REQUEST);
+    }
+
     return {
       success: true,
       ...data,
+      statusCounts: statusData,
     };
   }
 
@@ -133,9 +144,19 @@ export class RfqController {
       user: undefined,
     }));
 
+    const { data: rfqCounts, error: statusError } = await client.rpc(
+      SQLFunctions.getRfqStatusCounts,
+    );
+
+    if (statusError) {
+      this.logger.error('Failed to fetch statuses: ', statusError);
+      throw new HttpException(error.message, HttpStatus.BAD_REQUEST);
+    }
+
     return {
       success: true,
       data: processedData,
+      counts: rfqCounts,
       hasMore,
     };
   }
