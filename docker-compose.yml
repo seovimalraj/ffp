@@ -16,7 +16,8 @@ services:
       # External Supabase Database
       DATABASE_URL: postgresql://postgres:nt1hoziaodxredplrvxpevqdmkhacl1w@supabase.frigate.ai:5432/postgres
       # Inngest
-      INNGEST_EVENT_KEY: "wfObvkjHtesq+h+rJTf1AzC+pO+zm8QA1hvOtbTAkxQ="
+      INNGEST_EVENT_KEY: aad9abda084d3b95147ba3b5a58b8c6d45bdb40c7ebbeb91de542444e157de85
+      INNGEST_SERVICE_URL: https://ffp-inngest.frigate.ai
 
       # Supabase Configuration
       SUPABASE_URL: https://supabase.frigate.ai
