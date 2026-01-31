@@ -88,25 +88,6 @@ export function createViewer(container: HTMLElement): Viewer {
   cubeWrapper.appendChild(cubeCanvas);
   container.appendChild(cubeWrapper);
 
-  // pointerdown handler (was missing) — prevent events from falling through to main canvas
-  function onCubePointerDown(e: PointerEvent) {
-    try {
-      // capture pointer if available
-      (e.target as Element)?.setPointerCapture?.(e.pointerId);
-    } catch (err) {
-      // ignore
-    }
-    e.preventDefault();
-    e.stopPropagation();
-  }
-
-  // attach pointer listeners directly to the canvas (non-passive pointermove)
-  cubeCanvas.addEventListener("pointermove", onCubePointerMove as any);
-  cubeCanvas.addEventListener("pointerdown", onCubePointerDown as any, {
-    passive: false,
-  });
-  cubeCanvas.addEventListener("click", onCubeClick as any);
-
   const cubeRenderer = new THREE.WebGLRenderer({
     canvas: cubeCanvas,
     antialias: true,
@@ -150,7 +131,9 @@ export function createViewer(container: HTMLElement): Viewer {
         ? cubeRenderer.capabilities.getMaxAnisotropy()
         : 1;
       tex.anisotropy = maxAniso;
-    } catch (e) {}
+    } catch {
+      /* ignore */
+    }
     tex.needsUpdate = true;
     return tex;
   }
@@ -216,9 +199,340 @@ export function createViewer(container: HTMLElement): Viewer {
   triad.position.copy(cornerOffset);
   cubeRoot.add(triad);
 
+  // Edge and Corner patch meshes (single geometry each) parented to cubeMesh so they inherit scale
+  const lastMeshLocal = new THREE.Vector3();
+
+  const halfUnit = 0.5; // unit cube half
+  const EDGE_PATCH_LEN = 0.9 * halfUnit; // length along edge
+  const EDGE_PATCH_DEPTH = 0.45 * halfUnit; // depth into face
+  const CORNER_PATCH_SIZE = 0.55 * halfUnit; // corner square size (larger)
+
+  function clamp(v: number, a: number, b: number) {
+    return Math.max(a, Math.min(b, v));
+  }
+
+  function addQuad(positions: number[], fixedAxis: "x" | "y" | "z", fixedVal: number, uAxis: "x" | "y" | "z", u0: number, u1: number, vAxis: "x" | "y" | "z", v0: number, v1: number) {
+    // two triangles (v00, v10, v11) and (v11, v01, v00)
+    const setVertex = (u: number, v: number) => {
+      const p = { x: 0, y: 0, z: 0 } as any;
+      p[fixedAxis] = fixedVal;
+      p[uAxis] = u;
+      p[vAxis] = v;
+      positions.push(p.x, p.y, p.z);
+    };
+
+    // v00 (u0,v0), v10 (u1,v0), v11 (u1,v1), v01 (u0,v1)
+    // tri1
+    setVertex(u0, v0);
+    setVertex(u1, v0);
+    setVertex(u1, v1);
+    // tri2
+    setVertex(u1, v1);
+    setVertex(u0, v1);
+    setVertex(u0, v0);
+  }
+
+  // materials/geometries
+  const edgeMat = new THREE.MeshBasicMaterial({ color: 0xdbeafe, transparent: true, opacity: 0.6, side: THREE.DoubleSide, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: 1 });
+  const cornerMat = new THREE.MeshBasicMaterial({ color: 0xdbeafe, transparent: true, opacity: 0.6, side: THREE.DoubleSide, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: 1 });
+
+  let edgeGeom: THREE.BufferGeometry = new THREE.BufferGeometry();
+  let cornerGeom: THREE.BufferGeometry = new THREE.BufferGeometry();
+  const edgePatchMesh = new THREE.Mesh(edgeGeom, edgeMat);
+  const cornerPatchMesh = new THREE.Mesh(cornerGeom, cornerMat);
+  edgePatchMesh.visible = false;
+  cornerPatchMesh.visible = false;
+  edgePatchMesh.renderOrder = 2000;
+  cornerPatchMesh.renderOrder = 2000;
+  // parent to cubeMesh so they inherit its scale
+  cubeMesh.add(edgePatchMesh);
+  cubeMesh.add(cornerPatchMesh);
+
+  function hideHoverPatches() {
+    edgePatchMesh.visible = false;
+    cornerPatchMesh.visible = false;
+  }
+
+  function setEdgePatchFromHover(pLocal: THREE.Vector3, nearX: boolean, nearY: boolean, nearZ: boolean, nx: number, ny: number, nz: number) {
+    // build two quads (one per face)
+    const faces: { axis: "x" | "y" | "z"; sign: number }[] = [];
+    if (nearX) faces.push({ axis: "x", sign: Math.sign(nx) || 1 });
+    if (nearY) faces.push({ axis: "y", sign: Math.sign(ny) || 1 });
+    if (nearZ) faces.push({ axis: "z", sign: Math.sign(nz) || 1 });
+
+    const positions: number[] = [];
+
+    // free axis is the axis not in faces
+    const axes: ("x" | "y" | "z")[] = ["x", "y", "z"];
+    const presentAxes = faces.map((f) => f.axis);
+    const freeAxis = axes.find((a) => !presentAxes.includes(a))!;
+
+    // center along free axis (clamped)
+    const centerFree = clamp((pLocal as any)[freeAxis], -0.5 + EDGE_PATCH_LEN / 2, 0.5 - EDGE_PATCH_LEN / 2);
+
+    for (const f of faces) {
+      if (f.axis === "x") {
+        // quad on plane x = sign*0.5, u axis = freeAxis (length), v axis = the other in-plane axis
+        const otherAxis = freeAxis === "y" ? "z" : "y";
+        const otherSign = (otherAxis === "y" ? Math.sign((pLocal as any).y) : Math.sign((pLocal as any).z)) || (otherAxis === "y" ? Math.sign(ny) || 1 : Math.sign(nz) || 1);
+        const fixedVal = f.sign * 0.5;
+        const u0 = centerFree - EDGE_PATCH_LEN / 2;
+        const u1 = centerFree + EDGE_PATCH_LEN / 2;
+        const v0 = otherSign * 0.5; // edge at face intersection
+        const v1 = otherSign * 0.5 - otherSign * EDGE_PATCH_DEPTH; // inward
+        addQuad(positions, "x", fixedVal, freeAxis, u0, u1, otherAxis as any, v0, v1);
+      } else if (f.axis === "y") {
+        const otherAxis = freeAxis === "x" ? "z" : "x";
+        const otherSign = (otherAxis === "x" ? Math.sign((pLocal as any).x) : Math.sign((pLocal as any).z)) || (otherAxis === "x" ? Math.sign(nx) || 1 : Math.sign(nz) || 1);
+        const fixedVal = f.sign * 0.5;
+        const u0 = centerFree - EDGE_PATCH_LEN / 2;
+        const u1 = centerFree + EDGE_PATCH_LEN / 2;
+        const v0 = otherSign * 0.5;
+        const v1 = otherSign * 0.5 - otherSign * EDGE_PATCH_DEPTH;
+        addQuad(positions, "y", fixedVal, freeAxis, u0, u1, otherAxis as any, v0, v1);
+      } else {
+        const otherAxis = freeAxis === "x" ? "y" : "x";
+        const otherSign = (otherAxis === "x" ? Math.sign((pLocal as any).x) : Math.sign((pLocal as any).y)) || (otherAxis === "x" ? Math.sign(nx) || 1 : Math.sign(ny) || 1);
+        const fixedVal = f.sign * 0.5;
+        const u0 = centerFree - EDGE_PATCH_LEN / 2;
+        const u1 = centerFree + EDGE_PATCH_LEN / 2;
+        const v0 = otherSign * 0.5;
+        const v1 = otherSign * 0.5 - otherSign * EDGE_PATCH_DEPTH;
+        addQuad(positions, "z", fixedVal, freeAxis, u0, u1, otherAxis as any, v0, v1);
+      }
+    }
+
+    // build geometry
+    try {
+      edgeGeom.dispose();
+    } catch {
+      /* ignore */
+    }
+    edgeGeom = new THREE.BufferGeometry();
+    const posArr = new Float32Array(positions);
+    edgeGeom.setAttribute("position", new THREE.BufferAttribute(posArr, 3));
+    edgeGeom.computeBoundingSphere();
+    edgePatchMesh.geometry = edgeGeom;
+    edgePatchMesh.visible = true;
+  }
+
+  function setCornerPatchFromSigns(sx: number, sy: number, sz: number) {
+    const positions: number[] = [];
+
+    // x-face quad (u=y, v=z)
+    const xFixed = sx * 0.5;
+    const y0 = sy > 0 ? 0.5 - CORNER_PATCH_SIZE : -0.5;
+    const y1 = sy > 0 ? 0.5 : -0.5 + CORNER_PATCH_SIZE;
+    const z0 = sz > 0 ? 0.5 - CORNER_PATCH_SIZE : -0.5;
+    const z1 = sz > 0 ? 0.5 : -0.5 + CORNER_PATCH_SIZE;
+    addQuad(positions, "x", xFixed, "y", y0, y1, "z", z0, z1);
+
+    // y-face quad (u=x, v=z)
+    const yFixed = sy * 0.5;
+    const x0 = sx > 0 ? 0.5 - CORNER_PATCH_SIZE : -0.5;
+    const x1 = sx > 0 ? 0.5 : -0.5 + CORNER_PATCH_SIZE;
+    addQuad(positions, "y", yFixed, "x", x0, x1, "z", z0, z1);
+
+    // z-face quad (u=x, v=y)
+    const zFixed = sz * 0.5;
+    addQuad(positions, "z", zFixed, "x", x0, x1, "y", y0, y1);
+
+    try {
+      cornerGeom.dispose();
+    } catch {
+      /* ignore */
+    }
+    cornerGeom = new THREE.BufferGeometry();
+    const posArr = new Float32Array(positions);
+    cornerGeom.setAttribute("position", new THREE.BufferAttribute(posArr, 3));
+    cornerGeom.computeBoundingSphere();
+    cornerPatchMesh.geometry = cornerGeom;
+    cornerPatchMesh.visible = true;
+  }
+
+  // Drag-to-rotate state for view cube
+  let isDraggingCube = false;
+  let dragStartX = 0;
+  let dragStartY = 0;
+  let dragStartTheta = 0;
+  let dragStartPhi = 0;
+  let dragDistance = 0;
+  const DRAG_THRESHOLD = 4; // pixels
+  const ROTATE_SPEED = Math.PI * 0.5; // radians per full canvas width/height
+  const SPHERICAL_PHI_MIN = 0.05;
+  const SPHERICAL_PHI_MAX = Math.PI - 0.05;
+
+  function getSphericalFromCamera(): { theta: number; phi: number } {
+    const target = controls.target;
+    const offset = new THREE.Vector3().subVectors(
+      activeCamera.position,
+      target,
+    );
+    const spherical = new THREE.Spherical().setFromVector3(offset);
+    return { theta: spherical.theta, phi: spherical.phi };
+  }
+
+  function setCameraFromSpherical(theta: number, phi: number, radius: number) {
+    const target = controls.target;
+    // Clamp phi to avoid singularities
+    phi = Math.max(SPHERICAL_PHI_MIN, Math.min(SPHERICAL_PHI_MAX, phi));
+    
+    const spherical = new THREE.Spherical(radius, phi, theta);
+    const offset = new THREE.Vector3().setFromSpherical(spherical);
+    const newPos = target.clone().add(offset);
+    
+    persp.position.copy(newPos);
+    ortho.position.copy(newPos);
+    persp.up.set(0, 1, 0);
+    ortho.up.set(0, 1, 0);
+    persp.lookAt(target);
+    ortho.lookAt(target);
+    persp.updateProjectionMatrix();
+    ortho.updateProjectionMatrix();
+    controls.update();
+  }
+
+  function onCubePointerDown(e: PointerEvent) {
+    try {
+      (e.target as Element)?.setPointerCapture?.(e.pointerId);
+    } catch (err) {
+      // ignore
+    }
+    isDraggingCube = true;
+    dragStartX = e.clientX;
+    dragStartY = e.clientY;
+    dragDistance = 0;
+    const spherical = getSphericalFromCamera();
+    dragStartTheta = spherical.theta;
+    dragStartPhi = spherical.phi;
+    e.preventDefault();
+    e.stopPropagation();
+  }
+
+  function onCubePointerMove(e: PointerEvent) {
+    if (isDraggingCube) {
+      // Dragging: rotate the camera
+      const dx = e.clientX - dragStartX;
+      const dy = e.clientY - dragStartY;
+      dragDistance += Math.sqrt(dx * dx + dy * dy);
+
+      const rect = cubeCanvas.getBoundingClientRect();
+      const canvasWidth = rect.width || cubeSizePx;
+      const canvasHeight = rect.height || cubeSizePx;
+
+      const dTheta = -(dx / canvasWidth) * ROTATE_SPEED;
+      const dPhi = -(dy / canvasHeight) * ROTATE_SPEED;
+
+      const newTheta = dragStartTheta + dTheta;
+      const newPhi = dragStartPhi + dPhi;
+
+      const offset = new THREE.Vector3().subVectors(
+        activeCamera.position,
+        controls.target,
+      );
+      const radius = offset.length();
+
+      setCameraFromSpherical(newTheta, newPhi, radius);
+
+      cubeCanvas.style.cursor = "grabbing";
+      hideHoverPatches();
+      e.preventDefault();
+      e.stopPropagation();
+      return; 
+    }
+
+    // Not dragging: normal hover highlighting with single reusable patch
+    const rect = cubeCanvas.getBoundingClientRect();
+    const x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
+    const y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
+    cubePointer.set(x, y);
+    cubeRaycaster.setFromCamera(cubePointer, cubeCamera);
+    const intersects = cubeRaycaster.intersectObject(cubeMesh, false);
+
+    if (intersects.length === 0) {
+      hideHoverPatches();
+      highlightFaces(null);
+      cubeCanvas.style.cursor = "default";
+      e.stopPropagation();
+      return;
+    }
+
+    const intr = intersects[0] as any;
+    const faceIndex = intr.face?.materialIndex ?? 0;
+
+    // classify hover region using cubeMesh-local (unit cube) coords
+    const pMeshLocal = cubeMesh.worldToLocal(intr.point.clone());
+    lastMeshLocal.copy(pMeshLocal);
+    const halfUnit = 0.5;
+    const nx = pMeshLocal.x / Math.max(1e-6, halfUnit);
+    const ny = pMeshLocal.y / Math.max(1e-6, halfUnit);
+    const nz = pMeshLocal.z / Math.max(1e-6, halfUnit);
+
+    const EDGE_THRESH_HOVER = 0.7; // easier hover targeting
+    const nearX = Math.abs(nx) > EDGE_THRESH_HOVER;
+    const nearY = Math.abs(ny) > EDGE_THRESH_HOVER;
+    const nearZ = Math.abs(nz) > EDGE_THRESH_HOVER;
+    const nearCount = (nearX ? 1 : 0) + (nearY ? 1 : 0) + (nearZ ? 1 : 0);
+
+    cubeCanvas.style.cursor = "pointer";
+
+    if (nearCount >= 2) {
+      // EDGE or CORNER: show joined patches on adjacent faces
+      const sx = nearX ? Math.sign(nx) || 1 : 0;
+      const sy = nearY ? Math.sign(ny) || 1 : 0;
+      const sz = nearZ ? Math.sign(nz) || 1 : 0;
+
+      // clear face-center tint
+      highlightFaces(null);
+
+      // collect face material indices for the active faces
+      const faceIndices: number[] = [];
+      if (nearX) faceIndices.push(sx > 0 ? X_POS : X_NEG);
+      if (nearY) faceIndices.push(sy > 0 ? Y_POS : Y_NEG);
+      if (nearZ) faceIndices.push(sz > 0 ? Z_POS : Z_NEG);
+
+      if (nearCount === 2) {
+        setEdgePatchFromHover(lastMeshLocal, nearX, nearY, nearZ, sx, sy, sz);
+      } else {
+        setCornerPatchFromSigns(sx, sy, sz);
+      }
+    } else {
+      // FACE CENTER: hide patches and tint the face
+      hideHoverPatches();
+      highlightFaces([faceIndex]);
+    }
+
+    e.stopPropagation();
+  }
+
+  function onCubePointerUp(e: PointerEvent) {
+    if (!isDraggingCube) return;
+    isDraggingCube = false;
+    cubeCanvas.style.cursor = "default";
+    try {
+      (e.target as Element)?.releasePointerCapture?.(e.pointerId);
+    } catch (err) {
+      // ignore
+    }
+    e.preventDefault();
+    e.stopPropagation();
+  }
+
+  function onCubePointerCancel(e: PointerEvent) {
+    isDraggingCube = false;
+    cubeCanvas.style.cursor = "default";
+    hideHoverPatches();
+    try {
+      (e.target as Element)?.releasePointerCapture?.(e.pointerId);
+    } catch (err) {
+      // ignore
+    }
+    e.preventDefault();
+    e.stopPropagation();
+  }
+
   const cubeRaycaster = new THREE.Raycaster();
   const cubePointer = new THREE.Vector2();
-  let hoveredFaceIndex: number | null = null;
 
   function updateCubeSize() {
     const cssW = cubeCanvas.clientWidth || cubeSizePx;
@@ -230,29 +544,25 @@ export function createViewer(container: HTMLElement): Viewer {
 
   updateCubeSize();
 
-  // Highlight multiple faces at once (supports edges/corners)
   function highlightFaces(indices: number[] | null) {
     // reset all faces
     for (let i = 0; i < faceMaterials.length; i++) {
       (faceMaterials[i] as THREE.MeshBasicMaterial).color.setHex(baseFaceColor);
     }
     if (!indices || indices.length === 0) {
-      hoveredFaceIndex = null;
       return;
     }
-    // Apply highlight color to requested indices
+    // Apply highlight color to requested indices (only for face centers)
     for (const idx of indices) {
       if (faceMaterials[idx]) {
         (faceMaterials[idx] as THREE.MeshBasicMaterial).color.setHex(0xdbeafe); // light blue
       }
     }
-    hoveredFaceIndex = indices[0] ?? null;
+    // store first highlighted face (no external usage currently)
   }
 
   // Helper: map preset name back to face material index (robust, doesn't assume order)
-  function faceIndexForPreset(
-    preset: "top" | "front" | "right" | "iso" | "bottom" | "left" | "back",
-  ) {
+  function faceIndexForPreset(preset: "top" | "front" | "right" | "iso" | "bottom" | "left" | "back") {
     for (let i = 0; i < 6; i++) {
       if (mapFaceToPreset(i) === preset) return i;
     }
@@ -264,60 +574,6 @@ export function createViewer(container: HTMLElement): Viewer {
   const Y_NEG = faceIndexForPreset("bottom");
   const Z_POS = faceIndexForPreset("front");
   const Z_NEG = faceIndexForPreset("back");
-
-  function onCubePointerMove(e: PointerEvent) {
-    const rect = cubeCanvas.getBoundingClientRect();
-    const x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
-    const y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
-    cubePointer.set(x, y);
-    cubeRaycaster.setFromCamera(cubePointer, cubeCamera);
-    const intersects = cubeRaycaster.intersectObject(cubeMesh, false);
-
-    if (intersects.length === 0) {
-      highlightFaces(null);
-      cubeCanvas.style.cursor = "default";
-      e.stopPropagation();
-      return;
-    }
-
-    const intr = intersects[0] as any;
-    const faceIndex = intr.face?.materialIndex ?? 0;
-
-    // classify hover region using local cube coords
-    const pLocal = cubeRoot.worldToLocal(intr.point.clone());
-    const halfSize = half; // half defined earlier
-    const nx = pLocal.x / Math.max(1e-6, halfSize);
-    const ny = pLocal.y / Math.max(1e-6, halfSize);
-    const nz = pLocal.z / Math.max(1e-6, halfSize);
-
-    const EDGE_THRESH_HOVER = 0.7; // easier hover targeting
-    const nearX = Math.abs(nx) > EDGE_THRESH_HOVER;
-    const nearY = Math.abs(ny) > EDGE_THRESH_HOVER;
-    const nearZ = Math.abs(nz) > EDGE_THRESH_HOVER;
-    const nearCount = (nearX ? 1 : 0) + (nearY ? 1 : 0) + (nearZ ? 1 : 0);
-
-    cubeCanvas.style.cursor = "pointer";
-
-    if (nearCount === 3) {
-      // corner: highlight three faces based on sign
-      const ix = nx >= 0 ? X_POS : X_NEG;
-      const iy = ny >= 0 ? Y_POS : Y_NEG;
-      const iz = nz >= 0 ? Z_POS : Z_NEG;
-      highlightFaces([ix, iy, iz]);
-    } else if (nearCount === 2) {
-      // edge: highlight the two near faces
-      const faces: number[] = [];
-      if (nearX) faces.push(nx >= 0 ? X_POS : X_NEG);
-      if (nearY) faces.push(ny >= 0 ? Y_POS : Y_NEG);
-      if (nearZ) faces.push(nz >= 0 ? Z_POS : Z_NEG);
-      highlightFaces(faces);
-    } else {
-      // face center
-      highlightFaces([faceIndex]);
-    }
-
-    e.stopPropagation();
-  }
 
   function mapFaceToPreset(idx: number) {
     // material indices: 0:+X Right, 1:-X Left, 2:+Y Top, 3:-Y Bottom, 4:+Z Front, 5:-Z Back
@@ -340,7 +596,16 @@ export function createViewer(container: HTMLElement): Viewer {
   }
 
   function onCubeClick(e: MouseEvent) {
-    // click handler (no debug logging)
+    // Ignore click if it was actually a drag
+    if (dragDistance > DRAG_THRESHOLD) {
+      dragDistance = 0;
+      e.stopPropagation();
+      e.preventDefault();
+      return;
+    }
+    dragDistance = 0;
+
+    // click handler
     const rect = cubeCanvas.getBoundingClientRect();
     const x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
     const y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
@@ -388,9 +653,7 @@ export function createViewer(container: HTMLElement): Viewer {
         distance = Math.max(distance, suggested);
       }
 
-      const dest = target
-        .clone()
-        .add(dirWorld.clone().multiplyScalar(distance));
+      const dest = target.clone().add(dirWorld.clone().multiplyScalar(distance));
 
       // animate camera position over short duration
       const duration = 300;
@@ -437,6 +700,24 @@ export function createViewer(container: HTMLElement): Viewer {
     e.stopPropagation();
     e.preventDefault();
   }
+
+  // attach pointer listeners directly to the canvas (non-passive pointermove)
+  cubeCanvas.addEventListener("pointerdown", onCubePointerDown as any, { passive: false });
+  cubeCanvas.addEventListener("pointermove", onCubePointerMove as any, { passive: false });
+  cubeCanvas.addEventListener("pointerup", onCubePointerUp as any);
+  cubeCanvas.addEventListener("pointercancel", onCubePointerCancel as any);
+  cubeCanvas.addEventListener("click", onCubeClick as any);
+  // ensure pads are hidden when the pointer leaves the cube canvas
+  cubeCanvas.addEventListener("pointerleave", (e: PointerEvent) => {
+    hideHoverPatches();
+    highlightFaces(null);
+    cubeCanvas.style.cursor = "default";
+    try {
+      e.stopPropagation();
+    } catch {
+      /* ignore */
+    }
+  });
 
   // --- end view cube overlay ---
 
@@ -1245,7 +1526,6 @@ export function createViewer(container: HTMLElement): Viewer {
     if (location) {
       const targetPos = new THREE.Vector3(location.x, location.y, location.z);
       const currentTarget = controls.target.clone();
-      const targetDistance = activeCamera.position.distanceTo(targetPos);
 
       // Smooth transition to the feature
       const duration = 1000; // ms
@@ -1274,16 +1554,23 @@ export function createViewer(container: HTMLElement): Viewer {
     renderer.dispose();
     container.removeChild(renderer.domElement);
     try {
-      cubeCanvas.removeEventListener("pointermove", onCubePointerMove as any);
-      cubeCanvas.removeEventListener("click", onCubeClick as any);
       cubeCanvas.removeEventListener("pointerdown", onCubePointerDown as any);
-    } catch (_e) {}
+      cubeCanvas.removeEventListener("pointermove", onCubePointerMove as any);
+      cubeCanvas.removeEventListener("pointerup", onCubePointerUp as any);
+      cubeCanvas.removeEventListener("pointercancel", onCubePointerCancel as any);
+      cubeCanvas.removeEventListener("click", onCubeClick as any);
+    } catch {
+      /* ignore */
+    }
     cubeRenderer.dispose();
     // remove the whole wrapper (which contains the canvas)
     try {
       cubeWrapper.remove();
-    } catch (_e) {}
-    // dispose cube materials/geometry by traversing cubeRoot
+    } catch {
+      /* ignore */
+    }
+
+    // dispose cube materials/geometry by traversing cubeRoot (this will also dispose edge/corner meshes added to cubeMesh)
     cubeRoot.traverse((obj: any) => {
       if (obj.geometry) obj.geometry.dispose();
       if (obj.material) {
