@@ -14,15 +14,6 @@ import { supabase } from "./lib/supabase.js";
 const app = new Hono();
 const port = config.port;
 
-app.on(
-  ["GET", "PUT", "POST"],
-  "/api/inngest",
-  serveInngest({
-    client: inngest,
-    functions,
-  }),
-);
-
 app.use(
   pinoLogger({
     pino: logger,
@@ -67,6 +58,19 @@ app.get("/health", async (c) => {
     );
   }
 });
+
+app.on(
+  ["GET", "PUT", "POST"],
+  "/api/inngest",
+  serveInngest({
+    client: inngest,
+    functions,
+    servePath: "/api/inngest",
+    ...(process.env.INNGEST_SIGNING_KEY
+      ? { signingKey: process.env.INNGEST_SIGNING_KEY }
+      : {}),
+  }),
+);
 
 logger.info(`FFP Workflow Service is running at http://localhost:${port}`);
 
