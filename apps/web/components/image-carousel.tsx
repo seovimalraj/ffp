@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from "react";
 import Image from "next/image";
 import Link from "next/link";
+import Logo from "./ui/logo";
 
 export default function ImageCarousel() {
   const [currentSlide, setCurrentSlide] = useState(0);
@@ -10,12 +11,14 @@ export default function ImageCarousel() {
 
   const slides = [
     {
-      image: "https://frigate.ai/wp-content/uploads/2024/07/Automotive-IMG-1.png",
+      image:
+        "https://frigate.ai/wp-content/uploads/2024/07/Automotive-IMG-1.png",
       title: "Compliance and Reliability with Rigorous Quality Assurance",
       subtitle: "Establish a Continuous Digital Thread Across Systems",
     },
     {
-      image: "https://frigate.ai/wp-content/uploads/2024/07/Automotive-IMG-2-1.png",
+      image:
+        "https://frigate.ai/wp-content/uploads/2024/07/Automotive-IMG-2-1.png",
       title: "Manufacturing Efficiency with Jigs and Fixtures",
       subtitle: "End-to-End Product Development with Iterative Manufacturing",
     },
@@ -27,7 +30,8 @@ export default function ImageCarousel() {
     {
       image: "https://frigate.ai/wp-content/uploads/2024/07/Defense-IMG-4.png",
       title: "Compliance and Reliability with Rigorous Quality Assurance",
-      subtitle: "Establish a Continuous Digital Thread Across SystemsBuild Memories",
+      subtitle:
+        "Establish a Continuous Digital Thread Across SystemsBuild Memories",
     },
   ];
 
@@ -68,11 +72,10 @@ export default function ImageCarousel() {
 
       {/* CONTENT */}
       <div className="relative z-10 flex flex-col justify-between p-10 w-full">
-
         {/* Header */}
         <div className="flex items-center justify-between">
-          <div className="text-white font-bold text-3xl tracking-wide drop-shadow-xl">
-            FFP
+          <div className="h-12 w-auto relative">
+            <Logo classNames="h-full filter invert grayscale brightness-0 sepia w-auto object-contain" />
           </div>
 
           <Link

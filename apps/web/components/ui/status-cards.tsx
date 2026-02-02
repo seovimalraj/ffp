@@ -1,6 +1,5 @@
 "use client";
 
-import React from "react";
 import { motion } from "framer-motion";
 import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
@@ -94,16 +93,11 @@ const iconBgVariants = {
 export function StatusCards({ items, isLoading, className }: StatusCardsProps) {
   if (isLoading) {
     return (
-      <div
-        className={cn(
-          "grid w-full grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4",
-          className,
-        )}
-      >
+      <div className={cn("flex w-full gap-4 overflow-x-auto pb-4", className)}>
         {Array.from({ length: 4 }).map((_, i) => (
           <div
             key={i}
-            className="h-32 rounded-2xl border border-white/20 bg-white/5 backdrop-blur-xl p-6"
+            className="h-32 min-w-[260px] flex-1 rounded-2xl border border-white/20 bg-white/5 backdrop-blur-xl p-6"
           >
             <div className="flex justify-between items-start mb-4">
               <Skeleton className="h-4 w-24" />
@@ -117,13 +111,12 @@ export function StatusCards({ items, isLoading, className }: StatusCardsProps) {
     );
   }
 
+  if (items.length === 0 && !isLoading) {
+    return null;
+  }
+
   return (
-    <div
-      className={cn(
-        "grid w-full grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4",
-        className,
-      )}
-    >
+    <div className={cn("flex w-full gap-4 overflow-x-auto pb-4", className)}>
       {items.map((item, index) => {
         const Icon = item.icon;
         const colorClass = item.color
@@ -142,7 +135,7 @@ export function StatusCards({ items, isLoading, className }: StatusCardsProps) {
             whileHover={{ y: -4, transition: { duration: 0.2 } }}
             className={cn(
               "group relative overflow-hidden rounded-2xl border bg-gradient-to-br p-6 transition-all duration-300",
-              "hover:shadow-2xl hover:shadow-indigo-500/10",
+              "hover:shadow-2xl hover:shadow-indigo-500/10 min-w-[260px] flex-1",
               colorClass,
             )}
             style={{

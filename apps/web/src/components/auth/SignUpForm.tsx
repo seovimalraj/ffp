@@ -172,7 +172,7 @@ export function SignUpForm() {
   };
 
   return (
-    <div className="w-full lg:w-1/2 bg-white p-8 lg:p-12 flex flex-col justify-center min-h-screen">
+    <div className="w-full h-full p-8 lg:p-12 flex flex-col justify-center overflow-y-auto">
       <div className="max-w-md mx-auto w-full relative">
         {/* Header */}
         <div className="mb-8 text-center">

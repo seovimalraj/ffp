@@ -67,7 +67,7 @@ export class RfqController {
         p_cursor_id: cursorId || null,
       }),
 
-      client.rpc(SQLFunctions.getRfqStatusCounts, {
+      client.rpc(SQLFunctions.getRfqStatusSummary, {
         p_organization_id: user.organizationId,
       }),
     ]);
