@@ -780,7 +780,7 @@ export class RfqController {
     const total = parts.reduce((acc, part) => {
       const price = part.final_price || 0;
       const qty = part.quantity || 0;
-      return acc + price * qty;
+      return acc + price;
     }, 0);
 
     // Update the RFQ total

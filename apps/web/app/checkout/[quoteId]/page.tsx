@@ -1705,7 +1705,7 @@ export default function CheckoutPage() {
                                 Unit
                               </p>
                               <p className="text-sm font-medium text-slate-900 font-mono">
-                                ${part.finalPrice.toLocaleString()}
+                                ${(part.finalPrice / part.quantity).toFixed(2)}
                               </p>
                             </div>
 
@@ -1714,7 +1714,7 @@ export default function CheckoutPage() {
                                 Total
                               </p>
                               <p className="text-sm font-bold text-slate-900 font-mono">
-                                ${(part.finalPrice * part.quantity).toFixed(2)}
+                                ${part.finalPrice.toFixed(2)}
                               </p>
                             </div>
                           </div>
