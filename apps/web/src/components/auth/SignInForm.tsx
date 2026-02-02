@@ -10,7 +10,7 @@ import { signIn, getSession } from "next-auth/react";
 import { useRouter } from "next/navigation";
 import { notify } from "@/lib/toast";
 import { Eye, EyeOff, Loader2, AlertCircle } from "lucide-react";
-import { useMetaStore } from "@/components/store/title-store";
+import { formatUrlForRole, useMetaStore } from "@/components/store/title-store";
 
 export function SignInForm() {
   const [showPassword, setShowPassword] = useState(false);
@@ -138,7 +138,9 @@ export function SignInForm() {
       notify.success("Welcome back!");
       if (redirectUrl) {
         setRedirectUrl("");
-        router.push(redirectUrl);
+        router.push(
+          formatUrlForRole(redirectUrl, session?.user?.role || "customer"),
+        );
       } else {
         router.push(`/${session.user.role}`);
       }
@@ -157,7 +159,7 @@ export function SignInForm() {
   console.log("API:", apiUrl);
 
   return (
-    <div className="w-full lg:w-1/2 bg-white p-8 lg:p-12 flex flex-col justify-center">
+    <div className="w-full h-full p-8 lg:p-12 flex flex-col justify-center">
       <div className="max-w-md mx-auto w-full">
         <h1 className="text-4xl font-bold text-gray-900 mb-2">
           Sign in to your account

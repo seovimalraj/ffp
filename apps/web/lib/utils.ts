@@ -25,6 +25,15 @@ export function formatCurrencyFixed(
   }).format(amount);
 }
 
+export function toTitleCase(value: string): string {
+  return value
+    .trim()
+    .toLowerCase()
+    .split(/\s+/)
+    .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+    .join(" ");
+}
+
 /**
  * Validates whether the provided string is a syntactically reasonable email address.
  * Designed for form validation and typical application use cases.
@@ -59,29 +68,36 @@ export function safeValue<T>(value: T | null | undefined, defaultValue: T): T {
 }
 
 export function processParts(parts: any[]) {
-  console.log('📦 Processing parts from backend:', parts.map(p => ({ id: p.id, process: p.process })));
+  console.log(
+    "📦 Processing parts from backend:",
+    parts.map((p) => ({ id: p.id, process: p.process })),
+  );
   const processedParts = parts.map((part) => {
     // CRITICAL: Normalize process field
     // 1. Use geometry recommendation if process is missing
     // 2. Convert underscore format to hyphen format (sheet_metal → sheet-metal)
     let process = part.process;
-    
-    if (!process || process === '') {
+
+    if (!process || process === "") {
       // Fall back to geometry recommendation if available
       process = part.geometry?.recommendedProcess || "cnc-milling";
-      console.log(`  Part ${part.id}: process was empty, using ${process} from geometry`);
+      console.log(
+        `  Part ${part.id}: process was empty, using ${process} from geometry`,
+      );
     }
-    
+
     // Normalize underscore to hyphen format
     const processMap: Record<string, string> = {
-      'sheet_metal': 'sheet-metal',
-      'cnc_milling': 'cnc-milling',
-      'cnc_turning': 'cnc-turning',
+      sheet_metal: "sheet-metal",
+      cnc_milling: "cnc-milling",
+      cnc_turning: "cnc-turning",
     };
     process = processMap[process] || process;
-    
-    console.log(`  Part ${part.id}: backend process='${part.process}' → final='${process}'`);
-    
+
+    console.log(
+      `  Part ${part.id}: backend process='${part.process}' → final='${process}'`,
+    );
+
     return {
       id: part.id,
       rfqId: part.rfq_id,
