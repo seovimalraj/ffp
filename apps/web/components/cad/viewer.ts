@@ -1,5 +1,15 @@
+/* eslint-disable no-undef */
+/* eslint-disable @typescript-eslint/no-unused-vars */
+/* eslint-env browser */
 import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
+import { RoomEnvironment } from "three/examples/jsm/environments/RoomEnvironment.js";
+import * as BufferGeometryUtils from "three/examples/jsm/utils/BufferGeometryUtils.js";
+import { Line2 } from "three/examples/jsm/lines/Line2.js";
+import { LineMaterial } from "three/examples/jsm/lines/LineMaterial.js";
+import { LineGeometry } from "three/examples/jsm/lines/LineGeometry.js";
+// Line rendering helpers (thick, pixel-correct lines)
+// We use simple THREE.LineSegments + THREE.EdgesGeometry for feature edges
 
 export type Viewer = {
   loadMeshFromGeometry: (geom: THREE.BufferGeometry) => void;
@@ -8,9 +18,21 @@ export type Viewer = {
     preset: "top" | "front" | "right" | "iso" | "bottom" | "left" | "back",
   ) => void;
   setProjection: (mode: "perspective" | "orthographic") => void;
+  setFeatureEdgesEnabled: (enabled: boolean) => void;
   resize: () => void;
   dispose: () => void;
   pickAtScreenPosition: (ndcX: number, ndcY: number) => THREE.Vector3 | null;
+  pickEdgeAtScreenPosition: (
+    ndcX: number,
+    ndcY: number,
+  ) => { point: THREE.Vector3; object: THREE.Object3D } | null;
+  highlightEdgeAtScreenPosition: (ndcX: number, ndcY: number) => void;
+  clearEdgeHighlight: () => void;
+  measureEdgeAtScreenPosition: (
+    ndcX: number,
+    ndcY: number,
+  ) => number | null;
+  setControlsEnabled: (enabled: boolean) => void;
   setMeasurementSegment: (
     p1: THREE.Vector3 | null,
     p2: THREE.Vector3 | null,
@@ -34,7 +56,27 @@ export type Viewer = {
   setShowViewCube: (visible: boolean) => void;
 };
 
+export function createStainlessSteelMaterial(): THREE.MeshPhysicalMaterial {
+  // Tuned for a realistic stainless-steel appearance with room-env reflections.
+  return new THREE.MeshPhysicalMaterial({
+    color: 0xbfc7cc, // slightly cool-gray stainless tint
+    metalness: 1.0,
+    roughness: 0.22,
+    clearcoat: 0.5,
+    clearcoatRoughness: 0.03,
+    reflectivity: 0.5,
+    envMapIntensity: 1.2,
+    // preserve double-sided usage in viewer where needed via side override
+    // Use physical material so environment lighting produces realistic reflections.
+  });
+}
+
 export function createViewer(container: HTMLElement): Viewer {
+  // Declare controls and requestUpdateSilhouette at the top to avoid TS errors
+  // (used before assignment in view cube setup)
+  let controls!: OrbitControls;
+  let requestUpdateSilhouette: (() => void) | null = null;
+
   const renderer = new THREE.WebGLRenderer({
     antialias: true,
     alpha: false,
@@ -45,6 +87,7 @@ export function createViewer(container: HTMLElement): Viewer {
   (renderer as any).outputColorSpace =
     (THREE as any).SRGBColorSpace ?? undefined;
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
+  renderer.toneMappingExposure = 1.0; // realistic exposure for ACES filmic
   renderer.setClearColor(0xffffff);
   renderer.localClippingEnabled = true;
   container.appendChild(renderer.domElement);
@@ -54,9 +97,11 @@ export function createViewer(container: HTMLElement): Viewer {
     if (!computed || computed.position === "static") {
       container.style.position = "relative";
     }
-  } catch (e) {
+  } catch (_e) {
     // ignore (server-side or testing)
   }
+
+  // silhouette listener will be attached after requestUpdateSilhouette is declared
 
   // --- View Cube Overlay ---
   const VIEW_CUBE_SIZE = 140; // CSS size for quick tweak
@@ -87,25 +132,6 @@ export function createViewer(container: HTMLElement): Viewer {
   );
   cubeWrapper.appendChild(cubeCanvas);
   container.appendChild(cubeWrapper);
-
-  // pointerdown handler (was missing) — prevent events from falling through to main canvas
-  function onCubePointerDown(e: PointerEvent) {
-    try {
-      // capture pointer if available
-      (e.target as Element)?.setPointerCapture?.(e.pointerId);
-    } catch (err) {
-      // ignore
-    }
-    e.preventDefault();
-    e.stopPropagation();
-  }
-
-  // attach pointer listeners directly to the canvas (non-passive pointermove)
-  cubeCanvas.addEventListener("pointermove", onCubePointerMove as any);
-  cubeCanvas.addEventListener("pointerdown", onCubePointerDown as any, {
-    passive: false,
-  });
-  cubeCanvas.addEventListener("click", onCubeClick as any);
 
   const cubeRenderer = new THREE.WebGLRenderer({
     canvas: cubeCanvas,
@@ -150,7 +176,9 @@ export function createViewer(container: HTMLElement): Viewer {
         ? cubeRenderer.capabilities.getMaxAnisotropy()
         : 1;
       tex.anisotropy = maxAniso;
-    } catch (e) {}
+    } catch {
+      /* ignore */
+    }
     tex.needsUpdate = true;
     return tex;
   }
@@ -209,6 +237,8 @@ export function createViewer(container: HTMLElement): Viewer {
     return new THREE.Line(g, mat);
   };
 
+  // Note: orbit controls listener will be attached after requestUpdateSilhouette is declared
+
   triad.add(makeAxis(new THREE.Vector3(1, 0, 0), triMaterialX));
   triad.add(makeAxis(new THREE.Vector3(0, 1, 0), triMaterialY));
   triad.add(makeAxis(new THREE.Vector3(0, 0, 1), triMaterialZ));
@@ -216,9 +246,342 @@ export function createViewer(container: HTMLElement): Viewer {
   triad.position.copy(cornerOffset);
   cubeRoot.add(triad);
 
+  // Edge and Corner patch meshes (single geometry each) parented to cubeMesh so they inherit scale
+  const lastMeshLocal = new THREE.Vector3();
+
+  const halfUnit = 0.5; // unit cube half
+  const EDGE_PATCH_LEN = 0.9 * halfUnit; // length along edge
+  const EDGE_PATCH_DEPTH = 0.45 * halfUnit; // depth into face
+  const CORNER_PATCH_SIZE = 0.55 * halfUnit; // corner square size (larger)
+
+  function clamp(v: number, a: number, b: number) {
+    return Math.max(a, Math.min(b, v));
+  }
+
+  function addQuad(positions: number[], fixedAxis: "x" | "y" | "z", fixedVal: number, uAxis: "x" | "y" | "z", u0: number, u1: number, vAxis: "x" | "y" | "z", v0: number, v1: number) {
+    // two triangles (v00, v10, v11) and (v11, v01, v00)
+    const setVertex = (u: number, v: number) => {
+      const p = { x: 0, y: 0, z: 0 } as any;
+      p[fixedAxis] = fixedVal;
+      p[uAxis] = u;
+      p[vAxis] = v;
+      positions.push(p.x, p.y, p.z);
+    };
+
+    // v00 (u0,v0), v10 (u1,v0), v11 (u1,v1), v01 (u0,v1)
+    // tri1
+    setVertex(u0, v0);
+    setVertex(u1, v0);
+    setVertex(u1, v1);
+    // tri2
+    setVertex(u1, v1);
+    setVertex(u0, v1);
+    setVertex(u0, v0);
+  }
+
+  // materials/geometries
+  const edgeMat = new THREE.MeshBasicMaterial({ color: 0xdbeafe, transparent: true, opacity: 0.6, side: THREE.DoubleSide, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: 1 });
+  const cornerMat = new THREE.MeshBasicMaterial({ color: 0xdbeafe, transparent: true, opacity: 0.6, side: THREE.DoubleSide, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: 1 });
+
+  let edgeGeom: THREE.BufferGeometry = new THREE.BufferGeometry();
+  let cornerGeom: THREE.BufferGeometry = new THREE.BufferGeometry();
+  const edgePatchMesh = new THREE.Mesh(edgeGeom, edgeMat);
+  const cornerPatchMesh = new THREE.Mesh(cornerGeom, cornerMat);
+  edgePatchMesh.visible = false;
+  cornerPatchMesh.visible = false;
+  edgePatchMesh.renderOrder = 2000;
+  cornerPatchMesh.renderOrder = 2000;
+  // parent to cubeMesh so they inherit its scale
+  cubeMesh.add(edgePatchMesh);
+  cubeMesh.add(cornerPatchMesh);
+
+  function hideHoverPatches() {
+    edgePatchMesh.visible = false;
+    cornerPatchMesh.visible = false;
+  }
+
+  function setEdgePatchFromHover(pLocal: THREE.Vector3, nearX: boolean, nearY: boolean, nearZ: boolean, nx: number, ny: number, nz: number) {
+    // build two quads (one per face)
+    const faces: { axis: "x" | "y" | "z"; sign: number }[] = [];
+    if (nearX) faces.push({ axis: "x", sign: Math.sign(nx) || 1 });
+    if (nearY) faces.push({ axis: "y", sign: Math.sign(ny) || 1 });
+    if (nearZ) faces.push({ axis: "z", sign: Math.sign(nz) || 1 });
+
+    const positions: number[] = [];
+
+    // free axis is the axis not in faces
+    const axes: ("x" | "y" | "z")[] = ["x", "y", "z"];
+    const presentAxes = faces.map((f) => f.axis);
+    const freeAxis = axes.find((a) => !presentAxes.includes(a))!;
+
+    // center along free axis (clamped)
+    const centerFree = clamp((pLocal as any)[freeAxis], -0.5 + EDGE_PATCH_LEN / 2, 0.5 - EDGE_PATCH_LEN / 2);
+
+    for (const f of faces) {
+      if (f.axis === "x") {
+        // quad on plane x = sign*0.5, u axis = freeAxis (length), v axis = the other in-plane axis
+        const otherAxis = freeAxis === "y" ? "z" : "y";
+        const otherSign = (otherAxis === "y" ? Math.sign((pLocal as any).y) : Math.sign((pLocal as any).z)) || (otherAxis === "y" ? Math.sign(ny) || 1 : Math.sign(nz) || 1);
+        const fixedVal = f.sign * 0.5;
+        const u0 = centerFree - EDGE_PATCH_LEN / 2;
+        const u1 = centerFree + EDGE_PATCH_LEN / 2;
+        const v0 = otherSign * 0.5; // edge at face intersection
+        const v1 = otherSign * 0.5 - otherSign * EDGE_PATCH_DEPTH; // inward
+        addQuad(positions, "x", fixedVal, freeAxis, u0, u1, otherAxis as any, v0, v1);
+      } else if (f.axis === "y") {
+        const otherAxis = freeAxis === "x" ? "z" : "x";
+        const otherSign = (otherAxis === "x" ? Math.sign((pLocal as any).x) : Math.sign((pLocal as any).z)) || (otherAxis === "x" ? Math.sign(nx) || 1 : Math.sign(nz) || 1);
+        const fixedVal = f.sign * 0.5;
+        const u0 = centerFree - EDGE_PATCH_LEN / 2;
+        const u1 = centerFree + EDGE_PATCH_LEN / 2;
+        const v0 = otherSign * 0.5;
+        const v1 = otherSign * 0.5 - otherSign * EDGE_PATCH_DEPTH;
+        addQuad(positions, "y", fixedVal, freeAxis, u0, u1, otherAxis as any, v0, v1);
+      } else {
+        const otherAxis = freeAxis === "x" ? "y" : "x";
+        const otherSign = (otherAxis === "x" ? Math.sign((pLocal as any).x) : Math.sign((pLocal as any).y)) || (otherAxis === "x" ? Math.sign(nx) || 1 : Math.sign(ny) || 1);
+        const fixedVal = f.sign * 0.5;
+        const u0 = centerFree - EDGE_PATCH_LEN / 2;
+        const u1 = centerFree + EDGE_PATCH_LEN / 2;
+        const v0 = otherSign * 0.5;
+        const v1 = otherSign * 0.5 - otherSign * EDGE_PATCH_DEPTH;
+        addQuad(positions, "z", fixedVal, freeAxis, u0, u1, otherAxis as any, v0, v1);
+      }
+    }
+
+    // build geometry
+    try {
+      edgeGeom.dispose();
+    } catch {
+      /* ignore */
+    }
+    edgeGeom = new THREE.BufferGeometry();
+    const posArr = new Float32Array(positions);
+    edgeGeom.setAttribute("position", new THREE.BufferAttribute(posArr, 3));
+    edgeGeom.computeBoundingSphere();
+    edgePatchMesh.geometry = edgeGeom;
+    edgePatchMesh.visible = true;
+  }
+
+  function setCornerPatchFromSigns(sx: number, sy: number, sz: number) {
+    const positions: number[] = [];
+
+    // x-face quad (u=y, v=z)
+    const xFixed = sx * 0.5;
+    const y0 = sy > 0 ? 0.5 - CORNER_PATCH_SIZE : -0.5;
+    const y1 = sy > 0 ? 0.5 : -0.5 + CORNER_PATCH_SIZE;
+    const z0 = sz > 0 ? 0.5 - CORNER_PATCH_SIZE : -0.5;
+    const z1 = sz > 0 ? 0.5 : -0.5 + CORNER_PATCH_SIZE;
+    addQuad(positions, "x", xFixed, "y", y0, y1, "z", z0, z1);
+
+    // y-face quad (u=x, v=z)
+    const yFixed = sy * 0.5;
+    const x0 = sx > 0 ? 0.5 - CORNER_PATCH_SIZE : -0.5;
+    const x1 = sx > 0 ? 0.5 : -0.5 + CORNER_PATCH_SIZE;
+    addQuad(positions, "y", yFixed, "x", x0, x1, "z", z0, z1);
+
+    // z-face quad (u=x, v=y)
+    const zFixed = sz * 0.5;
+    addQuad(positions, "z", zFixed, "x", x0, x1, "y", y0, y1);
+
+    try {
+      cornerGeom.dispose();
+    } catch {
+      /* ignore */
+    }
+    cornerGeom = new THREE.BufferGeometry();
+    const posArr = new Float32Array(positions);
+    cornerGeom.setAttribute("position", new THREE.BufferAttribute(posArr, 3));
+    cornerGeom.computeBoundingSphere();
+    cornerPatchMesh.geometry = cornerGeom;
+    cornerPatchMesh.visible = true;
+  }
+
+  // Drag-to-rotate state for view cube
+  let isDraggingCube = false;
+  let dragStartX = 0;
+  let dragStartY = 0;
+  let dragStartTheta = 0;
+  let dragStartPhi = 0;
+  let dragDistance = 0;
+  const DRAG_THRESHOLD = 4; // pixels
+  const ROTATE_SPEED = Math.PI * 0.5; // radians per full canvas width/height
+  const SPHERICAL_PHI_MIN = 0.05;
+  const SPHERICAL_PHI_MAX = Math.PI - 0.05;
+
+  function getSphericalFromCamera(): { theta: number; phi: number } {
+    const target = controls.target;
+    const offset = new THREE.Vector3().subVectors(
+      activeCamera.position,
+      target,
+    );
+    const spherical = new THREE.Spherical().setFromVector3(offset);
+    return { theta: spherical.theta, phi: spherical.phi };
+  }
+
+  function setCameraFromSpherical(theta: number, phi: number, radius: number) {
+    const target = controls.target;
+    // Clamp phi to avoid singularities
+    phi = Math.max(SPHERICAL_PHI_MIN, Math.min(SPHERICAL_PHI_MAX, phi));
+    
+    const spherical = new THREE.Spherical(radius, phi, theta);
+    const offset = new THREE.Vector3().setFromSpherical(spherical);
+    const newPos = target.clone().add(offset);
+    
+    persp.position.copy(newPos);
+    ortho.position.copy(newPos);
+    persp.up.set(0, 1, 0);
+    ortho.up.set(0, 1, 0);
+    persp.lookAt(target);
+    ortho.lookAt(target);
+    persp.updateProjectionMatrix();
+    ortho.updateProjectionMatrix();
+    controls.update();
+    // Silhouette depends on view direction
+    requestUpdateSilhouette?.();
+  }
+
+  function onCubePointerDown(e: PointerEvent) {
+    try {
+      (e.target as Element)?.setPointerCapture?.(e.pointerId);
+    } catch (_err) {
+      // ignore
+    }
+    isDraggingCube = true;
+    dragStartX = e.clientX;
+    dragStartY = e.clientY;
+    dragDistance = 0;
+    const spherical = getSphericalFromCamera();
+    dragStartTheta = spherical.theta;
+    dragStartPhi = spherical.phi;
+    e.preventDefault();
+    e.stopPropagation();
+  }
+
+  function onCubePointerMove(e: PointerEvent) {
+    if (isDraggingCube) {
+      // Dragging: rotate the camera
+      const dx = e.clientX - dragStartX;
+      const dy = e.clientY - dragStartY;
+      dragDistance += Math.sqrt(dx * dx + dy * dy);
+
+      const rect = cubeCanvas.getBoundingClientRect();
+      const canvasWidth = rect.width || cubeSizePx;
+      const canvasHeight = rect.height || cubeSizePx;
+
+      const dTheta = -(dx / canvasWidth) * ROTATE_SPEED;
+      const dPhi = -(dy / canvasHeight) * ROTATE_SPEED;
+
+      const newTheta = dragStartTheta + dTheta;
+      const newPhi = dragStartPhi + dPhi;
+
+      const offset = new THREE.Vector3().subVectors(
+        activeCamera.position,
+        controls.target,
+      );
+      const radius = offset.length();
+
+      setCameraFromSpherical(newTheta, newPhi, radius);
+
+      cubeCanvas.style.cursor = "grabbing";
+      hideHoverPatches();
+      e.preventDefault();
+      e.stopPropagation();
+      return; 
+    }
+
+    // Not dragging: normal hover highlighting with single reusable patch
+    const rect = cubeCanvas.getBoundingClientRect();
+    const x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
+    const y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
+    cubePointer.set(x, y);
+    cubeRaycaster.setFromCamera(cubePointer, cubeCamera);
+    const intersects = cubeRaycaster.intersectObject(cubeMesh, false);
+
+    if (intersects.length === 0) {
+      hideHoverPatches();
+      highlightFaces(null);
+      cubeCanvas.style.cursor = "default";
+      e.stopPropagation();
+      return;
+    }
+
+    const intr = intersects[0] as any;
+    const faceIndex = intr.face?.materialIndex ?? 0;
+
+    // classify hover region using cubeMesh-local (unit cube) coords
+    const pMeshLocal = cubeMesh.worldToLocal(intr.point.clone());
+    lastMeshLocal.copy(pMeshLocal);
+    const halfUnit = 0.5;
+    const nx = pMeshLocal.x / Math.max(1e-6, halfUnit);
+    const ny = pMeshLocal.y / Math.max(1e-6, halfUnit);
+    const nz = pMeshLocal.z / Math.max(1e-6, halfUnit);
+
+    const EDGE_THRESH_HOVER = 0.7; // easier hover targeting
+    const nearX = Math.abs(nx) > EDGE_THRESH_HOVER;
+    const nearY = Math.abs(ny) > EDGE_THRESH_HOVER;
+    const nearZ = Math.abs(nz) > EDGE_THRESH_HOVER;
+    const nearCount = (nearX ? 1 : 0) + (nearY ? 1 : 0) + (nearZ ? 1 : 0);
+
+    cubeCanvas.style.cursor = "pointer";
+
+    if (nearCount >= 2) {
+      // EDGE or CORNER: show joined patches on adjacent faces
+      const sx = nearX ? Math.sign(nx) || 1 : 0;
+      const sy = nearY ? Math.sign(ny) || 1 : 0;
+      const sz = nearZ ? Math.sign(nz) || 1 : 0;
+
+      // clear face-center tint
+      highlightFaces(null);
+
+      // collect face material indices for the active faces
+      const faceIndices: number[] = [];
+      if (nearX) faceIndices.push(sx > 0 ? X_POS : X_NEG);
+      if (nearY) faceIndices.push(sy > 0 ? Y_POS : Y_NEG);
+      if (nearZ) faceIndices.push(sz > 0 ? Z_POS : Z_NEG);
+
+      if (nearCount === 2) {
+        setEdgePatchFromHover(lastMeshLocal, nearX, nearY, nearZ, sx, sy, sz);
+      } else {
+        setCornerPatchFromSigns(sx, sy, sz);
+      }
+    } else {
+      // FACE CENTER: hide patches and tint the face
+      hideHoverPatches();
+      highlightFaces([faceIndex]);
+    }
+
+    e.stopPropagation();
+  }
+
+  function onCubePointerUp(e: PointerEvent) {
+    if (!isDraggingCube) return;
+    isDraggingCube = false;
+    cubeCanvas.style.cursor = "default";
+    try {
+      (e.target as Element)?.releasePointerCapture?.(e.pointerId);
+    } catch (_err) {
+      // ignore
+    }
+    e.preventDefault();
+    e.stopPropagation();
+  }
+
+  function onCubePointerCancel(e: PointerEvent) {
+    isDraggingCube = false;
+    cubeCanvas.style.cursor = "default";
+    hideHoverPatches();
+    try {
+      (e.target as Element)?.releasePointerCapture?.(e.pointerId);
+    } catch (_err) {
+      // ignore
+    }
+    e.preventDefault();
+    e.stopPropagation();
+  }
+
   const cubeRaycaster = new THREE.Raycaster();
   const cubePointer = new THREE.Vector2();
-  let hoveredFaceIndex: number | null = null;
 
   function updateCubeSize() {
     const cssW = cubeCanvas.clientWidth || cubeSizePx;
@@ -230,29 +593,25 @@ export function createViewer(container: HTMLElement): Viewer {
 
   updateCubeSize();
 
-  // Highlight multiple faces at once (supports edges/corners)
   function highlightFaces(indices: number[] | null) {
     // reset all faces
     for (let i = 0; i < faceMaterials.length; i++) {
       (faceMaterials[i] as THREE.MeshBasicMaterial).color.setHex(baseFaceColor);
     }
     if (!indices || indices.length === 0) {
-      hoveredFaceIndex = null;
       return;
     }
-    // Apply highlight color to requested indices
+    // Apply highlight color to requested indices (only for face centers)
     for (const idx of indices) {
       if (faceMaterials[idx]) {
         (faceMaterials[idx] as THREE.MeshBasicMaterial).color.setHex(0xdbeafe); // light blue
       }
     }
-    hoveredFaceIndex = indices[0] ?? null;
+    // store first highlighted face (no external usage currently)
   }
 
   // Helper: map preset name back to face material index (robust, doesn't assume order)
-  function faceIndexForPreset(
-    preset: "top" | "front" | "right" | "iso" | "bottom" | "left" | "back",
-  ) {
+  function faceIndexForPreset(preset: "top" | "front" | "right" | "iso" | "bottom" | "left" | "back") {
     for (let i = 0; i < 6; i++) {
       if (mapFaceToPreset(i) === preset) return i;
     }
@@ -264,60 +623,6 @@ export function createViewer(container: HTMLElement): Viewer {
   const Y_NEG = faceIndexForPreset("bottom");
   const Z_POS = faceIndexForPreset("front");
   const Z_NEG = faceIndexForPreset("back");
-
-  function onCubePointerMove(e: PointerEvent) {
-    const rect = cubeCanvas.getBoundingClientRect();
-    const x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
-    const y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
-    cubePointer.set(x, y);
-    cubeRaycaster.setFromCamera(cubePointer, cubeCamera);
-    const intersects = cubeRaycaster.intersectObject(cubeMesh, false);
-
-    if (intersects.length === 0) {
-      highlightFaces(null);
-      cubeCanvas.style.cursor = "default";
-      e.stopPropagation();
-      return;
-    }
-
-    const intr = intersects[0] as any;
-    const faceIndex = intr.face?.materialIndex ?? 0;
-
-    // classify hover region using local cube coords
-    const pLocal = cubeRoot.worldToLocal(intr.point.clone());
-    const halfSize = half; // half defined earlier
-    const nx = pLocal.x / Math.max(1e-6, halfSize);
-    const ny = pLocal.y / Math.max(1e-6, halfSize);
-    const nz = pLocal.z / Math.max(1e-6, halfSize);
-
-    const EDGE_THRESH_HOVER = 0.7; // easier hover targeting
-    const nearX = Math.abs(nx) > EDGE_THRESH_HOVER;
-    const nearY = Math.abs(ny) > EDGE_THRESH_HOVER;
-    const nearZ = Math.abs(nz) > EDGE_THRESH_HOVER;
-    const nearCount = (nearX ? 1 : 0) + (nearY ? 1 : 0) + (nearZ ? 1 : 0);
-
-    cubeCanvas.style.cursor = "pointer";
-
-    if (nearCount === 3) {
-      // corner: highlight three faces based on sign
-      const ix = nx >= 0 ? X_POS : X_NEG;
-      const iy = ny >= 0 ? Y_POS : Y_NEG;
-      const iz = nz >= 0 ? Z_POS : Z_NEG;
-      highlightFaces([ix, iy, iz]);
-    } else if (nearCount === 2) {
-      // edge: highlight the two near faces
-      const faces: number[] = [];
-      if (nearX) faces.push(nx >= 0 ? X_POS : X_NEG);
-      if (nearY) faces.push(ny >= 0 ? Y_POS : Y_NEG);
-      if (nearZ) faces.push(nz >= 0 ? Z_POS : Z_NEG);
-      highlightFaces(faces);
-    } else {
-      // face center
-      highlightFaces([faceIndex]);
-    }
-
-    e.stopPropagation();
-  }
 
   function mapFaceToPreset(idx: number) {
     // material indices: 0:+X Right, 1:-X Left, 2:+Y Top, 3:-Y Bottom, 4:+Z Front, 5:-Z Back
@@ -340,7 +645,16 @@ export function createViewer(container: HTMLElement): Viewer {
   }
 
   function onCubeClick(e: MouseEvent) {
-    // click handler (no debug logging)
+    // Ignore click if it was actually a drag
+    if (dragDistance > DRAG_THRESHOLD) {
+      dragDistance = 0;
+      e.stopPropagation();
+      e.preventDefault();
+      return;
+    }
+    dragDistance = 0;
+
+    // click handler
     const rect = cubeCanvas.getBoundingClientRect();
     const x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
     const y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
@@ -388,9 +702,7 @@ export function createViewer(container: HTMLElement): Viewer {
         distance = Math.max(distance, suggested);
       }
 
-      const dest = target
-        .clone()
-        .add(dirWorld.clone().multiplyScalar(distance));
+      const dest = target.clone().add(dirWorld.clone().multiplyScalar(distance));
 
       // animate camera position over short duration
       const duration = 300;
@@ -438,9 +750,35 @@ export function createViewer(container: HTMLElement): Viewer {
     e.preventDefault();
   }
 
+  // attach pointer listeners directly to the canvas (non-passive pointermove)
+  cubeCanvas.addEventListener("pointerdown", onCubePointerDown as any, { passive: false });
+  cubeCanvas.addEventListener("pointermove", onCubePointerMove as any, { passive: false });
+  cubeCanvas.addEventListener("pointerup", onCubePointerUp as any);
+  cubeCanvas.addEventListener("pointercancel", onCubePointerCancel as any);
+  cubeCanvas.addEventListener("click", onCubeClick as any);
+  // ensure pads are hidden when the pointer leaves the cube canvas
+  cubeCanvas.addEventListener("pointerleave", (e: PointerEvent) => {
+    hideHoverPatches();
+    highlightFaces(null);
+    cubeCanvas.style.cursor = "default";
+    try {
+      e.stopPropagation();
+    } catch {
+      /* ignore */
+    }
+  });
+
   // --- end view cube overlay ---
 
   const scene = new THREE.Scene();
+
+  // Create a small, neutral room environment (no external HDR required).
+  const pmremGenerator = new THREE.PMREMGenerator(renderer);
+  // optional compile helper (no-op on older three versions)
+  pmremGenerator.compileEquirectangularShader?.();
+  const roomEnv = new RoomEnvironment();
+  const envRT = pmremGenerator.fromScene(roomEnv as any, 0.04).texture;
+  scene.environment = envRT;
 
   const aspect = container.clientWidth / Math.max(1, container.clientHeight);
   const persp = new THREE.PerspectiveCamera(50, aspect, 0.1, 10000);
@@ -459,9 +797,16 @@ export function createViewer(container: HTMLElement): Viewer {
 
   let activeCamera: THREE.Camera = persp;
 
-  const controls = new OrbitControls(persp, renderer.domElement);
+  const lastCamQuat = new THREE.Quaternion();
+  const lastCamPos = new THREE.Vector3();
+  lastCamQuat.copy(activeCamera.quaternion);
+  lastCamPos.copy(activeCamera.position);
+
+  controls = new OrbitControls(persp, renderer.domElement);
   controls.enableDamping = true;
   controls.dampingFactor = 0.1;
+  // Update silhouette edges when the camera moves (throttled to rAF)
+  // listener added after requestUpdateSilhouette is declared below
 
   const hemi = new THREE.HemisphereLight(0xffffff, 0x222244, 0.9);
   scene.add(hemi);
@@ -481,7 +826,257 @@ export function createViewer(container: HTMLElement): Viewer {
   scene.add(axesHelper);
 
   const modelRoot = new THREE.Group();
+  modelRoot.name = "modelRoot";
   scene.add(modelRoot);
+
+  // Feature edges overlay root (kept as a child of modelRoot so it inherits scene placement)
+  const featureEdgesGroup = new THREE.Group();
+  featureEdgesGroup.name = "featureEdgesGroup";
+  modelRoot.add(featureEdgesGroup);
+
+  // Subgroup for world-space edge visuals (LineSegments2) that live under featureEdgesGroup
+  const edgesGroup = new THREE.Group();
+  edgesGroup.name = "edgesGroup";
+  featureEdgesGroup.add(edgesGroup);
+
+  // CAD adjacency/cache for tangent + silhouette overlays (per-mesh)
+  const cadMeshData = new WeakMap<THREE.Mesh, any>();
+
+  // Silhouette update scheduling (throttle with rAF)
+  let silhouetteUpdateRequested = false;
+  let silhouetteRAFId: number | null = null;
+  let silhouetteDirty = false;
+  const camEpsilon = 1e-4;
+  requestUpdateSilhouette = () => {
+    if (silhouetteUpdateRequested) return;
+    silhouetteUpdateRequested = true;
+    silhouetteRAFId = requestAnimationFrame(() => {
+      silhouetteUpdateRequested = false;
+      silhouetteRAFId = null;
+      try {
+        updateSilhouetteEdges();
+      } catch (e) {
+        /* ignore errors during silhouette update */
+      }
+    });
+  };
+
+  // Attach orbit controls listener now that requestUpdateSilhouette is assigned
+  try {
+    controls.addEventListener("change", requestUpdateSilhouette as any);
+  } catch {}
+
+  // Update silhouette overlays for all meshes that have precomputed edge data
+  function updateSilhouetteEdges() {
+    // Determine camera world info once
+    const isPerspective = (activeCamera as any).isPerspectiveCamera;
+    const camWorldPos = new THREE.Vector3();
+    const camWorldDir = new THREE.Vector3();
+    if (isPerspective) activeCamera.getWorldPosition(camWorldPos);
+    else activeCamera.getWorldDirection(camWorldDir).negate();
+
+    modelRoot.traverse((child: any) => {
+      if (!child || !child.isMesh) return;
+      const mesh: THREE.Mesh = child as THREE.Mesh;
+      const data = cadMeshData.get(mesh);
+      if (!data) return;
+
+      const { faceNormals, faceCenters, edges, silhouetteObj } = data;
+      if (!silhouetteObj) return;
+      const faceCount = faceNormals.length;
+      const bias = modelDiagonal * 1e-8;
+      // prepare normal matrix
+      const normalMat = new THREE.Matrix3().getNormalMatrix(mesh.matrixWorld);
+
+      const frontFacing: boolean[] = new Array(faceCount);
+      for (let fi = 0; fi < faceCount; fi++) {
+        const n = faceNormals[fi].clone().applyMatrix3(normalMat).normalize();
+        const centerWorld = faceCenters[fi].clone().applyMatrix4(mesh.matrixWorld);
+        const view = isPerspective
+          ? camWorldPos.clone().sub(centerWorld)
+          : camWorldDir;
+        frontFacing[fi] = n.dot(view) > bias;
+      }
+
+      // build silhouette positions in world-space
+      const silPositions: number[] = [];
+      for (const e of edges) {
+        const f0 = e.f0;
+        const f1 = e.f1;
+        const boundary = f1 === undefined || f1 === null;
+        const isSil = boundary || (frontFacing[f0] !== frontFacing[f1]);
+        if (!isSil) continue;
+        // transform endpoints to world
+        const aWorld = e.aPos.clone().applyMatrix4(mesh.matrixWorld);
+        const bWorld = e.bPos.clone().applyMatrix4(mesh.matrixWorld);
+        silPositions.push(aWorld.x, aWorld.y, aWorld.z, bWorld.x, bWorld.y, bWorld.z);
+      }
+
+      // update silhouette geometry
+      try {
+        const geom = silhouetteObj.geometry as THREE.BufferGeometry;
+        if (silPositions.length === 0) {
+          // empty geometry
+          geom.setAttribute(
+            "position",
+            new THREE.Float32BufferAttribute(new Float32Array(0), 3),
+          );
+          geom.computeBoundingSphere();
+          silhouetteObj.visible = featureEdgesEnabled;
+        } else {
+          const posArr = new Float32Array(silPositions);
+          geom.setAttribute("position", new THREE.BufferAttribute(posArr, 3));
+          geom.computeBoundingSphere();
+          silhouetteObj.visible = featureEdgesEnabled;
+        }
+      } catch (e) {
+        /* ignore */
+      }
+    });
+  }
+
+  // Tracks current edge LineSegments objects for toggling + picking
+  let featureEdgesEnabled = true;
+  const featureEdgeLines: any[] = [];
+
+  // Array of edge overlay THREE.LineSegments for edge picking (feature/tangent/silhouette)
+  const edgePickables: THREE.LineSegments[] = [];
+
+  // Wireframe overlay state (single overlay when loading a single Mesh)
+  let wireframeEnabled = false;
+  let wireframeLines: THREE.LineSegments | null = null;
+
+  function setFeatureEdgesEnabled(visible: boolean) {
+    featureEdgesEnabled = !!visible;
+    try {
+      // Toggle all tracked edge overlays
+      for (const ln of featureEdgeLines) {
+        try {
+          ln.visible = featureEdgesEnabled;
+        } catch {}
+      }
+      // Keep the group visibility in sync as a convenience
+      featureEdgesGroup.visible = featureEdgesEnabled;
+    } catch {
+      /* ignore */
+    }
+  }
+
+  // Helper: dispose and remove any existing edge overlays
+  function clearFeatureEdges() {
+    try {
+      // Remove and dispose lines we previously created
+      for (const ln of featureEdgeLines) {
+        try {
+          if (ln.geometry) ln.geometry.dispose();
+        } catch {}
+        try {
+          const mat = ln.material as any;
+          if (Array.isArray(mat)) mat.forEach((m: any) => m?.dispose?.());
+          else mat?.dispose?.();
+        } catch {}
+        try {
+          if (ln.parent) ln.parent.remove(ln);
+        } catch {}
+      }
+      featureEdgeLines.length = 0;
+      edgePickables.length = 0;
+
+      // (No separate LineMaterial tracking for simple LineSegments overlays)
+
+      // Also clear the edgesGroup children if any exist
+      try {
+        edgesGroup.traverse((obj: any) => {
+          if (obj.geometry) obj.geometry.dispose?.();
+          if (obj.material) {
+            const m = obj.material as any;
+            if (Array.isArray(m)) m.forEach((mm: any) => mm?.dispose?.());
+            else m?.dispose?.();
+          }
+        });
+        edgesGroup.clear();
+      } catch {}
+    } catch {
+      /* ignore */
+    }
+  }
+
+  // Wireframe overlay helpers
+  function disposeWireframeOverlay() {
+    try {
+      if (wireframeLines) {
+        if (wireframeLines.geometry) wireframeLines.geometry.dispose();
+        if (wireframeLines.material) (wireframeLines.material as any).dispose?.();
+        if (wireframeLines.parent) wireframeLines.parent.remove(wireframeLines);
+        wireframeLines = null;
+      }
+    } catch {
+      /* ignore */
+    }
+  }
+
+  function buildWireframeOverlay(mesh: THREE.Mesh) {
+    try {
+      disposeWireframeOverlay();
+      if (!mesh || !mesh.geometry) return;
+      const wfGeom = new THREE.WireframeGeometry(mesh.geometry);
+      const wfMat = new THREE.LineBasicMaterial({
+        color: 0x000000,
+        transparent: true,
+        opacity: 0.9,
+        depthTest: false,
+        depthWrite: false,
+      });
+      const lines = new THREE.LineSegments(wfGeom, wfMat);
+      lines.renderOrder = 9999;
+      lines.frustumCulled = false;
+      lines.userData.__edgeOverlay = true;
+      // add as a child of the mesh so it inherits transforms
+      mesh.add(lines);
+      wireframeLines = lines;
+      wireframeLines.visible = !!wireframeEnabled;
+    } catch {
+      /* ignore */
+    }
+  }
+
+  // Rebuild feature edges by traversing mesh objects and attaching a LineSegments
+  // overlay using THREE.EdgesGeometry + THREE.LineSegments. Each overlay is added
+  // as a child of its source mesh so transforms always match.
+  function rebuildFeatureEdges(thresholdAngleDeg = 40) {
+    clearFeatureEdges();
+
+    modelRoot.traverse((child: any) => {
+      if (!child.isMesh || !child.geometry) return;
+      try {
+        const edgesGeom = new THREE.EdgesGeometry(child.geometry, thresholdAngleDeg);
+        const edgesMat = new THREE.LineBasicMaterial({
+          color: 0x111111,
+          transparent: true,
+          opacity: 0.9,
+          depthWrite: false,
+        });
+        const edges = new THREE.LineSegments(edgesGeom, edgesMat);
+        edges.userData.__isFeatureEdge = true;
+        edges.userData.__edgeOverlay = true;
+        edges.name = "featureEdges";
+        edges.renderOrder = (child.renderOrder ?? 0) + 1;
+        edges.frustumCulled = false;
+        // parent to the mesh so it inherits position/rotation/scale
+        child.add(edges);
+        featureEdgeLines.push(edges);
+        edgePickables.push(edges);
+        edges.visible = featureEdgesEnabled;
+      } catch {
+        /* ignore per-mesh errors */
+      }
+    });
+  }
+
+  // Backwards-compatible wrapper used elsewhere in the file
+  function createFeatureEdgesForModel() {
+    rebuildFeatureEdges();
+  }
 
   const raycaster = new THREE.Raycaster();
   const pointer = new THREE.Vector2();
@@ -492,7 +1087,12 @@ export function createViewer(container: HTMLElement): Viewer {
     depthWrite: false,
   });
   let measureLine: THREE.Line | null = null;
+  let measureLineGeometry: THREE.BufferGeometry | null = null;
   let measureLabel: THREE.Sprite | null = null;
+  let measureLabelText: string | null = null;
+  let measureBaseP1: THREE.Vector3 | null = null;
+  let measureBaseP2: THREE.Vector3 | null = null;
+  let measureBaseLabel: string | null = null;
 
   const arrowMaterial = new THREE.MeshBasicMaterial({
     color: 0x000000,
@@ -502,9 +1102,21 @@ export function createViewer(container: HTMLElement): Viewer {
   });
   let measureArrow1: THREE.Mesh | null = null;
   let measureArrow2: THREE.Mesh | null = null;
+  let measureArrow1Geometry: THREE.BufferGeometry | null = null;
+  let measureArrow2Geometry: THREE.BufferGeometry | null = null;
+  let measureArrowBillboard: THREE.Group | null = null;
+  const measureArrowXAxis = new THREE.Vector3(1, 0, 0);
   let measureGraphicsScale = 1;
 
+  // Edge hover overlay (neon highlight for edge picking)
+  let edgeHoverLine: Line2 | null = null;
+  let edgeHoverLineGeometry: LineGeometry | null = null;
+  let edgeHoverLineMaterial: LineMaterial | null = null;
+  let edgeHoverSphere1: THREE.Mesh | null = null;
+  let edgeHoverSphere2: THREE.Mesh | null = null;
+
   let modelBounds = { min: 0, max: 0 };
+  let modelDiagonal = 0;
   let currentClippingValue: number | null = null;
 
   function setOverlayVisible(visible: boolean) {
@@ -515,7 +1127,7 @@ export function createViewer(container: HTMLElement): Viewer {
   function setMeasurementGraphicsScale(scale: number) {
     measureGraphicsScale = Math.max(0.1, Math.min(scale, 4));
     if (measureLabel) {
-      const baseLabelScale = 0.4;
+      const baseLabelScale = 0.32;
       measureLabel.scale.set(
         baseLabelScale * measureGraphicsScale,
         0.2 * measureGraphicsScale,
@@ -553,6 +1165,7 @@ export function createViewer(container: HTMLElement): Viewer {
 
     controls.target.copy(center);
     controls.update();
+    requestUpdateSilhouette?.();
   }
 
   // function computeBoxOf(object: THREE.Object3D) {
@@ -565,14 +1178,597 @@ export function createViewer(container: HTMLElement): Viewer {
     ndcX: number,
     ndcY: number,
   ): THREE.Vector3 | null {
-    if (modelRoot.children.length === 0) return null;
-
-    pointer.set(ndcX, ndcY);
-    raycaster.setFromCamera(pointer, activeCamera);
+    // Use a fresh NDC vector so we don't interfere with other raycasts
+    const ndc = new THREE.Vector2(ndcX, ndcY);
+    raycaster.setFromCamera(ndc, activeCamera);
     const intersects = raycaster.intersectObjects(modelRoot.children, true);
-
     if (intersects.length === 0) return null;
-    return intersects[0].point.clone();
+    // Prefer mesh hits (ignore edge overlays / lines). Find first intersect that's a Mesh.
+    for (const intr of intersects) {
+      const obj = intr.object as any;
+      if (obj && obj.isMesh) {
+        return intr.point.clone();
+      }
+    }
+    return null;
+  }
+
+  /**
+   * Raycast only against feature edge LineSegments and return a snapped point on
+   * the closest segment. Returns { point, object } or null when nothing hit.
+   */
+  function pickEdgeAtScreenPosition(
+    ndcX: number,
+    ndcY: number,
+  ): { point: THREE.Vector3; object: THREE.Object3D } | null {
+    const ndc = new THREE.Vector2(ndcX, ndcY);
+    raycaster.setFromCamera(ndc, activeCamera);
+
+    // Raycast only against the tracked edge LineSegments for the model
+    if (edgePickables.length === 0) return null;
+    // Allow some leeway when picking lines so the user doesn't have to be pixel-perfect
+    try {
+      // Larger thresholds make it easier; tuned for models in mm units
+      (raycaster.params as any).Line = (raycaster.params as any).Line || {};
+      (raycaster.params as any).Line.threshold = Math.max(0.1, modelDiagonal * 0.005);
+    } catch {}
+
+    const intersects = raycaster.intersectObjects(edgePickables, true);
+    if (intersects.length === 0) return null;
+
+    // Use the nearest intersection first
+    const intr = intersects[0];
+    const line = intr.object as THREE.Object3D;
+    const geom: any = (line as any).geometry;
+    if (!geom) return null;
+
+    // Use the intersection point as a seed then find the closest segment in the line geometry.
+    const P = intr.point.clone();
+
+    // Fetch a flat positions array (vertex coords in the line's local space)
+    let positions: ArrayLike<number> | null = null;
+    if (geom.isBufferGeometry) {
+      const attr = geom.getAttribute("position");
+      positions = attr ? (attr.array as ArrayLike<number>) : null;
+    } else if ((geom as any).attributes && (geom as any).attributes.position) {
+      positions = (geom as any).attributes.position.array as ArrayLike<number>;
+    }
+    if (!positions || positions.length < 6) return null;
+
+    const matWorld = line.matrixWorld;
+
+    // If the raycast provided an index, use it to locate the segment endpoints directly.
+    const idx = (intr as any).index;
+    const v0 = new THREE.Vector3();
+    const v1 = new THREE.Vector3();
+
+    if (typeof idx === "number" && isFinite(idx)) {
+      // vertex index into the position attribute
+      const vertexIndex = idx as number;
+      const startVertex = vertexIndex % 2 === 0 ? vertexIndex : vertexIndex - 1;
+      const v0i = startVertex * 3;
+      const v1i = v0i + 3;
+      v0.set(positions[v0i], positions[v0i + 1], positions[v0i + 2]).applyMatrix4(matWorld);
+      v1.set(positions[v1i], positions[v1i + 1], positions[v1i + 2]).applyMatrix4(matWorld);
+
+      // Project P onto segment v0--v1
+      const seg = new THREE.Vector3().subVectors(v1, v0);
+      const segLen2 = seg.lengthSq();
+      let t = 0;
+      if (segLen2 > 0) {
+        t = Math.max(0, Math.min(1, new THREE.Vector3().subVectors(P, v0).dot(seg) / segLen2));
+      }
+      const snapped = v0.clone().add(seg.multiplyScalar(t));
+      return { point: snapped, object: line };
+    }
+
+    // Fallback: brute-force search the closest segment
+    let bestDist = Infinity;
+    let bestPoint: THREE.Vector3 | null = null;
+    for (let i = 0; i < positions.length; i += 6) {
+      v0.set(positions[i], positions[i + 1], positions[i + 2]).applyMatrix4(matWorld);
+      v1.set(positions[i + 3], positions[i + 4], positions[i + 5]).applyMatrix4(matWorld);
+      const seg = new THREE.Vector3().subVectors(v1, v0);
+      const segLen2 = seg.lengthSq();
+      let t = 0;
+      if (segLen2 > 0) {
+        t = Math.max(0, Math.min(1, new THREE.Vector3().subVectors(P, v0).dot(seg) / segLen2));
+      }
+      const candidate = v0.clone().add(seg.multiplyScalar(t));
+      const d2 = candidate.distanceToSquared(P);
+      if (d2 < bestDist) {
+        bestDist = d2;
+        bestPoint = candidate;
+      }
+    }
+
+    if (!bestPoint) return null;
+    return { point: bestPoint, object: line };
+  }
+
+  /**
+   * Highlights an edge at the given screen position with a neon hover overlay.
+   * Raycasts against edgePickables, extracts hit segment endpoints, and draws
+   * a line + endpoint spheres with depthTest=false and high renderOrder.
+   */
+  function highlightEdgeAtScreenPosition(ndcX: number, ndcY: number): void {
+    const ndc = new THREE.Vector2(ndcX, ndcY);
+    raycaster.setFromCamera(ndc, activeCamera);
+
+    if (edgePickables.length === 0) {
+      clearEdgeHighlight();
+      return;
+    }
+
+    // Scale threshold by model diagonal for better picking across different model sizes
+    try {
+      (raycaster.params as any).Line = (raycaster.params as any).Line || {};
+      (raycaster.params as any).Line.threshold = Math.max(0.1, modelDiagonal * 0.005);
+    } catch {}
+
+    const intersects = raycaster.intersectObjects(edgePickables, true);
+    if (intersects.length === 0) {
+      clearEdgeHighlight();
+      return;
+    }
+
+    const intr = intersects[0];
+    const line = intr.object as THREE.Object3D;
+    const geom: any = (line as any).geometry;
+    if (!geom) {
+      clearEdgeHighlight();
+      return;
+    }
+
+    const P = intr.point.clone();
+    let positions: ArrayLike<number> | null = null;
+    if (geom.isBufferGeometry) {
+      const attr = geom.getAttribute("position");
+      positions = attr ? (attr.array as ArrayLike<number>) : null;
+    } else if ((geom as any).attributes && (geom as any).attributes.position) {
+      positions = (geom as any).attributes.position.array as ArrayLike<number>;
+    }
+    if (!positions || positions.length < 6) {
+      clearEdgeHighlight();
+      return;
+    }
+
+    const matWorld = line.matrixWorld;
+    const v0 = new THREE.Vector3();
+    const v1 = new THREE.Vector3();
+
+    // Find the closest segment
+    let bestDist = Infinity;
+    let bestV0: THREE.Vector3 | null = null;
+    let bestV1: THREE.Vector3 | null = null;
+
+    const idx = (intr as any).index;
+    if (typeof idx === "number" && isFinite(idx)) {
+      const vertexIndex = idx as number;
+      const startVertex = vertexIndex % 2 === 0 ? vertexIndex : vertexIndex - 1;
+      const v0i = startVertex * 3;
+      const v1i = v0i + 3;
+      v0.set(positions[v0i], positions[v0i + 1], positions[v0i + 2]).applyMatrix4(matWorld);
+      v1.set(positions[v1i], positions[v1i + 1], positions[v1i + 2]).applyMatrix4(matWorld);
+      bestV0 = v0.clone();
+      bestV1 = v1.clone();
+    } else {
+      // Brute-force search
+      for (let i = 0; i < positions.length; i += 6) {
+        v0.set(positions[i], positions[i + 1], positions[i + 2]).applyMatrix4(matWorld);
+        v1.set(positions[i + 3], positions[i + 4], positions[i + 5]).applyMatrix4(matWorld);
+        const seg = new THREE.Vector3().subVectors(v1, v0);
+        const segLen2 = seg.lengthSq();
+        let t = 0;
+        if (segLen2 > 0) {
+          t = Math.max(0, Math.min(1, new THREE.Vector3().subVectors(P, v0).dot(seg) / segLen2));
+        }
+        const candidate = v0.clone().add(seg.multiplyScalar(t));
+        const d2 = candidate.distanceToSquared(P);
+        if (d2 < bestDist) {
+          bestDist = d2;
+          bestV0 = v0.clone();
+          bestV1 = v1.clone();
+        }
+      }
+    }
+
+    if (!bestV0 || !bestV1) {
+      clearEdgeHighlight();
+      return;
+    }
+
+    // Draw neon hover overlay (thick, screen-space line)
+    if (!edgeHoverLineMaterial) {
+      edgeHoverLineMaterial = new LineMaterial({
+        color: 0x00ffff,
+        linewidth: 4,
+        depthTest: false,
+        depthWrite: false,
+      });
+      edgeHoverLineMaterial.resolution.set(
+        container.clientWidth,
+        container.clientHeight,
+      );
+    }
+
+    if (!edgeHoverLineGeometry) {
+      edgeHoverLineGeometry = new LineGeometry();
+    }
+    edgeHoverLineGeometry.setPositions([
+      bestV0.x,
+      bestV0.y,
+      bestV0.z,
+      bestV1.x,
+      bestV1.y,
+      bestV1.z,
+    ]);
+
+    if (!edgeHoverLine) {
+      edgeHoverLine = new Line2(edgeHoverLineGeometry, edgeHoverLineMaterial);
+      edgeHoverLine.renderOrder = 10001;
+      edgeHoverLine.frustumCulled = false;
+      scene.add(edgeHoverLine);
+    } else {
+      edgeHoverLine.geometry = edgeHoverLineGeometry;
+    }
+
+    // Endpoint spheres
+    const sphereRadius = Math.max(0.1, modelDiagonal * 0.003);
+    const sphereGeom = new THREE.SphereGeometry(sphereRadius, 16, 16);
+    const sphereMat = new THREE.MeshBasicMaterial({
+      color: 0x00ffff,
+      depthTest: false,
+      depthWrite: false,
+    });
+
+    if (edgeHoverSphere1) {
+      scene.remove(edgeHoverSphere1);
+      edgeHoverSphere1.geometry.dispose();
+      (edgeHoverSphere1.material as THREE.Material).dispose();
+    }
+    edgeHoverSphere1 = new THREE.Mesh(sphereGeom, sphereMat.clone());
+    edgeHoverSphere1.position.copy(bestV0);
+    edgeHoverSphere1.renderOrder = 10001;
+    scene.add(edgeHoverSphere1);
+
+    if (edgeHoverSphere2) {
+      scene.remove(edgeHoverSphere2);
+      edgeHoverSphere2.geometry.dispose();
+      (edgeHoverSphere2.material as THREE.Material).dispose();
+    }
+    edgeHoverSphere2 = new THREE.Mesh(sphereGeom, sphereMat);
+    edgeHoverSphere2.position.copy(bestV1);
+    edgeHoverSphere2.renderOrder = 10001;
+    scene.add(edgeHoverSphere2);
+  }
+
+  /**
+   * Clears the edge hover overlay.
+   */
+  function clearEdgeHighlight(): void {
+    if (edgeHoverLine) {
+      scene.remove(edgeHoverLine);
+      edgeHoverLine = null;
+    }
+    if (edgeHoverLineGeometry) {
+      edgeHoverLineGeometry.dispose();
+      edgeHoverLineGeometry = null;
+    }
+    if (edgeHoverLineMaterial) {
+      edgeHoverLineMaterial.dispose();
+      edgeHoverLineMaterial = null;
+    }
+    if (edgeHoverSphere1) {
+      scene.remove(edgeHoverSphere1);
+      edgeHoverSphere1.geometry.dispose();
+      (edgeHoverSphere1.material as THREE.Material).dispose();
+      edgeHoverSphere1 = null;
+    }
+    if (edgeHoverSphere2) {
+      scene.remove(edgeHoverSphere2);
+      edgeHoverSphere2.geometry.dispose();
+      (edgeHoverSphere2.material as THREE.Material).dispose();
+      edgeHoverSphere2 = null;
+    }
+  }
+
+  /**
+   * Measures an edge at the given screen position. Raycasts against edgePickables,
+   * extracts hit segment endpoints, calls setMeasurementSegment with start, end, and label,
+   * and returns the numeric length.
+   */
+  function measureEdgeAtScreenPosition(ndcX: number, ndcY: number): number | null {
+    const ndc = new THREE.Vector2(ndcX, ndcY);
+    raycaster.setFromCamera(ndc, activeCamera);
+
+    if (edgePickables.length === 0) return null;
+
+    try {
+      (raycaster.params as any).Line = (raycaster.params as any).Line || {};
+      (raycaster.params as any).Line.threshold = Math.max(0.1, modelDiagonal * 0.005);
+    } catch {}
+
+    const intersects = raycaster.intersectObjects(edgePickables, true);
+    if (intersects.length === 0) return null;
+
+    const intr = intersects[0];
+    const line = intr.object as THREE.Object3D;
+    const geom: any = (line as any).geometry;
+    if (!geom) return null;
+
+    const P = intr.point.clone();
+    let positions: ArrayLike<number> | null = null;
+    if (geom.isBufferGeometry) {
+      const attr = geom.getAttribute("position");
+      positions = attr ? (attr.array as ArrayLike<number>) : null;
+    } else if ((geom as any).attributes && (geom as any).attributes.position) {
+      positions = (geom as any).attributes.position.array as ArrayLike<number>;
+    }
+    if (!positions || positions.length < 6) return null;
+
+    const matWorld = line.matrixWorld;
+    const v0 = new THREE.Vector3();
+    const v1 = new THREE.Vector3();
+
+    let bestDist = Infinity;
+    let bestV0: THREE.Vector3 | null = null;
+    let bestV1: THREE.Vector3 | null = null;
+
+    const idx = (intr as any).index;
+    if (typeof idx === "number" && isFinite(idx)) {
+      const vertexIndex = idx as number;
+      const startVertex = vertexIndex % 2 === 0 ? vertexIndex : vertexIndex - 1;
+      const v0i = startVertex * 3;
+      const v1i = v0i + 3;
+      v0.set(positions[v0i], positions[v0i + 1], positions[v0i + 2]).applyMatrix4(matWorld);
+      v1.set(positions[v1i], positions[v1i + 1], positions[v1i + 2]).applyMatrix4(matWorld);
+      bestV0 = v0.clone();
+      bestV1 = v1.clone();
+    } else {
+      for (let i = 0; i < positions.length; i += 6) {
+        v0.set(positions[i], positions[i + 1], positions[i + 2]).applyMatrix4(matWorld);
+        v1.set(positions[i + 3], positions[i + 4], positions[i + 5]).applyMatrix4(matWorld);
+        const seg = new THREE.Vector3().subVectors(v1, v0);
+        const segLen2 = seg.lengthSq();
+        let t = 0;
+        if (segLen2 > 0) {
+          t = Math.max(0, Math.min(1, new THREE.Vector3().subVectors(P, v0).dot(seg) / segLen2));
+        }
+        const candidate = v0.clone().add(seg.multiplyScalar(t));
+        const d2 = candidate.distanceToSquared(P);
+        if (d2 < bestDist) {
+          bestDist = d2;
+          bestV0 = v0.clone();
+          bestV1 = v1.clone();
+        }
+      }
+    }
+
+    if (!bestV0 || !bestV1) return null;
+
+    // Convert from modelRoot local space to world space for measurement overlay
+    const v0Local = bestV0.clone();
+    const v1Local = bestV1.clone();
+    modelRoot.worldToLocal(v0Local);
+    modelRoot.worldToLocal(v1Local);
+    const v0World = v0Local.clone().applyMatrix4(modelRoot.matrixWorld);
+    const v1World = v1Local.clone().applyMatrix4(modelRoot.matrixWorld);
+
+    const length = v0World.distanceTo(v1World);
+    const label = Number.isFinite(length) ? `${length.toFixed(2)} mm` : null;
+    setMeasurementSegment(v0World, v1World, label);
+    return length;
+  }
+
+  function updateMeasurementOverlay() {
+    if (!measureBaseP1 || !measureBaseP2) {
+      if (measureLine) measureLine.visible = false;
+      if (measureArrow1) measureArrow1.visible = false;
+      if (measureArrow2) measureArrow2.visible = false;
+      if (measureLabel) measureLabel.visible = false;
+      return;
+    }
+
+    const p1 = measureBaseP1.clone();
+    const p2 = measureBaseP2.clone();
+    const dir = new THREE.Vector3().subVectors(p2, p1);
+    const len = dir.length();
+    if (len === 0) {
+      if (measureLine) measureLine.visible = false;
+      if (measureArrow1) measureArrow1.visible = false;
+      if (measureArrow2) measureArrow2.visible = false;
+      if (measureLabel) measureLabel.visible = false;
+      return;
+    }
+    dir.normalize();
+
+    const mid = new THREE.Vector3().addVectors(p1, p2).multiplyScalar(0.5);
+    const viewDir = new THREE.Vector3()
+      .subVectors(activeCamera.position, mid)
+      .normalize();
+    const overlayOffsetAmount = modelDiagonal > 0 ? modelDiagonal * 1e-4 : 0;
+    const overlayOffset = viewDir.clone().multiplyScalar(overlayOffsetAmount);
+    const p1o = p1.clone().add(overlayOffset);
+    const p2o = p2.clone().add(overlayOffset);
+
+    if (!measureLineGeometry) {
+      measureLineGeometry = new THREE.BufferGeometry();
+      measureLineGeometry.setAttribute(
+        "position",
+        new THREE.BufferAttribute(new Float32Array(6), 3),
+      );
+    }
+    const pos = measureLineGeometry.getAttribute("position") as THREE.BufferAttribute;
+    pos.setXYZ(0, p1o.x, p1o.y, p1o.z);
+    pos.setXYZ(1, p2o.x, p2o.y, p2o.z);
+    pos.needsUpdate = true;
+
+    if (!measureLine) {
+      measureLine = new THREE.Line(measureLineGeometry, measureMaterial);
+      measureLine.renderOrder = 999;
+      scene.add(measureLine);
+    }
+    measureLine.visible = true;
+
+    const arrowLength = Math.max(len * 0.07, 5 * measureGraphicsScale);
+    const baseHalfWidth = arrowLength * 0.4;
+
+    if (!measureArrow1Geometry) {
+      measureArrow1Geometry = new THREE.BufferGeometry();
+      measureArrow1Geometry.setAttribute(
+        "position",
+        new THREE.BufferAttribute(new Float32Array(9), 3),
+      );
+      measureArrow1Geometry.setIndex([0, 1, 2]);
+    }
+    if (!measureArrow2Geometry) {
+      measureArrow2Geometry = new THREE.BufferGeometry();
+      measureArrow2Geometry.setAttribute(
+        "position",
+        new THREE.BufferAttribute(new Float32Array(9), 3),
+      );
+      measureArrow2Geometry.setIndex([0, 1, 2]);
+    }
+
+    if (!measureArrow1) {
+      measureArrow1 = new THREE.Mesh(measureArrow1Geometry, arrowMaterial);
+      measureArrow1.renderOrder = 999;
+    }
+    if (!measureArrow2) {
+      measureArrow2 = new THREE.Mesh(measureArrow2Geometry, arrowMaterial);
+      measureArrow2.renderOrder = 999;
+    }
+
+    const arrow1Pos = measureArrow1Geometry.getAttribute(
+      "position",
+    ) as THREE.BufferAttribute;
+    const arrow2Pos = measureArrow2Geometry.getAttribute(
+      "position",
+    ) as THREE.BufferAttribute;
+
+    // Arrow geometry is defined in local space with the tip at the origin
+    // and the triangle extending only in -X from the tip.
+    arrow1Pos.setXYZ(0, 0, 0, 0);
+    arrow1Pos.setXYZ(1, -arrowLength, baseHalfWidth, 0);
+    arrow1Pos.setXYZ(2, -arrowLength, -baseHalfWidth, 0);
+    arrow1Pos.needsUpdate = true;
+
+    arrow2Pos.setXYZ(0, 0, 0, 0);
+    arrow2Pos.setXYZ(1, -arrowLength, baseHalfWidth, 0);
+    arrow2Pos.setXYZ(2, -arrowLength, -baseHalfWidth, 0);
+    arrow2Pos.needsUpdate = true;
+
+    if (!measureArrowBillboard) {
+      measureArrowBillboard = new THREE.Group();
+      scene.add(measureArrowBillboard);
+    }
+
+    if (measureArrow1.parent !== measureArrowBillboard) {
+      measureArrowBillboard.add(measureArrow1);
+    }
+    if (measureArrow2.parent !== measureArrowBillboard) {
+      measureArrowBillboard.add(measureArrow2);
+    }
+
+    measureArrowBillboard.quaternion.copy(activeCamera.quaternion);
+    const billboardInvQuat = measureArrowBillboard.quaternion.clone().invert();
+
+    const p1Local = p1o.clone().applyQuaternion(billboardInvQuat);
+    const p2Local = p2o.clone().applyQuaternion(billboardInvQuat);
+    const dirLocal = new THREE.Vector3().subVectors(p2Local, p1Local).normalize();
+
+    measureArrow1.visible = true;
+    measureArrow2.visible = true;
+    measureArrow1.position.copy(p1Local);
+    measureArrow2.position.copy(p2Local);
+    measureArrow1.quaternion.setFromUnitVectors(
+      measureArrowXAxis,
+      dirLocal.clone().negate(),
+    );
+    measureArrow2.quaternion.setFromUnitVectors(measureArrowXAxis, dirLocal);
+
+    if (!measureBaseLabel) {
+      if (measureLabel) measureLabel.visible = false;
+      return;
+    }
+
+    if (!measureLabel || measureLabelText !== measureBaseLabel) {
+      const canvas = document.createElement("canvas");
+      const ctx = canvas.getContext("2d");
+      if (ctx) {
+        const fontSize = 26;
+        ctx.font = `${fontSize}px sans-serif`;
+        const metrics = ctx.measureText(measureBaseLabel);
+        const padding = 20;
+        canvas.width = Math.ceil(metrics.width + padding * 2);
+        canvas.height = Math.ceil(fontSize + padding * 2);
+        ctx.font = `${fontSize}px sans-serif`;
+        ctx.fillStyle = "black";
+        ctx.strokeStyle = "white";
+        ctx.lineWidth = 4;
+        const x = padding;
+        const y = padding + fontSize * 0.8;
+        ctx.strokeText(measureBaseLabel, x, y);
+        ctx.fillText(measureBaseLabel, x, y);
+      }
+
+      const texture = new THREE.CanvasTexture(canvas);
+      const mat = new THREE.SpriteMaterial({
+        map: texture,
+        depthTest: false,
+        depthWrite: false,
+        sizeAttenuation: false,
+      });
+
+      if (measureLabel) {
+        if (measureLabel.material.map) {
+          measureLabel.material.map.dispose();
+        }
+        measureLabel.material.dispose();
+        measureLabel.material = mat;
+      } else {
+        measureLabel = new THREE.Sprite(mat);
+        measureLabel.renderOrder = 1000;
+        scene.add(measureLabel);
+      }
+      measureLabelText = measureBaseLabel;
+    }
+
+    if (!measureLabel) return;
+
+    const a = p1o.clone().project(activeCamera);
+    const b = p2o.clone().project(activeCamera);
+    const dx = b.x - a.x;
+    const dy = b.y - a.y;
+    const midNDC = new THREE.Vector2((a.x + b.x) * 0.5, (a.y + b.y) * 0.5);
+    const perp = new THREE.Vector2(-dy, dx);
+    if (perp.lengthSq() === 0) {
+      perp.set(0, 1);
+    } else {
+      perp.normalize();
+    }
+    const pxOffset = 24 * measureGraphicsScale;
+    const width = renderer.domElement.clientWidth || 1;
+    const height = renderer.domElement.clientHeight || 1;
+    const ndcOffsetX = (perp.x * pxOffset * 2) / width;
+    const ndcOffsetY = (perp.y * pxOffset * 2) / height;
+    const midZ = (a.z + b.z) * 0.5;
+    const labelNDC = new THREE.Vector3(
+      midNDC.x + ndcOffsetX,
+      midNDC.y + ndcOffsetY,
+      midZ,
+    );
+    labelNDC.unproject(activeCamera);
+
+    measureLabel.visible = true;
+    measureLabel.position.copy(labelNDC);
+    const baseLabelScale = 0.28;
+    measureLabel.scale.set(
+      baseLabelScale * measureGraphicsScale,
+      0.2 * measureGraphicsScale,
+      1,
+    );
   }
 
   function setMeasurementSegment(
@@ -581,259 +1777,18 @@ export function createViewer(container: HTMLElement): Viewer {
     labelText?: string | null,
   ) {
     if (p1 === null || p2 === null) {
-      if (measureLine) {
-        scene.remove(measureLine);
-        measureLine.geometry.dispose();
-        measureLine = null;
-      }
-      if (measureLabel) {
-        scene.remove(measureLabel);
-        if (measureLabel.material.map) {
-          measureLabel.material.map.dispose();
-        }
-        measureLabel.material.dispose();
-        measureLabel = null;
-      }
-      if (measureArrow1) {
-        scene.remove(measureArrow1);
-        measureArrow1.geometry.dispose();
-        if (Array.isArray(measureArrow1.material)) {
-          measureArrow1.material.forEach((m) => m.dispose());
-        } else {
-          measureArrow1.material.dispose();
-        }
-        measureArrow1 = null;
-      }
-      if (measureArrow2) {
-        scene.remove(measureArrow2);
-        measureArrow2.geometry.dispose();
-        if (Array.isArray(measureArrow2.material)) {
-          measureArrow2.material.forEach((m) => m.dispose());
-        } else {
-          measureArrow2.material.dispose();
-        }
-        measureArrow2 = null;
-      }
+      measureBaseP1 = null;
+      measureBaseP2 = null;
+      measureBaseLabel = null;
+      measureLabelText = null;
+      updateMeasurementOverlay();
       return;
     }
 
-    const dir = new THREE.Vector3().subVectors(p2, p1);
-    const len = dir.length();
-    if (len === 0) {
-      if (measureLine) {
-        scene.remove(measureLine);
-        measureLine.geometry.dispose();
-        measureLine = null;
-      }
-      if (measureLabel) {
-        scene.remove(measureLabel);
-        if (measureLabel.material.map) {
-          measureLabel.material.map.dispose();
-        }
-        measureLabel.material.dispose();
-        measureLabel = null;
-      }
-      if (measureArrow1) {
-        scene.remove(measureArrow1);
-        measureArrow1.geometry.dispose();
-        if (Array.isArray(measureArrow1.material)) {
-          measureArrow1.material.forEach((m) => m.dispose());
-        } else {
-          measureArrow1.material.dispose();
-        }
-        measureArrow1 = null;
-      }
-      if (measureArrow2) {
-        scene.remove(measureArrow2);
-        measureArrow2.geometry.dispose();
-        if (Array.isArray(measureArrow2.material)) {
-          measureArrow2.material.forEach((m) => m.dispose());
-        } else {
-          measureArrow2.material.dispose();
-        }
-        measureArrow2 = null;
-      }
-      return;
-    }
-    dir.normalize();
-
-    // Offset dimension graphics slightly toward the camera to act as an overlay
-    const mid = new THREE.Vector3().addVectors(p1, p2).multiplyScalar(0.5);
-    const viewDir = new THREE.Vector3()
-      .subVectors(activeCamera.position, mid)
-      .normalize();
-    const overlayOffset = viewDir
-      .clone()
-      .multiplyScalar(len * 0.02 + 2 * measureGraphicsScale);
-    const p1o = p1.clone().add(overlayOffset);
-    const p2o = p2.clone().add(overlayOffset);
-
-    const linePoints = [p1o.clone(), p2o.clone()];
-    const lineGeom = new THREE.BufferGeometry().setFromPoints(linePoints);
-    if (measureLine) {
-      measureLine.geometry.dispose();
-      measureLine.geometry = lineGeom;
-    } else {
-      measureLine = new THREE.Line(lineGeom, measureMaterial);
-      measureLine.renderOrder = 999;
-      scene.add(measureLine);
-    }
-    if (measureLine) measureLine.renderOrder = 999;
-
-    const up = new THREE.Vector3(0, 1, 0);
-    if (Math.abs(dir.dot(up)) > 0.9) {
-      up.set(1, 0, 0);
-    }
-    const side = new THREE.Vector3().crossVectors(dir, up).normalize();
-
-    // Arrow dimensions
-    const arrowLength = Math.max(len * 0.07, 5 * measureGraphicsScale);
-    const arrowHalfWidth = arrowLength * 0.4;
-
-    // Arrow at p1 (filled triangle)
-    const tip1 = p1o.clone();
-    const base1 = p1o.clone().add(dir.clone().multiplyScalar(arrowLength));
-    const wing1a = base1
-      .clone()
-      .add(side.clone().multiplyScalar(arrowHalfWidth));
-    const wing1b = base1
-      .clone()
-      .sub(side.clone().multiplyScalar(arrowHalfWidth));
-
-    const positions1 = new Float32Array([
-      tip1.x,
-      tip1.y,
-      tip1.z,
-      wing1a.x,
-      wing1a.y,
-      wing1a.z,
-      wing1b.x,
-      wing1b.y,
-      wing1b.z,
-    ]);
-    const arrowGeom1 = new THREE.BufferGeometry();
-    arrowGeom1.setAttribute(
-      "position",
-      new THREE.BufferAttribute(positions1, 3),
-    );
-    arrowGeom1.setIndex([0, 1, 2]);
-
-    // Arrow at p2 (filled triangle)
-    const tip2 = p2o.clone();
-    const base2 = p2o.clone().add(dir.clone().multiplyScalar(-arrowLength));
-    const wing2a = base2
-      .clone()
-      .add(side.clone().multiplyScalar(arrowHalfWidth));
-    const wing2b = base2
-      .clone()
-      .sub(side.clone().multiplyScalar(arrowHalfWidth));
-
-    const positions2 = new Float32Array([
-      tip2.x,
-      tip2.y,
-      tip2.z,
-      wing2a.x,
-      wing2a.y,
-      wing2a.z,
-      wing2b.x,
-      wing2b.y,
-      wing2b.z,
-    ]);
-    const arrowGeom2 = new THREE.BufferGeometry();
-    arrowGeom2.setAttribute(
-      "position",
-      new THREE.BufferAttribute(positions2, 3),
-    );
-    arrowGeom2.setIndex([0, 1, 2]);
-
-    if (measureArrow1) {
-      measureArrow1.geometry.dispose();
-      measureArrow1.geometry = arrowGeom1;
-    } else {
-      measureArrow1 = new THREE.Mesh(arrowGeom1, arrowMaterial);
-      measureArrow1.renderOrder = 999;
-      scene.add(measureArrow1);
-    }
-    if (measureArrow1) measureArrow1.renderOrder = 999;
-
-    if (measureArrow2) {
-      measureArrow2.geometry.dispose();
-      measureArrow2.geometry = arrowGeom2;
-    } else {
-      measureArrow2 = new THREE.Mesh(arrowGeom2, arrowMaterial);
-      measureArrow2.renderOrder = 999;
-      scene.add(measureArrow2);
-    }
-    if (measureArrow2) measureArrow2.renderOrder = 999;
-
-    const midOffset = new THREE.Vector3()
-      .addVectors(p1o, p2o)
-      .multiplyScalar(0.5);
-    const offsetDir = new THREE.Vector3(0, 1, 0);
-    if (Math.abs(dir.dot(offsetDir)) > 0.9) {
-      offsetDir.set(1, 0, 0);
-    }
-    offsetDir.normalize();
-    const offsetAmount = Math.max(len * 0.03, 5 * measureGraphicsScale);
-    const labelPos = midOffset.add(offsetDir.multiplyScalar(offsetAmount));
-
-    if (labelText == null) {
-      if (measureLabel) {
-        scene.remove(measureLabel);
-        if (measureLabel.material.map) {
-          measureLabel.material.map.dispose();
-        }
-        measureLabel.material.dispose();
-        measureLabel = null;
-      }
-      return;
-    }
-
-    const canvas = document.createElement("canvas");
-    const ctx = canvas.getContext("2d");
-    if (ctx) {
-      const fontSize = 32;
-      ctx.font = `${fontSize}px sans-serif`;
-      const text = labelText;
-      const textWidth = ctx.measureText(text).width;
-      canvas.width = textWidth + 20;
-      canvas.height = fontSize + 20;
-      ctx.font = `${fontSize}px sans-serif`;
-      ctx.fillStyle = "black";
-      ctx.strokeStyle = "white";
-      ctx.lineWidth = 4;
-      ctx.strokeText(text, 10, fontSize);
-      ctx.fillText(text, 10, fontSize);
-    }
-
-    const texture = new THREE.CanvasTexture(canvas);
-    const mat = new THREE.SpriteMaterial({
-      map: texture,
-      depthTest: false,
-      depthWrite: false,
-      sizeAttenuation: false,
-    });
-    if (measureLabel) {
-      if (measureLabel.material.map) {
-        measureLabel.material.map.dispose();
-      }
-      measureLabel.material.dispose();
-      measureLabel.material = mat;
-    } else {
-      measureLabel = new THREE.Sprite(mat);
-      measureLabel.renderOrder = 1000;
-      scene.add(measureLabel);
-    }
-
-    if (measureLabel) measureLabel.renderOrder = 1000;
-
-    measureLabel.position.copy(labelPos);
-    const baseLabelScale = 0.4; // was 0.8; smaller by default
-    measureLabel.scale.set(
-      baseLabelScale * measureGraphicsScale,
-      0.2 * measureGraphicsScale,
-      1,
-    );
+    measureBaseP1 = p1.clone();
+    measureBaseP2 = p2.clone();
+    measureBaseLabel = labelText ?? null;
+    updateMeasurementOverlay();
   }
 
   function getScreenshotDataURL(): string {
@@ -885,12 +1840,14 @@ export function createViewer(container: HTMLElement): Viewer {
       const edgesGeom = new THREE.EdgesGeometry(geom, edgeThreshold);
       const edgesMat = new THREE.LineBasicMaterial({ color: 0x000000 });
       const edges = new THREE.LineSegments(edgesGeom, edgesMat);
+      edges.userData.__edgeOverlay = true;
       edges.applyMatrix4(obj.matrixWorld);
       edgesGroup.add(edges);
     });
 
     scene.add(edgesGroup);
 
+    const prevModelVisibleForCube = modelRoot.visible;
     modelRoot.visible = false;
 
     renderer.setClearColor(0xffffff, 1);
@@ -913,7 +1870,7 @@ export function createViewer(container: HTMLElement): Viewer {
       }
     });
 
-    modelRoot.visible = prevModelVisible;
+    modelRoot.visible = prevModelVisibleForCube;
     renderer.setClearColor(prevClearColor, prevClearAlpha);
     scene.background = prevBackground;
 
@@ -952,12 +1909,9 @@ export function createViewer(container: HTMLElement): Viewer {
 
     let object: THREE.Object3D;
     if (hasNormals) {
-      const material = new THREE.MeshStandardMaterial({
-        color: 0xb8c2ff,
-        metalness: 0.1,
-        roughness: 0.8,
-        side: THREE.DoubleSide,
-      });
+      // Use realistic stainless steel material by default
+      const material = createStainlessSteelMaterial().clone();
+      material.side = THREE.DoubleSide;
       object = new THREE.Mesh(geom, material);
     } else {
       const material = new THREE.LineBasicMaterial({
@@ -966,32 +1920,289 @@ export function createViewer(container: HTMLElement): Viewer {
       object = new THREE.LineSegments(geom, material);
     }
 
-    modelRoot.clear();
+    // Remove existing model children except the featureEdgesRoot, disposing resources
+    // dispose wireframe overlay for old model before removing children
+    disposeWireframeOverlay();
+
+    for (const child of [...modelRoot.children]) {
+      if (child === featureEdgesGroup) continue;
+      try {
+        child.traverse((obj: any) => {
+          if (obj.geometry) obj.geometry.dispose();
+          if (obj.material) {
+            if (Array.isArray(obj.material)) {
+              obj.material.forEach((m: any) => {
+                if (m.map) m.map.dispose();
+                m.dispose();
+              });
+            } else {
+              if (obj.material.map) obj.material.map.dispose();
+              obj.material.dispose();
+            }
+          }
+        });
+      } catch {
+        /* ignore */
+      }
+      try {
+        modelRoot.remove(child);
+      } catch {
+        /* ignore */
+      }
+    }
     modelRoot.add(object);
 
-    // 4) Ground the model: lift so bottom sits on y = 0
-    object.updateWorldMatrix(true, true);
-    const box1 = new THREE.Box3().setFromObject(modelRoot);
-    const lift = -box1.min.y;
-    if (Math.abs(lift) > 1e-6) {
-      modelRoot.position.y += lift;
-      modelRoot.updateWorldMatrix(true, true);
+    // Precompute adjacency, face normals and create tangent + silhouette overlays
+    if ((object as any).isMesh) {
+      const mesh = object as THREE.Mesh;
+      try {
+        // Prepare a geometry suitable for indexing/analysis
+        let analysisGeom = mesh.geometry as THREE.BufferGeometry;
+        let indexedGeom: THREE.BufferGeometry;
+        if (analysisGeom.index) {
+          indexedGeom = analysisGeom.clone();
+        } else {
+          // mergeVertices produces an indexed geometry usable for adjacency
+          indexedGeom = BufferGeometryUtils.mergeVertices(analysisGeom.clone(), 1e-6);
+        }
+
+        const posAttr = indexedGeom.getAttribute("position");
+        const idx = indexedGeom.index ? indexedGeom.index.array : null;
+        if (!posAttr || !idx) {
+          // Can't build adjacency without indices
+        } else {
+          const positions = posAttr.array as ArrayLike<number>;
+          const indexArr = idx as ArrayLike<number>;
+          const faceCount = indexArr.length / 3;
+
+          // face normals + centers (local space)
+          const faceNormals: THREE.Vector3[] = new Array(faceCount);
+          const faceCenters: THREE.Vector3[] = new Array(faceCount);
+          for (let f = 0; f < faceCount; f++) {
+            const i0 = indexArr[f * 3];
+            const i1 = indexArr[f * 3 + 1];
+            const i2 = indexArr[f * 3 + 2];
+            const p0 = new THREE.Vector3(
+              positions[i0 * 3],
+              positions[i0 * 3 + 1],
+              positions[i0 * 3 + 2],
+            );
+            const p1 = new THREE.Vector3(
+              positions[i1 * 3],
+              positions[i1 * 3 + 1],
+              positions[i1 * 3 + 2],
+            );
+            const p2 = new THREE.Vector3(
+              positions[i2 * 3],
+              positions[i2 * 3 + 1],
+              positions[i2 * 3 + 2],
+            );
+            const e1 = p1.clone().sub(p0);
+            const e2 = p2.clone().sub(p0);
+            const n = e1.clone().cross(e2).normalize();
+            faceNormals[f] = n;
+            faceCenters[f] = p0.clone().add(p1).add(p2).multiplyScalar(1 / 3);
+          }
+
+          // Build undirected edge map -> adjacent faces
+          const edgeMap = new Map<string, { a: number; b: number; faces: number[] }>();
+          for (let f = 0; f < faceCount; f++) {
+            const ia = indexArr[f * 3];
+            const ib = indexArr[f * 3 + 1];
+            const ic = indexArr[f * 3 + 2];
+            const edges = [ [ia, ib], [ib, ic], [ic, ia] ];
+            for (const [v0, v1] of edges) {
+              const a = Math.min(v0, v1);
+              const b = Math.max(v0, v1);
+              const key = `${a}_${b}`;
+              const cur = edgeMap.get(key);
+              if (!cur) edgeMap.set(key, { a, b, faces: [f] });
+              else cur.faces.push(f);
+            }
+          }
+
+          // Convert edgeMap to edge list with local endpoint positions and adjacent faces
+          const edges: any[] = [];
+          edgeMap.forEach((val) => {
+            const aIdx = val.a;
+            const bIdx = val.b;
+            const aPos = new THREE.Vector3(
+              positions[aIdx * 3],
+              positions[aIdx * 3 + 1],
+              positions[aIdx * 3 + 2],
+            );
+            const bPos = new THREE.Vector3(
+              positions[bIdx * 3],
+              positions[bIdx * 3 + 1],
+              positions[bIdx * 3 + 2],
+            );
+            const f0 = val.faces[0];
+            const f1 = val.faces.length > 1 ? val.faces[1] : undefined;
+            edges.push({ aIdx, bIdx, aPos, bPos, f0, f1 });
+          });
+
+          // Determine planar-ish classification per face based on average neighbor normal deviation
+          const planarEpsRad = THREE.MathUtils.degToRad(1.0); // ~1 degree threshold
+          const neighborAngleSum: number[] = new Array(faceCount).fill(0);
+          const neighborCount: number[] = new Array(faceCount).fill(0);
+          // For each edge with two faces, accumulate neighbor angles
+          edgeMap.forEach((val) => {
+            if (val.faces.length < 2) return;
+            const f0 = val.faces[0];
+            const f1 = val.faces[1];
+            const ang = faceNormals[f0].angleTo(faceNormals[f1]);
+            neighborAngleSum[f0] += ang;
+            neighborAngleSum[f1] += ang;
+            neighborCount[f0] += 1;
+            neighborCount[f1] += 1;
+          });
+          const planar: boolean[] = new Array(faceCount);
+          for (let fi = 0; fi < faceCount; fi++) {
+            const avg = neighborCount[fi] > 0 ? neighborAngleSum[fi] / neighborCount[fi] : 0;
+            planar[fi] = avg < planarEpsRad;
+          }
+
+          // Build tangent edges: emit edges where planar-ness differs across the edge
+          // and the dihedral is small (< ~5 degrees)
+          const tangentMin = 1e-6; // ignore exact-zero degenerate
+          const tangentMax = THREE.MathUtils.degToRad(5.0);
+          const tangentPositions: number[] = [];
+          for (const e of edges) {
+            if (e.f1 === undefined) continue; // ignore boundary for tangent overlay
+            const f0 = e.f0;
+            const f1 = e.f1;
+            const dihedral = faceNormals[f0].angleTo(faceNormals[f1]);
+            if ((!!planar[f0] !== !!planar[f1]) && dihedral > tangentMin && dihedral < tangentMax) {
+              tangentPositions.push(e.aPos.x, e.aPos.y, e.aPos.z, e.bPos.x, e.bPos.y, e.bPos.z);
+            }
+          }
+
+          // Create tangent LineSegments (static)
+          let tangentObj: THREE.LineSegments | null = null;
+          try {
+            const tg = new THREE.BufferGeometry();
+            if (tangentPositions.length > 0) {
+              tg.setAttribute("position", new THREE.Float32BufferAttribute(new Float32Array(tangentPositions), 3));
+              tg.computeBoundingSphere();
+            } else {
+              tg.setAttribute("position", new THREE.Float32BufferAttribute(new Float32Array(0), 3));
+            }
+            const tmat = new THREE.LineBasicMaterial({
+              color: 0x111111,
+              transparent: true,
+              opacity: 0.85,
+              depthTest: true,
+              depthWrite: false,
+              polygonOffset: true,
+              polygonOffsetFactor: -1,
+              polygonOffsetUnits: 1,
+            });
+            tangentObj = new THREE.LineSegments(tg, tmat);
+            tangentObj.frustumCulled = false;
+            tangentObj.renderOrder = (mesh.renderOrder ?? 0) + 1;
+            tangentObj.userData.__edgeOverlay = true;
+            edgesGroup.add(tangentObj);
+            edgePickables.push(tangentObj);
+          } catch (e) {
+            /* ignore tangent build errors */
+          }
+
+          // Create silhouette LineSegments (dynamic) with empty geom initially
+          let silhouetteObj: THREE.LineSegments | null = null;
+          try {
+            const sg = new THREE.BufferGeometry();
+            sg.setAttribute("position", new THREE.Float32BufferAttribute(new Float32Array(0), 3));
+            const smat = new THREE.LineBasicMaterial({
+              color: 0x000000,
+              linewidth: 3.0,
+              transparent: true,
+              opacity: 1.0,
+              depthTest: false,
+              depthWrite: false,
+              polygonOffset: true,
+              polygonOffsetFactor: -1,
+              polygonOffsetUnits: 1,
+            });
+            silhouetteObj = new THREE.LineSegments(sg, smat);
+            silhouetteObj.frustumCulled = false;
+            silhouetteObj.renderOrder = 10000;
+            silhouetteObj.userData.__edgeOverlay = true;
+            edgesGroup.add(silhouetteObj);
+            edgePickables.push(silhouetteObj);
+          } catch (e) {
+            /* ignore silhouette build errors */
+          }
+
+          // Cache data for silhouette updates
+          cadMeshData.set(mesh, {
+            faceNormals,
+            faceCenters,
+            edges,
+            silhouetteObj,
+            tangentObj,
+          });
+
+          // Request an initial silhouette update
+          requestUpdateSilhouette?.();
+        }
+      } catch (e) {
+        /* ignore per-mesh analysis errors */
+      }
     }
 
-    // Update Bounds for clipping
-    const finalBox = new THREE.Box3().setFromObject(modelRoot);
-    modelBounds = { min: finalBox.min.y, max: finalBox.max.y };
-    setClipping(currentClippingValue); // Re-apply clipping to new material
+    // Place model so its bounding-box minimum corner sits at world origin (0,0,0)
+    // Reset any translation on modelRoot, compute bounds, then shift by -box.min
+    modelRoot.position.set(0, 0, 0);
 
-    // 5) Fit camera to final bounds
-    if (gridHelper) gridHelper.position.y = 0;
+    const box = new THREE.Box3().setFromObject(modelRoot);
+    if (!box.isEmpty()) {
+      // Translate so min corner moves to origin
+      modelRoot.position.sub(box.min.clone());
 
-    // Default fit with zoom=1 (internally uses padding 1.5)
-    const padding = 1.5;
-    fitCameraToBox(finalBox, padding);
+      // Ensure matrices are up to date
+      modelRoot.updateWorldMatrix(true, true);
+
+      // Recompute bounds after translation
+      const centeredBox = new THREE.Box3().setFromObject(modelRoot);
+      modelBounds = { min: centeredBox.min.y, max: centeredBox.max.y };
+      const centeredSize = centeredBox.getSize(new THREE.Vector3());
+      modelDiagonal = centeredSize.length();
+      setClipping(currentClippingValue); // Re-apply clipping to new material
+
+      // Ensure controls target is at the center of the translated model
+      const newCenter = centeredBox.getCenter(new THREE.Vector3());
+      controls.target.copy(newCenter);
+      controls.update();
+
+      // Keep grid at y=0 (do not move it)
+      if (gridHelper) gridHelper.position.y = 0;
+
+      // Default fit with zoom=1 (internally uses padding 1.5)
+      const padding = 1.5;
+      fitCameraToBox(centeredBox, padding);
+      // Create feature edges after the model has been positioned and matrices are up-to-date.
+      modelRoot.updateWorldMatrix(true, true);
+      // Build wireframe overlay for the primary mesh (separate overlay object)
+      if ((object as any).isMesh) {
+        try {
+          buildWireframeOverlay(object as THREE.Mesh);
+        } catch {
+          /* ignore */
+        }
+      }
+      rebuildFeatureEdges();
+    } else {
+      // No geometry: reset bounds
+      modelBounds = { min: 0, max: 0 };
+      modelDiagonal = 0;
+      clearFeatureEdges();
+      disposeWireframeOverlay();
+    }
   }
 
   function clear() {
+    clearFeatureEdges();
+    disposeWireframeOverlay();
     modelRoot.clear();
     modelRoot.position.set(0, 0, 0);
   }
@@ -1045,10 +2256,12 @@ export function createViewer(container: HTMLElement): Viewer {
     // Do not call fitToScreen here — keep the exact direction set by the preset.
     // The user may call fitToScreen separately; controls should reflect new position.
     controls.update();
+    requestUpdateSilhouette?.();
   }
 
   function setProjection(mode: "perspective" | "orthographic") {
     activeCamera = mode === "perspective" ? persp : ortho;
+    requestUpdateSilhouette?.();
   }
 
   function resize() {
@@ -1058,17 +2271,37 @@ export function createViewer(container: HTMLElement): Viewer {
     const aspect = w / Math.max(1, h);
     persp.aspect = aspect;
     persp.updateProjectionMatrix();
+
+    if (edgeHoverLineMaterial) {
+      edgeHoverLineMaterial.resolution.set(w, h);
+    }
     updateCubeSize();
+  }
+
+  function setControlsEnabled(enabled: boolean) {
+    controls.enabled = !!enabled;
   }
 
   const render = () => {
     controls.update();
+    const camAngle = lastCamQuat.angleTo(activeCamera.quaternion);
+    const camPosDelta = lastCamPos.distanceTo(activeCamera.position);
+    if (camAngle > camEpsilon || camPosDelta > camEpsilon) {
+      lastCamQuat.copy(activeCamera.quaternion);
+      lastCamPos.copy(activeCamera.position);
+      silhouetteDirty = true;
+    }
+    if (silhouetteDirty) {
+      requestUpdateSilhouette?.();
+      silhouetteDirty = false;
+    }
+    updateMeasurementOverlay();
     renderer.render(scene, activeCamera);
     // Sync cube rotation to inverse of active camera
     try {
       const inv = activeCamera.quaternion.clone().invert();
       cubeRoot.quaternion.copy(inv);
-    } catch (e) {
+    } catch (_e) {
       // ignore
     }
     cubeRenderer.render(cubeScene, cubeCamera);
@@ -1080,52 +2313,60 @@ export function createViewer(container: HTMLElement): Viewer {
   render();
 
   function setMaterialProperties(
-    colorHex: number,
-    wireframe: boolean,
-    xray: boolean,
-  ) {
-    modelRoot.traverse((child: any) => {
-      if (
-        (child.isMesh || child.isLine || child.isLineSegments) &&
-        child.material
-      ) {
-        const updateMaterial = (m: any) => {
-          m.color.setHex(colorHex);
-          if (child.isMesh) {
-            m.wireframe = wireframe;
-            if (xray) {
-              m.transparent = true;
-              m.opacity = 0.3;
-              m.depthWrite = false;
-              m.side = THREE.DoubleSide;
-            } else {
-              m.transparent = false;
-              m.opacity = 1.0;
-              m.depthWrite = true;
-              m.side = THREE.DoubleSide;
-            }
-          } else {
-            // For lines, wireframe doesn't apply, but xray/transparency can
-            if (xray) {
-              m.transparent = true;
-              m.opacity = 0.3;
-              m.depthWrite = false;
-            } else {
-              m.transparent = false;
-              m.opacity = 1.0;
-              m.depthWrite = true;
-            }
-          }
-        };
+  colorHex: number,
+  wireframe: boolean,
+  xray: boolean,
+) {
+  modelRoot.traverse((child: any) => {
+    if (!child || !child.material) return;
+    // Skip feature-edge overlays explicitly
+    if (child.userData && child.userData.__isFeatureEdge) return;
+    if (child.userData && child.userData.__edgeOverlay) return;
+    if (child.name === "featureEdges") return;
 
-        if (Array.isArray(child.material)) {
-          child.material.forEach(updateMaterial);
-        } else {
-          updateMaterial(child.material);
-        }
+    // Only update mesh materials (do not touch line overlays)
+    if (!child.isMesh) return;
+
+    const apply = (mat: any) => {
+      // 1) Only set color when supported
+      if (mat && mat.color && typeof mat.color.setHex === "function") {
+        mat.color.setHex(colorHex);
       }
-    });
-  }
+
+      // 2) We do NOT enable triangle mesh wireframes here. A separate wireframe overlay
+      // is used and toggled via the wireframeEnabled state.
+
+      // 3) X-ray
+      if (xray) {
+        mat.transparent = true;
+        mat.opacity = 0.3;
+        mat.depthWrite = false;
+        if (child.isMesh) mat.side = THREE.DoubleSide;
+      } else {
+        mat.transparent = false;
+        mat.opacity = 1.0;
+        mat.depthWrite = true;
+        if (child.isMesh) mat.side = THREE.DoubleSide;
+      }
+
+      // 4) Ensure renderer notices updates (important for some materials)
+      mat.needsUpdate = true;
+    };
+
+    if (Array.isArray(child.material)) {
+      child.material.forEach(apply);
+    } else {
+      apply(child.material);
+    }
+  });
+
+  // Toggle the wireframe overlay visibility according to flag
+  try {
+    wireframeEnabled = !!wireframe;
+    if (wireframeLines) wireframeLines.visible = wireframeEnabled;
+  } catch {}
+}
+
 
   function setClipping(value: number | null) {
     currentClippingValue = value;
@@ -1177,7 +2418,11 @@ export function createViewer(container: HTMLElement): Viewer {
   ) {
     // Remove existing highlight
     if (highlightMesh) {
-      scene.remove(highlightMesh);
+      if (highlightMesh.parent) {
+        highlightMesh.parent.remove(highlightMesh);
+      } else {
+        scene.remove(highlightMesh);
+      }
       highlightMesh.geometry.dispose();
       (highlightMesh.material as THREE.Material).dispose();
       highlightMesh = null;
@@ -1236,16 +2481,17 @@ export function createViewer(container: HTMLElement): Viewer {
     });
 
     highlightMesh = new THREE.Mesh(highlightGeom, highlightMat);
-    highlightMesh.position.copy(mainMesh.position);
-    highlightMesh.rotation.copy(mainMesh.rotation);
-    highlightMesh.scale.copy(mainMesh.scale);
-    scene.add(highlightMesh);
+
+    // Add highlight as a child of the main mesh so it inherits transforms exactly
+    highlightMesh.position.set(0, 0, 0);
+    highlightMesh.rotation.set(0, 0, 0);
+    highlightMesh.scale.set(1, 1, 1);
+    mainMesh.add(highlightMesh);
 
     // If location is provided, animate camera to focus on it
     if (location) {
       const targetPos = new THREE.Vector3(location.x, location.y, location.z);
       const currentTarget = controls.target.clone();
-      const targetDistance = activeCamera.position.distanceTo(targetPos);
 
       // Smooth transition to the feature
       const duration = 1000; // ms
@@ -1270,20 +2516,90 @@ export function createViewer(container: HTMLElement): Viewer {
 
   function dispose() {
     window.removeEventListener("resize", onResize);
+    try {
+      clearEdgeHighlight();
+    } catch {}
+    try {
+      setMeasurementSegment(null, null, null);
+    } catch {}
+    try {
+      if (measureLine) {
+        scene.remove(measureLine);
+        measureLine = null;
+      }
+      if (measureLineGeometry) {
+        measureLineGeometry.dispose();
+        measureLineGeometry = null;
+      }
+      if (measureLabel) {
+        scene.remove(measureLabel);
+        if (measureLabel.material.map) {
+          measureLabel.material.map.dispose();
+        }
+        measureLabel.material.dispose();
+        measureLabel = null;
+      }
+      if (measureArrow1) {
+        measureArrow1.parent?.remove(measureArrow1);
+        measureArrow1 = null;
+      }
+      if (measureArrow2) {
+        measureArrow2.parent?.remove(measureArrow2);
+        measureArrow2 = null;
+      }
+      if (measureArrowBillboard) {
+        scene.remove(measureArrowBillboard);
+        measureArrowBillboard = null;
+      }
+      if (measureArrow1Geometry) {
+        measureArrow1Geometry.dispose();
+        measureArrow1Geometry = null;
+      }
+      if (measureArrow2Geometry) {
+        measureArrow2Geometry.dispose();
+        measureArrow2Geometry = null;
+      }
+      arrowMaterial.dispose();
+      measureMaterial.dispose();
+    } catch {}
+    try {
+      controls.removeEventListener("change", requestUpdateSilhouette as any);
+    } catch {}
+    if (silhouetteRAFId) {
+      try {
+        cancelAnimationFrame(silhouetteRAFId);
+      } catch {}
+      silhouetteRAFId = null;
+    }
+    // dispose feature edge overlays first
+    try { clearFeatureEdges(); } catch { /* ignore */ }
+    // dispose wireframe overlay if present
+    try { disposeWireframeOverlay(); } catch { /* ignore */ }
     renderer.setAnimationLoop(null);
     renderer.dispose();
-    container.removeChild(renderer.domElement);
     try {
-      cubeCanvas.removeEventListener("pointermove", onCubePointerMove as any);
-      cubeCanvas.removeEventListener("click", onCubeClick as any);
+      container.removeChild(renderer.domElement);
+    } catch {
+      /* ignore */
+    }
+    try {
       cubeCanvas.removeEventListener("pointerdown", onCubePointerDown as any);
-    } catch (_e) {}
+      cubeCanvas.removeEventListener("pointermove", onCubePointerMove as any);
+      cubeCanvas.removeEventListener("pointerup", onCubePointerUp as any);
+      cubeCanvas.removeEventListener("pointercancel", onCubePointerCancel as any);
+      cubeCanvas.removeEventListener("click", onCubeClick as any);
+    } catch {
+      /* ignore */
+    }
     cubeRenderer.dispose();
     // remove the whole wrapper (which contains the canvas)
     try {
       cubeWrapper.remove();
-    } catch (_e) {}
-    // dispose cube materials/geometry by traversing cubeRoot
+    } catch {
+      /* ignore */
+    }
+
+    // dispose cube materials/geometry
     cubeRoot.traverse((obj: any) => {
       if (obj.geometry) obj.geometry.dispose();
       if (obj.material) {
@@ -1298,6 +2614,48 @@ export function createViewer(container: HTMLElement): Viewer {
         }
       }
     });
+
+    // dispose modelRoot children (meshes, measurement graphics, highlights, etc.)
+    try {
+      modelRoot.traverse((obj: any) => {
+        if (obj.geometry) obj.geometry.dispose();
+        if (obj.material) {
+          if (Array.isArray(obj.material)) {
+            obj.material.forEach((m: any) => {
+              if (m.map) m.map.dispose();
+              m.dispose();
+            });
+          } else {
+            if (obj.material.map) obj.material.map.dispose();
+            obj.material.dispose();
+          }
+        }
+      });
+    } catch {
+      /* ignore */
+    }
+
+    // dispose the environment resources we created
+    try {
+      pmremGenerator.dispose();
+    } catch {
+      /* ignore */
+    }
+    try {
+      roomEnv.traverse((o: any) => {
+        if (o.geometry) o.geometry.dispose();
+        if (o.material) {
+          if (Array.isArray(o.material)) {
+            o.material.forEach((m: any) => m.dispose());
+          } else {
+            if (o.material.map) o.material.map.dispose?.();
+            o.material.dispose();
+          }
+        }
+      });
+    } catch {
+      /* ignore */
+    }
   }
 
   return {
@@ -1305,9 +2663,14 @@ export function createViewer(container: HTMLElement): Viewer {
     clear,
     setView,
     setProjection,
+    setFeatureEdgesEnabled,
     resize,
     dispose,
     pickAtScreenPosition,
+    pickEdgeAtScreenPosition,
+    highlightEdgeAtScreenPosition,
+    clearEdgeHighlight,
+    measureEdgeAtScreenPosition,
     setMeasurementSegment,
     setMeasurementGraphicsScale,
     getScreenshotDataURL,
@@ -1317,6 +2680,7 @@ export function createViewer(container: HTMLElement): Viewer {
     fitToScreen,
     setHighlight,
     setBackgroundColor,
+    setControlsEnabled,
     setShowViewCube: (visible: boolean) => {
       cubeWrapper.style.display = visible ? "block" : "none";
     },
