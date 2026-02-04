@@ -30,8 +30,8 @@ function fmt(n: number) {
   return Number.isFinite(n) ? n.toFixed(2) : "-";
 }
 
-function measurePointsHasResult(points: THREE.Vector3[]) {
-  return points.length === 2;
+function measureHasResult(measureMM: number | null) {
+  return measureMM !== null;
 }
 
 interface CadViewerProps {
@@ -118,9 +118,10 @@ export const CadViewer = forwardRef<CadViewerRef, CadViewerProps>(
     } | null>(null);
     const [units, setUnits] = useState<Units>("mm");
     const [measureMode, setMeasureMode] = useState(false);
-    const [measurePoints, setMeasurePoints] = useState<THREE.Vector3[]>([]);
     const [measureMM, setMeasureMM] = useState<number | null>(null);
     const [dimScale, _setDimScale] = useState(0.6);
+    const pointerDownPosRef = useRef<{ x: number; y: number } | null>(null);
+    const pointerMovedRef = useRef(false);
 
     // Appearance State
     const [wireframe, setWireframe] = useState(false);
@@ -258,7 +259,6 @@ export const CadViewer = forwardRef<CadViewerRef, CadViewerProps>(
         setError(null);
         setDimsMM(null);
         setMeasureMode(false);
-        setMeasurePoints([]);
         setMeasureMM(null);
         viewerRef.current?.setMeasurementSegment(null, null, null);
 
@@ -307,7 +307,9 @@ export const CadViewer = forwardRef<CadViewerRef, CadViewerProps>(
     }, [autoResize, show3D]);
 
     // Measurement Logic
-    const handleViewportClick = (event: React.MouseEvent<HTMLDivElement>) => {
+    const handleViewportPointerMove = (
+      event: React.PointerEvent<HTMLDivElement>,
+    ) => {
       if (
         !showControls ||
         !measureMode ||
@@ -320,56 +322,63 @@ export const CadViewer = forwardRef<CadViewerRef, CadViewerProps>(
       const x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
       const y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
 
-      const picked = viewerRef.current.pickAtScreenPosition(x, y);
-      if (!picked) return;
-
-      // First point
-      if (measurePoints.length === 0) {
-        setMeasurePoints([picked]);
-        viewerRef.current.setMeasurementSegment(null, null, null);
-        setMeasureMM(null);
-        return;
+      if (pointerDownPosRef.current) {
+        const dx = event.clientX - pointerDownPosRef.current.x;
+        const dy = event.clientY - pointerDownPosRef.current.y;
+        if (Math.hypot(dx, dy) >= 3) {
+          pointerMovedRef.current = true;
+        }
       }
 
-      // Second point
-      if (measurePoints.length === 1) {
-        const p1 = measurePoints[0];
-        const p2 = picked;
-        const dx = p2.x - p1.x;
-        const dy = p2.y - p1.y;
-        const dz = p2.z - p1.z;
-        const dist = Math.sqrt(dx * dx + dy * dy + dz * dz);
-
-        setMeasurePoints([p1, p2]);
-        setMeasureMM(dist);
-        const valueInUnits = convert(dist, units);
-        const label = `${fmt(valueInUnits)} ${units}`;
-        viewerRef.current.setMeasurementSegment(p1, p2, label);
-        return;
+      if (viewerRef.current.highlightEdgeAtScreenPosition) {
+        viewerRef.current.highlightEdgeAtScreenPosition(x, y);
       }
-
-      // Reset loop
-      setMeasurePoints([picked]);
-      setMeasureMM(null);
-      viewerRef.current.setMeasurementSegment(null, null, null);
     };
 
-    // Update label when units change
-    useEffect(() => {
-      if (!viewerRef.current) return;
-      if (measureMM == null) {
-        if (measurePoints.length === 0) {
-          viewerRef.current.setMeasurementSegment(null, null, null);
-        }
+    const handleViewportPointerDown = (
+      event: React.PointerEvent<HTMLDivElement>,
+    ) => {
+      if (!showControls || !measureMode) return;
+      pointerDownPosRef.current = { x: event.clientX, y: event.clientY };
+      pointerMovedRef.current = false;
+    };
+
+    const handleViewportPointerUp = (
+      event: React.PointerEvent<HTMLDivElement>,
+    ) => {
+      if (
+        !showControls ||
+        !measureMode ||
+        !viewerRef.current ||
+        !containerRef.current
+      )
+        return;
+
+      if (pointerMovedRef.current) {
+        pointerDownPosRef.current = null;
         return;
       }
-      if (measurePoints.length === 2) {
-        const [p1, p2] = measurePoints;
-        const valueInUnits = convert(measureMM, units);
-        const label = `${fmt(valueInUnits)} ${units}`;
-        viewerRef.current.setMeasurementSegment(p1, p2, label);
+
+      const rect = containerRef.current.getBoundingClientRect();
+      const x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
+      const y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
+
+      const length = viewerRef.current.measureEdgeAtScreenPosition(x, y);
+      if (length === null) return;
+      setMeasureMM(length);
+      pointerDownPosRef.current = null;
+    };
+
+    // Clear edge highlight when measure mode is disabled
+    useEffect(() => {
+      if (!measureMode && viewerRef.current?.clearEdgeHighlight) {
+        viewerRef.current.clearEdgeHighlight();
       }
-    }, [units, measureMM, measurePoints]);
+    }, [measureMode]);
+
+    useEffect(() => {
+      viewerRef.current?.setControlsEnabled?.(true);
+    }, [measureMode]);
 
     const handleSnapshot = (type: "normal" | "outline") => {
       if (!viewerRef.current) return;
@@ -401,7 +410,9 @@ export const CadViewer = forwardRef<CadViewerRef, CadViewerProps>(
         {/* 3D Viewport */}
         <div
           ref={containerRef}
-          onClick={handleViewportClick}
+          onPointerDown={handleViewportPointerDown}
+          onPointerUp={handleViewportPointerUp}
+          onPointerMove={handleViewportPointerMove}
           style={{
             width: "100%",
             height: "100%",
@@ -423,7 +434,6 @@ export const CadViewer = forwardRef<CadViewerRef, CadViewerProps>(
                   const next = !measureMode;
                   setMeasureMode(next);
                   if (!next && viewerRef.current) {
-                    setMeasurePoints([]);
                     setMeasureMM(null);
                     viewerRef.current.setMeasurementSegment(null, null, null);
                   }
@@ -451,11 +461,10 @@ export const CadViewer = forwardRef<CadViewerRef, CadViewerProps>(
             {measureMode && (
               <div className="bg-blue-50/50 rounded-lg p-2 border border-blue-100/50">
                 <div className="text-[10px] uppercase tracking-wider text-blue-500 font-bold mb-1">
-                  {measurePoints.length === 0 && "Select Point 1"}
-                  {measurePoints.length === 1 && "Select Point 2"}
-                  {measurePointsHasResult(measurePoints) && "Result"}
+                  {!measureHasResult(measureMM) && "Click an Edge"}
+                  {measureHasResult(measureMM) && "Result"}
                 </div>
-                {measurePointsHasResult(measurePoints) && (
+                {measureHasResult(measureMM) && (
                   <div className="text-blue-700 font-mono text-xs font-bold">
                     {fmt(convert(measureMM!, units))} {units}
                   </div>
