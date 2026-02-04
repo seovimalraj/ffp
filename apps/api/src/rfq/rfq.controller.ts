@@ -52,41 +52,56 @@ export class RfqController {
   async getUserRfqs(
     @CurrentUser() user: CurrentUserDto,
     @Query('status') status?: string,
+    @Query('rfqType') rfqType?: string,
     @Query('limit') limit?: number,
     @Query('cursorCreatedAt') cursorCreatedAt?: string,
     @Query('cursorId') cursorId?: string,
   ) {
     const client = this.supbaseService.getClient();
 
-    const [rfqResponse, statusResponse] = await Promise.all([
-      client.rpc(SQLFunctions.getUserRFQsWithPartsCountInfinite, {
+    const { data, error } = await client.rpc(
+      SQLFunctions.getUserRFQsWithPartsCountInfinite,
+      {
         p_user_id: user.id,
         p_status: status || null,
+        p_rfq_type: rfqType || null,
         p_limit: limit || 20,
         p_cursor_created_at: cursorCreatedAt || null,
         p_cursor_id: cursorId || null,
-      }),
-
-      client.rpc(SQLFunctions.getRfqStatusSummary, {
-        p_organization_id: user.organizationId,
-      }),
-    ]);
-
-    const { data, error } = rfqResponse;
-    const { data: statusData, error: statusError } = statusResponse;
+      },
+    );
 
     if (error) {
       throw new HttpException(error.message, HttpStatus.BAD_REQUEST);
     }
 
-    if (statusError) {
-      throw new HttpException(statusError.message, HttpStatus.BAD_REQUEST);
+    return {
+      success: true,
+      ...data,
+    };
+  }
+
+  @Get('status-summary')
+  @Roles(RoleNames.Admin, RoleNames.Customer)
+  async getRfqStatusSummary(
+    @CurrentUser() user: CurrentUserDto,
+    @Query('rfqType') rfqType?: string,
+  ) {
+    const client = this.supbaseService.getClient();
+
+    const { data, error } = await client.rpc(SQLFunctions.getRfqStatusSummary, {
+      p_user_id: user.id, // Customers should see their own counts
+      p_organization_id: user.organizationId,
+      p_rfq_type: rfqType || null,
+    });
+
+    if (error) {
+      throw new HttpException(error.message, HttpStatus.BAD_REQUEST);
     }
 
     return {
       success: true,
-      ...data,
-      statusCounts: statusData,
+      statusCounts: data,
     };
   }
 
@@ -94,6 +109,7 @@ export class RfqController {
   @Roles(RoleNames.Admin)
   async getAdminRfqs(
     @Query('status') status?: string,
+    @Query('rfqType') rfqType?: string,
     @Query('limit') limit?: number,
     @Query('cursorCreatedAt') cursorCreatedAt?: string,
     @Query('cursorId') cursorId?: string,
@@ -107,7 +123,7 @@ export class RfqController {
         *,
         organization:${Tables.OrganizationTable}(name),
         user:${Tables.UserTable}(email, name),
-        parts:${Tables.RFQPartsTable}(id)
+        parts:${Tables.RFQPartsTable}(id, file_name, cad_file_url, snapshot_2d_url)
       `,
       )
       .order('created_at', { ascending: false })
@@ -115,6 +131,10 @@ export class RfqController {
 
     if (status && status.toLowerCase() !== 'any') {
       query = query.eq('status', status.toLowerCase());
+    }
+
+    if (rfqType && rfqType.toLowerCase() !== 'any') {
+      query = query.eq('rfq_type', rfqType.toLowerCase());
     }
 
     if (cursorCreatedAt && cursorId) {
@@ -139,7 +159,7 @@ export class RfqController {
       organization_name: rfq.organization?.name || 'Unknown',
       user_email: rfq.user?.email,
       user_name: rfq.user?.name,
-      parts: undefined,
+      parts: rfq.parts,
       organization: undefined,
       user: undefined,
     }));
@@ -779,7 +799,6 @@ export class RfqController {
 
     const total = parts.reduce((acc, part) => {
       const price = part.final_price || 0;
-      const qty = part.quantity || 0;
       return acc + price;
     }, 0);
 

@@ -1,5 +1,6 @@
 "use client";
 
+import { useRef, useEffect } from "react";
 import { motion } from "framer-motion";
 import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
@@ -32,12 +33,16 @@ export type StatusItem = {
     | "slate"
     | "red"
     | "lime";
+  onClick?: () => void;
+  priority?: number; // Lower numbers = higher priority
+  highlight?: boolean; // Highlight this card with enhanced visual effects
 };
 
 type StatusCardsProps = {
   items: StatusItem[];
   isLoading?: boolean;
   className?: string;
+  minimal?: boolean;
 };
 
 const colorVariants = {
@@ -90,21 +95,74 @@ const iconBgVariants = {
   lime: "bg-lime-100 dark:bg-lime-500/20 text-lime-600",
 };
 
-export function StatusCards({ items, isLoading, className }: StatusCardsProps) {
+export function StatusCards({
+  items,
+  isLoading,
+  className,
+  minimal = false,
+}: StatusCardsProps) {
+  const cardRefs = useRef<(HTMLDivElement | null)[]>([]);
+
+  // Sort items by priority with safety net for mixed scenarios
+  // Items with priority are sorted first, items without priority maintain original order at the end
+  const sortedItems = (() => {
+    const withPriority = items
+      .map((item, originalIndex) => ({ item, originalIndex }))
+      .filter(({ item }) => typeof item.priority === "number")
+      .sort((a, b) => (a.item.priority ?? 0) - (b.item.priority ?? 0))
+      .map(({ item }) => item);
+
+    const withoutPriority = items.filter(
+      (item) => typeof item.priority !== "number",
+    );
+
+    return [...withPriority, ...withoutPriority];
+  })();
+
+  // Scroll highlighted card into view when highlight changes
+  useEffect(() => {
+    const highlightedIndex = sortedItems.findIndex((item) => item.highlight);
+    if (highlightedIndex !== -1 && cardRefs.current[highlightedIndex]) {
+      // Small delay to ensure the card is rendered
+      setTimeout(() => {
+        cardRefs.current[highlightedIndex]?.scrollIntoView({
+          behavior: "smooth",
+          block: "nearest",
+          inline: "center",
+        });
+      }, 100);
+    }
+  }, [sortedItems.findIndex((item) => item.highlight)]);
+
   if (isLoading) {
     return (
       <div className={cn("flex w-full gap-4 overflow-x-auto pb-4", className)}>
         {Array.from({ length: 4 }).map((_, i) => (
           <div
             key={i}
-            className="h-32 min-w-[260px] flex-1 rounded-2xl border border-white/20 bg-white/5 backdrop-blur-xl p-6"
+            className={cn(
+              "flex-1 rounded-2xl border border-white/20 bg-white/5 backdrop-blur-xl",
+              minimal ? "p-4 min-w-[180px]" : "p-6 min-w-[260px] h-32",
+            )}
           >
-            <div className="flex justify-between items-start mb-4">
-              <Skeleton className="h-4 w-24" />
-              <Skeleton className="h-8 w-8 rounded-lg" />
-            </div>
-            <Skeleton className="h-8 w-16 mb-2" />
-            <Skeleton className="h-3 w-32" />
+            {minimal ? (
+              <div className="flex items-center gap-3">
+                <Skeleton className="h-9 w-9 rounded-xl" />
+                <div className="flex flex-col gap-1.5">
+                  <Skeleton className="h-3 w-12" />
+                  <Skeleton className="h-5 w-16" />
+                </div>
+              </div>
+            ) : (
+              <>
+                <div className="flex justify-between items-start mb-4">
+                  <Skeleton className="h-4 w-24" />
+                  <Skeleton className="h-8 w-8 rounded-lg" />
+                </div>
+                <Skeleton className="h-8 w-16 mb-2" />
+                <Skeleton className="h-3 w-32" />
+              </>
+            )}
           </div>
         ))}
       </div>
@@ -116,8 +174,13 @@ export function StatusCards({ items, isLoading, className }: StatusCardsProps) {
   }
 
   return (
-    <div className={cn("flex w-full gap-4 overflow-x-auto pb-4", className)}>
-      {items.map((item, index) => {
+    <div
+      className={cn(
+        "flex w-full gap-4 overflow-x-auto invisible-scrollbar pb-2",
+        className,
+      )}
+    >
+      {sortedItems.map((item, index) => {
         const Icon = item.icon;
         const colorClass = item.color
           ? colorVariants[item.color]
@@ -129,13 +192,22 @@ export function StatusCards({ items, isLoading, className }: StatusCardsProps) {
         return (
           <motion.div
             key={index}
+            ref={(el) => {
+              cardRefs.current[index] = el;
+            }}
             initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
+            animate={{
+              opacity: 1,
+              y: 0,
+              scale: item.highlight ? 1.02 : 1,
+            }}
             transition={{ delay: index * 0.1 }}
-            whileHover={{ y: -4, transition: { duration: 0.2 } }}
+            onClick={item.onClick}
             className={cn(
-              "group relative overflow-hidden rounded-2xl border bg-gradient-to-br p-6 transition-all duration-300",
-              "hover:shadow-2xl hover:shadow-indigo-500/10 min-w-[260px] flex-1",
+              "group relative overflow-hidden rounded-2xl border bg-gradient-to-br transition-all duration-300",
+              "hover:shadow-2xl hover:shadow-indigo-500/10 flex-1 hover:z-30",
+              minimal ? "p-4 min-w-[180px]" : "p-6 min-w-[260px]",
+              item.onClick && "cursor-pointer",
               colorClass,
             )}
             style={{
@@ -144,54 +216,101 @@ export function StatusCards({ items, isLoading, className }: StatusCardsProps) {
             }}
           >
             {/* Liquid Glass Shine */}
-            <div className="pointer-events-none absolute inset-0 bg-gradient-to-br from-white/20 via-transparent to-transparent opacity-0 transition-opacity duration-500 group-hover:opacity-100" />
+            <div
+              className={cn(
+                "pointer-events-none absolute inset-0 bg-gradient-to-br from-white/20 via-transparent to-transparent transition-opacity duration-500",
+                item.highlight
+                  ? "opacity-100"
+                  : "opacity-0 group-hover:opacity-100",
+              )}
+            />
 
-            <div className="relative flex flex-col h-full">
-              <div className="flex items-start justify-between">
-                <span className="text-[10px] font-bold uppercase tracking-widest text-slate-500/70 dark:text-slate-400">
-                  {item.label}
-                </span>
-                {Icon && (
-                  <div
-                    className={cn(
-                      "rounded-xl p-2 transition-transform duration-300 group-hover:scale-110",
-                      iconBgClass,
-                    )}
-                  >
-                    <Icon className="h-5 w-5" />
-                  </div>
-                )}
-              </div>
-
-              <div className="mt-2 flex items-baseline gap-2">
-                <span className="text-3xl font-bold tracking-tight text-slate-900 dark:text-white">
-                  {item.value}
-                </span>
-                {item.trend && (
-                  <div
-                    className={cn(
-                      "flex items-center gap-0.5 text-xs font-semibold",
-                      item.trend.isPositive
-                        ? "text-emerald-500"
-                        : "text-rose-500",
-                    )}
-                  >
-                    {item.trend.isPositive ? (
-                      <TrendingUp size={12} />
-                    ) : (
-                      <TrendingDown size={12} />
-                    )}
-                    {item.trend.value}
-                  </div>
-                )}
-              </div>
-
-              {(item.subValue || item.trend) && (
-                <div className="mt-auto pt-2">
-                  {item.subValue && (
-                    <span className="text-xs font-medium text-slate-400 dark:text-slate-500">
-                      {item.subValue}
+            <div className="relative h-full">
+              {minimal ? (
+                <div className="flex items-center gap-3">
+                  {Icon && (
+                    <div
+                      className={cn(
+                        "flex-shrink-0 rounded-xl p-2 transition-transform duration-300 group-hover:scale-110",
+                        iconBgClass,
+                      )}
+                    >
+                      <Icon className="h-4 w-4" />
+                    </div>
+                  )}
+                  <div className="flex flex-col min-w-0">
+                    <span className="truncate text-[10px] font-bold uppercase tracking-wider text-slate-500/70 dark:text-slate-400">
+                      {item.label}
                     </span>
+                    <div className="flex items-baseline gap-1.5">
+                      <span className="truncate text-xl font-bold tracking-tight text-slate-900 dark:text-white">
+                        {item.value}
+                      </span>
+                      {item.trend && (
+                        <div
+                          className={cn(
+                            "flex items-center text-[10px] font-semibold",
+                            item.trend.isPositive
+                              ? "text-emerald-500"
+                              : "text-rose-500",
+                          )}
+                        >
+                          {item.trend.isPositive ? "+" : ""}
+                          {item.trend.value}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                <div className="flex flex-col h-full">
+                  <div className="flex items-start justify-between">
+                    {Icon && (
+                      <div
+                        className={cn(
+                          "rounded-xl p-2 transition-transform duration-300 group-hover:scale-110",
+                          iconBgClass,
+                        )}
+                      >
+                        <Icon className="h-5 w-5" />
+                      </div>
+                    )}
+                    <span className="text-[10px] font-bold uppercase tracking-widest text-slate-500/70 dark:text-slate-400">
+                      {item.label}
+                    </span>
+                  </div>
+
+                  <div className="mt-2 flex items-baseline gap-2">
+                    <span className="text-3xl font-bold tracking-tight text-slate-900 dark:text-white">
+                      {item.value}
+                    </span>
+                    {item.trend && (
+                      <div
+                        className={cn(
+                          "flex items-center gap-0.5 text-xs font-semibold",
+                          item.trend.isPositive
+                            ? "text-emerald-500"
+                            : "text-rose-500",
+                        )}
+                      >
+                        {item.trend.isPositive ? (
+                          <TrendingUp size={12} />
+                        ) : (
+                          <TrendingDown size={12} />
+                        )}
+                        {item.trend.value}
+                      </div>
+                    )}
+                  </div>
+
+                  {(item.subValue || item.trend) && (
+                    <div className="mt-auto pt-2">
+                      {item.subValue && (
+                        <span className="text-xs font-medium text-slate-400 dark:text-slate-500">
+                          {item.subValue}
+                        </span>
+                      )}
+                    </div>
                   )}
                 </div>
               )}
@@ -200,8 +319,13 @@ export function StatusCards({ items, isLoading, className }: StatusCardsProps) {
             {/* Accent Border for Glass Depth */}
             <div className="absolute inset-[1px] rounded-[inherit] border border-white/20 pointer-events-none opacity-50" />
 
-            {/* Subtle Liquid Edge */}
-            <div className="absolute bottom-0 left-0 h-[2px] w-0 bg-current opacity-30 transition-all duration-500 group-hover:w-full" />
+            {/* Enhanced Liquid Edge - more prominent when highlighted */}
+            <div
+              className={cn(
+                "absolute bottom-0 left-0 h-[3px] transition-all duration-500",
+                "w-0 bg-current opacity-30 group-hover:w-full",
+              )}
+            />
           </motion.div>
         );
       })}

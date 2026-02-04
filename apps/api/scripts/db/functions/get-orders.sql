@@ -64,7 +64,8 @@ CREATE OR REPLACE FUNCTION get_orders_infinite (
         p_rfq_id UUID DEFAULT NULL,
         p_limit INT DEFAULT 20,
         p_cursor_created_at TIMESTAMP DEFAULT NULL,
-        p_cursor_id UUID DEFAULT NULL
+        p_cursor_id UUID DEFAULT NULL,
+        p_search TEXT DEFAULT NULL
     ) RETURNS JSONB LANGUAGE sql STABLE SECURITY DEFINER AS $$ WITH base_orders AS (
         SELECT o.id AS order_id,
             o.order_code,
@@ -95,6 +96,11 @@ CREATE OR REPLACE FUNCTION get_orders_infinite (
             AND (
                 p_rfq_id IS NULL
                 OR o.rfq_id = p_rfq_id
+            )
+            AND (
+                p_search IS NULL
+                OR o.order_code ILIKE '%' || p_search || '%'
+                OR org.name ILIKE '%' || p_search || '%'
             )
     ),
     total_count AS (
@@ -128,9 +134,26 @@ CREATE OR REPLACE FUNCTION get_orders_infinite (
             ol.created_at,
             ol.confirmed_at,
             ol.organization_name,
+            COALESCE(
+                jsonb_agg(
+                    jsonb_build_object(
+                        'file_name',
+                        rp.file_name,
+                        'cad_file_url',
+                        rp.cad_file_url,
+                        'snapshot_2d_url',
+                        rp.snapshot_2d_url
+                    )
+                    ORDER BY op.created_at
+                ) FILTER (
+                    WHERE op.id IS NOT NULL
+                ),
+                '[]'::jsonb
+            ) AS parts,
             COUNT(op.id)::INT AS part_count
         FROM order_limited ol
             LEFT JOIN order_parts op ON op.order_id = ol.order_id
+            LEFT JOIN rfq_parts rp ON rp.id = op.rfq_part_id
         GROUP BY ol.order_id,
             ol.order_code,
             ol.rfq_id,
@@ -166,4 +189,74 @@ SELECT jsonb_build_object(
         )
     )
 FROM orders_with_parts;
+$$;
+--
+----
+------- RFQ Status Summary
+----
+--
+CREATE OR REPLACE FUNCTION get_order_status_summary(
+        p_user_id UUID,
+        p_order_status VARCHAR DEFAULT NULL
+    ) RETURNS JSON LANGUAGE plpgsql STABLE AS $$
+DECLARE v_organization_id UUID;
+v_role TEXT;
+BEGIN -- Fetch role and organization
+SELECT role,
+    organization_id INTO v_role,
+    v_organization_id
+FROM users
+WHERE id = p_user_id;
+IF v_role IS NULL THEN RAISE EXCEPTION 'User % not found',
+p_user_id;
+END IF;
+-- Non-admin users MUST have an organization
+IF v_role <> 'admin'
+AND v_organization_id IS NULL THEN RAISE EXCEPTION 'User % has no organization',
+p_user_id;
+END IF;
+RETURN (
+    WITH filtered_orders AS (
+        SELECT status
+        FROM orders
+        WHERE -- Admin sees everything
+            (
+                v_role = 'admin'
+                OR organization_id = v_organization_id
+            )
+            AND (
+                p_order_status IS NULL
+                OR status = p_order_status
+            )
+    )
+    SELECT json_build_object(
+            'total',
+            (
+                SELECT COUNT(*)::INT
+                FROM filtered_orders
+            ),
+            'by_status',
+            COALESCE(
+                (
+                    SELECT json_agg(
+                            json_build_object(
+                                'status',
+                                status,
+                                'count',
+                                status_count
+                            )
+                            ORDER BY status
+                        )
+                    FROM (
+                            SELECT status,
+                                COUNT(*)::INT AS status_count
+                            FROM filtered_orders
+                            GROUP BY status
+                        ) s
+                ),
+                '[]'::json
+            )
+        )
+);
+END;
 $$;

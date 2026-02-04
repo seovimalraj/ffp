@@ -252,6 +252,10 @@ export interface GeometryData {
   processConfidence: number; // 0-1, confidence in the recommendation
   processReasoning?: string; // Explanation for process recommendation
   sheetMetalScore?: number; // 0-100, likelihood of being sheet metal
+  isAssembly?: boolean;
+  assemblyInfo?: any;
+  requiresManualQuote?: boolean;
+  manualQuoteReason?: string;
 
   // ENTERPRISE-LEVEL: Advanced thickness detection metadata
   detectedWallThickness?: number; // mm - actual material thickness from ray-casting (not bbox)

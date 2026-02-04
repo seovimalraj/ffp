@@ -25,6 +25,7 @@ interface GetOrdersInfiniteParams {
   limit: number;
   cursorCreatedAt?: string;
   cursorId?: string;
+  search?: string;
 }
 
 @Injectable()
@@ -63,6 +64,7 @@ export class OrderService {
       p_limit: params.limit,
       p_cursor_created_at: params.cursorCreatedAt ?? null,
       p_cursor_id: params.cursorId ?? null,
+      p_search: params.search ?? null,
     });
 
     if (error) {
@@ -116,6 +118,23 @@ export class OrderService {
       .from(Tables.OrderDocumentsTable)
       .select('*')
       .eq('order_id', id);
+
+    if (error) {
+      throw new InternalServerErrorException(error.message);
+    }
+
+    return data;
+  }
+
+  async getOrderStatuses(userId: string | null) {
+    const client = this.supabaseService.getClient();
+
+    const { data, error } = await client.rpc(
+      SQLFunctions.getOrderStatusSummary,
+      {
+        p_user_id: userId,
+      },
+    );
 
     if (error) {
       throw new InternalServerErrorException(error.message);

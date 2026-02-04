@@ -1,24 +1,30 @@
 "use client";
 
 import React from "react";
-import { AlertCircle, ArrowRightLeft } from "lucide-react";
+import { AlertCircle, ArrowRightLeft, Trash2, X } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { cn } from "@/lib/utils";
 
 interface ManualExceededModalProps {
   isOpen: boolean;
   onMoveToManual: () => void;
+  onDeleteManual: () => void;
+  onClose: () => void;
   manualPartsCount: number;
   title?: string;
   description?: string;
+  showCloseButton?: boolean;
 }
 
 export function ManualExceededModal({
   isOpen,
   onMoveToManual,
+  onDeleteManual,
+  onClose,
   manualPartsCount,
   title = "Manual Quote Limit Reached",
   description,
+  showCloseButton = true,
 }: ManualExceededModalProps) {
   if (!isOpen) return null;
 
@@ -41,12 +47,16 @@ export function ManualExceededModal({
   return (
     <AnimatePresence>
       <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
-        {/* Backdrop - Non-clickable */}
+        {/* Backdrop */}
         <motion.div
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
-          className="absolute inset-0 bg-slate-900/40 backdrop-blur-md"
+          onClick={showCloseButton ? onClose : undefined}
+          className={cn(
+            "absolute inset-0 bg-slate-900/40 backdrop-blur-md",
+            showCloseButton ? "cursor-pointer" : "cursor-default",
+          )}
         />
 
         {/* Modal Container */}
@@ -61,6 +71,16 @@ export function ManualExceededModal({
             "bg-white/70 backdrop-blur-2xl",
           )}
         >
+          {/* Close Button */}
+          {showCloseButton && (
+            <button
+              onClick={onClose}
+              className="absolute top-6 right-6 z-20 p-2 rounded-full bg-slate-100/50 text-slate-500 hover:bg-slate-200/50 hover:text-slate-700 transition-all active:scale-95"
+            >
+              <X size={20} />
+            </button>
+          )}
+
           {/* Liquid Glass Background Effects */}
           <div className="absolute inset-0 pointer-events-none overflow-hidden">
             <div className="absolute -top-24 -right-24 w-48 h-48 bg-blue-400/10 blur-[60px]" />
@@ -112,7 +132,7 @@ export function ManualExceededModal({
                   </span>
                 </div>
               </button>
-              {/* 
+
               <button
                 onClick={onDeleteManual}
                 className={cn(
@@ -133,7 +153,7 @@ export function ManualExceededModal({
                     Delete parts requiring manual review from this quote
                   </span>
                 </div>
-              </button> */}
+              </button>
             </div>
           </div>
         </motion.div>
