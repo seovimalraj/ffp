@@ -18,11 +18,11 @@ import { analyzeCADFile } from "@/lib/cad-analysis";
 import { useFileUpload } from "@/lib/hooks/use-file-upload";
 import { notify } from "@/lib/toast";
 import { apiClient } from "@/lib/api";
-import { 
+import {
   getDefaultMaterialForProcess,
   getDefaultFinishForProcess,
   getDefaultToleranceForProcess,
-  getDefaultThickness 
+  getDefaultThickness,
 } from "@/lib/pricing-engine";
 
 type UploadFileModalProps = {
@@ -54,67 +54,94 @@ const UploadFileModal = ({
         for (const file of acceptedFiles) {
           console.log(`=== UPLOAD FLOW START ===`);
           console.log(`Analyzing CAD file: ${file.name}`);
-          
-          // ENTERPRISE-LEVEL: Use backend analysis for STEP files (advanced ray-casting thickness detection)
-          // Use client-side analysis for STL files (faster, no thickness detection needed)
-          const extension = file.name.toLowerCase().split('.').pop();
+
+          const extension = file.name.toLowerCase().split(".").pop();
           console.log(`   File extension detected: ${extension}`);
-          const useBackendAnalysis = ['step', 'stp', 'iges', 'igs'].includes(extension || '');
+          const useBackendAnalysis = ["step", "stp", "iges", "igs"].includes(
+            extension || "",
+          );
           console.log(`   Use backend analysis? ${useBackendAnalysis}`);
-          
+
           let geometry;
           let uploadedPath = `quotes/temp-${Date.now()}/${file.name}`;
-          
+
           if (useBackendAnalysis) {
-            console.log(`🔬 Using backend analysis for ${file.name} (advanced thickness detection)`);
+            console.log(
+              `🔬 Using backend analysis for ${file.name} (advanced thickness detection)`,
+            );
             try {
               // Upload file first to get URL
               console.log(`   Uploading file to storage...`);
               const { url } = await upload(file);
               uploadedPath = url;
-              
+
               console.log(`📤 File uploaded to: ${url}`);
               console.log(`🔍 Calling backend API: /api/cad/analyze-geometry`);
-              console.log(`   Request body:`, { fileUrl: url, fileName: file.name });
-              
-              // Call backend API for accurate analysis with ray-casting
-              const analysisResponse = await fetch('/api/cad/analyze-geometry', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ 
-                  fileUrl: url,
-                  fileName: file.name
-                })
+              console.log(`   Request body:`, {
+                fileUrl: url,
+                fileName: file.name,
               });
-              
-              console.log(`📡 Backend API response status: ${analysisResponse.status}`);
-              
+
+              // Call backend API for accurate analysis with ray-casting
+              const analysisResponse = await fetch(
+                "/api/cad/analyze-geometry",
+                {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({
+                    fileUrl: url,
+                    fileName: file.name,
+                  }),
+                },
+              );
+
+              console.log(
+                `📡 Backend API response status: ${analysisResponse.status}`,
+              );
+
               if (analysisResponse.ok) {
                 const backendGeometry = await analysisResponse.json();
                 geometry = backendGeometry;
-                console.log('✅ Backend analysis complete:', {
+
+                // Check for assembly
+                if (geometry.isAssembly) {
+                  console.log(
+                    `⚠️ Assembly detected for ${file.name}:`,
+                    geometry.assemblyInfo,
+                  );
+                  geometry.requiresManualQuote = true;
+                  geometry.manualQuoteReason =
+                    geometry.assemblyInfo?.reason || "Assembly detected";
+                }
+
+                console.log("✅ Backend analysis complete:", {
                   process: geometry.recommendedProcess,
                   thickness: geometry.detectedWallThickness,
                   confidence: geometry.thicknessConfidence,
                   method: geometry.thicknessDetectionMethod,
-                  sheetMetalScore: geometry.sheetMetalScore
+                  sheetMetalScore: geometry.sheetMetalScore,
+                  isAssembly: geometry.isAssembly,
                 });
               } else {
                 const errorText = await analysisResponse.text();
-                console.error('❌ Backend analysis failed:', analysisResponse.status, errorText);
-                console.warn('⚠️ Falling back to client-side analysis');
+                console.error(
+                  "❌ Backend analysis failed:",
+                  analysisResponse.status,
+                  errorText,
+                );
+                console.warn("⚠️ Falling back to client-side analysis");
                 geometry = await analyzeCADFile(file);
               }
             } catch (error) {
-              console.error('❌ Backend analysis error:', error);
-              console.log('⚠️ Falling back to client-side analysis');
+              console.error("❌ Backend analysis error:", error);
+              console.log("⚠️ Falling back to client-side analysis");
               geometry = await analyzeCADFile(file);
             }
           } else {
             // STL files - use fast client-side analysis
             console.log(`⚡ Using client-side analysis for ${file.name}`);
             geometry = await analyzeCADFile(file);
-            
+
             // Upload after analysis for STL
             try {
               const { url } = await upload(file);
@@ -128,45 +155,68 @@ const UploadFileModal = ({
 
           // Map recommendedProcess to process field
           const processMap: Record<string, string> = {
-            'sheet-metal': 'sheet-metal',
-            'cnc-milling': 'cnc-milling',
-            'cnc-turning': 'cnc-turning',
-            'injection-molding': 'injection-molding',
+            "sheet-metal": "sheet-metal",
+            "cnc-milling": "cnc-milling",
+            "cnc-turning": "cnc-turning",
+            "injection-molding": "injection-molding",
           };
-          const detectedProcess = geometry?.recommendedProcess 
-            ? processMap[geometry.recommendedProcess] || 'cnc-milling'
-            : 'cnc-milling';
+          const detectedProcess = geometry?.recommendedProcess
+            ? processMap[geometry.recommendedProcess] || "cnc-milling"
+            : "cnc-milling";
+
+          const isSheetMetal =
+            detectedProcess === "sheet-metal" ||
+            detectedProcess.includes("sheet");
+          const isAssembly = geometry?.isAssembly ?? false;
+          const requiresManualQuote =
+            geometry?.requiresManualQuote ?? isAssembly;
 
           console.log(`Process detection for ${file.name}:`, {
             recommendedProcess: geometry?.recommendedProcess,
             detectedProcess,
             confidence: geometry?.processConfidence,
-            reasoning: geometry?.processReasoning
+            reasoning: geometry?.processReasoning,
+            isAssembly,
+            requiresManualQuote,
           });
 
           // Use process-specific defaults
           const defaultMaterial = getDefaultMaterialForProcess(detectedProcess);
           const defaultFinish = getDefaultFinishForProcess(detectedProcess);
-          const defaultTolerance = getDefaultToleranceForProcess(detectedProcess);
-          const defaultThickness = detectedProcess.includes('sheet') ? getDefaultThickness() : undefined;
+          const defaultTolerance =
+            getDefaultToleranceForProcess(detectedProcess);
+          const defaultThickness = isSheetMetal
+            ? getDefaultThickness()
+            : undefined;
 
           uploadResults.push({
             file_name: file.name,
             cad_file_url: uploadedPath,
             cad_file_type: file.name.split(".").pop() || "unknown",
-            process: detectedProcess, // Set process based on geometry analysis
+            process: isAssembly ? "manual-quote" : detectedProcess,
             material: defaultMaterial,
             quantity: 1,
             tolerance: defaultTolerance,
             finish: defaultFinish,
             threads: "none",
             inspection: "standard",
-            notes: "",
+            notes: isAssembly
+              ? `Assembly detected: ${geometry?.assemblyInfo?.reason || "Multi-body part"}`
+              : "",
             lead_time_type: "standard",
             lead_time: 7,
             thickness: defaultThickness,
             geometry,
             certificates: [],
+            requires_manual_quote: requiresManualQuote,
+            manual_quote_reason: geometry?.manualQuoteReason,
+            is_assembly: isAssembly,
+            // Sheet metal specific fields
+            ...(isSheetMetal &&
+              geometry?.sheetMetalFeatures && {
+                sheet_thickness_mm: geometry.sheetMetalFeatures.thickness,
+                bend_count: geometry.sheetMetalFeatures.bendCount,
+              }),
           });
         }
 

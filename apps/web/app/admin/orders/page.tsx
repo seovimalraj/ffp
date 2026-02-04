@@ -17,17 +17,12 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
-import { EyeIcon, Package, ArrowUpFromLine, Search } from "lucide-react";
+import { EyeIcon, ArrowUpFromLine, Search } from "lucide-react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import React, {
-  useState,
-  useEffect,
-  useCallback,
-  useRef,
-  useMemo,
-} from "react";
+import React, { useState, useEffect, useCallback, useRef } from "react";
 import { motion } from "framer-motion";
+import ExpandFileModal from "@/app/quote-config/components/expand-file-modal";
 
 export type IOrder = {
   order_id: string;
@@ -53,8 +48,7 @@ interface Filters {
 
 enum StatusColor {
   "total" = "blue",
-  "pending" = "orange",
-  "confirmed" = "indigo",
+  "paid" = "indigo",
   "processing" = "teal",
   "shipped" = "lime",
   "delivered" = "green",
@@ -65,8 +59,8 @@ enum StatusColor {
 
 enum StatusPriority {
   "total" = 1,
-  "pending" = 2,
-  "confirmed" = 3,
+  "payment pending" = 2,
+  "paid" = 3,
   "processing" = 4,
   "shipped" = 5,
   "delivered" = 6,
@@ -84,6 +78,7 @@ const Page = () => {
   const [isFetchingMore, setIsFetchingMore] = useState(false);
   const [hasMore, setHasMore] = useState(false);
   const ordersRef = useRef<IOrder[]>([]);
+  const [selectedFile, setSelectedFile] = useState<string | null>(null);
 
   // Initialize filters from URL query params
   const [filters, setFilters] = useState<Filters>(() => {
@@ -146,8 +141,8 @@ const Page = () => {
       );
 
       const permittedStatuses = [
-        "pending",
-        "confirmed",
+        "payment pending",
+        "paid",
         "processing",
         "shipped",
         "delivered",
@@ -455,7 +450,12 @@ const Page = () => {
                             className="hover:bg-white dark:hover:bg-gray-800/40 rounded-xl transition-all duration-300 px-4 py-1"
                           >
                             <div className="flex items-center group/part w-full pr-4">
-                              <div className="flex items-center gap-4">
+                              <div
+                                onClick={() =>
+                                  setSelectedFile(part.cad_file_url)
+                                }
+                                className="flex items-center gap-4"
+                              >
                                 <div className="relative w-12 h-12 rounded-lg cursor-pointer bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 flex items-center justify-center p-1.5 overflow-hidden group/thumb transition-transform hover:scale-105 active:scale-95 shadow-sm">
                                   {part.snapshot_2d_url ? (
                                     <img
@@ -493,6 +493,12 @@ const Page = () => {
           )}
         </div>
       </div>
+      {selectedFile && (
+        <ExpandFileModal
+          expandedFile={selectedFile}
+          setExpandedFile={() => setSelectedFile(null)}
+        />
+      )}
     </div>
   );
 };

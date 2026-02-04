@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { useRouter, useParams } from "next/navigation";
 import { PayPalButtons, PayPalScriptProvider } from "@paypal/react-paypal-js";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -52,6 +52,7 @@ import Footer from "@/components/ui/footer";
 import PhoneInput from "react-phone-number-input";
 import "react-phone-number-input/style.css";
 import { isValidPostcode, getCountryCode } from "./postcode-validation";
+import { ManualExceededModal } from "../../quote-config/components/manual-exceeded-modal";
 
 /* ------------------------------------------------------------------ */
 /* Types */
@@ -170,6 +171,15 @@ export default function CheckoutPage() {
   const [isProcessing, setIsProcessing] = useState(false);
   const [orderPlaced, setOrderPlaced] = useState(false);
 
+  const manualParts = useMemo(
+    () => config?.parts.filter((p) => p.process === "manual-quote"),
+    [config?.parts],
+  );
+  const manualPartIds = useMemo(
+    () => manualParts?.map((p) => p.id),
+    [manualParts],
+  );
+
   // --- Form State ---
 
   // 1. Shipping Address
@@ -194,6 +204,7 @@ export default function CheckoutPage() {
   const [addressErrors, setAddressErrors] = useState<Record<string, string>>(
     {},
   );
+  const [showManualExceededModal, setShowManualExceededModal] = useState(false);
 
   const selectedAddress = addresses.find((a) => a.id === selectedAddressId);
 
@@ -455,6 +466,14 @@ export default function CheckoutPage() {
     loadData();
   }, [quoteId, session.data?.user?.email]);
 
+  useEffect(() => {
+    if (manualParts && manualParts.length > 0) {
+      setShowManualExceededModal(true);
+    } else {
+      setShowManualExceededModal(false);
+    }
+  }, [manualParts]);
+
   /* ------------------------------------------------------------------ */
   /* Handlers */
   /* ------------------------------------------------------------------ */
@@ -583,6 +602,99 @@ export default function CheckoutPage() {
     }
   };
 
+  const handleDeleteManual = async () => {
+    if (!manualPartIds || manualPartIds.length === 0) return;
+
+    try {
+      const { data } = await apiClient.delete(`/rfq/${quoteId}/remove-parts`, {
+        data: {
+          partIds: manualPartIds,
+        },
+      });
+
+      if (!data) {
+        notify.error("Failed to delete parts");
+        return;
+      }
+
+      // Update local state
+      setConfig((prev) => {
+        if (!prev) return prev;
+        const remainingParts = prev.parts.filter(
+          (p) => !manualPartIds?.includes(p.id),
+        );
+        return {
+          ...prev,
+          parts: remainingParts,
+          totalPrice: data.rfq?.final_price || 0,
+        };
+      });
+
+      setShowManualExceededModal(false);
+      notify.success(
+        `Successfully removed ${manualPartIds.length} manual part(s)`,
+      );
+    } catch (error) {
+      console.error(error);
+      notify.error("Failed to delete parts");
+    }
+  };
+
+  const handleMoveToManual = async () => {
+    if (!manualPartIds || manualPartIds.length === 0) return;
+
+    const isFullManual = manualPartIds.length === (config?.parts.length || 0);
+
+    try {
+      const { data } = await apiClient.post(`/rfq/manual`, {
+        partIds: manualPartIds,
+        rfqId: isFullManual ? quoteId : undefined,
+      });
+
+      if (!data) {
+        notify.error("Failed to create manual quote");
+        return;
+      }
+
+      if (isFullManual) {
+        notify.success("Quote converted to manual review");
+        router.push(`/portal/quotes/${quoteId}`);
+      } else {
+        // Update local state
+        setConfig((prev) => {
+          if (!prev) return prev;
+          const remainingParts = prev.parts.filter(
+            (p) => !manualPartIds?.includes(p.id),
+          );
+          return {
+            ...prev,
+            parts: remainingParts,
+            totalPrice: data.rfq?.final_price || prev.totalPrice,
+          };
+        });
+
+        setShowManualExceededModal(false);
+        notify.success(`Successfully created manual quote`);
+
+        // Refetch to get updated total
+        const { data: updatedRfq } = await apiClient.get(`/rfq/${quoteId}`);
+        if (updatedRfq) {
+          setConfig((prev) =>
+            prev
+              ? {
+                  ...prev,
+                  totalPrice: updatedRfq.rfq.final_price,
+                }
+              : null,
+          );
+        }
+      }
+    } catch (error) {
+      console.error(error);
+      notify.error("Failed to create manual quote");
+    }
+  };
+
   /* ------------------------------------------------------------------ */
   /* Render Helpers */
   /* ------------------------------------------------------------------ */
@@ -660,6 +772,14 @@ export default function CheckoutPage() {
       }}
     >
       <div className="min-h-screen invisible-scrollbar bg-[#F0F4F8] relative font-sans text-slate-900">
+        <ManualExceededModal
+          isOpen={showManualExceededModal}
+          onMoveToManual={handleMoveToManual}
+          onDeleteManual={handleDeleteManual}
+          onClose={() => setShowManualExceededModal(false)}
+          manualPartsCount={manualPartIds?.length || 0}
+          showCloseButton={false}
+        />
         {/* Dynamic Background Elements */}
         <div className="fixed inset-0 z-0 pointer-events-none">
           <div className="absolute top-[-20%] right-[-10%] w-[800px] h-[800px] bg-blue-400/20 rounded-full blur-[100px] opacity-40"></div>

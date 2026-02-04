@@ -889,18 +889,33 @@ export default function QuoteConfigPage() {
   };
 
   // Handle bulk delete
-  const handleBulkDelete = async () => {
-    if (selectedParts.size === 0) return;
+  const handleBulkDelete = async (idsToDelete?: Set<string> | string[]) => {
+    const ids = idsToDelete
+      ? idsToDelete instanceof Set
+        ? Array.from(idsToDelete)
+        : idsToDelete
+      : Array.from(selectedParts);
 
-    if (parts.length - selectedParts.size === 0) {
+    if (ids.length === 0) return;
+
+    if (parts.length - ids.length === 0) {
       notify.error("Cannot delete all parts. At least one part is required.");
       return;
     }
 
-    await deleteParts(Array.from(selectedParts));
-    setParts((prev) => prev.filter((p) => !selectedParts.has(p.id)));
-    setSelectedParts(new Set());
-    notify.success(`Deleted ${selectedParts.size} part(s)`);
+    try {
+      await deleteParts(ids);
+      setParts((prev) => prev.filter((p) => !ids.includes(p.id)));
+      setSelectedParts((prev) => {
+        const newSet = new Set(prev);
+        ids.forEach((id) => newSet.delete(id));
+        return newSet;
+      });
+      notify.success(`Deleted ${ids.length} part(s)`);
+    } catch (error) {
+      console.error("Failed to delete parts:", error);
+      notify.error("Failed to delete selection");
+    }
   };
 
   // Exit selection mode when no parts are selected
@@ -1869,15 +1884,6 @@ export default function QuoteConfigPage() {
                         )}
                       </div>
                     </Button>
-
-                    {/* Secondary Manual Quote Button (Ghost style when not all parts are manual) */}
-                    <Button
-                      variant="ghost"
-                      className="w-full text-slate-500 hover:text-blue-600 hover:bg-blue-50 font-semibold border border-dashed border-slate-300 hover:border-blue-300 h-10 rounded-xl"
-                      onClick={() => setShowManualQuoteModal(true)}
-                    >
-                      Request Manual Quote
-                    </Button>
                   </>
                 ) : (
                   /* Primary Manual Quote Button (Full style when all parts are manual) */
@@ -1931,21 +1937,19 @@ export default function QuoteConfigPage() {
           showManualExceededModal || (exceeded && !hasDismissedExceededModal)
         }
         manualPartsCount={manualParts.length}
-        title={
-          showManualExceededModal
-            ? "Action Required: Manual Parts Detected"
-            : undefined
-        }
-        description={
-          showManualExceededModal
-            ? "There are parts in the quote that require manual quotation. Please move these parts into a separate quote to proceed with checkout."
-            : undefined
-        }
         onMoveToManual={async () => {
-          // await handleManualParts(manualPartIds);
           setHasDismissedExceededModal(true);
           setShowManualExceededModal(false);
           setShowManualQuoteModal(true);
+        }}
+        onDeleteManual={async () => {
+          // Logic to delete manual parts
+          await handleBulkDelete(new Set(manualPartIds));
+          setShowManualExceededModal(false);
+        }}
+        onClose={() => {
+          setHasDismissedExceededModal(true);
+          setShowManualExceededModal(false);
         }}
       />
 
