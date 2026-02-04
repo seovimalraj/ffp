@@ -7,6 +7,7 @@ import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 import * as BufferGeometryUtils from "three/examples/jsm/utils/BufferGeometryUtils.js";
 import { DXFLoader } from "three-dxf-loader";
 import { DxfParser } from "dxf-parser";
+import { createStainlessSteelMaterial } from "./viewer";
 
 type TessReq = {
   id: string;
@@ -31,6 +32,39 @@ type CADExt = "step" | "stp" | "iges" | "igs" | "brep";
 
 function mergeFromObject(root: any) {
   const geos: THREE.BufferGeometry[] = [];
+
+  // Apply stainless-steel material to any meshes in the loaded root object
+  // (only affects meshes belonging to the loaded model; helpers created elsewhere are untouched)
+  if (root && root.traverse) {
+    root.traverse((child: any) => {
+      if (child.isMesh && child.material) {
+        try {
+          if (Array.isArray(child.material)) {
+            const count = child.material.length;
+            child.material.forEach((m: any) => {
+              try {
+                if (m) m.dispose();
+              } catch {
+                /* ignore */
+              }
+            });
+            child.material = new Array(count)
+              .fill(0)
+              .map(() => createStainlessSteelMaterial().clone());
+          } else {
+            try {
+              child.material.dispose();
+            } catch {
+              /* ignore */
+            }
+            child.material = createStainlessSteelMaterial().clone();
+          }
+        } catch {
+          /* ignore any weird loader material shapes */
+        }
+      }
+    });
+  }
 
   // Handle common loader return patterns (e.g. { scene: ... }) or arrays
   const input = root.scene || root;
