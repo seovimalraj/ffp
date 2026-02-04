@@ -1,20 +1,32 @@
 "use client";
 
 import React, { useState, useEffect, useMemo } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { EyeIcon, CubeIcon } from "@heroicons/react/24/outline";
 import { posthog } from "posthog-js";
 import { apiClient } from "@/lib/api";
-import { DataTable, Column } from "@/components/ui/data-table";
+import { DataTable, Column, DataTableSubRow } from "@/components/ui/data-table";
 import { IRFQStatuses } from "@/types";
 import Link from "next/link";
 import { formatDate } from "@/lib/format";
 import { useMetaStore } from "@/components/store/title-store";
-import { StatusCards } from "@/components/ui/status-cards";
-import { CheckCircle, Clock, File, Wallet } from "lucide-react";
+import { StatusCards, StatusItem } from "@/components/ui/status-cards";
+import { toTitleCase } from "@/lib/utils";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Label } from "@/components/ui/label";
+import { ArrowUpFromLine } from "lucide-react";
+import { motion } from "framer-motion";
+import { cn } from "@/lib/utils";
+import ExpandFileModal from "@/app/quote-config/components/expand-file-modal";
 
 // Types based on RFQ API response
 interface Quote {
@@ -28,27 +40,93 @@ interface Quote {
   updated_at: string;
   rfq_type: "general" | "manual";
   parts_count: number;
+  parts: {
+    file_name: string;
+    cad_file_url: string;
+    snapshot_2d_url: string;
+  }[];
 }
 
 interface Filters {
-  query: string;
   status: string;
-  dateRange: { from: Date | undefined; to: Date | undefined };
+  rfqType: "manual" | "general" | "any" | null;
+}
+
+enum StatusColor {
+  "total" = "blue",
+  "draft" = "gray",
+  "submitted" = "orange",
+  "under review" = "lime",
+  "quoted" = "indigo",
+  "payment pending" = "teal",
+  "paid" = "green",
+  "rejected" = "red",
+  "pending approval" = "amber",
+  "pending" = "sky",
+  "accepted" = "emerald",
+}
+
+enum StatusPriority {
+  "total" = 1,
+  "draft" = 2,
+  "submitted" = 3,
+  "under review" = 4,
+  "quoted" = 5,
+  "payment pending" = 6,
+  "paid" = 7,
+  "pending approval" = 8,
+  "pending" = 9,
+  "rejected" = 10,
+  "accepted" = 11,
 }
 
 export default function QuotesListPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [quotes, setQuotes] = useState<Quote[]>([]);
+  const [statuses, setStatuses] = useState<StatusItem[]>([]);
   const [loading, setLoading] = useState(true);
+  const [statusesLoading, setStatusesLoading] = useState(true);
   const [hasMore, setHasMore] = useState(true);
   const [isFetchingMore, setIsFetchingMore] = useState(false);
-  const [filters, _setFilters] = useState<Filters>({
-    query: "",
-    status: "Any",
-    dateRange: { from: undefined, to: undefined },
+  const quotesRef = React.useRef<Quote[]>([]);
+  const [selectedFile, setSelectedFile] = useState<string | null>(null);
+
+  // Initialize filters from URL query params
+  const [filters, setFilters] = useState<Filters>(() => {
+    const status = searchParams?.get("status") ?? "Any";
+    const rfqType =
+      (searchParams?.get("rfqType") as Filters["rfqType"]) ?? "any";
+
+    return {
+      status,
+      rfqType,
+    };
   });
+
   const { setPageTitle, resetTitle } = useMetaStore();
   const QUOTE_LIMIT = 20;
+
+  // Update URL when filters change
+  useEffect(() => {
+    const params = new URLSearchParams();
+
+    if (filters.status && filters.status !== "Any") {
+      params.set("status", filters.status);
+    }
+
+    if (filters.rfqType && filters.rfqType !== "any") {
+      params.set("rfqType", filters.rfqType);
+    }
+
+    const queryString = params.toString();
+    const newUrl = queryString ? `?${queryString}` : window.location.pathname;
+
+    // Only update if the URL actually changed
+    if (window.location.search !== (queryString ? `?${queryString}` : "")) {
+      router.replace(newUrl, { scroll: false });
+    }
+  }, [filters, router]);
 
   useEffect(() => {
     setPageTitle("Quotes");
@@ -56,6 +134,84 @@ export default function QuotesListPage() {
       resetTitle();
     };
   }, []);
+
+  // Keep ref in sync with quotes state
+  useEffect(() => {
+    quotesRef.current = quotes;
+  }, [quotes]);
+
+  const buildStatusCards = React.useCallback(
+    (statusCounts: {
+      total: number;
+      by_status: { status: string; count: number }[];
+    }) => {
+      const countsMap = new Map(
+        statusCounts.by_status.map((s) => [s.status.toLowerCase(), s.count]),
+      );
+
+      // List of statuses we want to always show in order
+      const permittedStatuses: IRFQStatuses[] = [
+        "draft",
+        "submitted",
+        "under review",
+        "quoted",
+        "payment pending",
+        "paid",
+        "pending approval",
+      ];
+
+      const cards: StatusItem[] = [
+        {
+          label: "Total Quotes",
+          value: statusCounts.total || 0,
+          color: StatusColor["total"],
+          onClick: () => setFilters((prev) => ({ ...prev, status: "Any" })),
+          priority: StatusPriority["total"],
+          highlight: filters.status === "Any",
+        },
+      ];
+
+      permittedStatuses.forEach((statusKey) => {
+        cards.push({
+          label: toTitleCase(statusKey),
+          value: countsMap.get(statusKey) || 0,
+          color: (StatusColor[statusKey as keyof typeof StatusColor] ??
+            "gray") as StatusItem["color"],
+          onClick: () => setFilters((prev) => ({ ...prev, status: statusKey })),
+          priority:
+            StatusPriority[statusKey as keyof typeof StatusPriority] ?? 50,
+          highlight: filters.status.toLowerCase() === statusKey.toLowerCase(),
+        });
+      });
+
+      setStatuses(cards);
+    },
+    [filters.status],
+  );
+
+  const [rawStatusData, setRawStatusData] = React.useState<{
+    total: number;
+    by_status: { status: string; count: number }[];
+  } | null>(null);
+
+  const fetchStatuses = React.useCallback(async () => {
+    setStatusesLoading(true);
+    try {
+      const params = {
+        rfqType: filters.rfqType !== "any" ? filters.rfqType : undefined,
+      };
+      const response = await apiClient.get("/rfq/status-summary", { params });
+      const statusData = response.data.statusCounts || {
+        total: 0,
+        by_status: [],
+      };
+      setRawStatusData(statusData);
+    } catch (error) {
+      console.error("Failed to fetch status summary:", error);
+    } finally {
+      setStatusesLoading(false);
+    }
+  }, [filters.rfqType]);
 
   const fetchQuotes = React.useCallback(
     async (isNext = false) => {
@@ -66,13 +222,18 @@ export default function QuotesListPage() {
       }
 
       try {
-        const lastQuote = isNext ? quotes[quotes.length - 1] : null;
+        const currentQuotes = quotesRef.current;
         const params = {
           limit: QUOTE_LIMIT,
-          cursorCreatedAt: lastQuote?.created_at,
-          cursorId: lastQuote?.id,
+          cursorCreatedAt: isNext
+            ? currentQuotes[currentQuotes.length - 1]?.created_at
+            : undefined,
+          cursorId: isNext
+            ? currentQuotes[currentQuotes.length - 1]?.id
+            : undefined,
           status:
             filters.status !== "Any" ? filters.status.toLowerCase() : undefined,
+          rfqType: filters.rfqType !== "any" ? filters.rfqType : undefined,
         };
 
         const response = await apiClient.get("/rfq", { params });
@@ -87,45 +248,31 @@ export default function QuotesListPage() {
         setIsFetchingMore(false);
       }
     },
-    [quotes, filters.status],
+    [filters.status, filters.rfqType, QUOTE_LIMIT],
   );
 
+  // Initial data fetch on mount
   useEffect(() => {
-    // Track page view
     posthog.capture("quotes_list_view");
+    fetchStatuses();
     fetchQuotes();
-  }, [filters.status]);
+  }, []);
+
+  // Build/rebuild status cards when raw data or filter changes
+  useEffect(() => {
+    if (rawStatusData) {
+      buildStatusCards(rawStatusData);
+    }
+  }, [rawStatusData, buildStatusCards]);
+
+  useEffect(() => {
+    fetchQuotes();
+    fetchStatuses();
+  }, [filters.status, filters.rfqType, fetchQuotes, fetchStatuses]);
 
   const filteredQuotes = useMemo(() => {
-    return quotes.filter((quote) => {
-      // Search query filter
-      if (
-        filters.query &&
-        !quote.rfq_code.toLowerCase().includes(filters.query.toLowerCase())
-      ) {
-        return false;
-      }
-
-      // Status filter
-      if (
-        filters.status !== "Any" &&
-        quote.status !== filters.status.toLowerCase()
-      ) {
-        return false;
-      }
-
-      // Date range filter
-      if (filters.dateRange.from || filters.dateRange.to) {
-        const quoteDate = new Date(quote.created_at);
-        if (filters.dateRange.from && quoteDate < filters.dateRange.from)
-          return false;
-        if (filters.dateRange.to && quoteDate > filters.dateRange.to)
-          return false;
-      }
-
-      return true;
-    });
-  }, [quotes, filters]);
+    return quotes;
+  }, [quotes]);
 
   const STATUS_CONFIG: Record<
     IRFQStatuses,
@@ -237,7 +384,19 @@ export default function QuotesListPage() {
     {
       key: "parts_count",
       header: "Parts Count",
-      render: (row) => row.parts_count,
+      render: (row, _, meta) => (
+        <div className="flex items-center gap-3">
+          <span>{row.parts_count}</span>
+          {row.parts?.length > 0 && (
+            <button
+              onClick={() => meta?.toggleExpansion()}
+              className="text-blue-600 hover:text-blue-800 text-xs font-semibold underline underline-offset-2 transition-colors"
+            >
+              {meta?.isExpanded ? "Hide Parts" : "Show Parts"}
+            </button>
+          )}
+        </div>
+      ),
     },
     {
       key: "created_at",
@@ -254,99 +413,232 @@ export default function QuotesListPage() {
   return (
     <div className="min-h-screen space-y-4">
       <StatusCards
-        isLoading={loading}
-        items={[
-          {
-            label: "Total Quotes",
-            value: quotes.length,
-            icon: CubeIcon,
-            color: "blue",
-          },
-          {
-            label: "Draft Quotes",
-            value: quotes.filter((quote) => quote.status === "draft").length,
-            icon: File,
-            color: "gray",
-          },
-          // {
-          //   label: "Pending Quotes",
-          //   value: quotes.filter((quote) => quote.status === "pending approval")
-          //     .length,
-          //   icon: Clock,
-          //   color: "lime",
-          // },
-          {
-            label: "Submitted Quotes",
-            value: quotes.filter((quote) => quote.status === "submitted")
-              .length,
-            icon: CheckCircle,
-            color: "orange",
-          },
-          {
-            label: "Paid Quotes",
-            value: quotes.filter((quote) => quote.status === "paid").length,
-            icon: Wallet,
-            color: "green",
-          },
-        ]}
+        isLoading={loading || statusesLoading}
+        items={statuses}
+        minimal={true}
       />
-      <div className="mx-auto">
-        <div>
-          <div className="mt-4">
-            {loading ? (
-              <div className="space-y-4">
-                {Array.from({ length: 5 }).map((_, i) => (
-                  <div key={i} className="flex items-center space-x-4">
-                    <Skeleton className="w-16 h-4" />
-                    <Skeleton className="w-24 h-4" />
-                    <Skeleton className="w-20 h-4" />
-                    <Skeleton className="w-16 h-4" />
-                    <Skeleton className="w-12 h-4" />
-                  </div>
+      {/* Toolbar Section */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pt-4 pb-4 border-b border-gray-100 dark:border-gray-800/60 transition-all">
+        <div className="flex flex-1 flex-wrap items-center gap-8">
+          {/* RFQ Type Tabs */}
+          <div className="flex items-center gap-1 p-1 bg-gray-100/50 dark:bg-gray-800/40 rounded-xl relative border border-gray-200/50 dark:border-gray-700/50">
+            {(["any", "general", "manual"] as const).map((type) => (
+              <button
+                key={type}
+                onClick={() =>
+                  setFilters((prev) => ({
+                    ...prev,
+                    rfqType: type as Filters["rfqType"],
+                  }))
+                }
+                className={cn(
+                  "relative px-6 py-2 rounded-lg text-sm font-bold transition-colors duration-200 capitalize",
+                  (filters.rfqType || "any") === type
+                    ? "text-white dark:text-gray-900"
+                    : "text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100",
+                )}
+              >
+                {(filters.rfqType || "any") === type && (
+                  <motion.div
+                    layoutId="active-tab-rfq-type"
+                    className="absolute inset-0 bg-gray-900 dark:bg-white rounded-[8px] shadow-sm"
+                    transition={{
+                      type: "spring",
+                      bounce: 0.15,
+                      duration: 0.5,
+                    }}
+                  />
+                )}
+                <span className="relative z-10">
+                  {type === "any" ? "All" : type}
+                </span>
+              </button>
+            ))}
+          </div>
+
+          <div className="flex items-center gap-1 p-1 bg-gray-100/50 dark:bg-gray-800/40 rounded-xl relative border border-gray-200/50 dark:border-gray-700/50">
+            <span className="px-3 text-[10px] font-bold uppercase tracking-widest text-gray-400 dark:text-gray-500 whitespace-nowrap">
+              Status
+            </span>
+            <div className="h-4 w-px bg-gray-200 dark:bg-gray-700 mx-1" />
+            <Select
+              value={filters.status}
+              onValueChange={(val) =>
+                setFilters((prev) => ({ ...prev, status: val }))
+              }
+            >
+              <SelectTrigger
+                id="status"
+                className="h-8 min-w-[140px] bg-transparent border-none shadow-none focus:ring-0 hover:bg-gray-200/50 dark:hover:bg-gray-700/50 transition-all rounded-lg px-3 font-bold text-sm text-gray-900 dark:text-gray-100"
+              >
+                <div className="flex items-center gap-2">
+                  <div
+                    className={cn(
+                      "w-1.5 h-1.5 rounded-full shadow-sm",
+                      filters.status === "Any"
+                        ? "bg-blue-500"
+                        : "bg-emerald-500",
+                    )}
+                  />
+                  <SelectValue placeholder="Select status" />
+                </div>
+              </SelectTrigger>
+              <SelectContent className="rounded-xl border-gray-200 dark:border-gray-800 shadow-2xl backdrop-blur-xl bg-white/90 dark:bg-gray-950/90">
+                <SelectItem value="Any" className="font-medium">
+                  All Statuses
+                </SelectItem>
+                {[
+                  "draft",
+                  "submitted",
+                  "under review",
+                  "quoted",
+                  "payment pending",
+                  "paid",
+                  "pending approval",
+                ].map((s) => (
+                  <SelectItem
+                    key={s}
+                    value={s}
+                    className="font-medium capitalize"
+                  >
+                    {s}
+                  </SelectItem>
                 ))}
-              </div>
-            ) : filteredQuotes.length === 0 ? (
-              <div className="text-center py-12">
-                <CubeIcon className="w-12 h-12 text-gray-400 mx-auto mb-4" />
-                <h3 className="text-lg font-medium text-gray-900 mb-2">
-                  No quotes yet
-                </h3>
-                <p className="text-gray-500 mb-4">
-                  Drag & drop a CAD file on the Dashboard to start an instant
-                  quote.
-                </p>
-                <Button onClick={() => router.push("/portal/dashboard")}>
-                  Go to Dashboard
-                </Button>
-              </div>
-            ) : (
-              <>
-                <DataTable
-                  columns={columns}
-                  data={filteredQuotes}
-                  keyExtractor={(m) => m.id}
-                  emptyMessage="No Quotes Found"
-                  isLoading={loading || isFetchingMore}
-                  numbering={true}
-                  hasMore={hasMore}
-                  onEndReached={() => {
-                    if (hasMore && !isFetchingMore) {
-                      fetchQuotes(true);
-                    }
-                  }}
-                  actions={[
-                    {
-                      label: "Open",
-                      icon: <EyeIcon className="w-4 h-4" />,
-                      onClick: (quote) => handleOpenQuote(quote.id),
-                    },
-                  ]}
-                />
-              </>
-            )}
+              </SelectContent>
+            </Select>
           </div>
         </div>
+
+        <div className="flex items-center self-end sm:self-center">
+          <Button
+            variant="default"
+            size="sm"
+            className="h-9 px-4 text-white hover:text-gray-100 transition-all flex items-center gap-2 font-semibold text-xs tracking-wide uppercase"
+          >
+            <ArrowUpFromLine size={14} className="opacity-60 mr-1" />
+            <span>Export</span>
+          </Button>
+        </div>
       </div>
+
+      {/* Content Section */}
+      <div className="pt-2">
+        {loading ? (
+          <div className="space-y-6">
+            {Array.from({ length: 5 }).map((_, i) => (
+              <div
+                key={i}
+                className="flex items-center justify-between gap-4 py-4 border-b border-gray-50 dark:border-gray-900/50"
+              >
+                <Skeleton className="w-24 h-4 rounded-full" />
+                <Skeleton className="w-32 h-4 rounded-full" />
+                <Skeleton className="w-20 h-4 rounded-full" />
+                <Skeleton className="w-24 h-4 rounded-full" />
+              </div>
+            ))}
+          </div>
+        ) : filteredQuotes.length === 0 ? (
+          <div className="flex flex-col items-center justify-center py-32 text-center animate-in fade-in slide-in-from-bottom-4 duration-700">
+            <div className="relative mb-8">
+              <div className="absolute inset-0 bg-blue-500/10 blur-3xl rounded-full" />
+              <CubeIcon className="w-16 h-16 text-blue-500/40 relative z-10" />
+            </div>
+            <h3 className="text-2xl font-semibold text-gray-900 dark:text-gray-100 mb-3 tracking-tight">
+              Your Quote List is Empty
+            </h3>
+            <p className="text-gray-500 dark:text-gray-400 mb-8 max-w-sm mx-auto leading-relaxed">
+              Start by uploading your CAD files in the dashboard to receive
+              instant pricing and manufacturing feedback.
+            </p>
+            <Button
+              onClick={() => router.push("/portal/dashboard")}
+              className="bg-blue-600 hover:bg-blue-700 text-white rounded-full px-8 h-12 font-medium shadow-lg shadow-blue-500/20 transition-all hover:scale-105"
+            >
+              Go to Dashboard
+            </Button>
+          </div>
+        ) : (
+          <div className="animate-in fade-in duration-500">
+            <DataTable
+              columns={columns}
+              data={filteredQuotes}
+              keyExtractor={(m) => m.id}
+              emptyMessage="No Quotes Found"
+              isLoading={loading || isFetchingMore}
+              numbering={true}
+              hasMore={hasMore}
+              onEndReached={() => {
+                if (hasMore && !isFetchingMore) {
+                  fetchQuotes(true);
+                }
+              }}
+              renderExpansion={(row) => (
+                <div className="px-6 py-4 bg-gray-50/50 dark:bg-gray-900/20 border-t border-gray-100 dark:border-gray-800/50">
+                  <div className="flex flex-col gap-1">
+                    {row.parts?.map((part, idx) => (
+                      <motion.div
+                        key={idx}
+                        initial={{ opacity: 0, x: -10 }}
+                        animate={{ opacity: 1, x: 0 }}
+                        transition={{ delay: idx * 0.05 }}
+                      >
+                        <DataTableSubRow
+                          isLast={idx === (row.parts?.length ?? 0) - 1}
+                          className="hover:bg-white dark:hover:bg-gray-800/40 rounded-xl transition-all duration-300 px-4 py-1"
+                        >
+                          <div className="flex items-center group/part w-full pr-4">
+                            <div
+                              onClick={() => setSelectedFile(part.cad_file_url)}
+                              className="flex items-center gap-4"
+                            >
+                              <div className="relative w-12 h-12 rounded-lg cursor-pointer bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 flex items-center justify-center p-1.5 overflow-hidden group/thumb transition-transform hover:scale-105 active:scale-95 shadow-sm">
+                                {part.snapshot_2d_url ? (
+                                  <img
+                                    src={part.snapshot_2d_url}
+                                    className="w-full h-full object-contain"
+                                    alt={part.file_name}
+                                  />
+                                ) : (
+                                  <CubeIcon className="w-6 h-6 text-gray-400 group-hover/thumb:text-blue-500 transition-colors" />
+                                )}
+                                <div className="absolute inset-0 bg-blue-500/0 group-hover/thumb:bg-blue-500/5 transition-colors" />
+                              </div>
+                              <div className="flex flex-col gap-0.5">
+                                <span className="font-semibold text-gray-900 dark:text-gray-100 text-sm tracking-tight leading-none group-hover/part:text-blue-600 dark:group-hover/part:text-blue-400 transition-colors">
+                                  {part.file_name}
+                                </span>
+                                <div className="flex items-center gap-2">
+                                  <span className="text-[10px] text-gray-400 dark:text-gray-500 font-bold uppercase tracking-wider">
+                                    CAD File
+                                  </span>
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+                        </DataTableSubRow>
+                      </motion.div>
+                    ))}
+                  </div>
+                </div>
+              )}
+              actions={[
+                {
+                  label: "Open",
+                  icon: <EyeIcon className="w-4 h-4" />,
+                  onClick: (quote) => handleOpenQuote(quote.id),
+                },
+              ]}
+            />
+          </div>
+        )}
+      </div>
+
+      {selectedFile && (
+        <ExpandFileModal
+          expandedFile={selectedFile}
+          setExpandedFile={() => setSelectedFile(null)}
+        />
+      )}
     </div>
   );
 }

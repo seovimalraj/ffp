@@ -760,7 +760,8 @@ export function PartCardItem({
                 <div className="grid grid-cols-1 gap-3">
                   {(["economy", "standard", "expedited"] as const).map(
                     (leadTimeType) => {
-                      const realPrice =
+                      const realPrice = calculatePrice(part, leadTimeType);
+                      const perPartPrice =
                         calculatePrice(part, leadTimeType) / part.quantity;
 
                       const uplift = markupMap[leadTimeType];
@@ -833,6 +834,9 @@ export function PartCardItem({
                               }`}
                             >
                               {formatCurrencyFixed(realPrice)}
+                              <span className={"text-xs ml-2 text-blue-700"}>
+                                ({formatCurrencyFixed(perPartPrice)} ea)
+                              </span>
                             </div>
                             <div className="flex items-baseline gap-x-2">
                               <div className="text-xs sm:text-sm text-red-500 line-through">

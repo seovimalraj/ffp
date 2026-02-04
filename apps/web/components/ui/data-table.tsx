@@ -14,13 +14,18 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { cn } from "@/lib/utils"; // Assuming utils exists, or I will use standard class strings
 import { useRef, useCallback, useMemo } from "react";
+import { ChevronRightIcon } from "@heroicons/react/20/solid";
 
 export type Column<T> = {
   key: string;
   header: string;
   headerClassName?: string;
   cellClassName?: string;
-  render: (row: T, index: number) => ReactNode;
+  render: (
+    row: T,
+    index: number,
+    meta?: { isExpanded: boolean; toggleExpansion: () => void },
+  ) => ReactNode;
   sortable?: boolean;
   hidden?: boolean;
   sticky?: "left" | "right";
@@ -53,6 +58,8 @@ type DataTableProps<T> = {
   numbering?: boolean;
   onEndReached?: () => void; // Function to call when end is reached
   hasMore?: boolean; // Whether there is more data to load from server
+  renderExpansion?: (row: T) => ReactNode;
+  isRowExpandable?: (row: T) => boolean;
 };
 
 export function DataTable<T>({
@@ -72,6 +79,8 @@ export function DataTable<T>({
   numbering = false,
   onEndReached,
   hasMore = false,
+  renderExpansion,
+  isRowExpandable,
 }: DataTableProps<T>) {
   const visibleColumns = columns.filter((col) => !col.hidden);
   const [sortConfig, setSortConfig] = useState<{
@@ -82,6 +91,9 @@ export function DataTable<T>({
   // Replaced currentPage with visibleCount for infinite scroll
   const [visibleCount, setVisibleCount] = useState(pageSize);
   const [selectedRows, setSelectedRows] = useState<Set<string | number>>(
+    new Set(),
+  );
+  const [expandedRows, setExpandedRows] = useState<Set<string | number>>(
     new Set(),
   );
 
@@ -236,11 +248,22 @@ export function DataTable<T>({
     }
   };
 
+  const toggleRowExpansion = (rowKey: string | number) => {
+    const newExpanded = new Set(expandedRows);
+    if (newExpanded.has(rowKey)) {
+      newExpanded.delete(rowKey);
+    } else {
+      newExpanded.add(rowKey);
+    }
+    setExpandedRows(newExpanded);
+  };
+
   const totalColumns =
     visibleColumns.length +
     (actions?.length ? 1 : 0) +
     (selectable ? 1 : 0) +
-    (numbering ? 1 : 0);
+    (numbering ? 1 : 0) +
+    (renderExpansion ? 1 : 0);
 
   if (isLoading && data.length === 0) {
     // Only show full loader if initial load
@@ -260,6 +283,7 @@ export function DataTable<T>({
   let currentLeftOffset = 0;
   if (numbering) currentLeftOffset += 48; // Estimate width for numbering
   if (selectable) currentLeftOffset += 52; // Estimate width for selectable
+  if (renderExpansion) currentLeftOffset += 48; // Estimate width for expand button
 
   return (
     <div className="relative w-full bg-card rounded-xl border border-border shadow-sm overflow-hidden">
@@ -267,10 +291,21 @@ export function DataTable<T>({
         <table className="w-full text-sm text-left border-separate border-spacing-0">
           <thead className="text-muted-foreground font-medium sticky top-0 z-30">
             <tr className="">
+              {renderExpansion && (
+                <th
+                  scope="col"
+                  className="px-4 py-4 w-10 sticky left-0 z-40 bg-muted border-b border-border"
+                >
+                  <span className="sr-only">Expand</span>
+                </th>
+              )}
               {numbering && (
                 <th
                   scope="col"
-                  className="px-6 py-4 w-12 text-xs font-semibold uppercase tracking-wider sticky left-0 z-40 bg-muted border-b border-border"
+                  className={cn(
+                    "px-6 py-4 w-12 text-xs font-semibold uppercase tracking-wider sticky z-40 bg-muted border-b border-border",
+                    renderExpansion ? "left-10" : "left-0",
+                  )}
                 >
                   #
                 </th>
@@ -280,7 +315,13 @@ export function DataTable<T>({
                   scope="col"
                   className={cn(
                     "px-6 py-4 w-12 sticky z-40 bg-muted border-b border-border",
-                    numbering ? "left-12" : "left-0",
+                    renderExpansion && numbering
+                      ? "left-[100px]"
+                      : renderExpansion
+                        ? "left-10"
+                        : numbering
+                          ? "left-12"
+                          : "left-0",
                   )}
                 >
                   <div className="flex items-center">
@@ -368,112 +409,165 @@ export function DataTable<T>({
                 if (selectable) cellLeftOffset += 52;
 
                 return (
-                  <tr
-                    key={rowKey}
-                    className={cn(
-                      "group transition-colors duration-200",
-                      isSelected
-                        ? "bg-primary/5 shadow-[inset_0_0_0_999px_rgba(var(--primary-rgb),0.05)]"
-                        : "bg-card",
-                    )}
-                  >
-                    {numbering && (
-                      <td className="px-6 py-4 text-muted-foreground font-mono text-xs sticky left-0 z-10 bg-white dark:bg-neutral-950 group-hover:bg-slate-50 dark:group-hover:bg-neutral-900 group-[.is-selected]:bg-slate-50 dark:group-[.is-selected]:bg-neutral-900 shadow-[1px_0_0_0_rgba(0,0,0,0.1)] dark:shadow-[1px_0_0_0_rgba(255,255,255,0.1)]">
-                        {rowIndex + 1}
-                      </td>
-                    )}
-                    {selectable && (
-                      <td
-                        className={cn(
-                          "px-6 py-4 sticky z-10 bg-white dark:bg-neutral-950 group-hover:bg-slate-50 dark:group-hover:bg-neutral-900 group-[.is-selected]:bg-slate-50 dark:group-[.is-selected]:bg-neutral-900 shadow-[1px_0_0_0_rgba(0,0,0,0.1)] dark:shadow-[1px_0_0_0_rgba(255,255,255,0.1)]",
-                          numbering ? "left-12" : "left-0",
-                        )}
-                      >
-                        <div className="flex items-center">
-                          <input
-                            type="checkbox"
-                            checked={isSelected}
-                            onChange={() => handleSelectRow(rowKey)}
-                            className="w-4 h-4 rounded border-gray-300 text-primary focus:ring-primary/20 cursor-pointer transition-all"
-                            aria-label={`Select row ${rowIndex + 1}`}
-                          />
-                        </div>
-                      </td>
-                    )}
-                    {visibleColumns.map((col, colIndex) => {
-                      const isSticky = col.sticky === "left";
-                      const leftPos = isSticky ? cellLeftOffset : undefined;
-                      if (isSticky) cellLeftOffset += 200;
-
-                      return (
-                        <td
-                          key={col.key}
-                          className={cn(
-                            "px-6 py-4 whitespace-nowrap bg-card group-hover:bg-muted/30 group-[.is-selected]:bg-primary/5",
-                            colIndex === 0 && !selectable && !numbering
-                              ? "pl-8 font-medium text-foreground"
-                              : "text-muted-foreground",
-                            col.cellClassName,
-                            isSticky &&
-                              "sticky z-10 bg-white dark:bg-neutral-950 group-hover:bg-slate-50 dark:group-hover:bg-neutral-900 group-[.is-selected]:bg-slate-50 dark:group-[.is-selected]:bg-neutral-900 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.1)] dark:shadow-[2px_0_5px_-2px_rgba(255,255,255,0.1)]",
-                          )}
-                          style={isSticky ? { left: leftPos } : {}}
-                        >
-                          {col.render(row, rowIndex)}
-                        </td>
-                      );
-                    })}
-                    {actions && actions.length > 0 && (
-                      <td className="px-6 py-4 text-right sticky right-0 z-10 bg-white dark:bg-neutral-950 group-hover:bg-slate-50 dark:group-hover:bg-neutral-900 group-[.is-selected]:bg-slate-50 dark:group-[.is-selected]:bg-neutral-900 shadow-[-1px_0_0_0_rgba(0,0,0,0.1)] dark:shadow-[-1px_0_0_0_rgba(255,255,255,0.1)]">
-                        <DropdownMenu>
-                          <DropdownMenuTrigger asChild>
-                            <button
-                              className="inline-flex items-center justify-center w-8 h-8 rounded-lg text-muted-foreground/50 hover:text-foreground hover:bg-muted transition-all focus:outline-none focus:ring-2 focus:ring-ring ring-offset-1"
-                              aria-label="Open actions menu"
-                            >
-                              <EllipsisVerticalIcon className="h-5 w-5" />
-                            </button>
-                          </DropdownMenuTrigger>
-                          <DropdownMenuContent
-                            align="end"
-                            className="w-48 shadow-lg border-border rounded-xl"
+                  <>
+                    <tr
+                      key={rowKey}
+                      className={cn(
+                        "group transition-colors duration-200",
+                        isSelected
+                          ? "bg-primary/5 shadow-[inset_0_0_0_999px_rgba(var(--primary-rgb),0.05)]"
+                          : "bg-card",
+                        expandedRows.has(rowKey) && "bg-muted/30",
+                      )}
+                    >
+                      {renderExpansion && (
+                        <td className="px-3 py-4 sticky left-0 z-10 bg-white dark:bg-neutral-950 group-hover:bg-slate-50 dark:group-hover:bg-neutral-900 shadow-[1px_0_0_0_rgba(0,0,0,0.1)] dark:shadow-[1px_0_0_0_rgba(255,255,255,0.1)]">
+                          <button
+                            onClick={() => toggleRowExpansion(rowKey)}
+                            disabled={isRowExpandable && !isRowExpandable(row)}
+                            className={cn(
+                              "flex items-center justify-center w-6 h-6 rounded-md hover:bg-muted transition-all",
+                              isRowExpandable &&
+                                !isRowExpandable(row) &&
+                                "opacity-0 pointer-events-none",
+                            )}
                           >
-                            {actions.map((action, actionIndex) => {
-                              const isDisabled =
-                                typeof action.disabled === "function"
-                                  ? action.disabled(row)
-                                  : action.disabled;
-                              const label =
-                                typeof action.label === "function"
-                                  ? action.label(row)
-                                  : action.label;
-                              const icon =
-                                typeof action.icon === "function"
-                                  ? action.icon(row)
-                                  : action.icon;
+                            <ChevronRightIcon
+                              className={cn(
+                                "w-4 h-4 text-muted-foreground transition-transform duration-200",
+                                expandedRows.has(rowKey) &&
+                                  "rotate-90 text-primary",
+                              )}
+                            />
+                          </button>
+                        </td>
+                      )}
+                      {numbering && (
+                        <td
+                          className={cn(
+                            "px-6 py-4 text-muted-foreground font-mono text-xs sticky z-10 bg-white dark:bg-neutral-950 group-hover:bg-slate-50 dark:group-hover:bg-neutral-900 shadow-[1px_0_0_0_rgba(0,0,0,0.1)] dark:shadow-[1px_0_0_0_rgba(255,255,255,0.1)]",
+                            renderExpansion ? "left-10" : "left-0",
+                          )}
+                        >
+                          {rowIndex + 1}
+                        </td>
+                      )}
+                      {selectable && (
+                        <td
+                          className={cn(
+                            "px-6 py-4 sticky z-10 bg-white dark:bg-neutral-950 group-hover:bg-slate-50 dark:group-hover:bg-neutral-900 shadow-[1px_0_0_0_rgba(0,0,0,0.1)] dark:shadow-[1px_0_0_0_rgba(255,255,255,0.1)]",
+                            renderExpansion && numbering
+                              ? "left-[100px]"
+                              : renderExpansion
+                                ? "left-10"
+                                : numbering
+                                  ? "left-12"
+                                  : "left-0",
+                          )}
+                        >
+                          <div className="flex items-center">
+                            <input
+                              type="checkbox"
+                              checked={isSelected}
+                              onChange={() => handleSelectRow(rowKey)}
+                              className="w-4 h-4 rounded border-gray-300 text-primary focus:ring-primary/20 cursor-pointer transition-all"
+                              aria-label={`Select row ${rowIndex + 1}`}
+                            />
+                          </div>
+                        </td>
+                      )}
+                      {visibleColumns.map((col, colIndex) => {
+                        const isSticky = col.sticky === "left";
+                        const leftPos = isSticky ? cellLeftOffset : undefined;
+                        if (isSticky) cellLeftOffset += 200;
 
-                              return (
-                                <DropdownMenuItem
-                                  key={actionIndex}
-                                  onClick={() => action.onClick(row)}
-                                  disabled={isDisabled}
-                                  className={cn(
-                                    "gap-2 cursor-pointer",
-                                    action.className,
-                                  )}
-                                >
-                                  {icon && (
-                                    <span className="w-4 h-4">{icon}</span>
-                                  )}
-                                  {label}
-                                </DropdownMenuItem>
-                              );
+                        return (
+                          <td
+                            key={col.key}
+                            className={cn(
+                              "px-6 py-4 whitespace-nowrap bg-card group-hover:bg-muted/30 group-[.is-selected]:bg-primary/5",
+                              colIndex === 0 && !selectable && !numbering
+                                ? "pl-8 font-medium text-foreground"
+                                : "text-muted-foreground",
+                              col.cellClassName,
+                              isSticky &&
+                                "sticky z-10 bg-white dark:bg-neutral-950 group-hover:bg-slate-50 dark:group-hover:bg-neutral-900 group-[.is-selected]:bg-slate-50 dark:group-[.is-selected]:bg-neutral-900 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.1)] dark:shadow-[2px_0_5px_-2px_rgba(255,255,255,0.1)]",
+                            )}
+                            style={isSticky ? { left: leftPos } : {}}
+                          >
+                            {col.render(row, rowIndex, {
+                              isExpanded: expandedRows.has(rowKey),
+                              toggleExpansion: () => toggleRowExpansion(rowKey),
                             })}
-                          </DropdownMenuContent>
-                        </DropdownMenu>
-                      </td>
-                    )}
-                  </tr>
+                          </td>
+                        );
+                      })}
+                      {actions && actions.length > 0 && (
+                        <td className="px-6 py-4 text-right sticky right-0 z-10 bg-white dark:bg-neutral-950 group-hover:bg-slate-50 dark:group-hover:bg-neutral-900 group-[.is-selected]:bg-slate-50 dark:group-[.is-selected]:bg-neutral-900 shadow-[-1px_0_0_0_rgba(0,0,0,0.1)] dark:shadow-[-1px_0_0_0_rgba(255,255,255,0.1)]">
+                          <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                              <button
+                                className="inline-flex items-center justify-center w-8 h-8 rounded-lg text-muted-foreground/50 hover:text-foreground hover:bg-muted transition-all focus:outline-none focus:ring-2 focus:ring-ring ring-offset-1"
+                                aria-label="Open actions menu"
+                              >
+                                <EllipsisVerticalIcon className="h-5 w-5" />
+                              </button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent
+                              align="end"
+                              className="w-48 shadow-lg border-border rounded-xl"
+                            >
+                              {actions.map((action, actionIndex) => {
+                                const isDisabled =
+                                  typeof action.disabled === "function"
+                                    ? action.disabled(row)
+                                    : action.disabled;
+                                const label =
+                                  typeof action.label === "function"
+                                    ? action.label(row)
+                                    : action.label;
+                                const icon =
+                                  typeof action.icon === "function"
+                                    ? action.icon(row)
+                                    : action.icon;
+
+                                return (
+                                  <DropdownMenuItem
+                                    key={actionIndex}
+                                    onClick={() => action.onClick(row)}
+                                    disabled={isDisabled}
+                                    className={cn(
+                                      "gap-2 cursor-pointer",
+                                      action.className,
+                                    )}
+                                  >
+                                    {icon && (
+                                      <span className="w-4 h-4">{icon}</span>
+                                    )}
+                                    {label}
+                                  </DropdownMenuItem>
+                                );
+                              })}
+                            </DropdownMenuContent>
+                          </DropdownMenu>
+                        </td>
+                      )}
+                    </tr>
+                    {renderExpansion &&
+                      expandedRows.has(rowKey) &&
+                      (!isRowExpandable || isRowExpandable(row)) && (
+                        <tr className="bg-muted/5">
+                          <td
+                            colSpan={totalColumns}
+                            className="p-0 border-b border-border"
+                          >
+                            <div className="animate-in fade-in slide-in-from-top-2 duration-300">
+                              {renderExpansion(row)}
+                            </div>
+                          </td>
+                        </tr>
+                      )}
+                  </>
                 );
               })
             )}
@@ -493,6 +587,43 @@ export function DataTable<T>({
             )}
           </tbody>
         </table>
+      </div>
+    </div>
+  );
+}
+export function DataTableSubRow({
+  children,
+  isLast,
+  className,
+}: {
+  children: ReactNode;
+  isLast?: boolean;
+  className?: string;
+}) {
+  return (
+    <div
+      className={cn(
+        "flex items-start gap-4 pl-16 relative group/subrow",
+        className,
+      )}
+    >
+      <div className="absolute left-[26px] top-0 bottom-0 pointer-events-none">
+        <div
+          className={cn(
+            "absolute left-0 top-0 w-[1.5px] bg-gray-200 dark:bg-gray-800 group-hover/subrow:bg-blue-500/30 transition-colors duration-500",
+            isLast ? "h-6" : "h-full",
+          )}
+        />
+        <div
+          className={cn(
+            "absolute left-0 top-6 w-5 h-[1.5px] bg-gray-200 dark:bg-gray-800 group-hover/subrow:bg-blue-500/50 transition-colors duration-500 rounded-r-full",
+          )}
+        />
+        {/* Connection dot */}
+        <div className="absolute left-[-2px] top-[22px] w-[5.5px] h-[5.5px] rounded-full bg-gray-300 dark:bg-gray-700 group-hover/subrow:bg-blue-500 transition-colors duration-500 shadow-[0_0_0_2px_rgba(255,255,255,1)] dark:shadow-[0_0_0_2px_rgba(10,10,10,1)]" />
+      </div>
+      <div className="flex-1 py-3 text-sm transition-all duration-300 group-hover/subrow:translate-x-1">
+        {children}
       </div>
     </div>
   );

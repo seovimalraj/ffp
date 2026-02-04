@@ -110,11 +110,12 @@ export enum SQLFunctions {
   markOrderAsFailure = 'mark_order_payment_failed',
 
   getRFQPartsInfinite = 'get_rfq_parts_infinite',
-  getUserRFQsWithPartsCountInfinite = 'get_user_rfqs_with_parts_count_infinite',
+  getUserRFQsWithPartsCountInfinite = 'get_user_rfqs_with_parts_count_infinite_v2',
   getOrdersInfinite = 'get_orders_infinite',
 
   getRfqStatusCounts = 'get_rfq_status_counts',
   getRfqStatusSummary = 'get_rfq_status_summary',
+  getOrderStatusSummary = 'get_order_status_summary',
 }
 
 /**

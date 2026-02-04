@@ -74,6 +74,7 @@ export class OrdersController {
     @Query('limit') limit = '20',
     @Query('cursorCreatedAt') cursorCreatedAt?: string,
     @Query('cursorId') cursorId?: string,
+    @Query('search') search?: string,
   ) {
     const organizationId =
       currentUser.role === RoleNames.Admin ? null : currentUser.organizationId;
@@ -86,12 +87,21 @@ export class OrdersController {
       limit: Number(limit),
       cursorCreatedAt,
       cursorId,
+      search,
     });
 
     return {
       success: true,
       ...data,
     };
+  }
+
+  @Get('orders-summary')
+  @Roles(RoleNames.Admin, RoleNames.Customer)
+  async getOrdersSummary(@CurrentUser() user: CurrentUserDto) {
+    const data = await this.ordersService.getOrderStatuses(user.id || null);
+
+    return { statuses: data, success: true };
   }
 
   @Post('shipping_address')

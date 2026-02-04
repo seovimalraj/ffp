@@ -25,12 +25,13 @@
 -- GROUP BY r.id
 -- ORDER BY r.created_at DESC;
 -- $$;
-CREATE OR REPLACE FUNCTION get_user_rfqs_with_parts_count_infinite(
+CREATE OR REPLACE FUNCTION get_user_rfqs_with_parts_count_infinite_v2(
         p_user_id UUID,
         p_status VARCHAR DEFAULT NULL,
         p_limit INTEGER DEFAULT 20,
         p_cursor_created_at TIMESTAMP DEFAULT NULL,
-        p_cursor_id UUID DEFAULT NULL
+        p_cursor_id UUID DEFAULT NULL,
+        p_rfq_type VARCHAR DEFAULT NULL
     ) RETURNS JSONB LANGUAGE sql SECURITY DEFINER AS $$ WITH base_rfqs AS (
         SELECT r.id,
             r.rfq_code,
@@ -46,6 +47,10 @@ CREATE OR REPLACE FUNCTION get_user_rfqs_with_parts_count_infinite(
             AND (
                 p_status IS NULL
                 OR r.status = p_status
+            )
+            AND (
+                p_rfq_type IS NULL
+                OR r.rfq_type = p_rfq_type
             )
     ),
     total_count AS (
@@ -79,10 +84,28 @@ CREATE OR REPLACE FUNCTION get_user_rfqs_with_parts_count_infinite(
             r.updated_at,
             r.order_id,
             r.rfq_type,
-            COUNT(p.id) AS parts_count
+            -- count of non-archived parts
+            COUNT(p.id) FILTER (
+                WHERE p.is_archived = FALSE
+            ) AS parts_count,
+            -- list of part cad url + file name
+            COALESCE(
+                jsonb_agg(
+                    jsonb_build_object(
+                        'cad_file_url',
+                        p.cad_file_url,
+                        'file_name',
+                        p.file_name,
+                        "snapshot_2d_url",
+                        snapshot_2d_url
+                    )
+                ) FILTER (
+                    WHERE p.is_archived = FALSE
+                ),
+                '[]'::jsonb
+            ) AS parts
         FROM rfq_limited r
             LEFT JOIN rfq_parts p ON p.rfq_id = r.id
-            AND p.is_archived = FALSE
         GROUP BY r.id,
             r.rfq_code,
             r.user_id,
@@ -121,32 +144,51 @@ $$;
 ------- RFQ Status Summary
 ----
 --
-CREATE OR REPLACE FUNCTION get_rfq_status_summary(p_organization_id UUID) RETURNS json LANGUAGE sql STABLE AS $$
+CREATE OR REPLACE FUNCTION get_rfq_status_summary(
+        p_user_id UUID DEFAULT NULL,
+        p_organization_id UUID DEFAULT NULL,
+        p_rfq_type VARCHAR DEFAULT NULL
+    ) RETURNS json LANGUAGE sql STABLE AS $$ WITH filtered_rfqs AS (
+        SELECT status
+        FROM rfq
+        WHERE (
+                p_user_id IS NULL
+                OR user_id = p_user_id
+            )
+            AND (
+                p_organization_id IS NULL
+                OR organization_id = p_organization_id
+            )
+            AND (
+                p_rfq_type IS NULL
+                OR rfq_type = p_rfq_type
+            )
+    )
 SELECT json_build_object(
         'total',
         (
-            SELECT COUNT(*)
-            FROM rfq
-            WHERE organization_id = p_organization_id
+            SELECT COUNT(*)::INT
+            FROM filtered_rfqs
         ),
         'by_status',
-        (
-            SELECT json_agg(
-                    json_build_object(
-                        'status',
-                        status,
-                        'count',
-                        count
+        COALESCE(
+            (
+                SELECT json_agg(
+                        json_build_object(
+                            'status',
+                            status,
+                            'count',
+                            status_count
+                        )
                     )
-                )
-            FROM (
-                    SELECT status,
-                        COUNT(*) AS count
-                    FROM rfq
-                    WHERE organization_id = p_organization_id
-                    GROUP BY status
-                ) s
+                FROM (
+                        SELECT status,
+                            COUNT(*)::INT AS status_count
+                        FROM filtered_rfqs
+                        GROUP BY status
+                    ) s
+            ),
+            '[]'::json
         )
     );
 $$;
-X
