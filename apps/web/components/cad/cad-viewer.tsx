@@ -10,6 +10,8 @@ import React, {
 import * as THREE from "three";
 import { createViewer, Viewer } from "./viewer";
 import { loadMeshFile } from "./mesh-loader";
+import { motion, AnimatePresence } from "framer-motion";
+import { Loader2 } from "lucide-react";
 
 type Units = "mm" | "cm" | "m" | "in";
 
@@ -624,42 +626,62 @@ export const CadViewer = forwardRef<CadViewerRef, CadViewerProps>(
         )}
 
         {/* Loading Overlay */}
-        {isLoading && (
-          <div
-            style={{
-              position: "absolute",
-              inset: 0,
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              background: "rgba(0,0,0,0.5)",
-              color: "white",
-              zIndex: 20,
-              pointerEvents: "none",
-            }}
-          >
-            Loading...
-          </div>
-        )}
+        <AnimatePresence>
+          {isLoading && (
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="absolute inset-0 z-20 flex items-center justify-center bg-slate-900/10 backdrop-blur-sm pointer-events-none"
+            >
+              <div className="flex flex-col items-center gap-3 rounded-2xl bg-white/90 p-8 shadow-2xl border border-slate-200/50 backdrop-blur-xl ring-1 ring-black/[0.05]">
+                <div className="relative">
+                  <div className="absolute inset-0 rounded-full bg-blue-500/20 blur-xl animate-pulse" />
+                  <Loader2 className="h-10 w-10 animate-spin text-blue-600 relative z-10" />
+                </div>
+                <div className="flex flex-col items-center gap-1">
+                  <span className="text-sm font-semibold text-slate-900">
+                    Processing Model
+                  </span>
+                  <span className="text-[11px] text-slate-500 font-medium">
+                    Preparing 3D environment...
+                  </span>
+                </div>
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
         {/* Error Overlay */}
-        {error && (
-          <div
-            style={{
-              position: "absolute",
-              inset: 0,
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              background: "rgba(0,0,0,0.7)",
-              color: "#ff6b6b",
-              zIndex: 20,
-              padding: "20px",
-              textAlign: "center",
-            }}
-          >
-            {error}
-          </div>
-        )}
+        <AnimatePresence>
+          {error && (
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              className="absolute inset-0 z-20 flex items-center justify-center bg-slate-900/40 backdrop-blur-md p-6"
+            >
+              <div className="flex flex-col items-center gap-4 rounded-2xl bg-white p-8 shadow-2xl border border-red-100 max-w-[80%] text-center">
+                <div className="h-12 w-12 rounded-full bg-red-50 flex items-center justify-center">
+                  <span className="text-2xl">⚠️</span>
+                </div>
+                <div className="flex flex-col gap-1">
+                  <h3 className="text-sm font-bold text-slate-900">
+                    Failed to Load Model
+                  </h3>
+                  <p className="text-xs text-slate-500 leading-relaxed">
+                    {error}
+                  </p>
+                </div>
+                <button
+                  onClick={() => window.location.reload()}
+                  className="mt-2 rounded-lg bg-slate-900 px-4 py-2 text-xs font-semibold text-white hover:bg-slate-800 transition-colors"
+                >
+                  Retry
+                </button>
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
       </div>
     );
   },
