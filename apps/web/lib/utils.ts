@@ -153,6 +153,30 @@ export function dataURLtoFile(dataurl: string, filename: string): File {
   return new File([u8arr], filename, { type: mime });
 }
 
+export function getQuantityRange(val: number = 1): number[] {
+  const base = [1, 5, 10, 25, 50];
+
+  if (val <= 50) return base;
+
+  let start = 50;
+
+  while (true) {
+    const range: number[] = [
+      start,
+      Math.round(start * 1.5),
+      start * 2,
+      start * 3,
+      start * 4,
+    ];
+
+    if (val <= range[range.length - 1]) {
+      return range;
+    }
+
+    start = range[range.length - 1];
+  }
+}
+
 export const processTranslator = {
   "cnc-milling": "CNC Machining",
   "cnc-turning": "CNC Machining",

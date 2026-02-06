@@ -40,6 +40,7 @@ import {
   recommendFinish,
   recommendTolerance,
 } from "@/lib/pricing-engine";
+import { getQuantityRange } from "@/lib/utils";
 
 interface EditPartModalProps {
   isOpen: boolean;
@@ -267,7 +268,7 @@ export function EditPartModal({
                     </tr>
                   </thead>
                   <tbody className="bg-white divide-y divide-gray-100">
-                    {[1, 5, 10, 25, 50].map((qty) => {
+                    {getQuantityRange(localPart.quantity).map((qty) => {
                       const total = calculatePrice(
                         { ...localPart, quantity: qty },
                         localPart.leadTimeType,
