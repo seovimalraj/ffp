@@ -1381,26 +1381,68 @@ export default function QuoteConfigPage() {
   // Handle applying suggestions
   const handleApplySuggestion = (suggestion: any) => {
     const partIndex = parts.findIndex((p) => p.id === suggestion.partId);
-    if (partIndex === -1) return;
+    if (partIndex === -1 && suggestion.partId !== "multi") return;
 
-    switch (suggestion.type) {
+    // Handle multi-part suggestions (bundles) if needed
+    if (suggestion.partId === "multi") {
+      notify.info("Multi-part optimization applied");
+      return;
+    }
+
+    const action = suggestion.action || {};
+    const type = action.type || suggestion.type;
+
+    switch (type) {
       case "quantity":
-        updatePart(partIndex, "quantity", suggestion.suggestedValue, true);
-        notify.success(`Quantity updated to ${suggestion.suggestedValue}`);
+      case "increase-quantity":
+      case "change-quantity":
+      case "volume-discount": {
+        const newQty = action.quantity || suggestion.suggestedValue;
+        updatePart(partIndex, "quantity", newQty, true);
+        notify.success(`Quantity updated to ${newQty}`);
         break;
+      }
       case "material":
-        updatePart(partIndex, "material", suggestion.suggestedValue, true);
-        notify.success(`Material updated to ${suggestion.suggestedValue}`);
+      case "change-material":
+      case "upgrade-material":
+      case "premium-upgrade": {
+        const newMat = action.material || suggestion.suggestedValue;
+        updatePart(partIndex, "material", newMat, true);
+        notify.success(`Material updated to ${newMat}`);
         break;
+      }
       case "finish":
-        updatePart(partIndex, "finish", suggestion.suggestedValue, true);
-        notify.success(`Finish updated to ${suggestion.suggestedValue}`);
+      case "change-finish":
+      case "upgrade-finish": {
+        const newFinish = action.finish || suggestion.suggestedValue;
+        updatePart(partIndex, "finish", newFinish, true);
+        notify.success(`Finish updated to ${newFinish}`);
         break;
+      }
       case "leadtime":
-        updatePart(partIndex, "leadTimeType", "standard", true);
-        notify.success("Lead time updated to Standard");
+      case "change-lead-time":
+      case "expedite-production":
+      case "express-shipping": {
+        const newLeadTime = action.leadTime || "standard";
+        updatePart(partIndex, "leadTimeType", newLeadTime, true);
+        notify.success(`Lead time updated to ${newLeadTime}`);
+        break;
+      }
+      case "add-fai":
+        updatePart(partIndex, "inspection", "first-article", true);
+        notify.success("First Article Inspection added");
+        break;
+      case "add-cmm":
+        updatePart(partIndex, "inspection", "full-cmm", true);
+        notify.success("Full CMM Report added");
+        break;
+      case "tolerance":
+      case "change-tolerance":
+        updatePart(partIndex, "tolerance", suggestion.suggestedValue, true);
+        notify.success(`Tolerance updated to ${suggestion.suggestedValue}`);
         break;
       default:
+        console.warn("Unhandled suggestion type:", type);
         break;
     }
   };

@@ -125,6 +125,20 @@ export function SuggestionSidebar({
     });
   }, [allSuggestions, selectedPart, selectedCategory, categorizedSuggestions]);
 
+  // Helper to get count for a category considering selected part
+  const getFilteredCategoryCount = (category: SuggestionCategory | "all") => {
+    if (category === "all") {
+      return selectedPart === "all"
+        ? allSuggestions.length
+        : allSuggestions.filter((s) => s.partId === selectedPart).length;
+    }
+
+    const suggestionsInCategory = categorizedSuggestions[category] || [];
+    return selectedPart === "all"
+      ? suggestionsInCategory.length
+      : suggestionsInCategory.filter((s) => s.partId === selectedPart).length;
+  };
+
   // Check if suggestion should show apply button (not DFM or quality optimization)
   const shouldShowApplyButton = (suggestion: any) => {
     return (
@@ -135,7 +149,7 @@ export function SuggestionSidebar({
 
   return (
     <>
-      {/* Fixed Button at Bottom */}
+      {/* Floating Button at Bottom */}
       <div className="fixed bottom-6 right-6 z-40">
         <Button
           onClick={toggleSidebar}
@@ -184,7 +198,7 @@ export function SuggestionSidebar({
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="fixed inset-0 bg-black/60 backdrop-blur-md z-40"
+            className="fixed inset-0 bg-black/40 backdrop-blur-sm z-40"
             onClick={() => setIsOpen(false)}
           />
         )}
@@ -193,51 +207,32 @@ export function SuggestionSidebar({
       {/* Sidebar */}
       <div
         className={cn(
-          "fixed top-0 right-0 h-full w-full sm:w-[480px] bg-white text-zinc-950 border-l border-zinc-200 shadow-2xl z-50 transform transition-transform duration-500 cubic-bezier(0.4, 0, 0.2, 1) flex flex-col sidebar-open overflow-hidden",
+          "fixed top-0 right-0 h-full w-full sm:w-[460px] bg-white text-zinc-950 border-l border-zinc-200 shadow-2xl z-50 transform transition-transform duration-500 cubic-bezier(0.4, 0, 0.2, 1) flex flex-col overflow-hidden",
           isOpen ? "translate-x-0" : "translate-x-full",
         )}
       >
-        <div className="ai-scan-overlay bg-gradient-to-b from-transparent via-blue-500/10 to-transparent" />
-
-        {/* Scanning Beam Effect */}
-        <div className="absolute inset-0 pointer-events-none overflow-hidden opacity-30">
-          <motion.div
-            animate={{ top: ["-100%", "100%"] }}
-            transition={{
-              duration: 4,
-              repeat: Number.POSITIVE_INFINITY,
-              ease: "linear",
-            }}
-            className="absolute left-0 w-full h-1/2 bg-gradient-to-b from-transparent via-blue-500/30 to-transparent"
-          />
-        </div>
-
         {/* Header */}
-        <div className="p-8 border-b border-zinc-100 bg-zinc-50/50 relative overflow-hidden">
-          <div className="absolute top-0 right-0 p-8 opacity-5">
-            <Cpu className="w-24 h-24" />
-          </div>
-
-          <div className="flex items-center justify-between mb-4 relative">
-            <div className="flex items-center gap-4">
-              <div className="aspect-square bg-blue-50 rounded-2xl flex items-center justify-center border border-blue-100">
+        <div className="p-6 border-b border-zinc-100 bg-zinc-50/30">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 bg-blue-600 rounded-xl flex items-center justify-center shadow-blue-200 shadow-lg">
                 <img
                   src="/icons/ai-suggestion.png"
-                  alt="Logo"
-                  className="w-12 object-contain"
+                  alt="AI"
+                  className="w-6 invert"
                 />
               </div>
               <div>
-                <h2 className="text-xl font-black tracking-tight flex items-center gap-2 text-zinc-900">
-                  AI ENGINE{" "}
-                  <span className="text-[10px] bg-blue-600 px-1.5 py-0.5 rounded text-white font-bold">
-                    BETA
+                <h2 className="text-lg font-bold tracking-tight text-zinc-900 flex items-center gap-2">
+                  Optimization Engine
+                  <span className="text-[10px] bg-zinc-900 px-1.5 py-0.5 rounded text-white font-bold tracking-widest leading-none uppercase">
+                    Beta
                   </span>
                 </h2>
-                <p className="text-sm text-zinc-500 font-medium">
+                <p className="text-xs text-zinc-500 font-medium">
                   {isAnalyzing
                     ? "Scanning part geometry..."
-                    : "Optimization insights ready"}
+                    : "Intelligent manufacturing insights"}
                 </p>
               </div>
             </div>
@@ -245,272 +240,205 @@ export function SuggestionSidebar({
               variant="ghost"
               size="icon"
               onClick={() => setIsOpen(false)}
-              className="rounded-xl h-10 w-10 text-zinc-400 hover:text-zinc-900 hover:bg-zinc-100"
+              className="rounded-full h-8 w-8 text-zinc-400 hover:text-zinc-900"
             >
-              <X className="w-5 h-5" />
+              <X className="w-4 h-4" />
             </Button>
           </div>
         </div>
 
         {/* Filters */}
         {!isAnalyzing && (
-          <div className="px-8 py-4 border-b border-zinc-100 space-y-3 bg-white">
-            {/* Part Selector Dropdown */}
-            <div className="relative">
-              <label className="text-xs font-semibold text-zinc-500 uppercase tracking-wide mb-1.5 block">
-                Select Part
-              </label>
-              <button
-                onClick={() => setIsPartDropdownOpen(!isPartDropdownOpen)}
-                className="w-full flex items-center justify-between gap-2 px-4 py-2.5 bg-zinc-50 hover:bg-zinc-100 border border-zinc-200 rounded-lg text-sm font-medium text-zinc-900 transition-colors"
-              >
-                <span className="truncate">
-                  {selectedPart === "all"
-                    ? `All Parts (${uniqueParts.length})`
-                    : uniqueParts.find((p) => p.id === selectedPart)
-                        ?.fileName || "Select Part"}
-                </span>
-                <ChevronDown
-                  className={cn(
-                    "w-4 h-4 text-zinc-400 transition-transform",
-                    isPartDropdownOpen && "rotate-180",
-                  )}
-                />
-              </button>
+          <div className="px-6 py-4 border-b border-zinc-100 space-y-3 bg-white">
+            <div className="grid grid-cols-2 gap-3">
+              {/* Part Selector Dropdown */}
+              <div className="relative">
+                <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider mb-1 block">
+                  Part Filter
+                </label>
+                <button
+                  onClick={() => setIsPartDropdownOpen(!isPartDropdownOpen)}
+                  className="w-full flex items-center justify-between gap-2 px-3 py-2 bg-zinc-50 hover:bg-zinc-100 border border-zinc-200 rounded-lg text-xs font-semibold text-zinc-700 transition-colors"
+                >
+                  <span className="truncate">
+                    {selectedPart === "all"
+                      ? `All Parts (${uniqueParts.length})`
+                      : uniqueParts.find((p) => p.id === selectedPart)
+                          ?.fileName || "Select Part"}
+                  </span>
+                  <ChevronDown
+                    className={cn(
+                      "w-3 h-3 text-zinc-400 transition-transform",
+                      isPartDropdownOpen && "rotate-180",
+                    )}
+                  />
+                </button>
 
-              <AnimatePresence>
-                {isPartDropdownOpen && (
-                  <motion.div
-                    initial={{ opacity: 0, y: -10 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    exit={{ opacity: 0, y: -10 }}
-                    className="absolute z-10 w-full mt-1 bg-white border border-zinc-200 rounded-lg shadow-lg max-h-60 overflow-y-auto"
-                  >
-                    <button
-                      onClick={() => {
-                        setSelectedPart("all");
-                        setIsPartDropdownOpen(false);
-                      }}
-                      className={cn(
-                        "w-full px-4 py-2.5 text-left text-sm hover:bg-zinc-50 transition-colors",
-                        selectedPart === "all" &&
-                          "bg-blue-50 text-blue-600 font-semibold",
-                      )}
+                <AnimatePresence>
+                  {isPartDropdownOpen && (
+                    <motion.div
+                      initial={{ opacity: 0, y: -5 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      exit={{ opacity: 0, y: -5 }}
+                      className="absolute z-10 w-full mt-1 bg-white border border-zinc-200 rounded-lg shadow-xl max-h-60 overflow-y-auto"
                     >
-                      All Parts ({uniqueParts.length})
-                    </button>
-                    {uniqueParts.map((part) => (
                       <button
-                        key={part.id}
                         onClick={() => {
-                          setSelectedPart(part.id);
+                          setSelectedPart("all");
                           setIsPartDropdownOpen(false);
                         }}
                         className={cn(
-                          "w-full px-4 py-2.5 text-left text-sm hover:bg-zinc-50 transition-colors truncate",
-                          selectedPart === part.id &&
-                            "bg-blue-50 text-blue-600 font-semibold",
+                          "w-full px-3 py-2 text-left text-xs hover:bg-zinc-50 transition-colors",
+                          selectedPart === "all" &&
+                            "bg-blue-50 text-blue-600 font-bold",
                         )}
                       >
-                        {part.fileName}
+                        All Parts ({uniqueParts.length})
                       </button>
-                    ))}
-                  </motion.div>
-                )}
-              </AnimatePresence>
-            </div>
+                      {uniqueParts.map((part) => (
+                        <button
+                          key={part.id}
+                          onClick={() => {
+                            setSelectedPart(part.id);
+                            setIsPartDropdownOpen(false);
+                          }}
+                          className={cn(
+                            "w-full px-3 py-2 text-left text-xs hover:bg-zinc-50 transition-colors truncate",
+                            selectedPart === part.id &&
+                              "bg-blue-50 text-blue-600 font-bold",
+                          )}
+                        >
+                          {part.fileName}
+                        </button>
+                      ))}
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+              </div>
 
-            {/* Category Filter Dropdown */}
-            <div className="relative">
-              <label className="text-xs font-semibold text-zinc-500 uppercase tracking-wide mb-1.5 block">
-                Category
-              </label>
-              <button
-                onClick={() =>
-                  setIsCategoryDropdownOpen(!isCategoryDropdownOpen)
-                }
-                className="w-full flex items-center justify-between gap-2 px-4 py-2.5 bg-zinc-50 hover:bg-zinc-100 border border-zinc-200 rounded-lg text-sm font-medium text-zinc-900 transition-colors"
-              >
-                <span className="flex items-center gap-2">
-                  {selectedCategory === "all" && "All Categories"}
-                  {selectedCategory === "cost-optimization" && (
-                    <>
-                      <span className="w-2 h-2 bg-purple-500 rounded-full"></span>
-                      Cost Optimization
-                    </>
-                  )}
-                  {selectedCategory === "dfm" && (
-                    <>
-                      <span className="w-2 h-2 bg-amber-500 rounded-full"></span>
-                      DFM Suggestions
-                    </>
-                  )}
-                  {selectedCategory === "quality-optimization" && (
-                    <>
-                      <span className="w-2 h-2 bg-blue-500 rounded-full"></span>
-                      Quality Optimization
-                    </>
-                  )}
-                  <span className="text-xs text-zinc-400">
-                    (
+              {/* Category Filter Dropdown */}
+              <div className="relative">
+                <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider mb-1 block">
+                  Category
+                </label>
+                <button
+                  onClick={() =>
+                    setIsCategoryDropdownOpen(!isCategoryDropdownOpen)
+                  }
+                  className="w-full flex items-center justify-between gap-2 px-3 py-2 bg-zinc-50 hover:bg-zinc-100 border border-zinc-200 rounded-lg text-xs font-semibold text-zinc-700 transition-colors"
+                >
+                  <span className="flex items-center gap-2 truncate">
                     {selectedCategory === "all"
-                      ? filteredSuggestions.length
-                      : categorizedSuggestions[selectedCategory]?.length || 0}
-                    )
+                      ? "All"
+                      : selectedCategory === "cost-optimization"
+                        ? "Cost"
+                        : selectedCategory === "dfm"
+                          ? "DFM"
+                          : "Quality"}
+                    <span className="text-[10px] text-zinc-400 font-normal">
+                      ({getFilteredCategoryCount(selectedCategory)})
+                    </span>
                   </span>
-                </span>
-                <ChevronDown
-                  className={cn(
-                    "w-4 h-4 text-zinc-400 transition-transform",
-                    isCategoryDropdownOpen && "rotate-180",
-                  )}
-                />
-              </button>
+                  <ChevronDown
+                    className={cn(
+                      "w-3 h-3 text-zinc-400 transition-transform",
+                      isCategoryDropdownOpen && "rotate-180",
+                    )}
+                  />
+                </button>
 
-              <AnimatePresence>
-                {isCategoryDropdownOpen && (
-                  <motion.div
-                    initial={{ opacity: 0, y: -10 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    exit={{ opacity: 0, y: -10 }}
-                    className="absolute z-10 w-full mt-1 bg-white border border-zinc-200 rounded-lg shadow-lg overflow-hidden"
-                  >
-                    <button
-                      onClick={() => {
-                        setSelectedCategory("all");
-                        setIsCategoryDropdownOpen(false);
-                      }}
-                      className={cn(
-                        "w-full px-4 py-2.5 text-left text-sm hover:bg-zinc-50 transition-colors",
-                        selectedCategory === "all" &&
-                          "bg-blue-50 text-blue-600 font-semibold",
-                      )}
+                <AnimatePresence>
+                  {isCategoryDropdownOpen && (
+                    <motion.div
+                      initial={{ opacity: 0, y: -5 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      exit={{ opacity: 0, y: -5 }}
+                      className="absolute z-10 w-full mt-1 bg-white border border-zinc-200 rounded-lg shadow-xl overflow-hidden"
                     >
-                      <div className="flex items-center justify-between">
-                        <span>All Categories</span>
-                        <span className="text-xs text-zinc-400">
-                          ({allSuggestions.length})
-                        </span>
-                      </div>
-                    </button>
-                    <button
-                      onClick={() => {
-                        setSelectedCategory("cost-optimization");
-                        setIsCategoryDropdownOpen(false);
-                      }}
-                      className={cn(
-                        "w-full px-4 py-2.5 text-left text-sm hover:bg-zinc-50 transition-colors",
-                        selectedCategory === "cost-optimization" &&
-                          "bg-purple-50 text-purple-600 font-semibold",
-                      )}
-                    >
-                      <div className="flex items-center justify-between">
-                        <span className="flex items-center gap-2">
-                          <span className="w-2 h-2 bg-purple-500 rounded-full"></span>
-                          Cost Optimization
-                        </span>
-                        <span className="text-xs text-zinc-400">
-                          ({categorizedSuggestions["cost-optimization"].length})
-                        </span>
-                      </div>
-                    </button>
-                    <button
-                      onClick={() => {
-                        setSelectedCategory("dfm");
-                        setIsCategoryDropdownOpen(false);
-                      }}
-                      className={cn(
-                        "w-full px-4 py-2.5 text-left text-sm hover:bg-zinc-50 transition-colors",
-                        selectedCategory === "dfm" &&
-                          "bg-amber-50 text-amber-600 font-semibold",
-                      )}
-                    >
-                      <div className="flex items-center justify-between">
-                        <span className="flex items-center gap-2">
-                          <span className="w-2 h-2 bg-amber-500 rounded-full"></span>
-                          DFM Suggestions
-                        </span>
-                        <span className="text-xs text-zinc-400">
-                          ({categorizedSuggestions.dfm.length})
-                        </span>
-                      </div>
-                    </button>
-                    <button
-                      onClick={() => {
-                        setSelectedCategory("quality-optimization");
-                        setIsCategoryDropdownOpen(false);
-                      }}
-                      className={cn(
-                        "w-full px-4 py-2.5 text-left text-sm hover:bg-zinc-50 transition-colors",
-                        selectedCategory === "quality-optimization" &&
-                          "bg-blue-50 text-blue-600 font-semibold",
-                      )}
-                    >
-                      <div className="flex items-center justify-between">
-                        <span className="flex items-center gap-2">
-                          <span className="w-2 h-2 bg-blue-500 rounded-full"></span>
-                          Quality Optimization
-                        </span>
-                        <span className="text-xs text-zinc-400">
-                          (
-                          {
-                            categorizedSuggestions["quality-optimization"]
-                              .length
-                          }
-                          )
-                        </span>
-                      </div>
-                    </button>
-                  </motion.div>
-                )}
-              </AnimatePresence>
+                      {[
+                        { id: "all", label: "All Categories", color: "zinc" },
+                        {
+                          id: "cost-optimization",
+                          label: "Cost",
+                          color: "emerald",
+                        },
+                        { id: "dfm", label: "DFM", color: "amber" },
+                        {
+                          id: "quality-optimization",
+                          label: "Quality",
+                          color: "blue",
+                        },
+                      ].map((cat) => (
+                        <button
+                          key={cat.id}
+                          onClick={() => {
+                            setSelectedCategory(cat.id as SuggestionCategory);
+                            setIsCategoryDropdownOpen(false);
+                          }}
+                          className={cn(
+                            "w-full px-3 py-2 text-left text-xs hover:bg-zinc-50 transition-colors flex items-center justify-between",
+                            selectedCategory === cat.id &&
+                              "bg-zinc-50 font-bold",
+                          )}
+                        >
+                          <span className="flex items-center gap-2">
+                            {cat.id !== "all" && (
+                              <span
+                                className={cn(
+                                  "w-1.5 h-1.5 rounded-full",
+                                  cat.color === "emerald" && "bg-emerald-500",
+                                  cat.color === "amber" && "bg-amber-500",
+                                  cat.color === "blue" && "bg-blue-500",
+                                  cat.color === "zinc" && "bg-zinc-500",
+                                )}
+                              />
+                            )}
+                            {cat.label}
+                          </span>
+                          <span className="text-[10px] text-zinc-400 font-normal">
+                            {getFilteredCategoryCount(
+                              cat.id as SuggestionCategory,
+                            )}
+                          </span>
+                        </button>
+                      ))}
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+              </div>
             </div>
           </div>
         )}
 
         {/* Content */}
-        <div className="flex-1 overflow-y-auto invisible-scrollbar p-8 space-y-6">
+        <div className="flex-1 overflow-y-auto invisible-scrollbar p-6 space-y-4">
           {isAnalyzing ? (
-            <div className="w-full h-full flex items-center justify-center p-12">
-              <div className="flex flex-col items-center gap-4">
-                <div className="relative">
-                  <motion.div
-                    animate={{ rotate: 360 }}
-                    transition={{
-                      duration: 2,
-                      repeat: Infinity,
-                      ease: "easeInOut",
-                    }}
-                    className="w-16 h-16 border-4 border-blue-500/20 border-t-blue-500 rounded-full"
-                  />
-                  <img
-                    src="/animated/ai.gif"
-                    className="w-16 h-16 absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2"
-                  />
-                </div>
-                <p className="text-gray-900 font-bold text-lg">
-                  AI Engine is analyzing...
-                </p>
-                <div className="flex gap-1">
-                  {[0, 1, 2].map((i) => (
-                    <motion.div
-                      key={i}
-                      animate={{ opacity: [0, 1, 0] }}
-                      transition={{
-                        duration: 1,
-                        repeat: Infinity,
-                        delay: i * 0.2,
-                      }}
-                      className="w-1.5 h-1.5 bg-blue-400 rounded-full"
-                    />
-                  ))}
-                </div>
+            <div className="w-full h-full flex flex-col items-center justify-center p-12 text-center">
+              <div className="relative mb-6">
+                <motion.div
+                  animate={{ rotate: 360 }}
+                  transition={{ duration: 2, repeat: Infinity, ease: "linear" }}
+                  className="w-16 h-16 border-2 border-blue-500/10 border-t-blue-500 rounded-full"
+                />
+                <img
+                  src="/icons/ai-suggestion.png"
+                  className="w-8 h-8 absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 opacity-20"
+                  alt=""
+                />
               </div>
+              <h3 className="text-zinc-900 font-bold text-lg mb-2">
+                Analyzing Geometry
+              </h3>
+              <p className="text-zinc-500 text-sm max-w-[240px]">
+                Our AI model is currently evaluating your design against
+                manufacturing constraints.
+              </p>
             </div>
           ) : filteredSuggestions.length === 0 ? (
-            <div className="p-6 text-center">
-              <p className="text-sm text-zinc-400 font-medium">
-                No suggestions available for selected filters
+            <div className="p-12 text-center flex flex-col items-center justify-center h-full opacity-40">
+              <Cpu className="w-12 h-12 mb-4 text-zinc-300" />
+              <p className="text-sm text-zinc-500 font-medium">
+                No suggestions found for the selected filters
               </p>
             </div>
           ) : (
@@ -520,20 +448,20 @@ export function SuggestionSidebar({
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: index * 0.05 }}
                 key={suggestion.id}
-                className="bg-white rounded-lg border border-zinc-200 hover:border-zinc-300 hover:shadow-sm transition-all duration-200"
+                className="group relative bg-white rounded-2xl border border-zinc-200 p-5 hover:border-blue-200 hover:shadow-md transition-all duration-300"
               >
-                <div className="p-5 space-y-4">
-                  {/* Header */}
-                  <div className="flex items-start gap-3">
+                {/* Badge/Category Header */}
+                <div className="flex items-center justify-between mb-4">
+                  <div className="flex items-center gap-2">
                     <div
                       className={cn(
-                        "w-10 h-10 rounded-lg flex items-center justify-center shrink-0",
+                        "w-8 h-8 rounded-lg flex items-center justify-center text-xs font-bold",
                         suggestion.color === "blue" &&
                           "bg-blue-50 text-blue-600",
                         suggestion.color === "purple" &&
                           "bg-purple-50 text-purple-600",
                         suggestion.color === "green" &&
-                          "bg-green-50 text-green-600",
+                          "bg-emerald-50 text-emerald-600",
                         suggestion.color === "amber" &&
                           "bg-amber-50 text-amber-600",
                         suggestion.color === "red" && "bg-red-50 text-red-600",
@@ -548,190 +476,115 @@ export function SuggestionSidebar({
                       {suggestion.preview ? (
                         <img
                           src={suggestion.preview}
-                          alt="Preview"
-                          className="w-full h-full object-cover"
+                          className="w-full h-full object-cover rounded-lg"
+                          alt=""
                         />
                       ) : (
-                        <Cpu className="w-5 h-5" />
+                        <Cpu className="w-4 h-4" />
                       )}
                     </div>
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2 mb-1 flex-wrap">
-                        <span className="text-xs font-medium text-zinc-500 uppercase">
-                          {suggestion.type}
-                        </span>
-                        {suggestion.category && (
-                          <span
-                            className={cn(
-                              "text-xs font-semibold px-2 py-0.5 rounded-full",
-                              suggestion.category === "cost-saving" &&
-                                "bg-green-100 text-green-700",
-                              suggestion.category === "performance-upgrade" &&
-                                "bg-indigo-100 text-indigo-700",
-                              suggestion.category === "volume-discount" &&
-                                "bg-teal-100 text-teal-700",
-                              suggestion.category === "premium-service" &&
-                                "bg-purple-100 text-purple-700",
-                              suggestion.category === "quality-improvement" &&
-                                "bg-blue-100 text-blue-700",
-                            )}
-                          >
-                            {suggestion.category
-                              .replace(/-/g, " ")
-                              .replace(/\b\w/g, (l) => l.toUpperCase())}
-                          </span>
-                        )}
-                        {suggestion.priority === "critical" && (
-                          <span className="text-xs font-bold px-2 py-0.5 rounded-full bg-red-100 text-red-700 animate-pulse">
-                            CRITICAL
-                          </span>
-                        )}
-                        {suggestion.impact.savingsPercentage &&
-                          suggestion.impact.savingsPercentage > 0 && (
-                            <span className="text-xs font-semibold text-green-600">
-                              {suggestion.impact.savingsPercentage}% savings
-                            </span>
-                          )}
-                        {suggestion.impact.revenueIncrease &&
-                          suggestion.impact.revenueIncrease > 0 && (
-                            <span className="text-xs font-semibold text-indigo-600">
-                              +${suggestion.impact.revenueIncrease.toFixed(0)}{" "}
-                              revenue
-                            </span>
-                          )}
-                      </div>
-                      <h3 className="text-sm font-semibold text-zinc-900 leading-tight">
-                        {suggestion.title}
-                      </h3>
-                    </div>
+                    <span className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest">
+                      {suggestion.type}
+                    </span>
                   </div>
 
-                  {/* Description */}
-                  <p className="text-sm text-zinc-600 leading-relaxed">
+                  <div className="flex gap-2">
+                    {suggestion.impact.savingsPercentage && (
+                      <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700">
+                        {suggestion.impact.savingsPercentage}% SAVINGS
+                      </span>
+                    )}
+                    {suggestion.priority === "critical" && (
+                      <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-red-100 text-red-600">
+                        CRITICAL
+                      </span>
+                    )}
+                  </div>
+                </div>
+
+                {/* Title & Description */}
+                <div className="space-y-1 mb-4">
+                  <h3 className="text-sm font-bold text-zinc-900 group-hover:text-blue-600 transition-colors">
+                    {suggestion.title}
+                  </h3>
+                  <p className="text-xs text-zinc-500 leading-relaxed line-clamp-2">
                     {suggestion.description}
                   </p>
+                </div>
 
-                  {/* Part Name */}
-                  <div className="pt-3 border-t border-zinc-100">
-                    <p className="text-xs text-zinc-500 mb-1">Part</p>
-                    <p className="text-sm font-medium text-zinc-900 truncate">
-                      {suggestion.partName}
+                {/* Details Grid */}
+                <div className="bg-zinc-50 rounded-xl p-3 grid grid-cols-2 gap-4 mb-4">
+                  <div>
+                    <span className="text-[9px] font-bold text-zinc-400 uppercase block mb-0.5">
+                      Current
+                    </span>
+                    <span className="text-xs font-semibold text-zinc-400 line-through truncate block">
+                      {suggestion.currentValue}
+                    </span>
+                  </div>
+                  <div>
+                    <span className="text-[9px] font-bold text-zinc-400 uppercase block mb-0.5">
+                      Recommended
+                    </span>
+                    <span className="text-xs font-bold text-zinc-900 truncate block">
+                      {suggestion.suggestedValue}
+                    </span>
+                  </div>
+                </div>
+
+                {/* Impact Row */}
+                {(suggestion.impact.savings !== undefined ||
+                  suggestion.impact.lifetimeSavings ||
+                  suggestion.impact.revenueIncrease) && (
+                  <div className="flex items-center justify-between mb-4 px-1">
+                    <span className="text-[10px] font-bold text-zinc-400 uppercase">
+                      Estimated Impact
+                    </span>
+                    <span
+                      className={cn(
+                        "text-sm font-black",
+                        (suggestion?.impact?.savings || 0) > 0
+                          ? "text-emerald-500"
+                          : "text-blue-600",
+                      )}
+                    >
+                      {suggestion.impact.savings !== undefined &&
+                        suggestion.impact.savings !== 0 &&
+                        `$${Math.abs(suggestion.impact.savings).toFixed(2)}`}
+                      {suggestion.impact.revenueIncrease &&
+                        suggestion.impact.revenueIncrease > 0 &&
+                        `+$${suggestion.impact.revenueIncrease.toFixed(0)}`}
+                    </span>
+                  </div>
+                )}
+
+                {/* Action */}
+                {shouldShowApplyButton(suggestion) ? (
+                  <Button
+                    onClick={() => {
+                      onApplySuggestion(suggestion);
+                      setIsOpen(false);
+                    }}
+                    className="w-full h-9 rounded-xl bg-zinc-900 hover:bg-blue-600 text-white text-xs font-bold transition-all"
+                  >
+                    Apply Optimization
+                  </Button>
+                ) : (
+                  <div className="text-center pt-2 border-t border-zinc-100 mt-2">
+                    <p className="text-[10px] text-zinc-400 font-medium italic">
+                      {categorizedSuggestions.dfm.includes(suggestion)
+                        ? "Geometric design change required"
+                        : "Non-automated quality enhancement"}
                     </p>
                   </div>
+                )}
 
-                  {/* Current vs Suggested */}
-                  <div className="grid grid-cols-2 gap-3">
-                    <div>
-                      <p className="text-xs text-zinc-500 mb-1">Current</p>
-                      <p className="text-sm font-medium text-zinc-400 line-through">
-                        {suggestion.currentValue}
-                      </p>
-                    </div>
-                    <div>
-                      <p className="text-xs text-zinc-500 mb-1">Suggested</p>
-                      <p className="text-sm font-semibold text-zinc-900">
-                        {suggestion.suggestedValue}
-                      </p>
-                    </div>
-                  </div>
-
-                  {/* Savings / Impact */}
-                  {(suggestion.impact.savings !== undefined ||
-                    suggestion.impact.lifetimeSavings ||
-                    suggestion.impact.revenueIncrease) && (
-                    <div className="space-y-2">
-                      {suggestion.impact.savings !== undefined &&
-                        suggestion.impact.savings !== 0 && (
-                          <div
-                            className={cn(
-                              "border rounded-lg px-3 py-2",
-                              suggestion.impact.savings > 0
-                                ? "bg-green-50 border-green-100"
-                                : "bg-indigo-50 border-indigo-100",
-                            )}
-                          >
-                            <div className="flex items-center justify-between">
-                              <span
-                                className={cn(
-                                  "text-xs font-medium",
-                                  suggestion.impact.savings > 0
-                                    ? "text-green-700"
-                                    : "text-indigo-700",
-                                )}
-                              >
-                                {suggestion.impact.savings > 0
-                                  ? "Potential Savings"
-                                  : "Investment"}
-                              </span>
-                              <span
-                                className={cn(
-                                  "text-sm font-semibold",
-                                  suggestion.impact.savings > 0
-                                    ? "text-green-700"
-                                    : "text-indigo-700",
-                                )}
-                              >
-                                $
-                                {Math.abs(suggestion.impact.savings).toFixed(2)}
-                              </span>
-                            </div>
-                          </div>
-                        )}
-                      {suggestion.impact.lifetimeSavings &&
-                        suggestion.impact.lifetimeSavings > 0 && (
-                          <div className="bg-teal-50 border border-teal-100 rounded-lg px-3 py-2">
-                            <div className="flex items-center justify-between">
-                              <span className="text-xs font-medium text-teal-700">
-                                Lifetime Value (3 years)
-                              </span>
-                              <span className="text-sm font-semibold text-teal-700">
-                                $
-                                {Math.abs(
-                                  suggestion.impact.lifetimeSavings,
-                                ).toFixed(2)}
-                              </span>
-                            </div>
-                          </div>
-                        )}
-                      {suggestion.impact.revenueIncrease &&
-                        suggestion.impact.revenueIncrease > 0 && (
-                          <div className="bg-purple-50 border border-purple-100 rounded-lg px-3 py-2">
-                            <div className="flex items-center justify-between">
-                              <span className="text-xs font-medium text-purple-700">
-                                Revenue Opportunity
-                              </span>
-                              <span className="text-sm font-semibold text-purple-700">
-                                +${suggestion.impact.revenueIncrease.toFixed(2)}
-                              </span>
-                            </div>
-                          </div>
-                        )}
-                    </div>
-                  )}
-
-                  {/* Action Button - Only show for non-DFM/quality suggestions */}
-                  {shouldShowApplyButton(suggestion) && (
-                    <Button
-                      onClick={() => {
-                        onApplySuggestion(suggestion);
-                        setIsOpen(false);
-                      }}
-                      className="w-full bg-blue-600 hover:bg-blue-700 text-white"
-                    >
-                      Apply Suggestion
-                    </Button>
-                  )}
-
-                  {/* Info message for DFM/Quality suggestions */}
-                  {!shouldShowApplyButton(suggestion) && (
-                    <div className="pt-3 border-t border-zinc-100">
-                      <p className="text-xs text-zinc-500 italic text-center">
-                        {categorizedSuggestions.dfm.includes(suggestion)
-                          ? "Design recommendation - requires CAD file modification"
-                          : "Quality improvement suggestion for consideration"}
-                      </p>
-                    </div>
-                  )}
+                {/* Part Name Footer */}
+                <div className="mt-3 flex items-center gap-1.5 opacity-60">
+                  <div className="w-1 h-1 rounded-full bg-zinc-300" />
+                  <span className="text-[9px] font-bold text-zinc-400 uppercase truncate">
+                    Part: {suggestion.partName}
+                  </span>
                 </div>
               </motion.div>
             ))

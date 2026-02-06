@@ -28,10 +28,7 @@ export type Viewer = {
   ) => { point: THREE.Vector3; object: THREE.Object3D } | null;
   highlightEdgeAtScreenPosition: (ndcX: number, ndcY: number) => void;
   clearEdgeHighlight: () => void;
-  measureEdgeAtScreenPosition: (
-    ndcX: number,
-    ndcY: number,
-  ) => number | null;
+  measureEdgeAtScreenPosition: (ndcX: number, ndcY: number) => number | null;
   setControlsEnabled: (enabled: boolean) => void;
   setMeasurementSegment: (
     p1: THREE.Vector3 | null,
@@ -258,7 +255,17 @@ export function createViewer(container: HTMLElement): Viewer {
     return Math.max(a, Math.min(b, v));
   }
 
-  function addQuad(positions: number[], fixedAxis: "x" | "y" | "z", fixedVal: number, uAxis: "x" | "y" | "z", u0: number, u1: number, vAxis: "x" | "y" | "z", v0: number, v1: number) {
+  function addQuad(
+    positions: number[],
+    fixedAxis: "x" | "y" | "z",
+    fixedVal: number,
+    uAxis: "x" | "y" | "z",
+    u0: number,
+    u1: number,
+    vAxis: "x" | "y" | "z",
+    v0: number,
+    v1: number,
+  ) {
     // two triangles (v00, v10, v11) and (v11, v01, v00)
     const setVertex = (u: number, v: number) => {
       const p = { x: 0, y: 0, z: 0 } as any;
@@ -280,8 +287,26 @@ export function createViewer(container: HTMLElement): Viewer {
   }
 
   // materials/geometries
-  const edgeMat = new THREE.MeshBasicMaterial({ color: 0xdbeafe, transparent: true, opacity: 0.6, side: THREE.DoubleSide, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: 1 });
-  const cornerMat = new THREE.MeshBasicMaterial({ color: 0xdbeafe, transparent: true, opacity: 0.6, side: THREE.DoubleSide, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: 1 });
+  const edgeMat = new THREE.MeshBasicMaterial({
+    color: 0xdbeafe,
+    transparent: true,
+    opacity: 0.6,
+    side: THREE.DoubleSide,
+    depthWrite: false,
+    polygonOffset: true,
+    polygonOffsetFactor: -1,
+    polygonOffsetUnits: 1,
+  });
+  const cornerMat = new THREE.MeshBasicMaterial({
+    color: 0xdbeafe,
+    transparent: true,
+    opacity: 0.6,
+    side: THREE.DoubleSide,
+    depthWrite: false,
+    polygonOffset: true,
+    polygonOffsetFactor: -1,
+    polygonOffsetUnits: 1,
+  });
 
   let edgeGeom: THREE.BufferGeometry = new THREE.BufferGeometry();
   let cornerGeom: THREE.BufferGeometry = new THREE.BufferGeometry();
@@ -300,7 +325,15 @@ export function createViewer(container: HTMLElement): Viewer {
     cornerPatchMesh.visible = false;
   }
 
-  function setEdgePatchFromHover(pLocal: THREE.Vector3, nearX: boolean, nearY: boolean, nearZ: boolean, nx: number, ny: number, nz: number) {
+  function setEdgePatchFromHover(
+    pLocal: THREE.Vector3,
+    nearX: boolean,
+    nearY: boolean,
+    nearZ: boolean,
+    nx: number,
+    ny: number,
+    nz: number,
+  ) {
     // build two quads (one per face)
     const faces: { axis: "x" | "y" | "z"; sign: number }[] = [];
     if (nearX) faces.push({ axis: "x", sign: Math.sign(nx) || 1 });
@@ -315,37 +348,83 @@ export function createViewer(container: HTMLElement): Viewer {
     const freeAxis = axes.find((a) => !presentAxes.includes(a))!;
 
     // center along free axis (clamped)
-    const centerFree = clamp((pLocal as any)[freeAxis], -0.5 + EDGE_PATCH_LEN / 2, 0.5 - EDGE_PATCH_LEN / 2);
+    const centerFree = clamp(
+      (pLocal as any)[freeAxis],
+      -0.5 + EDGE_PATCH_LEN / 2,
+      0.5 - EDGE_PATCH_LEN / 2,
+    );
 
     for (const f of faces) {
       if (f.axis === "x") {
         // quad on plane x = sign*0.5, u axis = freeAxis (length), v axis = the other in-plane axis
         const otherAxis = freeAxis === "y" ? "z" : "y";
-        const otherSign = (otherAxis === "y" ? Math.sign((pLocal as any).y) : Math.sign((pLocal as any).z)) || (otherAxis === "y" ? Math.sign(ny) || 1 : Math.sign(nz) || 1);
+        const otherSign =
+          (otherAxis === "y"
+            ? Math.sign((pLocal as any).y)
+            : Math.sign((pLocal as any).z)) ||
+          (otherAxis === "y" ? Math.sign(ny) || 1 : Math.sign(nz) || 1);
         const fixedVal = f.sign * 0.5;
         const u0 = centerFree - EDGE_PATCH_LEN / 2;
         const u1 = centerFree + EDGE_PATCH_LEN / 2;
         const v0 = otherSign * 0.5; // edge at face intersection
         const v1 = otherSign * 0.5 - otherSign * EDGE_PATCH_DEPTH; // inward
-        addQuad(positions, "x", fixedVal, freeAxis, u0, u1, otherAxis as any, v0, v1);
+        addQuad(
+          positions,
+          "x",
+          fixedVal,
+          freeAxis,
+          u0,
+          u1,
+          otherAxis as any,
+          v0,
+          v1,
+        );
       } else if (f.axis === "y") {
         const otherAxis = freeAxis === "x" ? "z" : "x";
-        const otherSign = (otherAxis === "x" ? Math.sign((pLocal as any).x) : Math.sign((pLocal as any).z)) || (otherAxis === "x" ? Math.sign(nx) || 1 : Math.sign(nz) || 1);
+        const otherSign =
+          (otherAxis === "x"
+            ? Math.sign((pLocal as any).x)
+            : Math.sign((pLocal as any).z)) ||
+          (otherAxis === "x" ? Math.sign(nx) || 1 : Math.sign(nz) || 1);
         const fixedVal = f.sign * 0.5;
         const u0 = centerFree - EDGE_PATCH_LEN / 2;
         const u1 = centerFree + EDGE_PATCH_LEN / 2;
         const v0 = otherSign * 0.5;
         const v1 = otherSign * 0.5 - otherSign * EDGE_PATCH_DEPTH;
-        addQuad(positions, "y", fixedVal, freeAxis, u0, u1, otherAxis as any, v0, v1);
+        addQuad(
+          positions,
+          "y",
+          fixedVal,
+          freeAxis,
+          u0,
+          u1,
+          otherAxis as any,
+          v0,
+          v1,
+        );
       } else {
         const otherAxis = freeAxis === "x" ? "y" : "x";
-        const otherSign = (otherAxis === "x" ? Math.sign((pLocal as any).x) : Math.sign((pLocal as any).y)) || (otherAxis === "x" ? Math.sign(nx) || 1 : Math.sign(ny) || 1);
+        const otherSign =
+          (otherAxis === "x"
+            ? Math.sign((pLocal as any).x)
+            : Math.sign((pLocal as any).y)) ||
+          (otherAxis === "x" ? Math.sign(nx) || 1 : Math.sign(ny) || 1);
         const fixedVal = f.sign * 0.5;
         const u0 = centerFree - EDGE_PATCH_LEN / 2;
         const u1 = centerFree + EDGE_PATCH_LEN / 2;
         const v0 = otherSign * 0.5;
         const v1 = otherSign * 0.5 - otherSign * EDGE_PATCH_DEPTH;
-        addQuad(positions, "z", fixedVal, freeAxis, u0, u1, otherAxis as any, v0, v1);
+        addQuad(
+          positions,
+          "z",
+          fixedVal,
+          freeAxis,
+          u0,
+          u1,
+          otherAxis as any,
+          v0,
+          v1,
+        );
       }
     }
 
@@ -423,11 +502,11 @@ export function createViewer(container: HTMLElement): Viewer {
     const target = controls.target;
     // Clamp phi to avoid singularities
     phi = Math.max(SPHERICAL_PHI_MIN, Math.min(SPHERICAL_PHI_MAX, phi));
-    
+
     const spherical = new THREE.Spherical(radius, phi, theta);
     const offset = new THREE.Vector3().setFromSpherical(spherical);
     const newPos = target.clone().add(offset);
-    
+
     persp.position.copy(newPos);
     ortho.position.copy(newPos);
     persp.up.set(0, 1, 0);
@@ -487,7 +566,7 @@ export function createViewer(container: HTMLElement): Viewer {
       hideHoverPatches();
       e.preventDefault();
       e.stopPropagation();
-      return; 
+      return;
     }
 
     // Not dragging: normal hover highlighting with single reusable patch
@@ -611,7 +690,9 @@ export function createViewer(container: HTMLElement): Viewer {
   }
 
   // Helper: map preset name back to face material index (robust, doesn't assume order)
-  function faceIndexForPreset(preset: "top" | "front" | "right" | "iso" | "bottom" | "left" | "back") {
+  function faceIndexForPreset(
+    preset: "top" | "front" | "right" | "iso" | "bottom" | "left" | "back",
+  ) {
     for (let i = 0; i < 6; i++) {
       if (mapFaceToPreset(i) === preset) return i;
     }
@@ -702,7 +783,9 @@ export function createViewer(container: HTMLElement): Viewer {
         distance = Math.max(distance, suggested);
       }
 
-      const dest = target.clone().add(dirWorld.clone().multiplyScalar(distance));
+      const dest = target
+        .clone()
+        .add(dirWorld.clone().multiplyScalar(distance));
 
       // animate camera position over short duration
       const duration = 300;
@@ -751,8 +834,12 @@ export function createViewer(container: HTMLElement): Viewer {
   }
 
   // attach pointer listeners directly to the canvas (non-passive pointermove)
-  cubeCanvas.addEventListener("pointerdown", onCubePointerDown as any, { passive: false });
-  cubeCanvas.addEventListener("pointermove", onCubePointerMove as any, { passive: false });
+  cubeCanvas.addEventListener("pointerdown", onCubePointerDown as any, {
+    passive: false,
+  });
+  cubeCanvas.addEventListener("pointermove", onCubePointerMove as any, {
+    passive: false,
+  });
   cubeCanvas.addEventListener("pointerup", onCubePointerUp as any);
   cubeCanvas.addEventListener("pointercancel", onCubePointerCancel as any);
   cubeCanvas.addEventListener("click", onCubeClick as any);
@@ -891,7 +978,9 @@ export function createViewer(container: HTMLElement): Viewer {
       const frontFacing: boolean[] = new Array(faceCount);
       for (let fi = 0; fi < faceCount; fi++) {
         const n = faceNormals[fi].clone().applyMatrix3(normalMat).normalize();
-        const centerWorld = faceCenters[fi].clone().applyMatrix4(mesh.matrixWorld);
+        const centerWorld = faceCenters[fi]
+          .clone()
+          .applyMatrix4(mesh.matrixWorld);
         const view = isPerspective
           ? camWorldPos.clone().sub(centerWorld)
           : camWorldDir;
@@ -904,12 +993,19 @@ export function createViewer(container: HTMLElement): Viewer {
         const f0 = e.f0;
         const f1 = e.f1;
         const boundary = f1 === undefined || f1 === null;
-        const isSil = boundary || (frontFacing[f0] !== frontFacing[f1]);
+        const isSil = boundary || frontFacing[f0] !== frontFacing[f1];
         if (!isSil) continue;
         // transform endpoints to world
         const aWorld = e.aPos.clone().applyMatrix4(mesh.matrixWorld);
         const bWorld = e.bPos.clone().applyMatrix4(mesh.matrixWorld);
-        silPositions.push(aWorld.x, aWorld.y, aWorld.z, bWorld.x, bWorld.y, bWorld.z);
+        silPositions.push(
+          aWorld.x,
+          aWorld.y,
+          aWorld.z,
+          bWorld.x,
+          bWorld.y,
+          bWorld.z,
+        );
       }
 
       // update silhouette geometry
@@ -953,7 +1049,7 @@ export function createViewer(container: HTMLElement): Viewer {
       for (const ln of featureEdgeLines) {
         try {
           ln.visible = featureEdgesEnabled;
-        } catch {}
+        } catch (e) {}
       }
       // Keep the group visibility in sync as a convenience
       featureEdgesGroup.visible = featureEdgesEnabled;
@@ -1006,7 +1102,8 @@ export function createViewer(container: HTMLElement): Viewer {
     try {
       if (wireframeLines) {
         if (wireframeLines.geometry) wireframeLines.geometry.dispose();
-        if (wireframeLines.material) (wireframeLines.material as any).dispose?.();
+        if (wireframeLines.material)
+          (wireframeLines.material as any).dispose?.();
         if (wireframeLines.parent) wireframeLines.parent.remove(wireframeLines);
         wireframeLines = null;
       }
@@ -1049,7 +1146,10 @@ export function createViewer(container: HTMLElement): Viewer {
     modelRoot.traverse((child: any) => {
       if (!child.isMesh || !child.geometry) return;
       try {
-        const edgesGeom = new THREE.EdgesGeometry(child.geometry, thresholdAngleDeg);
+        const edgesGeom = new THREE.EdgesGeometry(
+          child.geometry,
+          thresholdAngleDeg,
+        );
         const edgesMat = new THREE.LineBasicMaterial({
           color: 0x111111,
           transparent: true,
@@ -1210,7 +1310,10 @@ export function createViewer(container: HTMLElement): Viewer {
     try {
       // Larger thresholds make it easier; tuned for models in mm units
       (raycaster.params as any).Line = (raycaster.params as any).Line || {};
-      (raycaster.params as any).Line.threshold = Math.max(0.1, modelDiagonal * 0.005);
+      (raycaster.params as any).Line.threshold = Math.max(
+        0.1,
+        modelDiagonal * 0.005,
+      );
     } catch {}
 
     const intersects = raycaster.intersectObjects(edgePickables, true);
@@ -1248,15 +1351,26 @@ export function createViewer(container: HTMLElement): Viewer {
       const startVertex = vertexIndex % 2 === 0 ? vertexIndex : vertexIndex - 1;
       const v0i = startVertex * 3;
       const v1i = v0i + 3;
-      v0.set(positions[v0i], positions[v0i + 1], positions[v0i + 2]).applyMatrix4(matWorld);
-      v1.set(positions[v1i], positions[v1i + 1], positions[v1i + 2]).applyMatrix4(matWorld);
+      v0.set(
+        positions[v0i],
+        positions[v0i + 1],
+        positions[v0i + 2],
+      ).applyMatrix4(matWorld);
+      v1.set(
+        positions[v1i],
+        positions[v1i + 1],
+        positions[v1i + 2],
+      ).applyMatrix4(matWorld);
 
       // Project P onto segment v0--v1
       const seg = new THREE.Vector3().subVectors(v1, v0);
       const segLen2 = seg.lengthSq();
       let t = 0;
       if (segLen2 > 0) {
-        t = Math.max(0, Math.min(1, new THREE.Vector3().subVectors(P, v0).dot(seg) / segLen2));
+        t = Math.max(
+          0,
+          Math.min(1, new THREE.Vector3().subVectors(P, v0).dot(seg) / segLen2),
+        );
       }
       const snapped = v0.clone().add(seg.multiplyScalar(t));
       return { point: snapped, object: line };
@@ -1266,13 +1380,20 @@ export function createViewer(container: HTMLElement): Viewer {
     let bestDist = Infinity;
     let bestPoint: THREE.Vector3 | null = null;
     for (let i = 0; i < positions.length; i += 6) {
-      v0.set(positions[i], positions[i + 1], positions[i + 2]).applyMatrix4(matWorld);
-      v1.set(positions[i + 3], positions[i + 4], positions[i + 5]).applyMatrix4(matWorld);
+      v0.set(positions[i], positions[i + 1], positions[i + 2]).applyMatrix4(
+        matWorld,
+      );
+      v1.set(positions[i + 3], positions[i + 4], positions[i + 5]).applyMatrix4(
+        matWorld,
+      );
       const seg = new THREE.Vector3().subVectors(v1, v0);
       const segLen2 = seg.lengthSq();
       let t = 0;
       if (segLen2 > 0) {
-        t = Math.max(0, Math.min(1, new THREE.Vector3().subVectors(P, v0).dot(seg) / segLen2));
+        t = Math.max(
+          0,
+          Math.min(1, new THREE.Vector3().subVectors(P, v0).dot(seg) / segLen2),
+        );
       }
       const candidate = v0.clone().add(seg.multiplyScalar(t));
       const d2 = candidate.distanceToSquared(P);
@@ -1303,7 +1424,10 @@ export function createViewer(container: HTMLElement): Viewer {
     // Scale threshold by model diagonal for better picking across different model sizes
     try {
       (raycaster.params as any).Line = (raycaster.params as any).Line || {};
-      (raycaster.params as any).Line.threshold = Math.max(0.1, modelDiagonal * 0.005);
+      (raycaster.params as any).Line.threshold = Math.max(
+        0.1,
+        modelDiagonal * 0.005,
+      );
     } catch {}
 
     const intersects = raycaster.intersectObjects(edgePickables, true);
@@ -1348,20 +1472,40 @@ export function createViewer(container: HTMLElement): Viewer {
       const startVertex = vertexIndex % 2 === 0 ? vertexIndex : vertexIndex - 1;
       const v0i = startVertex * 3;
       const v1i = v0i + 3;
-      v0.set(positions[v0i], positions[v0i + 1], positions[v0i + 2]).applyMatrix4(matWorld);
-      v1.set(positions[v1i], positions[v1i + 1], positions[v1i + 2]).applyMatrix4(matWorld);
+      v0.set(
+        positions[v0i],
+        positions[v0i + 1],
+        positions[v0i + 2],
+      ).applyMatrix4(matWorld);
+      v1.set(
+        positions[v1i],
+        positions[v1i + 1],
+        positions[v1i + 2],
+      ).applyMatrix4(matWorld);
       bestV0 = v0.clone();
       bestV1 = v1.clone();
     } else {
       // Brute-force search
       for (let i = 0; i < positions.length; i += 6) {
-        v0.set(positions[i], positions[i + 1], positions[i + 2]).applyMatrix4(matWorld);
-        v1.set(positions[i + 3], positions[i + 4], positions[i + 5]).applyMatrix4(matWorld);
+        v0.set(positions[i], positions[i + 1], positions[i + 2]).applyMatrix4(
+          matWorld,
+        );
+        v1.set(
+          positions[i + 3],
+          positions[i + 4],
+          positions[i + 5],
+        ).applyMatrix4(matWorld);
         const seg = new THREE.Vector3().subVectors(v1, v0);
         const segLen2 = seg.lengthSq();
         let t = 0;
         if (segLen2 > 0) {
-          t = Math.max(0, Math.min(1, new THREE.Vector3().subVectors(P, v0).dot(seg) / segLen2));
+          t = Math.max(
+            0,
+            Math.min(
+              1,
+              new THREE.Vector3().subVectors(P, v0).dot(seg) / segLen2,
+            ),
+          );
         }
         const candidate = v0.clone().add(seg.multiplyScalar(t));
         const d2 = candidate.distanceToSquared(P);
@@ -1478,7 +1622,10 @@ export function createViewer(container: HTMLElement): Viewer {
    * extracts hit segment endpoints, calls setMeasurementSegment with start, end, and label,
    * and returns the numeric length.
    */
-  function measureEdgeAtScreenPosition(ndcX: number, ndcY: number): number | null {
+  function measureEdgeAtScreenPosition(
+    ndcX: number,
+    ndcY: number,
+  ): number | null {
     const ndc = new THREE.Vector2(ndcX, ndcY);
     raycaster.setFromCamera(ndc, activeCamera);
 
@@ -1486,7 +1633,10 @@ export function createViewer(container: HTMLElement): Viewer {
 
     try {
       (raycaster.params as any).Line = (raycaster.params as any).Line || {};
-      (raycaster.params as any).Line.threshold = Math.max(0.1, modelDiagonal * 0.005);
+      (raycaster.params as any).Line.threshold = Math.max(
+        0.1,
+        modelDiagonal * 0.005,
+      );
     } catch {}
 
     const intersects = raycaster.intersectObjects(edgePickables, true);
@@ -1521,19 +1671,39 @@ export function createViewer(container: HTMLElement): Viewer {
       const startVertex = vertexIndex % 2 === 0 ? vertexIndex : vertexIndex - 1;
       const v0i = startVertex * 3;
       const v1i = v0i + 3;
-      v0.set(positions[v0i], positions[v0i + 1], positions[v0i + 2]).applyMatrix4(matWorld);
-      v1.set(positions[v1i], positions[v1i + 1], positions[v1i + 2]).applyMatrix4(matWorld);
+      v0.set(
+        positions[v0i],
+        positions[v0i + 1],
+        positions[v0i + 2],
+      ).applyMatrix4(matWorld);
+      v1.set(
+        positions[v1i],
+        positions[v1i + 1],
+        positions[v1i + 2],
+      ).applyMatrix4(matWorld);
       bestV0 = v0.clone();
       bestV1 = v1.clone();
     } else {
       for (let i = 0; i < positions.length; i += 6) {
-        v0.set(positions[i], positions[i + 1], positions[i + 2]).applyMatrix4(matWorld);
-        v1.set(positions[i + 3], positions[i + 4], positions[i + 5]).applyMatrix4(matWorld);
+        v0.set(positions[i], positions[i + 1], positions[i + 2]).applyMatrix4(
+          matWorld,
+        );
+        v1.set(
+          positions[i + 3],
+          positions[i + 4],
+          positions[i + 5],
+        ).applyMatrix4(matWorld);
         const seg = new THREE.Vector3().subVectors(v1, v0);
         const segLen2 = seg.lengthSq();
         let t = 0;
         if (segLen2 > 0) {
-          t = Math.max(0, Math.min(1, new THREE.Vector3().subVectors(P, v0).dot(seg) / segLen2));
+          t = Math.max(
+            0,
+            Math.min(
+              1,
+              new THREE.Vector3().subVectors(P, v0).dot(seg) / segLen2,
+            ),
+          );
         }
         const candidate = v0.clone().add(seg.multiplyScalar(t));
         const d2 = candidate.distanceToSquared(P);
@@ -1599,7 +1769,9 @@ export function createViewer(container: HTMLElement): Viewer {
         new THREE.BufferAttribute(new Float32Array(6), 3),
       );
     }
-    const pos = measureLineGeometry.getAttribute("position") as THREE.BufferAttribute;
+    const pos = measureLineGeometry.getAttribute(
+      "position",
+    ) as THREE.BufferAttribute;
     pos.setXYZ(0, p1o.x, p1o.y, p1o.z);
     pos.setXYZ(1, p2o.x, p2o.y, p2o.z);
     pos.needsUpdate = true;
@@ -1676,7 +1848,9 @@ export function createViewer(container: HTMLElement): Viewer {
 
     const p1Local = p1o.clone().applyQuaternion(billboardInvQuat);
     const p2Local = p2o.clone().applyQuaternion(billboardInvQuat);
-    const dirLocal = new THREE.Vector3().subVectors(p2Local, p1Local).normalize();
+    const dirLocal = new THREE.Vector3()
+      .subVectors(p2Local, p1Local)
+      .normalize();
 
     measureArrow1.visible = true;
     measureArrow2.visible = true;
@@ -1963,7 +2137,10 @@ export function createViewer(container: HTMLElement): Viewer {
           indexedGeom = analysisGeom.clone();
         } else {
           // mergeVertices produces an indexed geometry usable for adjacency
-          indexedGeom = BufferGeometryUtils.mergeVertices(analysisGeom.clone(), 1e-6);
+          indexedGeom = BufferGeometryUtils.mergeVertices(
+            analysisGeom.clone(),
+            1e-6,
+          );
         }
 
         const posAttr = indexedGeom.getAttribute("position");
@@ -2001,16 +2178,27 @@ export function createViewer(container: HTMLElement): Viewer {
             const e2 = p2.clone().sub(p0);
             const n = e1.clone().cross(e2).normalize();
             faceNormals[f] = n;
-            faceCenters[f] = p0.clone().add(p1).add(p2).multiplyScalar(1 / 3);
+            faceCenters[f] = p0
+              .clone()
+              .add(p1)
+              .add(p2)
+              .multiplyScalar(1 / 3);
           }
 
           // Build undirected edge map -> adjacent faces
-          const edgeMap = new Map<string, { a: number; b: number; faces: number[] }>();
+          const edgeMap = new Map<
+            string,
+            { a: number; b: number; faces: number[] }
+          >();
           for (let f = 0; f < faceCount; f++) {
             const ia = indexArr[f * 3];
             const ib = indexArr[f * 3 + 1];
             const ic = indexArr[f * 3 + 2];
-            const edges = [ [ia, ib], [ib, ic], [ic, ia] ];
+            const edges = [
+              [ia, ib],
+              [ib, ic],
+              [ic, ia],
+            ];
             for (const [v0, v1] of edges) {
               const a = Math.min(v0, v1);
               const b = Math.max(v0, v1);
@@ -2058,7 +2246,10 @@ export function createViewer(container: HTMLElement): Viewer {
           });
           const planar: boolean[] = new Array(faceCount);
           for (let fi = 0; fi < faceCount; fi++) {
-            const avg = neighborCount[fi] > 0 ? neighborAngleSum[fi] / neighborCount[fi] : 0;
+            const avg =
+              neighborCount[fi] > 0
+                ? neighborAngleSum[fi] / neighborCount[fi]
+                : 0;
             planar[fi] = avg < planarEpsRad;
           }
 
@@ -2072,8 +2263,19 @@ export function createViewer(container: HTMLElement): Viewer {
             const f0 = e.f0;
             const f1 = e.f1;
             const dihedral = faceNormals[f0].angleTo(faceNormals[f1]);
-            if ((!!planar[f0] !== !!planar[f1]) && dihedral > tangentMin && dihedral < tangentMax) {
-              tangentPositions.push(e.aPos.x, e.aPos.y, e.aPos.z, e.bPos.x, e.bPos.y, e.bPos.z);
+            if (
+              !!planar[f0] !== !!planar[f1] &&
+              dihedral > tangentMin &&
+              dihedral < tangentMax
+            ) {
+              tangentPositions.push(
+                e.aPos.x,
+                e.aPos.y,
+                e.aPos.z,
+                e.bPos.x,
+                e.bPos.y,
+                e.bPos.z,
+              );
             }
           }
 
@@ -2082,10 +2284,19 @@ export function createViewer(container: HTMLElement): Viewer {
           try {
             const tg = new THREE.BufferGeometry();
             if (tangentPositions.length > 0) {
-              tg.setAttribute("position", new THREE.Float32BufferAttribute(new Float32Array(tangentPositions), 3));
+              tg.setAttribute(
+                "position",
+                new THREE.Float32BufferAttribute(
+                  new Float32Array(tangentPositions),
+                  3,
+                ),
+              );
               tg.computeBoundingSphere();
             } else {
-              tg.setAttribute("position", new THREE.Float32BufferAttribute(new Float32Array(0), 3));
+              tg.setAttribute(
+                "position",
+                new THREE.Float32BufferAttribute(new Float32Array(0), 3),
+              );
             }
             const tmat = new THREE.LineBasicMaterial({
               color: 0x111111,
@@ -2111,7 +2322,10 @@ export function createViewer(container: HTMLElement): Viewer {
           let silhouetteObj: THREE.LineSegments | null = null;
           try {
             const sg = new THREE.BufferGeometry();
-            sg.setAttribute("position", new THREE.Float32BufferAttribute(new Float32Array(0), 3));
+            sg.setAttribute(
+              "position",
+              new THREE.Float32BufferAttribute(new Float32Array(0), 3),
+            );
             const smat = new THREE.LineBasicMaterial({
               color: 0x000000,
               linewidth: 3.0,
@@ -2313,60 +2527,59 @@ export function createViewer(container: HTMLElement): Viewer {
   render();
 
   function setMaterialProperties(
-  colorHex: number,
-  wireframe: boolean,
-  xray: boolean,
-) {
-  modelRoot.traverse((child: any) => {
-    if (!child || !child.material) return;
-    // Skip feature-edge overlays explicitly
-    if (child.userData && child.userData.__isFeatureEdge) return;
-    if (child.userData && child.userData.__edgeOverlay) return;
-    if (child.name === "featureEdges") return;
+    colorHex: number,
+    wireframe: boolean,
+    xray: boolean,
+  ) {
+    modelRoot.traverse((child: any) => {
+      if (!child || !child.material) return;
+      // Skip feature-edge overlays explicitly
+      if (child.userData && child.userData.__isFeatureEdge) return;
+      if (child.userData && child.userData.__edgeOverlay) return;
+      if (child.name === "featureEdges") return;
 
-    // Only update mesh materials (do not touch line overlays)
-    if (!child.isMesh) return;
+      // Only update mesh materials (do not touch line overlays)
+      if (!child.isMesh) return;
 
-    const apply = (mat: any) => {
-      // 1) Only set color when supported
-      if (mat && mat.color && typeof mat.color.setHex === "function") {
-        mat.color.setHex(colorHex);
-      }
+      const apply = (mat: any) => {
+        // 1) Only set color when supported
+        if (mat && mat.color && typeof mat.color.setHex === "function") {
+          mat.color.setHex(colorHex);
+        }
 
-      // 2) We do NOT enable triangle mesh wireframes here. A separate wireframe overlay
-      // is used and toggled via the wireframeEnabled state.
+        // 2) We do NOT enable triangle mesh wireframes here. A separate wireframe overlay
+        // is used and toggled via the wireframeEnabled state.
 
-      // 3) X-ray
-      if (xray) {
-        mat.transparent = true;
-        mat.opacity = 0.3;
-        mat.depthWrite = false;
-        if (child.isMesh) mat.side = THREE.DoubleSide;
+        // 3) X-ray
+        if (xray) {
+          mat.transparent = true;
+          mat.opacity = 0.3;
+          mat.depthWrite = false;
+          if (child.isMesh) mat.side = THREE.DoubleSide;
+        } else {
+          mat.transparent = false;
+          mat.opacity = 1.0;
+          mat.depthWrite = true;
+          if (child.isMesh) mat.side = THREE.DoubleSide;
+        }
+
+        // 4) Ensure renderer notices updates (important for some materials)
+        mat.needsUpdate = true;
+      };
+
+      if (Array.isArray(child.material)) {
+        child.material.forEach(apply);
       } else {
-        mat.transparent = false;
-        mat.opacity = 1.0;
-        mat.depthWrite = true;
-        if (child.isMesh) mat.side = THREE.DoubleSide;
+        apply(child.material);
       }
+    });
 
-      // 4) Ensure renderer notices updates (important for some materials)
-      mat.needsUpdate = true;
-    };
-
-    if (Array.isArray(child.material)) {
-      child.material.forEach(apply);
-    } else {
-      apply(child.material);
-    }
-  });
-
-  // Toggle the wireframe overlay visibility according to flag
-  try {
-    wireframeEnabled = !!wireframe;
-    if (wireframeLines) wireframeLines.visible = wireframeEnabled;
-  } catch {}
-}
-
+    // Toggle the wireframe overlay visibility according to flag
+    try {
+      wireframeEnabled = !!wireframe;
+      if (wireframeLines) wireframeLines.visible = wireframeEnabled;
+    } catch {}
+  }
 
   function setClipping(value: number | null) {
     currentClippingValue = value;
@@ -2572,9 +2785,17 @@ export function createViewer(container: HTMLElement): Viewer {
       silhouetteRAFId = null;
     }
     // dispose feature edge overlays first
-    try { clearFeatureEdges(); } catch { /* ignore */ }
+    try {
+      clearFeatureEdges();
+    } catch {
+      /* ignore */
+    }
     // dispose wireframe overlay if present
-    try { disposeWireframeOverlay(); } catch { /* ignore */ }
+    try {
+      disposeWireframeOverlay();
+    } catch {
+      /* ignore */
+    }
     renderer.setAnimationLoop(null);
     renderer.dispose();
     try {
@@ -2586,7 +2807,10 @@ export function createViewer(container: HTMLElement): Viewer {
       cubeCanvas.removeEventListener("pointerdown", onCubePointerDown as any);
       cubeCanvas.removeEventListener("pointermove", onCubePointerMove as any);
       cubeCanvas.removeEventListener("pointerup", onCubePointerUp as any);
-      cubeCanvas.removeEventListener("pointercancel", onCubePointerCancel as any);
+      cubeCanvas.removeEventListener(
+        "pointercancel",
+        onCubePointerCancel as any,
+      );
       cubeCanvas.removeEventListener("click", onCubeClick as any);
     } catch {
       /* ignore */

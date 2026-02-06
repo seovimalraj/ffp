@@ -10,6 +10,7 @@ import { functions } from "./functions/index.js";
 
 import { logger } from "./lib/logger.js";
 import { supabase } from "./lib/supabase.js";
+import { cron } from "./cron/index.js";
 
 const app = new Hono();
 const port = config.port;
@@ -24,7 +25,7 @@ app.on(
   "/api/inngest",
   serveInngest({
     client: inngest,
-    functions,
+    functions: [...functions, ...cron],
   }),
 );
 
