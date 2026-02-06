@@ -2,11 +2,250 @@
 Advanced DFM (Design for Manufacturability) Analyzer
 Provides comprehensive manufacturability analysis with detailed recommendations
 """
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional, Tuple, Any
 from dataclasses import dataclass, field
 from enum import Enum
 import json
 import math
+
+from .models import HoleFeature, PocketFeature
+
+
+def transform_holes_to_advanced_features(holes: List[HoleFeature], process_config: Optional[Dict] = None) -> Dict:
+    """
+    Transform List[HoleFeature] to advancedFeatures.holes format expected by DFM analyzer.
+    
+    Returns dict with:
+        - totalCount: int
+        - deepHoleCount: int (depth > 5x diameter)
+        - smallHoleCount: int (diameter < min tool size)
+        - diameterRange: {min, max, avg}
+        - depthRange: {min, max, avg}
+        - holeDetails: list of individual hole info
+        - issues: list of potential manufacturability issues
+    """
+    if not holes:
+        return {
+            "totalCount": 0,
+            "deepHoleCount": 0,
+            "smallHoleCount": 0,
+            "diameterRange": None,
+            "depthRange": None,
+            "holeDetails": [],
+            "issues": []
+        }
+    
+    # Default thresholds
+    min_tool_diameter = 1.0  # mm
+    max_depth_ratio = 10.0
+    if process_config:
+        min_tool_diameter = process_config.get("min_tool_diameter_mm", 1.0)
+        max_depth_ratio = process_config.get("max_hole_depth_ratio", 10.0)
+    
+    total_count = len(holes)
+    deep_hole_count = 0
+    small_hole_count = 0
+    issues = []
+    
+    diameters = []
+    depths = []
+    hole_details = []
+    
+    for hole in holes:
+        dia = hole.diameter_mm
+        depth = hole.depth_mm
+        
+        diameters.append(dia)
+        depths.append(depth)
+        
+        # Calculate depth-to-diameter ratio
+        depth_ratio = depth / dia if dia > 0 else 0
+        
+        # Check for deep holes (depth > 5x diameter = standard deep hole)
+        is_deep = depth_ratio > 5.0
+        if is_deep:
+            deep_hole_count += 1
+        
+        # Check for very deep holes (may require gun drilling)
+        is_very_deep = depth_ratio > max_depth_ratio
+        
+        # Check for small holes
+        is_small = dia < min_tool_diameter
+        if is_small:
+            small_hole_count += 1
+        
+        hole_detail = {
+            "id": hole.id,
+            "type": hole.type,
+            "diameter_mm": dia,
+            "depth_mm": depth,
+            "depth_ratio": round(depth_ratio, 2),
+            "is_deep": is_deep,
+            "is_very_deep": is_very_deep,
+            "is_small": is_small,
+            "axis": hole.axis
+        }
+        hole_details.append(hole_detail)
+        
+        # Track issues
+        if is_very_deep:
+            issues.append({
+                "hole_id": hole.id,
+                "issue": "very_deep_hole",
+                "severity": "warning",
+                "description": f"Hole depth/diameter ratio ({depth_ratio:.1f}) exceeds {max_depth_ratio}. May require gun drilling.",
+                "recommendation": "Reduce depth or use larger diameter"
+            })
+        
+        if is_small:
+            issues.append({
+                "hole_id": hole.id,
+                "issue": "small_hole",
+                "severity": "warning" if dia >= 0.5 else "error",
+                "description": f"Hole diameter ({dia:.2f}mm) below minimum tool size ({min_tool_diameter}mm)",
+                "recommendation": f"Increase diameter to at least {min_tool_diameter}mm or use EDM"
+            })
+    
+    return {
+        "totalCount": total_count,
+        "deepHoleCount": deep_hole_count,
+        "smallHoleCount": small_hole_count,
+        "diameterRange": {
+            "min": round(min(diameters), 2),
+            "max": round(max(diameters), 2),
+            "avg": round(sum(diameters) / len(diameters), 2)
+        },
+        "depthRange": {
+            "min": round(min(depths), 2),
+            "max": round(max(depths), 2),
+            "avg": round(sum(depths) / len(depths), 2)
+        },
+        "holeDetails": hole_details,
+        "issues": issues
+    }
+
+
+def transform_pockets_to_advanced_features(pockets: List[PocketFeature], process_config: Optional[Dict] = None) -> Dict:
+    """Transform List[PocketFeature] to advancedFeatures.pockets format."""
+    if not pockets:
+        return {
+            "totalCount": 0,
+            "deepPocketCount": 0,
+            "highAspectRatioCount": 0,
+            "pocketDetails": [],
+            "issues": []
+        }
+    
+    total_count = len(pockets)
+    deep_pocket_count = 0
+    high_aspect_count = 0
+    issues = []
+    pocket_details = []
+    
+    for pocket in pockets:
+        depth = pocket.depth_mm
+        mouth_area = pocket.mouth_area_mm2
+        aspect_ratio = pocket.aspect_ratio
+        
+        # Estimate characteristic size from mouth area (sqrt for approx dimension)
+        char_dim = (mouth_area ** 0.5) if mouth_area > 0 else 1.0
+        depth_ratio = depth / char_dim if char_dim > 0 else 0
+        
+        is_deep = depth_ratio > 4.0 or aspect_ratio > 4.0
+        is_high_aspect = aspect_ratio > 6.0
+        
+        if is_deep:
+            deep_pocket_count += 1
+        if is_high_aspect:
+            high_aspect_count += 1
+        
+        pocket_detail = {
+            "id": pocket.id,
+            "depth_mm": depth,
+            "mouth_area_mm2": mouth_area,
+            "aspect_ratio": round(aspect_ratio, 2),
+            "depth_ratio": round(depth_ratio, 2),
+            "is_deep": is_deep,
+            "is_high_aspect": is_high_aspect
+        }
+        pocket_details.append(pocket_detail)
+        
+        if is_deep:
+            issues.append({
+                "pocket_id": pocket.id,
+                "issue": "deep_pocket",
+                "severity": "warning",
+                "description": f"Pocket depth ratio ({depth_ratio:.1f}) may require long reach tooling"
+            })
+        
+        if is_high_aspect:
+            issues.append({
+                "pocket_id": pocket.id,
+                "issue": "high_aspect_ratio",
+                "severity": "warning",
+                "description": f"Pocket aspect ratio ({aspect_ratio:.1f}) may cause tool deflection"
+            })
+    
+    return {
+        "totalCount": total_count,
+        "deepPocketCount": deep_pocket_count,
+        "highAspectRatioCount": high_aspect_count,
+        "pocketDetails": pocket_details,
+        "issues": issues
+    }
+
+
+def build_geometry_for_dfm(
+    bbox_dims: List[float],
+    volume_mm3: float,
+    surface_area_mm2: float,
+    holes: List[HoleFeature],
+    pockets: List[PocketFeature],
+    process_type: str,
+    thickness: Optional[float] = None,
+    bend_analysis: Optional[Dict] = None,
+    complexity: str = "moderate",
+    process_config: Optional[Dict] = None
+) -> Dict[str, Any]:
+    """
+    Build the complete geometry dictionary for DFM analysis.
+    
+    This transforms raw extracted features into the format expected by AdvancedDFMAnalyzer.
+    """
+    sorted_dims = sorted(bbox_dims)
+    
+    geometry = {
+        "boundingBox": {
+            "x": sorted_dims[2] if len(sorted_dims) == 3 else 0,
+            "y": sorted_dims[1] if len(sorted_dims) >= 2 else 0,
+            "z": sorted_dims[0] if len(sorted_dims) >= 1 else 0
+        },
+        "volume": volume_mm3,
+        "surfaceArea": surface_area_mm2,
+        "complexity": complexity,
+        "advancedFeatures": {
+            "holes": transform_holes_to_advanced_features(holes, process_config),
+            "pockets": transform_pockets_to_advanced_features(pockets, process_config),
+            "undercuts": None,
+            "complexSurfaces": {"has3DContours": False}
+        }
+    }
+    
+    # Add sheet metal features if applicable
+    if process_type == "sheet_metal":
+        bends = []
+        bend_count = 0
+        if bend_analysis:
+            bend_count = bend_analysis.get("bend_count", 0)
+            bends = bend_analysis.get("bends", [])
+        
+        geometry["sheetMetalFeatures"] = {
+            "thickness": thickness or sorted_dims[0],
+            "bends": bends,
+            "bendCount": bend_count
+        }
+    
+    return geometry
 
 
 class Severity(Enum):
@@ -235,7 +474,7 @@ class AdvancedDFMAnalyzer:
         """Analyze manufacturability of geometric features"""
         material_config = self.config["materials"].get(material, self.config["materials"]["aluminum"])
         
-        # Check thin walls
+        # Check thin walls from bounding box
         dims = sorted([
             geometry.get("boundingBox", {}).get("x", 0),
             geometry.get("boundingBox", {}).get("y", 0),
@@ -245,7 +484,7 @@ class AdvancedDFMAnalyzer:
         min_dim = dims[0]
         min_wall = material_config["min_wall_thickness_mm"]
         
-        if min_dim < min_wall:
+        if min_dim > 0 and min_dim < min_wall:
             report.add_issue(DFMIssue(
                 category="features",
                 severity=Severity.ERROR,
@@ -258,31 +497,55 @@ class AdvancedDFMAnalyzer:
             ))
             report.overall_score -= 10
         
-        # Check sharp corners
+        # Check sharp corners - add recommendation
         min_radius = material_config["min_corner_radius_mm"]
         report.recommendations.append(
             f"Add minimum {min_radius}mm radius to all internal corners to reduce stress concentrations"
         )
         
-        # Check holes
+        # === COMPREHENSIVE HOLE FEATURE CHECK ===
         advanced_features = geometry.get("advancedFeatures", {})
-        holes = advanced_features.get("holes", {})
-        hole_count = holes.get("totalCount", 0)
+        holes_data = advanced_features.get("holes", {})
+        hole_count = holes_data.get("totalCount", 0)
         
         if hole_count > 0:
             min_hole_dia = material_config["min_hole_diameter_mm"]
-            deep_holes = holes.get("deepHoleCount", 0)
+            diameter_range = holes_data.get("diameterRange", {})
             
+            # Check minimum hole diameter
+            if diameter_range:
+                min_found_dia = diameter_range.get("min", 0)
+                if min_found_dia > 0 and min_found_dia < min_hole_dia:
+                    report.add_issue(DFMIssue(
+                        category="features",
+                        severity=Severity.WARNING,
+                        title="Holes below minimum diameter",
+                        description=f"Smallest hole diameter ({min_found_dia:.2f}mm) is below recommended minimum ({min_hole_dia}mm) for {material}",
+                        measurement=min_found_dia,
+                        recommendation=f"Increase hole diameter to at least {min_hole_dia}mm or accept cost premium for micro-machining",
+                        cost_impact="medium"
+                    ))
+                    report.overall_score -= 5
+            
+            # Check for deep holes (general feature check)
+            deep_holes = holes_data.get("deepHoleCount", 0)
             if deep_holes > 0:
                 report.add_issue(DFMIssue(
                     category="features",
                     severity=Severity.WARNING,
                     title="Deep holes detected",
                     description=f"{deep_holes} deep hole(s) detected (depth > 5× diameter)",
+                    measurement=float(deep_holes),
                     recommendation="Consider using gun drilling or reducing hole depth for cost savings",
                     cost_impact="medium"
                 ))
                 report.overall_score -= 3
+            
+            # Add hole-related recommendations
+            if hole_count > 10:
+                report.recommendations.append(
+                    f"Part has {hole_count} holes - consider combining similar sizes to reduce tool changes"
+                )
     
     def _analyze_tolerances(self, geometry: Dict, tolerance: str, report: ManufacturabilityReport):
         """Analyze tolerance achievability and cost impact"""
@@ -383,8 +646,119 @@ class AdvancedDFMAnalyzer:
     def _analyze_cnc_specific(self, geometry: Dict, material: str, report: ManufacturabilityReport):
         """CNC machining specific DFM checks"""
         advanced_features = geometry.get("advancedFeatures", {})
+        material_config = self.config["materials"].get(material, self.config["materials"]["aluminum"])
+        process_config = self.config["processes"].get("cnc_milling", {})
         
-        # Check for undercuts
+        # === COMPREHENSIVE HOLE ANALYSIS ===
+        holes_data = advanced_features.get("holes", {})
+        total_holes = holes_data.get("totalCount", 0)
+        
+        if total_holes > 0:
+            min_hole_dia = material_config.get("min_hole_diameter_mm", 1.0)
+            max_depth_ratio = process_config.get("max_hole_depth_ratio", 10.0)
+            
+            # Check for deep holes
+            deep_holes = holes_data.get("deepHoleCount", 0)
+            if deep_holes > 0:
+                report.add_issue(DFMIssue(
+                    category="cnc_milling",
+                    severity=Severity.WARNING,
+                    title="Deep holes detected",
+                    description=f"{deep_holes} deep hole(s) with depth > 5× diameter require peck drilling or gun drilling",
+                    measurement=float(deep_holes),
+                    recommendation="Consider reducing hole depth or use larger diameter for cost savings",
+                    cost_impact="medium" if deep_holes <= 3 else "high",
+                    lead_time_impact="medium"
+                ))
+                report.overall_score -= min(10, deep_holes * 2)
+            
+            # Check for small holes
+            small_holes = holes_data.get("smallHoleCount", 0)
+            if small_holes > 0:
+                diameter_range = holes_data.get("diameterRange", {})
+                min_dia = diameter_range.get("min", 0)
+                report.add_issue(DFMIssue(
+                    category="cnc_milling",
+                    severity=Severity.WARNING if min_dia >= 0.5 else Severity.ERROR,
+                    title="Small holes detected",
+                    description=f"{small_holes} hole(s) with diameter < {min_hole_dia}mm may require EDM or micro-drilling",
+                    measurement=min_dia,
+                    recommendation=f"Increase hole diameter to at least {min_hole_dia}mm or accept cost premium for special tooling",
+                    cost_impact="high" if min_dia < 0.5 else "medium"
+                ))
+                report.overall_score -= min(15, small_holes * 3)
+            
+            # Analyze hole issues from transformation
+            hole_issues = holes_data.get("issues", [])
+            for issue in hole_issues:
+                if issue.get("issue") == "very_deep_hole":
+                    report.add_issue(DFMIssue(
+                        category="cnc_milling",
+                        severity=Severity.WARNING,
+                        title=f"Very deep hole {issue.get('hole_id', '')}",
+                        description=issue.get("description", "Hole requires special drilling technique"),
+                        recommendation=issue.get("recommendation", ""),
+                        cost_impact="high"
+                    ))
+            
+            # Check hole count for setup complexity
+            if total_holes > 20:
+                report.add_issue(DFMIssue(
+                    category="cnc_milling",
+                    severity=Severity.INFO,
+                    title="High hole count",
+                    description=f"{total_holes} holes increase machining time and tool wear",
+                    measurement=float(total_holes),
+                    recommendation="Consider if all holes are necessary - combining or eliminating holes reduces cost",
+                    cost_impact="low"
+                ))
+            
+            # Check diameter range for tool changes
+            diameter_range = holes_data.get("diameterRange", {})
+            if diameter_range:
+                min_dia = diameter_range.get("min", 0)
+                max_dia = diameter_range.get("max", 0)
+                if max_dia > 0 and min_dia > 0 and max_dia / min_dia > 5:
+                    report.add_issue(DFMIssue(
+                        category="cnc_milling",
+                        severity=Severity.INFO,
+                        title="Wide hole diameter range",
+                        description=f"Hole diameters range from {min_dia:.1f}mm to {max_dia:.1f}mm requiring multiple tools",
+                        recommendation="Standardize hole sizes where possible to reduce tool changes",
+                        cost_impact="low"
+                    ))
+        
+        # === POCKET ANALYSIS ===
+        pockets_data = advanced_features.get("pockets", {})
+        total_pockets = pockets_data.get("totalCount", 0)
+        
+        if total_pockets > 0:
+            deep_pockets = pockets_data.get("deepPocketCount", 0)
+            high_aspect_pockets = pockets_data.get("highAspectRatioCount", 0)
+            
+            if deep_pockets > 0:
+                report.add_issue(DFMIssue(
+                    category="cnc_milling",
+                    severity=Severity.WARNING,
+                    title="Deep pockets detected",
+                    description=f"{deep_pockets} pocket(s) with high depth ratio require long reach tooling",
+                    recommendation="Reduce pocket depth or increase opening size for standard tooling",
+                    cost_impact="medium"
+                ))
+                report.overall_score -= min(8, deep_pockets * 2)
+            
+            if high_aspect_pockets > 0:
+                report.add_issue(DFMIssue(
+                    category="cnc_milling",
+                    severity=Severity.WARNING,
+                    title="High aspect ratio pockets detected",
+                    description=f"{high_aspect_pockets} pocket(s) with aspect ratio > 6 may cause tool deflection",
+                    recommendation="Consider using shorter tools with multiple passes or redesign pocket geometry",
+                    cost_impact="medium"
+                ))
+                report.overall_score -= min(6, high_aspect_pockets * 2)
+        
+        # === UNDERCUT ANALYSIS ===
         if advanced_features.get("undercuts"):
             undercut_severity = advanced_features["undercuts"].get("severity", "minor")
             if undercut_severity in ["moderate", "severe"]:
@@ -398,7 +772,7 @@ class AdvancedDFMAnalyzer:
                 ))
                 report.overall_score -= 8 if undercut_severity == "severe" else 5
         
-        # Check for complex surfaces
+        # === COMPLEX SURFACE ANALYSIS ===
         if advanced_features.get("complexSurfaces", {}).get("has3DContours", False):
             report.add_issue(DFMIssue(
                 category="cnc_milling",

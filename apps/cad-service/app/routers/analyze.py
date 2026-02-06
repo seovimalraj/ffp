@@ -16,7 +16,7 @@ from ..models import FeaturesJson, BBox, MassProps, HoleFeature, PocketFeature, 
 from ..core.geometry import GeometricMetrics, calculate_sheet_metal_score, calculate_advanced_metrics
 from ..core.bend_detection import AdvancedBendDetector
 from ..core.classification import ProcessClassifier
-from ..dfm_analyzer import analyze_dfm
+from ..dfm_analyzer import analyze_dfm, build_geometry_for_dfm
 from ..core.validation import validate_geometry
 
 router = APIRouter()
@@ -58,7 +58,7 @@ def analyze_file_path(file_path: str, units_hint: Optional[str] = None) -> dict:
         # Advanced ray-casting for actual wall thickness detection
         mw = min_wall_mesh(mesh, samples=8000, threshold_mm=10.0)
         
-        # Calculate thickness confidence based on detection quality
+        # Calculate legacy thickness confidence based on detection quality
         thickness_confidence = 0.0
         detected_thickness = mw.global_min_mm if mw.global_min_mm > 0 else None
         
@@ -75,15 +75,30 @@ def analyze_file_path(file_path: str, units_hint: Optional[str] = None) -> dict:
             else:
                 thickness_confidence = 0.40
         
+        # === ADVANCED THICKNESS ANALYSIS (PREFERRED) ===
+        # Use proper sheet metal detection with clustering and area-weighted analysis
+        thickness_analysis = enhanced_ray_casting_analysis(mesh, bbox_dims, samples=8000)
+        
+        print(f"🔬 Advanced Thickness Analysis:")
+        print(f"   Sheet thickness detected: {thickness_analysis.is_sheet_thickness}")
+        if thickness_analysis.detected_thickness:
+            print(f"   Thickness: {thickness_analysis.detected_thickness:.2f}mm")
+            print(f"   Uniform ratio: {thickness_analysis.uniform_ratio:.1%}")
+            print(f"   T/L ratio: {thickness_analysis.thickness_to_size_ratio:.1%}")
+            print(f"   Dominance: {thickness_analysis.cluster_dominance:.1f}x")
+            print(f"   Confidence: {thickness_analysis.confidence:.1%}")
+        print(f"   Reasoning: {thickness_analysis.reasoning}")
+        
         # === USE NEW CORE MODULES FOR CLEAN CLASSIFICATION ===
         geom_metrics = GeometricMetrics(bbox_dims, vol_mm3, area_mm2)
         classifier = ProcessClassifier(geom_metrics)
         
-        # Classify with advanced bend detection
+        # Classify with advanced thickness analysis
         process_type, confidence, classification_metadata = classifier.classify(
             detected_thickness=detected_thickness,
             thickness_confidence=thickness_confidence,
-            triangle_count=int(mesh.faces.shape[0])
+            triangle_count=int(mesh.faces.shape[0]),
+            thickness_analysis=thickness_analysis  # Pass advanced analysis
         )
         
         # Legacy format conversion
@@ -153,6 +168,42 @@ def analyze_file_path(file_path: str, units_hint: Optional[str] = None) -> dict:
         else:
             complexity = 'simple'
         
+        # === DFM ANALYSIS FOR STL ===
+        # Build geometry structure (no holes/pockets from mesh)
+        dfm_geometry = build_geometry_for_dfm(
+            bbox_dims=bbox_dims,
+            volume_mm3=vol_mm3,
+            surface_area_mm2=area_mm2,
+            holes=[],  # STL doesn't have hole extraction
+            pockets=[],  # STL doesn't have pocket extraction
+            process_type=process_type_str,
+            thickness=detected_thickness,
+            bend_analysis=classification_metadata.get('bend_analysis'),
+            complexity=complexity
+        )
+        
+        # Run DFM analysis
+        dfm_result = None
+        try:
+            dfm_result = analyze_dfm(
+                geometry=dfm_geometry,
+                process_type=process_type_str,
+                material="aluminum",
+                tolerance="standard"
+            )
+            print(f"✅ DFM Analysis (STL) Complete:")
+            print(f"   Score: {dfm_result.get('overall_score', 0):.0f}/100")
+            print(f"   Rating: {dfm_result.get('rating', 'unknown')}")
+        except Exception as e:
+            print(f"⚠️ DFM Analysis failed: {str(e)[:100]}")
+            dfm_result = {
+                "overall_score": 0,
+                "rating": "unknown",
+                "is_manufacturable": True,
+                "issues": [],
+                "error": str(e)[:200]
+            }
+        
         metrics = {
             "volume": vol_mm3 / 1000.0,  # convert to cm^3
             "surface_area": area_mm2 / 100.0,  # to cm^2
@@ -165,7 +216,8 @@ def analyze_file_path(file_path: str, units_hint: Optional[str] = None) -> dict:
             "sheet_metal_score": classification_metadata.get('sheet_metal_score', 0),
             "complexity": complexity,
             "complexity_score": complexity_score,
-            "advanced_metrics": advanced_metrics_dict
+            "advanced_metrics": advanced_metrics_dict,
+            "dfm_analysis": dfm_result
         }
         return metrics
     elif ext in (".step", ".stp"):
@@ -262,6 +314,18 @@ def analyze_file_path(file_path: str, units_hint: Optional[str] = None) -> dict:
                           f"confidence: {thickness_confidence:.0%})")
                 else:
                     print("⚠️ Wall thickness detection returned 0")
+                
+                # === ADVANCED THICKNESS ANALYSIS ===
+                if triangle_count > 0:
+                    thickness_analysis = enhanced_ray_casting_analysis(temp_mesh, bbox_dims, samples=8000)
+                    print(f"🔬 Advanced Thickness Analysis (STEP):")
+                    print(f"   Sheet thickness: {thickness_analysis.is_sheet_thickness}")
+                    if thickness_analysis.detected_thickness:
+                        print(f"   Thickness: {thickness_analysis.detected_thickness:.2f}mm")
+                        print(f"   Uniform ratio: {thickness_analysis.uniform_ratio:.1%}")
+                        print(f"   Reasoning: {thickness_analysis.reasoning}")
+                else:
+                    thickness_analysis = None
                     
             finally:
                 if os.path.exists(tmp_stl_path):
@@ -270,16 +334,18 @@ def analyze_file_path(file_path: str, units_hint: Optional[str] = None) -> dict:
         except Exception as e:
             print(f"⚠️ Wall thickness detection failed: {str(e)[:100]}")
             print("   Using bbox approximation")
+            thickness_analysis = None
         
         # === USE NEW CORE MODULES FOR CLEAN CLASSIFICATION ===
         geom_metrics = GeometricMetrics(bbox_dims, vol_mm3, area_mm2)
         classifier = ProcessClassifier(geom_metrics)
         
-        # Classify with advanced bend detection
+        # Classify with advanced thickness analysis
         process_type, confidence, classification_metadata = classifier.classify(
             detected_thickness=actual_thickness,
             thickness_confidence=thickness_confidence,
-            triangle_count=triangle_count
+            triangle_count=triangle_count,
+            thickness_analysis=thickness_analysis  # Pass advanced analysis
         )
         
         # Legacy format conversion
@@ -370,6 +436,44 @@ def analyze_file_path(file_path: str, units_hint: Optional[str] = None) -> dict:
         else:
             complexity = 'simple'
         
+        # === DFM ANALYSIS ===
+        # Build geometry structure for DFM analysis
+        dfm_geometry = build_geometry_for_dfm(
+            bbox_dims=bbox_dims,
+            volume_mm3=vol_mm3,
+            surface_area_mm2=area_mm2,
+            holes=holes,
+            pockets=pockets,
+            process_type=process_type_str,
+            thickness=actual_thickness,
+            bend_analysis=bend_analysis,
+            complexity=complexity
+        )
+        
+        # Run DFM analysis
+        dfm_result = None
+        try:
+            dfm_result = analyze_dfm(
+                geometry=dfm_geometry,
+                process_type=process_type_str,
+                material="aluminum",  # Default material
+                tolerance="standard"
+            )
+            print(f"✅ DFM Analysis Complete:")
+            print(f"   Score: {dfm_result.get('overall_score', 0):.0f}/100")
+            print(f"   Rating: {dfm_result.get('rating', 'unknown')}")
+            print(f"   Issues: {len(dfm_result.get('issues', []))}")
+            print(f"   Manufacturable: {dfm_result.get('is_manufacturable', True)}")
+        except Exception as e:
+            print(f"⚠️ DFM Analysis failed: {str(e)[:100]}")
+            dfm_result = {
+                "overall_score": 0,
+                "rating": "unknown",
+                "is_manufacturable": True,
+                "issues": [],
+                "error": str(e)[:200]
+            }
+        
         metrics = {
             "volume": vol_mm3 / 1000.0,
             "surface_area": area_mm2 / 100.0,
@@ -381,7 +485,8 @@ def analyze_file_path(file_path: str, units_hint: Optional[str] = None) -> dict:
             "sheet_metal_score": classification_metadata.get('sheet_metal_score', 0),
             "complexity": complexity,
             "complexity_score": complexity_score,
-            "advanced_metrics": advanced_metrics_dict
+            "advanced_metrics": advanced_metrics_dict,
+            "dfm_analysis": dfm_result
         }
         return metrics
     else:

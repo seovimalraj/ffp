@@ -112,7 +112,14 @@ def min_wall_mesh(mesh, *, samples: int = 5000, threshold_mm: float = 1.5) -> Mi
         samples_out.append(MinWallSample(at=(float(p[0]), float(p[1]), float(p[2])), thickness_mm=t, face_ids=[]))
 
     # Return the most representative thickness for classification
-    return MinWallData(global_min_mm=representative_thickness, samples=samples_out)
+    return MinWallData(
+        global_min_mm=representative_thickness,
+        samples=samples_out,
+        all_distances=total_filtered.tolist(),  # Store all distances for advanced analysis
+        thickness_median=global_median,
+        thickness_mode=thickness_mode,
+        is_uniform=is_uniform_thickness
+    )
 
 
 def _first_hit_distance(intersector, origins: np.ndarray, directions: np.ndarray) -> np.ndarray:
