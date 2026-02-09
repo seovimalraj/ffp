@@ -15,10 +15,11 @@ import { CurrentUser } from './user.decorator';
 
 import { compare, hash } from 'bcrypt';
 import { randomBytes } from 'crypto';
-import { InngestEvents, SQLFunctions, Tables } from '../../libs/constants';
+import { SQLFunctions, Tables } from '../../libs/constants';
 import { AuthDto, LogoutDto, RefreshTokenDto } from './auth.dto';
 import { EmailService } from 'src/email/email.service';
 import { InngestService } from 'src/inngest/inngest.service';
+import { TemporalService } from 'src/temporal/temporal.service';
 
 @Controller('auth')
 export class AuthController {
@@ -28,6 +29,7 @@ export class AuthController {
     private readonly logger: Logger,
     private readonly emailService: EmailService,
     private readonly inngestService: InngestService,
+    private readonly temporalService: TemporalService,
   ) {}
 
   @Get('profile')
@@ -201,15 +203,15 @@ export class AuthController {
       });
 
       try {
-        await this.inngestService.sendEvent(InngestEvents.EmailEvent, {
+        await this.temporalService.sendEmail({
           to: email,
           subject: 'Welcome to Frigate Fast Parts',
-          body: '',
+          text: '', // or provide a text body
           name: name,
           type: 'welcome',
         });
       } catch (err) {
-        this.logger.error({ err }, 'Failed to send welcome email');
+        this.logger.error({ err }, 'Failed to send welcome email via Temporal');
       }
 
       return {

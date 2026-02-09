@@ -2,10 +2,14 @@
 
 import { Controller, Post, Body } from '@nestjs/common';
 import { InngestService } from '../inngest/inngest.service';
+import { TemporalService } from '../temporal/temporal.service';
 
 @Controller('example')
 export class ExampleController {
-  constructor(private readonly inngestService: InngestService) {}
+  constructor(
+    private readonly inngestService: InngestService,
+    private readonly temporalService: TemporalService,
+  ) {}
 
   @Post('create-quote')
   async createQuote(@Body() body: any) {
@@ -40,10 +44,10 @@ export class ExampleController {
 
   @Post('send-email')
   async sendEmail(@Body() body: any) {
-    await this.inngestService.sendEvent('system/email.send', {
+    await this.temporalService.sendEmail({
       to: body.to,
       subject: body.subject,
-      body: body.body,
+      text: body.body,
       name: body.name,
       type: body.type,
     });
