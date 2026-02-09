@@ -13,12 +13,7 @@ import {
   Query,
   Logger,
 } from '@nestjs/common';
-import {
-  InngestEvents,
-  RoleNames,
-  SQLFunctions,
-  Tables,
-} from '../../libs/constants';
+import { RoleNames, SQLFunctions, Tables } from '../../libs/constants';
 import { Roles } from '../auth/roles.decorator';
 import { SupabaseService } from '../supabase/supabase.service';
 import {
@@ -37,6 +32,7 @@ import { CurrentUser } from '../auth/user.decorator';
 import { CurrentUserDto } from '../auth/auth.dto';
 import { InngestService } from 'src/inngest/inngest.service';
 import { RFQStatuses } from './rfq.helpers';
+import { TemporalService } from '../temporal/temporal.service';
 
 @Controller('rfq')
 @UseGuards(AuthGuard)
@@ -45,6 +41,7 @@ export class RfqController {
     private readonly supbaseService: SupabaseService,
     private readonly logger: Logger,
     private readonly inngestService: InngestService,
+    private readonly temporalService: TemporalService,
   ) {}
 
   @Get('')
@@ -270,10 +267,10 @@ export class RfqController {
   }
 
   private async notifyVerifier(rfqId: string, userEmail: string) {
-    await this.inngestService.sendEvent(InngestEvents.EmailEvent, {
+    await this.temporalService.sendEmail({
       to: process.env.VERIFIER_EMAIL,
       subject: 'New Manual Quote Request',
-      body: `
+      text: `
       A new manual quote request has been submitted and requires review.
 
       ----------------------------------------

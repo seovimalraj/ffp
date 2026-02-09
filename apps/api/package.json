@@ -29,6 +29,7 @@
     "@nestjs/passport": "^11.0.5",
     "@nestjs/platform-express": "^10.0.0",
     "@supabase/supabase-js": "^2.57.4",
+    "@temporalio/client": "^1.14.1",
     "bcrypt": "^6.0.0",
     "bullmq": "^5.66.5",
     "class-transformer": "^0.5.1",

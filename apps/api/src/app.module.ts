@@ -20,6 +20,7 @@ import { OrgModule } from './org/org.module';
 // import { EmailModule } from './email/email.module';
 import configuration from './config/configuration';
 import { InngestModule } from './inngest/inngest.module';
+import { TemporalModule } from './temporal/temporal.module';
 
 @Module({
   imports: [
@@ -57,6 +58,7 @@ import { InngestModule } from './inngest/inngest.module';
     OrgModule,
     // EmailModule,
     InngestModule,
+    TemporalModule,
   ],
   controllers: [AppController],
   providers: [AppService],
