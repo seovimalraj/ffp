@@ -3,10 +3,12 @@ import { serve } from "@hono/node-server";
 import { Hono } from "hono";
 import { pinoLogger } from "hono-pino";
 import { cors } from "hono/cors";
+import { Worker, NativeConnection } from "@temporalio/worker";
 
 import { logger } from "./lib/logger.js";
 import { supabase } from "./lib/supabase.js";
 import { getTemporalClient } from "./temporal.js";
+import * as activities from "./activities/email.activities.js";
 
 const app = new Hono();
 const port = config.port;
@@ -47,7 +49,7 @@ app.use(
  * =========
  */
 app.get("/", (c) => {
-  return c.text("FFP Workflow Service is running!");
+  return c.text("FFP Workflow Service (Worker + API) is running!");
 });
 
 app.get("/health", async (c) => {
@@ -64,6 +66,7 @@ app.get("/health", async (c) => {
       status: "ok",
       supabase: "connected",
       temporal: "connected",
+      role: "worker-api",
     });
   } catch (error: any) {
     logger.error({ error: error.message }, "Health check failed");
@@ -71,31 +74,47 @@ app.get("/health", async (c) => {
   }
 });
 
+/**
+ * ======================
+ * 4️⃣ TEMPORAL WORKER
+ * ======================
+ */
+async function startWorker() {
+  try {
+    // Establish connection to Temporal server
+    const connection = await NativeConnection.connect({
+      address: config.temporal.address,
+    });
+
+    // Determine the absolute path to the workflow file
+    // Note: In development with tsx, we can point to the .ts file
+    const worker = await Worker.create({
+      connection,
+      workflowsPath: new URL("./workflows/index.ts", import.meta.url).pathname,
+      activities,
+      taskQueue: "quote-tasks", // This matches what NestJS will use to "place" work
+    });
+
+    logger.info("Temporal Worker is online and listening for tasks...");
+    await worker.run();
+  } catch (err: any) {
+    logger.error({ err: err.message }, "Temporal Worker failed to start");
+  }
+}
+
 async function startServer() {
-  logger.info("Starting workflow service...");
+  logger.info("Starting workflow service (Worker mode)...");
 
-  // do not block server startup forever
-  connectTemporalInBackground();
+  // Start Temporal Worker in background
+  startWorker();
 
+  // Start Hono Server (for health checks and potentially direct triggers)
   serve({
     fetch: app.fetch,
     port,
   });
 
   logger.info(`Server listening on ${port}`);
-}
-
-async function connectTemporalInBackground() {
-  while (true) {
-    try {
-      await getTemporalClient();
-      logger.info("Temporal connected");
-      break;
-    } catch (err: any) {
-      logger.error({ err: err.message }, "Temporal not ready, retrying in 3s");
-      await new Promise((r) => setTimeout(r, 3000));
-    }
-  }
 }
 
 startServer();
