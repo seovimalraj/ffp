@@ -286,6 +286,16 @@ export interface GeometryData {
     recommendation: string;
     potentialSavings?: number; // USD
   }[];
+  
+  // === BACKEND DFM ANALYSIS METADATA ===
+  dfmAnalysis?: {
+    overallScore: number; // 0-100
+    rating: "excellent" | "good" | "fair" | "poor" | "critical";
+    isManufacturable: boolean;
+    issueCount: number;
+    recommendations: string[];
+    costOptimizations: string[];
+  };
 }
 
 /**

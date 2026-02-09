@@ -38,6 +38,10 @@ class MinWallSample:
 class MinWallData:
     global_min_mm: float
     samples: List[MinWallSample]
+    all_distances: List[float] = None  # All sampled distances for clustering
+    thickness_median: float = 0.0
+    thickness_mode: float = 0.0
+    is_uniform: bool = False
 
 
 @dataclass

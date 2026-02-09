@@ -2,13 +2,17 @@
 Manufacturing process classification logic.
 Determines whether part should be sheet metal, CNC milled, or CNC turned.
 
-THICKNESS-FIRST APPROACH:
-If we can detect actual wall thickness from CAD geometry, that is the MOST ACCURATE
-indicator for sheet metal classification. Sheet metal has consistent thin walls (0.5-8mm).
+ADVANCED THICKNESS-BASED APPROACH:
+Uses proper sheet metal thickness detection with:
+- Face pairing and distance clustering
+- Area-weighted dominance analysis
+- Uniform ratio and thinness criteria
+- Multiple validation factors
 """
 from typing import Tuple, Optional
 from .geometry import GeometricMetrics, calculate_sheet_metal_score, calculate_advanced_metrics
 from .bend_detection import AdvancedBendDetector
+from .advanced_thickness_detection import ThicknessAnalysisResult
 
 
 # Sheet metal thickness range (standard gauges)
@@ -41,21 +45,23 @@ class ProcessClassifier:
     def classify(self, 
                 detected_thickness: Optional[float] = None,
                 thickness_confidence: float = 0.0,
-                triangle_count: int = 0) -> Tuple[str, float, dict]:
+                triangle_count: int = 0,
+                thickness_analysis: Optional[ThicknessAnalysisResult] = None) -> Tuple[str, float, dict]:
         """
-        THICKNESS-FIRST classification of manufacturing process.
+        Advanced classification using proper sheet metal thickness detection.
         
         Priority order:
-        1. Detected wall thickness in sheet metal range → Sheet Metal
+        1. Advanced thickness analysis (uniform ratio, dominance, thinness) → Sheet Metal
         2. Bend detection with thin profile → Sheet Metal  
         3. Dimension-based thin profile → Sheet Metal
         4. Cylindrical geometry → CNC Turning
         5. Default → CNC Milling
         
         Args:
-            detected_thickness: Actual wall thickness from ray-casting (mm)
-            thickness_confidence: Confidence in thickness measurement (0-1)
+            detected_thickness: Simple thickness from ray-casting (mm) - legacy
+            thickness_confidence: Confidence in simple measurement (0-1) - legacy
             triangle_count: Mesh complexity indicator
+            thickness_analysis: Advanced thickness analysis result (preferred)
             
         Returns:
             Tuple of (process_type, confidence, metadata)
@@ -88,8 +94,50 @@ class ProcessClassifier:
             'complexity': bend_analysis.complexity_score
         }
         
-        # === THICKNESS-FIRST CLASSIFICATION ===
-        # This is the MOST ACCURATE indicator when we have it
+        # Get aspect ratio early for use in checks
+        min_dim = self.metrics.min_dim or 10.0
+        aspect_ratio = self.metrics.aspect_ratio or 1.0
+        
+        # === ADVANCED THICKNESS ANALYSIS (PREFERRED) ===
+        # Use proper sheet metal detection with clustering and validation
+        if thickness_analysis is not None:
+            metadata['thickness_analysis'] = {
+                'uniform_ratio': thickness_analysis.uniform_ratio,
+                'thickness_to_size': thickness_analysis.thickness_to_size_ratio,
+                'cluster_dominance': thickness_analysis.cluster_dominance,
+                'is_sheet_thickness': thickness_analysis.is_sheet_thickness,
+                'reasoning': thickness_analysis.reasoning
+            }
+            
+            # If advanced analysis confirms sheet thickness with strong criteria
+            if thickness_analysis.is_sheet_thickness and thickness_analysis.confidence > 0.7:
+                # HIGH CONFIDENCE sheet metal detection using proper criteria
+                confidence = thickness_analysis.confidence
+                
+                # Boost confidence if bends detected
+                if bend_analysis.is_likely_bent:
+                    confidence = min(0.98, confidence + 0.05)
+                    reasoning = f"ADVANCED ANALYSIS: {thickness_analysis.reasoning} + {bend_analysis.bend_count} bends"
+                else:
+                    reasoning = f"ADVANCED ANALYSIS: {thickness_analysis.reasoning}"
+                
+                metadata['classification_method'] = 'advanced_thickness_analysis'
+                metadata['reasoning'] = reasoning
+                
+                return ('sheet_metal', confidence, {
+                    **metadata,
+                    'bend_report': bend_detector.get_bend_detection_report(bend_analysis) if bend_analysis.bend_count > 0 else None
+                })
+            
+            # If advanced analysis explicitly rejects sheet metal (low uniform ratio, thick, etc.)
+            elif not thickness_analysis.is_sheet_thickness and thickness_analysis.confidence > 0.6:
+                # Override to CNC - proper analysis says it's not sheet metal
+                metadata['classification_method'] = 'advanced_analysis_cnc_override'
+                metadata['reasoning'] = f"ADVANCED ANALYSIS: {thickness_analysis.reasoning}"
+                return ('cnc_milling', 0.85, metadata)
+        
+        # === LEGACY THICKNESS DETECTION (FALLBACK) ===
+        # Use simple ray-casting thickness when advanced analysis not available
         
         has_valid_thickness = (detected_thickness is not None and 
                               detected_thickness > 0 and
@@ -98,18 +146,54 @@ class ProcessClassifier:
         is_sheet_metal_thickness = (has_valid_thickness and
                                    SHEET_METAL_MIN_THICKNESS <= detected_thickness <= SHEET_METAL_MAX_THICKNESS)
         
+        # CRITICAL: Check volume efficiency AND aspect ratio to distinguish CNC from sheet metal
+        # CNC parts: Solid AND chunky (high vol eff + low aspect ratio)
+        # Sheet metal: Can be flat (high vol eff + high aspect ratio) OR bent (low vol eff)
+        is_solid_part = self.metrics.volume_efficiency > 0.65
+        is_moderately_solid = self.metrics.volume_efficiency > 0.55
+        is_chunky = aspect_ratio < 8  # Low aspect ratio = box-like, not sheet-like
+        
         if is_sheet_metal_thickness:
-            # HIGH CONFIDENCE: Thickness is in sheet metal range
-            # Scale confidence based on how confident we are in the measurement
-            base_confidence = 0.85 + (thickness_confidence * 0.10)  # 0.85 to 0.95
+            # Thin thickness detected, but need to verify it's actually sheet metal
             
-            if bend_analysis.is_likely_bent:
-                # Even higher confidence with bends
-                confidence = min(0.98, base_confidence + 0.05)
-                reasoning = f"THICKNESS-DETECTED: {detected_thickness:.2f}mm wall thickness with {bend_analysis.bend_count} bends"
+            # SPECIAL CASE: High aspect ratio + thin = flat sheet (even with high vol eff)
+            if aspect_ratio >= 15:
+                # Very flat and thin - definitely sheet metal
+                confidence = 0.90 + (thickness_confidence * 0.08)
+                reasoning = f"THICKNESS-DETECTED: {detected_thickness:.2f}mm with high aspect ratio {aspect_ratio:.1f}:1 - flat sheet metal"
+                metadata['classification_method'] = 'thickness_flat_sheet'
+                metadata['reasoning'] = reasoning
+                return ('sheet_metal', confidence, metadata)
+            
+            # REJECT if part is solid AND chunky - likely a CNC machined part with thin features
+            if is_solid_part and is_chunky:
+                # High volume efficiency + low aspect ratio = chunky solid part = CNC machining
+                metadata['classification_method'] = 'cnc_override'
+                metadata['reasoning'] = f"THICKNESS-DETECTED: {detected_thickness:.2f}mm but chunky solid part (vol eff: {self.metrics.volume_efficiency:.2f}, aspect: {aspect_ratio:.1f}:1) indicates CNC"
+                return ('cnc_milling', 0.85, metadata)
+            
+            # CAUTION if moderately solid and not very flat - reduce confidence
+            if is_moderately_solid and aspect_ratio < 12:
+                if bend_analysis.is_likely_bent:
+                    # Has bends, moderately hollow - likely sheet metal with some solid features
+                    confidence = 0.75
+                    reasoning = f"THICKNESS-DETECTED: {detected_thickness:.2f}mm with {bend_analysis.bend_count} bends, moderate solidity"
+                else:
+                    # No bends, moderately solid, not very flat - ambiguous, default to CNC
+                    metadata['classification_method'] = 'cnc_fallback'
+                    metadata['reasoning'] = f"THICKNESS-DETECTED: {detected_thickness:.2f}mm but no bends and moderate volume efficiency {self.metrics.volume_efficiency:.2f} suggests CNC"
+                    return ('cnc_milling', 0.70, metadata)
             else:
-                confidence = base_confidence
-                reasoning = f"THICKNESS-DETECTED: {detected_thickness:.2f}mm uniform wall thickness (sheet metal gauge)"
+                # LOW volume efficiency OR high aspect ratio - genuine sheet metal part
+                base_confidence = 0.85 + (thickness_confidence * 0.10)  # 0.85 to 0.95
+                
+                if bend_analysis.is_likely_bent:
+                    # Even higher confidence with bends
+                    confidence = min(0.98, base_confidence + 0.05)
+                    reasoning = f"THICKNESS-DETECTED: {detected_thickness:.2f}mm wall thickness with {bend_analysis.bend_count} bends"
+                else:
+                    confidence = base_confidence
+                    reasoning = f"THICKNESS-DETECTED: {detected_thickness:.2f}mm uniform wall thickness (sheet metal gauge)"
             
             metadata['classification_method'] = 'thickness_detection'
             metadata['reasoning'] = reasoning
@@ -122,9 +206,6 @@ class ProcessClassifier:
         
         # === SECONDARY: BEND-BASED DETECTION ===
         # If thickness detection failed but bends are detected with thin dimensions
-        min_dim = self.metrics.min_dim or 10.0
-        aspect_ratio = self.metrics.aspect_ratio or 1.0
-        
         if bend_analysis.is_likely_bent and min_dim < SHEET_METAL_MAX_THICKNESS:
             confidence = min(0.90, 0.70 + bend_analysis.confidence * 0.20)
             reasoning = f"BEND-DETECTED: {bend_analysis.bend_count} bends with {min_dim:.2f}mm profile"
@@ -138,7 +219,19 @@ class ProcessClassifier:
         
         # === TERTIARY: DIMENSION-BASED DETECTION ===
         # Thin min dimension with high aspect ratio = likely sheet metal
+        # BUT must also check volume efficiency
         if min_dim < 6 and aspect_ratio > 8:
+            # Additional check: volume efficiency
+            if self.metrics.volume_efficiency > 0.65:
+                # Solid part despite thin dimension - likely CNC with thin features
+                confidence = 0.75
+                reasoning = f"DIMENSION-BASED: Thin profile but solid part (vol eff: {self.metrics.volume_efficiency:.2f}) - likely CNC"
+                return ('cnc_milling', confidence, {
+                    **metadata,
+                    'classification_method': 'dimension_override_cnc',
+                    'reasoning': reasoning
+                })
+            
             confidence = 0.80 if aspect_ratio > 15 else 0.70
             reasoning = f"DIMENSION-BASED: {min_dim:.2f}mm thin profile with {aspect_ratio:.1f}:1 aspect ratio"
             
@@ -181,7 +274,16 @@ class ProcessClassifier:
         enhanced_score = max(0.0, min(100.0, enhanced_score))
         metadata['enhanced_sheet_metal_score'] = enhanced_score
         
+        # CRITICAL: Check volume efficiency before classifying as sheet metal
+        # Even with good score, high volume efficiency indicates CNC machining
         if enhanced_score > 65:
+            if self.metrics.volume_efficiency > 0.65:
+                # Solid part - override to CNC despite high sheet metal score
+                return ('cnc_milling', 0.80, {
+                    **metadata,
+                    'classification_method': 'cnc_volume_override',
+                    'reasoning': f'High sheet metal score ({enhanced_score:.0f}) but volume efficiency ({self.metrics.volume_efficiency:.2f}) indicates solid CNC part'
+                })
             return ('sheet_metal', 0.70, {
                 **metadata,
                 'classification_method': 'geometric_scoring',
@@ -196,9 +298,20 @@ class ProcessClassifier:
             })
         
         # === DEFAULT: CNC MILLING ===
-        cnc_confidence = 0.85 if enhanced_score < 30 else 0.70
+        # Use CNC likelihood from advanced metrics
+        cnc_likelihood = self.advanced_metrics.get('cnc_likelihood', 0.5)
+        
+        # High CNC likelihood or low sheet metal score = CNC milling
+        if cnc_likelihood > 0.6 or enhanced_score < 30:
+            cnc_confidence = 0.90 if cnc_likelihood > 0.7 else 0.85
+            reasoning = f'Solid geometry (vol eff: {self.metrics.volume_efficiency:.2f}) indicates CNC machining'
+        else:
+            cnc_confidence = 0.70
+            reasoning = 'Solid geometry or varying wall thickness indicates CNC machining'
+            
         return ('cnc_milling', cnc_confidence, {
             **metadata,
             'classification_method': 'default_cnc',
-            'reasoning': 'Solid geometry or varying wall thickness indicates CNC machining'
+            'reasoning': reasoning,
+            'cnc_likelihood': cnc_likelihood
         })

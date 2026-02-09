@@ -265,6 +265,16 @@ function transformBackendGeometry(backendData: any, fileName: string): any {
     thicknessDetectionMethod: thicknessMethod,
     thicknessWarning,
     
+    // === DFM ANALYSIS METADATA FROM BACKEND ===
+    dfmAnalysis: backendData.dfm_analysis ? {
+      overallScore: backendData.dfm_analysis.overall_score || 100,
+      rating: backendData.dfm_analysis.rating || 'excellent',
+      isManufacturable: backendData.dfm_analysis.is_manufacturable !== false,
+      issueCount: (backendData.dfm_analysis.issues || []).length,
+      recommendations: backendData.dfm_analysis.recommendations || [],
+      costOptimizations: backendData.dfm_analysis.cost_optimization_opportunities || []
+    } : undefined,
+    
     partCharacteristics: {
       isRotationalSymmetric: false,
       isThinWalled: detectedThickness ? detectedThickness < 3 : false,
@@ -275,16 +285,10 @@ function transformBackendGeometry(backendData: any, fileName: string): any {
     
     advancedFeatures: {
       ribs: { count: 0, minThickness: 2, locations: [], deflectionRisk: 'low' },
-      holes: {
-        count: backendData.primitive_features?.holes || 0,
-        avgDiameter: 5,
-        deepHoles: 0,
-        microHoles: 0,
-        drillingMethod: 'standard-drill'
-      },
+      holes: extractHoleFeatures(backendData),
       bosses: { count: backendData.primitive_features?.bosses || 0, locations: [] },
       fillets: { count: 0, avgRadius: 2, missingCount: 0 },
-      pockets: { count: backendData.primitive_features?.pockets || 0, avgDepth: 5, deepPockets: 0 },
+      pockets: extractPocketFeatures(backendData),
       threads: { count: 0, specs: [] },
       undercuts: { count: 0, severity: 'none' as const },
       thinWalls: { count: 0, minThickness: detectedThickness || 2, locations: [] }
@@ -342,7 +346,136 @@ function transformBackendGeometry(backendData: any, fileName: string): any {
     },
     
     recommendedSecondaryOps: [],
-    dfmIssues: []
+    dfmIssues: transformDFMIssues(backendData.dfm_analysis)
+  };
+}
+
+/**
+ * Transform backend DFM analysis to frontend dfmIssues format
+ */
+function transformDFMIssues(dfmAnalysis: any): { severity: 'info' | 'warning' | 'critical'; issue: string; recommendation: string; potentialSavings?: number }[] {
+  if (!dfmAnalysis || !dfmAnalysis.issues) {
+    return [];
+  }
+
+  const issues: { severity: 'info' | 'warning' | 'critical'; issue: string; recommendation: string; potentialSavings?: number }[] = [];
+
+  for (const issue of dfmAnalysis.issues) {
+    // Map backend severity to frontend severity
+    let severity: 'info' | 'warning' | 'critical' = 'info';
+    if (issue.severity === 'error' || issue.severity === 'critical') {
+      severity = 'critical';
+    } else if (issue.severity === 'warning') {
+      severity = 'warning';
+    }
+
+    issues.push({
+      severity,
+      issue: issue.title || issue.description || 'Unknown issue',
+      recommendation: issue.recommendation || '',
+      potentialSavings: issue.cost_impact === 'high' ? 50 : issue.cost_impact === 'medium' ? 25 : 10
+    });
+  }
+
+  // Add recommendations as info-level issues
+  if (dfmAnalysis.recommendations) {
+    for (const rec of dfmAnalysis.recommendations) {
+      issues.push({
+        severity: 'info',
+        issue: 'Optimization opportunity',
+        recommendation: rec
+      });
+    }
+  }
+
+  // Add cost optimization opportunities
+  if (dfmAnalysis.cost_optimization_opportunities) {
+    for (const opt of dfmAnalysis.cost_optimization_opportunities) {
+      issues.push({
+        severity: 'info',
+        issue: 'Cost optimization',
+        recommendation: opt,
+        potentialSavings: 15
+      });
+    }
+  }
+
+  console.log(`📋 Transformed ${issues.length} DFM issues from backend analysis`);
+  return issues;
+}
+
+/**
+ * Extract hole features from backend DFM analysis
+ */
+function extractHoleFeatures(backendData: any): { count: number; avgDiameter: number; deepHoles: number; microHoles: number; drillingMethod: string } {
+  const dfmAnalysis = backendData.dfm_analysis;
+  const holeCount = backendData.primitive_features?.holes || 0;
+  
+  // Try to get detailed hole data from DFM analysis
+  if (dfmAnalysis?.issues) {
+    let deepHoles = 0;
+    let smallHoles = 0;
+    
+    for (const issue of dfmAnalysis.issues) {
+      if (issue.title?.toLowerCase().includes('deep hole')) {
+        deepHoles = issue.measurement || 1;
+      }
+      if (issue.title?.toLowerCase().includes('small hole')) {
+        smallHoles = issue.measurement || 1;
+      }
+    }
+    
+    // Determine drilling method based on issues
+    let drillingMethod = 'standard-drill';
+    if (deepHoles > 0) drillingMethod = 'peck-drill';
+    if (smallHoles > 0) drillingMethod = 'micro-drill';
+    
+    return {
+      count: holeCount,
+      avgDiameter: 5, // Default estimate
+      deepHoles,
+      microHoles: smallHoles,
+      drillingMethod
+    };
+  }
+  
+  return {
+    count: holeCount,
+    avgDiameter: 5,
+    deepHoles: 0,
+    microHoles: 0,
+    drillingMethod: 'standard-drill'
+  };
+}
+
+/**
+ * Extract pocket features from backend DFM analysis
+ */
+function extractPocketFeatures(backendData: any): { count: number; avgDepth: number; deepPockets: number } {
+  const dfmAnalysis = backendData.dfm_analysis;
+  const pocketCount = backendData.primitive_features?.pockets || 0;
+  
+  // Try to get detailed pocket data from DFM analysis
+  if (dfmAnalysis?.issues) {
+    let deepPockets = 0;
+    
+    for (const issue of dfmAnalysis.issues) {
+      if (issue.title?.toLowerCase().includes('deep pocket')) {
+        deepPockets++;
+      }
+    }
+    
+    return {
+      count: pocketCount,
+      avgDepth: 5, // Default estimate
+      deepPockets
+    };
+  }
+  
+  return {
+    count: pocketCount,
+    avgDepth: 5,
+    deepPockets: 0
   };
 }
 

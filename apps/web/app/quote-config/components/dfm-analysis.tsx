@@ -1560,36 +1560,62 @@ function analyzeDFM(
     }
 
     // ===== OPTIMIZATION OPPORTUNITIES =====
+    // Use backend DFM issues from CAD service analysis
     const dfmIssues = geometry.dfmIssues || [];
     dfmIssues.forEach((issue, index) => {
-      if (
-        issue.severity === "critical" &&
-        issue.potentialSavings &&
-        issue.potentialSavings > 30
-      ) {
-        checks.push({
-          id: `dfm-optimization-${index}`,
-          name: issue.issue.split(".")[0].substring(0, 40),
-          description: issue.recommendation.substring(0, 60),
-          status: issue.severity === "critical" ? "critical" : "warning",
-          details: issue.potentialSavings
-            ? `Optimization opportunity`
-            : undefined,
-          icon: <Zap className="w-4 h-4" />,
-          category: "optimization",
-          severity:
-            issue.severity === "critical"
-              ? "critical"
-              : issue.severity === "warning"
-                ? "medium"
-                : "low",
-          potentialSavings: issue.potentialSavings,
-          actionable: true,
-        });
-
-        if (issue.potentialSavings) {
-          totalPotentialSavings += issue.potentialSavings;
+      // Process ALL DFM issues from backend, not just critical ones
+      const severityMap: Record<string, CheckStatus> = {
+        info: "info",
+        warning: "warning",
+        critical: "fail",
+      };
+      
+      const severityLevelMap: Record<string, "low" | "medium" | "high" | "critical"> = {
+        info: "low",
+        warning: "medium",
+        critical: "critical",
+      };
+      
+      const categoryMap: Record<string, DFMCheck["category"]> = {
+        "deep hole": "features",
+        "small hole": "features",
+        "deep pocket": "features",
+        "hole": "features",
+        "pocket": "features",
+        "wall thickness": "manufacturability",
+        "dimension": "geometry",
+        "tolerance": "tolerances",
+        "optimization": "optimization",
+        "cost": "optimization",
+      };
+      
+      // Determine category based on issue keywords
+      let category: DFMCheck["category"] = "optimization";
+      const lowerIssue = issue.issue.toLowerCase();
+      for (const [keyword, cat] of Object.entries(categoryMap)) {
+        if (lowerIssue.includes(keyword)) {
+          category = cat;
+          break;
         }
+      }
+      
+      checks.push({
+        id: `dfm-backend-${index}`,
+        name: issue.issue.substring(0, 40),
+        description: issue.recommendation?.substring(0, 80) || "Review required",
+        status: severityMap[issue.severity] || "info",
+        details: issue.potentialSavings
+          ? `Potential savings: $${issue.potentialSavings}`
+          : undefined,
+        icon: <Zap className="w-4 h-4" />,
+        category,
+        severity: severityLevelMap[issue.severity] || "low",
+        potentialSavings: issue.potentialSavings,
+        actionable: issue.severity !== "info",
+      });
+
+      if (issue.potentialSavings) {
+        totalPotentialSavings += issue.potentialSavings;
       }
     });
 
@@ -2028,24 +2054,47 @@ function analyzeDFM(
   const failCount = checks.filter((c) => c.status === "fail").length;
   const criticalCount = checks.filter((c) => c.status === "critical").length;
 
-  const overallScore = Math.max(
-    0,
-    Math.round(
-      ((passCount * 100 +
-        warningCount * 60 +
-        failCount * 20 -
-        criticalCount * 50) /
-        (checks.length * 100)) *
-        100,
-    ),
-  );
-
+  // === USE BACKEND DFM SCORE IF AVAILABLE ===
+  // Prefer backend analysis score over frontend calculation
+  let overallScore: number;
   let manufacturability: DFMAnalysisResult["manufacturability"];
-  if (criticalCount > 0) manufacturability = "critical";
-  else if (failCount > 0) manufacturability = "poor";
-  else if (warningCount > 3) manufacturability = "fair";
-  else if (warningCount > 0) manufacturability = "good";
-  else manufacturability = "excellent";
+  
+  const backendDfm = geometry?.dfmAnalysis;
+  if (backendDfm && backendDfm.overallScore > 0) {
+    // Use backend score
+    overallScore = Math.round(backendDfm.overallScore);
+    
+    // Map backend rating to frontend
+    const ratingMap: Record<string, DFMAnalysisResult["manufacturability"]> = {
+      excellent: "excellent",
+      good: "good",
+      fair: "fair",
+      poor: "poor",
+      critical: "critical"
+    };
+    manufacturability = ratingMap[backendDfm.rating] || "good";
+    
+    console.log(`📊 Using backend DFM score: ${overallScore}/100, rating: ${manufacturability}`);
+  } else {
+    // Fallback to frontend calculation
+    overallScore = Math.max(
+      0,
+      Math.round(
+        ((passCount * 100 +
+          warningCount * 60 +
+          failCount * 20 -
+          criticalCount * 50) /
+          (checks.length * 100)) *
+          100,
+      ),
+    );
+
+    if (criticalCount > 0) manufacturability = "critical";
+    else if (failCount > 0) manufacturability = "poor";
+    else if (warningCount > 3) manufacturability = "fair";
+    else if (warningCount > 0) manufacturability = "good";
+    else manufacturability = "excellent";
+  }
 
   if (criticalCount === 0 && failCount === 0 && warningCount === 0) {
     recommendations.push(
@@ -2053,11 +2102,28 @@ function analyzeDFM(
     );
   }
 
+  // === ADD BACKEND RECOMMENDATIONS ===
+  if (backendDfm?.recommendations) {
+    for (const rec of backendDfm.recommendations) {
+      if (!recommendations.includes(rec)) {
+        recommendations.push(rec);
+      }
+    }
+  }
+  
+  if (backendDfm?.costOptimizations) {
+    for (const opt of backendDfm.costOptimizations) {
+      if (!recommendations.includes(opt)) {
+        recommendations.push(`💰 ${opt}`);
+      }
+    }
+  }
+
   return {
     overallScore,
     manufacturability,
     checks,
-    recommendations: recommendations.slice(0, 8), // Limit to top 8
+    recommendations: recommendations.slice(0, 10), // Limit to top 10
     estimatedIssues: failCount + warningCount + criticalCount,
     criticalIssues: criticalCount,
     potentialSavings: totalPotentialSavings,
