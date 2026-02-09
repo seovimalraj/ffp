@@ -72,19 +72,29 @@ app.get("/health", async (c) => {
 });
 
 async function startServer() {
-  try {
-    // Connect to Temporal only for now
-    await getTemporalClient();
+  logger.info("Starting workflow service...");
 
-    logger.info(`FFP Workflow Service is running at http://localhost:${port}`);
+  // do not block server startup forever
+  connectTemporalInBackground();
 
-    serve({
-      fetch: app.fetch,
-      port,
-    });
-  } catch (error) {
-    logger.error({ error }, "Failed to start FFP Workflow Service");
-    process.exit(1);
+  serve({
+    fetch: app.fetch,
+    port,
+  });
+
+  logger.info(`Server listening on ${port}`);
+}
+
+async function connectTemporalInBackground() {
+  while (true) {
+    try {
+      await getTemporalClient();
+      logger.info("Temporal connected");
+      break;
+    } catch (err: any) {
+      logger.error({ err: err.message }, "Temporal not ready, retrying in 3s");
+      await new Promise((r) => setTimeout(r, 3000));
+    }
   }
 }
 

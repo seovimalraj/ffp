@@ -3,36 +3,26 @@ import { config } from "./config.js";
 import { logger } from "./lib/logger.js";
 
 let client: Client | null = null;
-
 export async function getTemporalClient(): Promise<Client> {
   if (client) return client;
 
-  try {
-    const connection = await Connection.connect({
-      address: config.temporal.address,
-    });
-
-    client = new Client({
-      connection,
-      namespace: config.temporal.namespace,
-    });
-
-    // Perform a lightweight check to verify connection is actually alive
-    await client.workflowService.getSystemInfo({});
-
-    logger.info(
-      {
+  while (true) {
+    try {
+      const connection = await Connection.connect({
         address: config.temporal.address,
+      });
+
+      client = new Client({
+        connection,
         namespace: config.temporal.namespace,
-      },
-      "Successfully connected to Temporal server",
-    );
-    return client;
-  } catch (error: any) {
-    logger.error(
-      { error: error.message, address: config.temporal.address },
-      "Failed to connect to Temporal server",
-    );
-    throw error;
+      });
+
+      await client.workflowService.getSystemInfo({});
+      logger.info("Connected to Temporal");
+      return client;
+    } catch (err: any) {
+      logger.error({ err: err.message }, "Temporal connect failed, retrying");
+      await new Promise((r) => setTimeout(r, 3000));
+    }
   }
 }

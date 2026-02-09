@@ -23,7 +23,7 @@ export const config = {
     ? process.env.ALLOWED_ORIGINS.split(",").map((o) => o.trim())
     : ["*"],
   temporal: {
-    address: process.env.TEMPORAL_ADDRESS || "temporal:7233",
+    address: process.env.TEMPORAL_ADDRESS || "172.17.0.1:7233",
     namespace: process.env.TEMPORAL_NAMESPACE || "default",
   },
 };
