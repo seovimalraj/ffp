@@ -34,14 +34,14 @@ ENV NODE_ENV=production
 ENV PORT=3004
 
 # Install curl for health checks / debugging
-RUN apk add --no-cache curl
+RUN apt-get update && apt-get install -y --no-install-recommends curl && rm -rf /var/lib/apt/lists/*
 
 # Copy entire workspace to preserve pnpm layout (critical)
 COPY --from=builder /app ./
 
 # Run as non-root user (same security model)
-RUN addgroup -g 1001 -S inngest && \
-    adduser -S workflow -u 1001 && \
+RUN groupadd -g 1001 inngest && \
+    useradd -u 1001 -g inngest -s /bin/sh -m workflow && \
     chown -R workflow:inngest /app
 
 USER workflow

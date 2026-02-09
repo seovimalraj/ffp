@@ -27,14 +27,14 @@ FROM base AS runner
 WORKDIR /app
 
 # Install curl for healthcheck
-RUN apk add --no-cache curl
+RUN apt-get update && apt-get install -y --no-install-recommends curl && rm -rf /var/lib/apt/lists/*
 
 # Copy the entire workspace to preserve pnpm structure
 COPY --from=builder /app ./
 
 # Run as non-root user
-RUN addgroup -g 1001 -S nodejs && \
-    adduser -S api -u 1001 && \
+RUN groupadd -g 1001 nodejs && \
+    useradd -u 1001 -g nodejs -s /bin/sh -m api && \
     chown -R api:nodejs /app
 
 USER api
