@@ -1,5 +1,5 @@
 # API Service Dockerfile
-FROM node:20-alpine AS base
+FROM node:20-slim AS base
 
 # Install pnpm
 RUN npm install -g pnpm
