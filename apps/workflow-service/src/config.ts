@@ -7,6 +7,7 @@ dotenv.config({
 export const config = {
   port: Number(process.env.PORT) || 6001,
   logLevel: process.env.LOG_LEVEL || "info",
+  frontendUrl: process.env.FRONTEND_URL || "http://localhost:3000",
   email: {
     smtpHost: process.env.SMTP_HOST,
     smtpPort: Number(process.env.SMTP_PORT) || 465,
@@ -19,10 +20,10 @@ export const config = {
     anonKey: process.env.SUPABASE_ANON_KEY,
   },
   allowedOrigins: process.env.ALLOWED_ORIGINS
-    ? process.env.ALLOWED_ORIGINS.split(",")
+    ? process.env.ALLOWED_ORIGINS.split(",").map((o) => o.trim())
     : ["*"],
   temporal: {
-    address: process.env.TEMPORAL_ADDRESS || "temporal:7233",
+    address: process.env.TEMPORAL_ADDRESS || "localhost:7233",
     namespace: process.env.TEMPORAL_NAMESPACE || "default",
   },
 };
