@@ -1,3 +1,4 @@
+import { fileURLToPath } from "node:url";
 import { config } from "./config.js";
 import { serve } from "@hono/node-server";
 import { Hono } from "hono";
@@ -87,12 +88,21 @@ async function startWorker() {
     });
 
     // Determine the absolute path to the workflow file
-    // Note: In development with tsx, we can point to the .ts file
+    // Note: In development with tsx, we use .ts; in production (dist), we use .js
+    const workflowsPath = fileURLToPath(
+      new URL(
+        import.meta.url.endsWith(".ts")
+          ? "./workflows/index.ts"
+          : "./workflows/index.js",
+        import.meta.url,
+      ),
+    );
+
     const worker = await Worker.create({
       connection,
-      workflowsPath: new URL("./workflows/index.ts", import.meta.url).pathname,
+      workflowsPath,
       activities,
-      taskQueue: "quote-tasks", // This matches what NestJS will use to "place" work
+      taskQueue: "quote-tasks",
     });
 
     logger.info("Temporal Worker is online and listening for tasks...");
