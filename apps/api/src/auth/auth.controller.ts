@@ -15,9 +15,10 @@ import { CurrentUser } from './user.decorator';
 
 import { compare, hash } from 'bcrypt';
 import { randomBytes } from 'crypto';
-import { SQLFunctions, Tables } from '../../libs/constants';
+import { InngestEvents, SQLFunctions, Tables } from '../../libs/constants';
 import { AuthDto, LogoutDto, RefreshTokenDto } from './auth.dto';
 import { EmailService } from 'src/email/email.service';
+import { InngestService } from 'src/inngest/inngest.service';
 
 @Controller('auth')
 export class AuthController {
@@ -26,6 +27,7 @@ export class AuthController {
     private readonly jwtService: JwtService,
     private readonly logger: Logger,
     private readonly emailService: EmailService,
+    private readonly inngestService: InngestService,
   ) {}
 
   @Get('profile')
@@ -197,6 +199,18 @@ export class AuthController {
         role: user.role,
         organizationId: user.organization_id || null,
       });
+
+      try {
+        await this.inngestService.sendEvent(InngestEvents.EmailEvent, {
+          to: email,
+          subject: 'Welcome to Frigate Fast Parts',
+          body: '',
+          name: name,
+          type: 'welcome',
+        });
+      } catch (err) {
+        this.logger.error({ err }, 'Failed to send welcome email');
+      }
 
       return {
         id: user.id,

@@ -6,6 +6,7 @@ import { AuthGuard } from './auth.guard';
 import { SupabaseModule } from '../supabase/supabase.module';
 // import { BullModule } from '@nestjs/bullmq';
 import { EmailService } from 'src/email/email.service';
+import { InngestService } from 'src/inngest/inngest.service';
 
 @Module({
   imports: [
@@ -22,7 +23,7 @@ import { EmailService } from 'src/email/email.service';
     }),
   ],
   controllers: [AuthController],
-  providers: [AuthGuard, Logger, EmailService],
+  providers: [AuthGuard, Logger, EmailService, InngestService],
   exports: [JwtModule, AuthGuard],
 })
 export class AuthModule {}

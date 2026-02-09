@@ -839,7 +839,7 @@ export function PartCardItem({
                               </span>
                             </div>
                             <div className="flex items-baseline gap-x-2">
-                              <div className="text-xs sm:text-sm text-red-500 line-through">
+                              <div className="text-xs sm:text-sm text-red-500 line-through decoration-dashed">
                                 {formatCurrencyFixed(marketingPrice)}
                               </div>
                               <div className="text-xs text-slate-500">

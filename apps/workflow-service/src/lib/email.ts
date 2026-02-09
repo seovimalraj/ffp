@@ -1,6 +1,8 @@
 import nodemailer from "nodemailer";
 import { config } from "../config.js";
 import { logger } from "./logger.js";
+import { WelcomeTemplate } from "../constants/email-templates/welcome-email.template.js";
+import { renderEmail } from "./render-email.js";
 
 const transporter = nodemailer.createTransport({
   host: config.email.smtpHost,
@@ -20,6 +22,8 @@ export interface SendEmailDetails {
   text?: string;
   html?: string;
   name?: string;
+  type?: "welcome" | "general";
+  metadata?: Record<string, string>;
 }
 
 export const sendEmail = async ({
@@ -28,14 +32,22 @@ export const sendEmail = async ({
   text,
   html,
   name,
+  type,
 }: SendEmailDetails) => {
   try {
+    let finalHtml = html;
+
+    if (type && type === "welcome") {
+      const mjml = WelcomeTemplate(name);
+      finalHtml = renderEmail(mjml);
+    }
+
     const mailOptions = {
       from: config.email.smtpFrom,
       to,
       subject,
       text,
-      html: html || text,
+      html: finalHtml || text,
       replyTo: config.email.smtpFrom,
     };
 

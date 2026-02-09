@@ -902,10 +902,10 @@ export default function QuoteConfigPage() {
       notify.error("Cannot delete all parts. At least one part is required.");
       return;
     }
-
+    console.log(ids, typeof ids);
     try {
       await deleteParts(ids);
-      setParts((prev) => prev.filter((p) => !ids.includes(p.id)));
+      setParts((prev) => prev.filter((p) => !ids?.includes(p.id)));
       setSelectedParts((prev) => {
         const newSet = new Set(prev);
         ids.forEach((id) => newSet.delete(id));
@@ -1445,6 +1445,14 @@ export default function QuoteConfigPage() {
         console.warn("Unhandled suggestion type:", type);
         break;
     }
+  };
+
+  const getManualQuoteSnapshots = (): string[] => {
+    return (
+      parts
+        .map((part) => part.snapshot_2d_url)
+        .filter((url): url is string => !!url) || []
+    );
   };
 
   if (loading) {
@@ -1993,6 +2001,9 @@ export default function QuoteConfigPage() {
           setHasDismissedExceededModal(true);
           setShowManualExceededModal(false);
         }}
+        metadata={{
+          partSnapshots: getManualQuoteSnapshots() || [],
+        }}
       />
 
       <UploadFileModal
@@ -2066,7 +2077,7 @@ export default function QuoteConfigPage() {
             label: "Delete Selected",
             icon: <Trash2 className="w-4 h-4" />,
             variant: "destructive",
-            onClick: handleBulkDelete,
+            onClick: () => handleBulkDelete(selectedParts),
             disabled: selectedParts.size === 0,
           },
           {
