@@ -4,34 +4,16 @@ import { Hono } from "hono";
 import { pinoLogger } from "hono-pino";
 import { cors } from "hono/cors";
 
-import { serve as serveInngest } from "inngest/hono";
-import { inngest } from "./client.js";
-import { functions } from "./functions/index.js";
-
 import { logger } from "./lib/logger.js";
 import { supabase } from "./lib/supabase.js";
-import { cron } from "./cron/index.js";
+import { getTemporalClient } from "./temporal.js";
 
 const app = new Hono();
 const port = config.port;
 
 /**
- * =====================================================
- * 1️⃣ INNGEST — MUST BE FIRST (NO MIDDLEWARE BEFORE THIS)
- * =====================================================
- */
-app.on(
-  ["GET", "PUT", "POST"],
-  "/api/inngest",
-  serveInngest({
-    client: inngest,
-    functions: [...functions, ...cron],
-  }),
-);
-
-/**
  * ==========================
- * 2️⃣ LOGGER (AFTER INNGEST)
+ * 1️⃣ LOGGER
  * ==========================
  */
 app.use(
@@ -42,7 +24,7 @@ app.use(
 
 /**
  * ======================
- * 3️⃣ CORS (AFTER INNGEST)
+ * 2️⃣ CORS
  * ======================
  */
 app.use(
@@ -55,18 +37,13 @@ app.use(
     },
     credentials: true,
     allowMethods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-    allowHeaders: [
-      "Content-Type",
-      "Authorization",
-      "x-inngest-env",
-      "x-inngest-signature",
-    ],
+    allowHeaders: ["Content-Type", "Authorization"],
   }),
 );
 
 /**
  * =========
- * 4️⃣ ROUTES
+ * 3️⃣ ROUTES
  * =========
  */
 app.get("/", (c) => {
@@ -79,30 +56,36 @@ app.get("/health", async (c) => {
 
     if (error) throw error;
 
-    return c.json({ status: "ok", supabase: "connected" });
+    // Check Temporal connection health
+    const client = await getTemporalClient();
+    await client.workflowService.getSystemInfo({});
+
+    return c.json({
+      status: "ok",
+      supabase: "connected",
+      temporal: "connected",
+    });
   } catch (error: any) {
-    logger.error({ error: error.message }, "Supabase health check failed");
-    return c.json(
-      { status: "error", message: "Supabase connection failed" },
-      500,
-    );
+    logger.error({ error: error.message }, "Health check failed");
+    return c.json({ status: "error", message: "Service unhealthy" }, 500);
   }
 });
 
-console.log({
-  eventKey: process.env.INNGEST_EVENT_KEY,
+async function startServer() {
+  try {
+    // Connect to Temporal only for now
+    await getTemporalClient();
 
-  // @ts-ignore
-  // REQUIRED for verifying Inngest → app requests
-  signingKey: process.env.INNGEST_SIGNING_KEY,
+    logger.info(`FFP Workflow Service is running at http://localhost:${port}`);
 
-  // REQUIRED ONLY for self-hosted Inngest
-  baseUrl: process.env.INNGEST_BASE_URL || "https://ffp-inngest.frigate.ai", // undefined in Cloud → OK
-});
+    serve({
+      fetch: app.fetch,
+      port,
+    });
+  } catch (error) {
+    logger.error({ error }, "Failed to start FFP Workflow Service");
+    process.exit(1);
+  }
+}
 
-logger.info(`FFP Workflow Service is running at http://localhost:${port}`);
-
-serve({
-  fetch: app.fetch,
-  port,
-});
+startServer();
