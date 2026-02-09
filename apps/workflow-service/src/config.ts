@@ -21,4 +21,8 @@ export const config = {
   allowedOrigins: process.env.ALLOWED_ORIGINS
     ? process.env.ALLOWED_ORIGINS.split(",")
     : ["*"],
+  temporal: {
+    address: process.env.TEMPORAL_ADDRESS || "temporal:7233",
+    namespace: process.env.TEMPORAL_NAMESPACE || "default",
+  },
 };
