@@ -45,6 +45,7 @@ export class ExampleController {
       subject: body.subject,
       body: body.body,
       name: body.name,
+      type: body.type,
     });
   }
 }

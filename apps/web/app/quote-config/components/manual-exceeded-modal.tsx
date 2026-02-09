@@ -14,6 +14,9 @@ interface ManualExceededModalProps {
   title?: string;
   description?: string;
   showCloseButton?: boolean;
+  metadata?: {
+    partSnapshots?: string[];
+  };
 }
 
 export function ManualExceededModal({
@@ -25,6 +28,7 @@ export function ManualExceededModal({
   title = "Manual Quote Limit Reached",
   description,
   showCloseButton = true,
+  metadata,
 }: ManualExceededModalProps) {
   if (!isOpen) return null;
 
@@ -97,6 +101,18 @@ export function ManualExceededModal({
                 {title}
               </h2>
             </div>
+
+            {metadata?.partSnapshots?.length &&
+              metadata?.partSnapshots?.length > 0 &&
+              metadata?.partSnapshots?.length == manualPartsCount && (
+                <div>
+                  {metadata?.partSnapshots?.map((snap, i) => (
+                    <article key={i}>
+                      <img src={snap} className="w-3 h-3 object-contain" />
+                    </article>
+                  ))}
+                </div>
+              )}
 
             {/* Content Body */}
             <div className="px-8 pb-8 text-center">

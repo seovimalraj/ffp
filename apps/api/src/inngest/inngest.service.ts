@@ -17,6 +17,7 @@ type WorkflowEvents = {
     subject: string;
     body: string;
     name: string;
+    type?: string;
   };
   'rfq/manual-quote.approval': {
     userId: string;

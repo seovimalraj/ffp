@@ -5,7 +5,7 @@ export const sendEmailFunction = inngest.createFunction(
   { id: "send-email" },
   { event: "system/email.send" },
   async ({ event, step }) => {
-    const { to, subject, body, html, name } = event.data;
+    const { to, subject, body, html, name, type } = event.data;
 
     const result = await step.run("send-email-via-nodemailer", async () => {
       return await sendEmail({
@@ -14,6 +14,7 @@ export const sendEmailFunction = inngest.createFunction(
         text: body,
         html: html || body,
         name,
+        type,
       });
     });
 

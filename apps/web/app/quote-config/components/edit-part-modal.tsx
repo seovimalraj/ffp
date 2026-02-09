@@ -22,7 +22,7 @@ import {
 } from "@/types/part-config";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useDropzone } from "react-dropzone";
-import { Upload } from "lucide-react";
+import { Upload, Settings2, Zap } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { formatCurrency } from "@/lib/format";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -41,6 +41,10 @@ import {
   recommendTolerance,
 } from "@/lib/pricing-engine";
 import { getQuantityRange } from "@/lib/utils";
+import { markupMap } from "@cnc-quote/shared";
+import { calculateLeadTime } from "../[id]/page";
+import { Check } from "lucide-react";
+import { CubeTransparentIcon } from "@heroicons/react/20/solid";
 
 interface EditPartModalProps {
   isOpen: boolean;
@@ -320,27 +324,27 @@ export function EditPartModal({
               className="flex-1 flex flex-col h-full"
             >
               <div className="px-8 pt-6 border-b border-gray-100">
-                <TabsList className="bg-transparent p-0 gap-6 h-auto">
+                <TabsList className="bg-gray-50 p-1 gap-1 h-auto rounded-lg inline-flex border border-gray-200/50 mb-2">
                   <TabsTrigger
                     value="config"
                     className="
-                      px-0 py-2 rounded-none border-b-2 border-transparent 
-                      data-[state=active]:border-blue-600 data-[state=active]:text-blue-600 
-                      data-[state=active]:bg-transparent data-[state=active]:shadow-none
-                      text-gray-500 hover:text-gray-800 transition-all font-medium text-sm
+                      px-4 py-1.5 rounded-md border-none
+                      data-[state=active]:bg-white data-[state=active]:text-blue-600 data-[state=active]:shadow-sm
+                      text-gray-500 hover:text-gray-700 transition-all font-medium text-sm flex items-center gap-2
                     "
                   >
+                    <Settings2 className="w-4 h-4" />
                     Specifications
                   </TabsTrigger>
                   <TabsTrigger
                     value="analysis"
                     className="
-                      px-0 py-2 rounded-none border-b-2 border-transparent 
-                      data-[state=active]:border-blue-600 data-[state=active]:text-blue-600 
-                      data-[state=active]:bg-transparent data-[state=active]:shadow-none
-                      text-gray-500 hover:text-gray-800 transition-all font-medium text-sm
+                      px-4 py-1.5 rounded-md border-none
+                      data-[state=active]:bg-white data-[state=active]:text-blue-600 data-[state=active]:shadow-sm
+                      text-gray-500 hover:text-gray-700 transition-all font-medium text-sm flex items-center gap-2
                     "
                   >
+                    <CubeTransparentIcon className="w-4 h-4" />
                     DFM Analysis
                   </TabsTrigger>
                 </TabsList>
@@ -982,41 +986,128 @@ export function EditPartModal({
           </div>
         </div>
 
-        {/* Clean Header */}
-        <div className="flex items-center justify-between px-8 py-6 border-t border-gray-100 bg-white z-20">
-          <div>
-            <DialogTitle className="text-xl font-bold text-gray-900">
-              {localPart.fileName}
-            </DialogTitle>
-            <p className="text-sm text-gray-500 mt-1">
-              Configure part specifications and requirements
-            </p>
+        {/* Lead Time Selection & Price Footer */}
+        <div className="flex flex-col border-t border-gray-100 bg-white z-20">
+          {/* Three Lead Time Cards */}
+          <div className="px-8 py-4 border-b border-gray-50">
+            <div className="grid grid-cols-3 gap-4 max-w-4xl mx-auto">
+              {(["economy", "standard", "expedited"] as const).map(
+                (leadTimeType) => {
+                  const realPrice = calculatePrice(localPart, leadTimeType);
+                  const perPartPrice = realPrice / localPart.quantity;
+                  const uplift = markupMap[leadTimeType];
+                  const marketingPrice = realPrice * (1 + uplift);
+                  const isSelected = localPart.leadTimeType === leadTimeType;
+                  const leadTime = calculateLeadTime(localPart, leadTimeType);
+                  const icon = `/icons/${leadTimeType}.png`;
+
+                  return (
+                    <div
+                      key={leadTimeType}
+                      onClick={() =>
+                        updateLocalPart("leadTimeType", leadTimeType)
+                      }
+                      className={`
+                        relative cursor-pointer rounded-xl border p-3 transition-all
+                        active:scale-[0.98]
+                        ${
+                          isSelected
+                            ? "border-blue-600 bg-blue-50 ring-2 ring-blue-600 scale-[1.02]"
+                            : "border-slate-200 bg-white hover:border-slate-300 hover:shadow-sm"
+                        }
+                      `}
+                    >
+                      <div className="flex items-center gap-3">
+                        <div className="h-10 w-10 shrink-0 rounded-lg bg-white p-1.5 shadow-sm border border-slate-100 flex items-center justify-center">
+                          <img
+                            src={icon}
+                            alt=""
+                            className="h-full w-full object-contain"
+                          />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center justify-between mb-0.5">
+                            <h4
+                              className={`text-sm font-bold capitalize ${isSelected ? "text-blue-900" : "text-slate-900"}`}
+                            >
+                              {leadTimeType}
+                            </h4>
+                            <span
+                              className={`text-[10px] font-black ${isSelected ? "text-blue-600" : "text-slate-400"}`}
+                            >
+                              {leadTime} Days
+                            </span>
+                          </div>
+                          <div className="flex items-center justify-between">
+                            <div className="flex flex-col">
+                              {marketingPrice > realPrice && (
+                                <span className="text-[10px] text-red-500 line-through decoration-dashed leading-none mb-0.5">
+                                  {formatCurrency(marketingPrice)}
+                                </span>
+                              )}
+                              <p
+                                className={`text-xs font-bold ${isSelected ? "text-blue-700" : "text-slate-600"} leading-none`}
+                              >
+                                {formatCurrency(realPrice)}
+                              </p>
+                            </div>
+                            <p className="text-[10px] font-medium text-slate-400">
+                              /{" "}
+                              {localPart.quantity > 1
+                                ? `${formatCurrency(perPartPrice)} ea`
+                                : "part"}
+                            </p>
+                          </div>
+                        </div>
+                      </div>
+                      {isSelected && (
+                        <div className="absolute -top-2 -right-2 h-5 w-5 bg-blue-600 rounded-full flex items-center justify-center text-white shadow-md border-2 border-white">
+                          <Check className="h-3 w-3" />
+                        </div>
+                      )}
+                    </div>
+                  );
+                },
+              )}
+            </div>
           </div>
 
-          <div className="flex items-center gap-4">
+          <div className="flex items-center justify-between px-8 py-4 bg-white">
+            <div>
+              <DialogTitle className="text-xl font-bold text-gray-900 line-clamp-1">
+                {localPart.fileName}
+              </DialogTitle>
+              <p className="text-sm text-gray-500 mt-0.5">
+                Confirm your specifications and lead time
+              </p>
+            </div>
+
             <div className="flex flex-col items-end">
-              <span className="text-sm text-gray-500">Current Price</span>
-              <span className="text-lg font-semibold text-gray-900">
+              <span className="text-xs font-bold uppercase tracking-widest text-gray-400">
+                Total Price
+              </span>
+              <span className="text-2xl font-black text-blue-600">
                 {formatCurrency(
                   calculatePrice(localPart, localPart.leadTimeType),
                 )}
               </span>
             </div>
-          </div>
-          <div className="flex items-center gap-2">
-            <Button
-              variant="ghost"
-              onClick={onClose}
-              className="text-gray-500 hover:text-gray-900"
-            >
-              Cancel
-            </Button>
-            <Button
-              onClick={handleSave}
-              className="bg-blue-600 text-white hover:bg-gray-800 rounded-lg px-6"
-            >
-              Save Changes
-            </Button>
+
+            <div className="flex items-center gap-2">
+              <Button
+                variant="ghost"
+                onClick={onClose}
+                className="text-gray-500 hover:text-gray-900 font-semibold"
+              >
+                Cancel
+              </Button>
+              <Button
+                onClick={handleSave}
+                className="bg-blue-600 text-white hover:bg-black font-bold rounded-xl px-8 h-12 shadow-lg hover:shadow-blue-500/20 transition-all"
+              >
+                Save Changes
+              </Button>
+            </div>
           </div>
         </div>
       </DialogContent>
