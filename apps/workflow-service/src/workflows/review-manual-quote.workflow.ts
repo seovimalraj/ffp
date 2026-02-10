@@ -1,5 +1,5 @@
 import { proxyActivities, log } from "@temporalio/workflow";
-import * as activities from "../activities/review-manual-quote.activities.js";
+import type * as activities from "../activities/review-manual-quote.activities.js";
 
 const { getUser, sendNotficationMailForManualQuoteReview } = proxyActivities<
   typeof activities
