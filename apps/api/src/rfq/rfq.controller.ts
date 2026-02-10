@@ -30,7 +30,6 @@ import {
 import { AuthGuard } from '../auth/auth.guard';
 import { CurrentUser } from '../auth/user.decorator';
 import { CurrentUserDto } from '../auth/auth.dto';
-import { InngestService } from 'src/inngest/inngest.service';
 import { RFQStatuses } from './rfq.helpers';
 import { TemporalService } from '../temporal/temporal.service';
 
@@ -40,7 +39,6 @@ export class RfqController {
   constructor(
     private readonly supbaseService: SupabaseService,
     private readonly logger: Logger,
-    private readonly inngestService: InngestService,
     private readonly temporalService: TemporalService,
   ) {}
 
