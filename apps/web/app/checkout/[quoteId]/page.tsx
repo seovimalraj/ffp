@@ -51,7 +51,11 @@ import { User } from "@/components/Layouts/sidebar/icons";
 import Footer from "@/components/ui/footer";
 import PhoneInput from "react-phone-number-input";
 import "react-phone-number-input/style.css";
-import { isValidPostcode, getCountryCode } from "./postcode-validation";
+import {
+  isValidPostcode,
+  getCountryCode,
+} from "@/lib/validation/postcode-validation";
+import { isValidPhone } from "@/lib/validation/phone-validation";
 import { ManualExceededModal } from "../../quote-config/components/manual-exceeded-modal";
 
 /* ------------------------------------------------------------------ */
@@ -156,6 +160,26 @@ const POSTCODE_HINTS: Record<string, string> = {
   SG: "e.g. 018906",
 };
 
+const PHONE_HINTS: Record<string, string> = {
+  US: "e.g. +1 123 456 7890",
+  GB: "e.g. +44 7123 456789",
+  IN: "e.g. +91 91234 56789",
+  CA: "e.g. +1 123 456 7890",
+  DE: "e.g. +49 123 4567890",
+  FR: "e.g. +33 1 23 45 67 89",
+  JP: "e.g. +81 90 1234 5678",
+  AU: "e.g. +61 412 345 678",
+  IT: "e.g. +39 312 345 6789",
+  ES: "e.g. +34 612 345 678",
+  NL: "e.g. +31 6 12345678",
+  BE: "e.g. +32 412 34 56 78",
+  DK: "e.g. +45 12 34 56 78",
+  SE: "e.g. +46 71 234 56 78",
+  NO: "e.g. +47 123 45 678",
+  SG: "e.g. +65 1234 5678",
+  INTL: "e.g. +1 123 456 7890",
+};
+
 /* ------------------------------------------------------------------ */
 /* Component */
 /* ------------------------------------------------------------------ */
@@ -229,6 +253,14 @@ export default function CheckoutPage() {
       !isValidPostcode(newAddress.zip, countryCode)
     ) {
       errors.zip = `Invalid format for ${newAddress.country}`;
+    }
+
+    if (
+      newAddress.phone &&
+      countryCode &&
+      !isValidPhone(newAddress.phone, countryCode)
+    ) {
+      errors.phone = `Invalid format for ${newAddress.country}`;
     }
 
     if (Object.keys(errors).length > 0) {
@@ -1450,6 +1482,14 @@ export default function CheckoutPage() {
                                     }
                                   }}
                                 />
+                                {newAddress.country && (
+                                  <p className="text-[10px] text-slate-400 font-medium ml-1 uppercase tracking-wider">
+                                    {PHONE_HINTS[
+                                      getCountryCode(newAddress.country) ||
+                                        "INTL"
+                                    ] || PHONE_HINTS.INTL}
+                                  </p>
+                                )}
                                 <AnimatePresence>
                                   {addressErrors.phone && (
                                     <motion.p

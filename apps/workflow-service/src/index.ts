@@ -9,7 +9,7 @@ import { Worker, NativeConnection } from "@temporalio/worker";
 import { logger } from "./lib/logger.js";
 import { supabase } from "./lib/supabase.js";
 import { getTemporalClient } from "./temporal.js";
-import * as activities from "./activities/email.activities.js";
+import * as activities from "./activities/index.js";
 
 const app = new Hono();
 const port = config.port;

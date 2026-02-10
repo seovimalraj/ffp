@@ -17,12 +17,15 @@ import {
   User,
   Phone as PhoneIcon,
 } from "lucide-react";
-import PhoneInput, { isValidPhoneNumber } from "react-phone-number-input";
+import PhoneInput from "react-phone-number-input";
 import "react-phone-number-input/style.css";
+import { isValidPhone } from "@/lib/validation/phone-validation";
+import { CountryCode } from "@/lib/validation/postcode-types";
 
 export function SignUpForm() {
   const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
+  const [country, setCountry] = useState<CountryCode>(CountryCode.IN);
 
   const [formData, setFormData] = useState({
     name: "",
@@ -70,8 +73,8 @@ export function SignUpForm() {
 
     if (!formData.phone_number) {
       newErrors.phone_number = "Phone number is required";
-    } else if (!isValidPhoneNumber(formData.phone_number)) {
-      newErrors.phone_number = "Invalid phone number";
+    } else if (!isValidPhone(formData.phone_number, country)) {
+      newErrors.phone_number = "Invalid phone number format for your country";
     }
 
     if (!formData.agreeToTerms) {
@@ -248,6 +251,7 @@ export function SignUpForm() {
                   placeholder="Enter phone number"
                   value={formData.phone_number}
                   onChange={handlePhoneChange}
+                  onCountryChange={(v) => setCountry(v as CountryCode)}
                   defaultCountry="IN"
                   className="h-12"
                 />

@@ -398,17 +398,42 @@ export class RfqController {
 
   @Post('send-quote/:rfqId')
   @Roles(RoleNames.Admin)
-  async sendQuote(
-    @Param('rfqId') rfqId: string,
-    @Body() body: { userId: string }, // Consider adding a ValidationPipe here
-  ) {
-    // 1. Trigger the event
-    // Note: We return the result of the event trigger (usually just a messageId)
-    // so the Admin knows the "command" was accepted.
-    await this.inngestService.sendEvent('rfq/manual-quote.approval', {
-      quoteId: rfqId,
-      userId: body.userId,
-    });
+  async sendQuote(@Param('rfqId') rfqId: string) {
+    const client = this.supbaseService.getClient();
+
+    const { data, error } = await client
+      .from(Tables.RFQTable)
+      .update({ status: RFQStatuses.PendingApproval })
+      .eq('id', rfqId)
+      .eq('status', RFQStatuses.UnderReview)
+      .select('id, user_id')
+      .single();
+
+    if (error) {
+      if (error.code === 'PGRST116') {
+        this.logger.log(
+          { rfqId },
+          'RFQ already updated or not in review state',
+        );
+        return { success: false, reason: 'invalid_state_or_already_updated' };
+      }
+      throw new HttpException(error.message, HttpStatus.INTERNAL_SERVER_ERROR);
+    }
+
+    try {
+      await this.temporalService.reviewManualQuoteWorkflow({
+        userId: data.user_id,
+        quoteId: rfqId,
+      });
+    } catch (temporalError) {
+      this.logger.error('Failed to start Temporal workflow', temporalError);
+      // Optional: Rollback status if workflow fail?
+      // For now, just throw error to let admin know it failed.
+      throw new HttpException(
+        'Failed to notify customer',
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
 
     return {
       success: true,

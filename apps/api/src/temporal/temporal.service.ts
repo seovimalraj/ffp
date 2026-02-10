@@ -1,6 +1,7 @@
 import { Injectable, OnModuleInit, Logger } from '@nestjs/common';
 import { Connection, Client } from '@temporalio/client';
 import { ConfigService } from '@nestjs/config';
+import { TemporalEvents } from '../../libs/constants';
 
 @Injectable()
 export class TemporalService implements OnModuleInit {
@@ -56,6 +57,28 @@ export class TemporalService implements OnModuleInit {
     }
   }
 
+  async reviewManualQuoteWorkflow(data: { userId: string; quoteId: string }) {
+    try {
+      if (!this.client) {
+        throw new Error('Temporal client not initialized');
+      }
+
+      const handle = await this.client.workflow.start(
+        TemporalEvents.ReviewManualQuoteWorkflow,
+        {
+          taskQueue: 'quote-tasks',
+          workflowId: `quote-rmqw-${data.quoteId}`,
+          args: [data],
+        },
+      );
+
+      this.logger.log(`Started quote workflow: ${handle.workflowId}`);
+      return handle;
+    } catch (error) {
+      this.logger.error('Failed to send review:', error.message);
+    }
+  }
+
   async sendEmail(data: {
     to: string;
     subject: string;
@@ -69,11 +92,14 @@ export class TemporalService implements OnModuleInit {
         throw new Error('Temporal client not initialized');
       }
 
-      const handle = await this.client.workflow.start('sendEmailWorkflow', {
-        taskQueue: 'quote-tasks',
-        workflowId: `email-${Date.now()}-${data.to}`,
-        args: [data],
-      });
+      const handle = await this.client.workflow.start(
+        TemporalEvents.SendEmailWorkflow,
+        {
+          taskQueue: 'quote-tasks',
+          workflowId: `email-${Date.now()}-${data.to}`,
+          args: [data],
+        },
+      );
 
       this.logger.log(`Started email workflow: ${handle.workflowId}`);
       return handle;
