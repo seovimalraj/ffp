@@ -17,8 +17,6 @@ import { compare, hash } from 'bcrypt';
 import { randomBytes } from 'crypto';
 import { SQLFunctions, Tables } from '../../libs/constants';
 import { AuthDto, LogoutDto, RefreshTokenDto } from './auth.dto';
-import { EmailService } from 'src/email/email.service';
-import { InngestService } from 'src/inngest/inngest.service';
 import { TemporalService } from 'src/temporal/temporal.service';
 
 @Controller('auth')
@@ -27,8 +25,6 @@ export class AuthController {
     private readonly supabaseService: SupabaseService,
     private readonly jwtService: JwtService,
     private readonly logger: Logger,
-    private readonly emailService: EmailService,
-    private readonly inngestService: InngestService,
     private readonly temporalService: TemporalService,
   ) {}
 
@@ -360,17 +356,5 @@ export class AuthController {
         HttpStatus.INTERNAL_SERVER_ERROR,
       );
     }
-  }
-
-  @Post('email')
-  async testEmail(@Body() body: any) {
-    await this.emailService.sendEmail(
-      body.to,
-      body.subject,
-      body.text || 'text',
-      body.html || 'html',
-      body.name,
-    );
-    return { message: 'Email queued for sending' };
   }
 }

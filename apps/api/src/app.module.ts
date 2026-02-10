@@ -15,12 +15,10 @@ import { RfqModule } from './rfq/rfq.module';
 import { OrdersModule } from './orders/orders.module';
 import { DashboardModule } from './dashboard/dashboard.module';
 import { OrgModule } from './org/org.module';
-// import { BullModule } from '@nestjs/bullmq';
-// import { ConfigService } from '@nestjs/config';
-// import { EmailModule } from './email/email.module';
 import configuration from './config/configuration';
 import { InngestModule } from './inngest/inngest.module';
 import { TemporalModule } from './temporal/temporal.module';
+import { AdminModule } from './admin/admin.module';
 
 @Module({
   imports: [
@@ -56,9 +54,9 @@ import { TemporalModule } from './temporal/temporal.module';
     OrdersModule,
     DashboardModule,
     OrgModule,
-    // EmailModule,
     InngestModule,
     TemporalModule,
+    AdminModule,
   ],
   controllers: [AppController],
   providers: [AppService],

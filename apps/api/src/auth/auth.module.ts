@@ -4,9 +4,6 @@ import { ConfigModule, ConfigService } from '@nestjs/config';
 import { AuthController } from './auth.controller';
 import { AuthGuard } from './auth.guard';
 import { SupabaseModule } from '../supabase/supabase.module';
-// import { BullModule } from '@nestjs/bullmq';
-import { EmailService } from 'src/email/email.service';
-import { InngestService } from 'src/inngest/inngest.service';
 
 @Module({
   imports: [
@@ -16,14 +13,14 @@ import { InngestService } from 'src/inngest/inngest.service';
       useFactory: async (configService: ConfigService) => ({
         secret: configService.get<string>('JWT_SECRET'),
         signOptions: {
-          expiresIn: configService.get<string>('JWT_EXPIRES_IN', '15m'),
+          expiresIn: configService.get<string>('JWT_EXPIRES_IN', '24h'),
         },
       }),
       inject: [ConfigService],
     }),
   ],
   controllers: [AuthController],
-  providers: [AuthGuard, Logger, EmailService, InngestService],
+  providers: [AuthGuard, Logger],
   exports: [JwtModule, AuthGuard],
 })
 export class AuthModule {}
