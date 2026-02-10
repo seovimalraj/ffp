@@ -52,6 +52,10 @@ import ExpandFileModal from "../quote-config/components/expand-file-modal";
 import { useFileUpload } from "@/lib/hooks/use-file-upload";
 import { apiClient } from "@/lib/api";
 import Logo from "@/components/ui/logo";
+import { isValidPhone } from "@/lib/validation/phone-validation";
+import { CountryCode } from "@/lib/validation/postcode-types";
+import PhoneInput from "react-phone-number-input";
+import "react-phone-number-input/style.css";
 
 interface UploadedFileData {
   file: File;
@@ -84,6 +88,7 @@ export default function InstantQuotePage() {
     agreeToTerms: false,
   });
   const [errors, setErrors] = useState<Record<string, string>>({});
+  const [country, setCountry] = useState<CountryCode>(CountryCode.IN);
 
   const session = useSession();
   const { upload } = useFileUpload();
@@ -307,6 +312,17 @@ export default function InstantQuotePage() {
     }
   };
 
+  const handlePhoneChange = (value: string | undefined) => {
+    setAuthForm((prev) => ({ ...prev, phone_number: value || "" }));
+    if (errors.phone_number) {
+      setErrors((prev) => {
+        const next = { ...prev };
+        delete next.phone_number;
+        return next;
+      });
+    }
+  };
+
   const validateEmail = (email: string) => {
     if (!email) return "Email is required";
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -329,10 +345,10 @@ export default function InstantQuotePage() {
         newErrors.organization_name = "Organization name is required";
       if (!authForm.phone_number)
         newErrors.phone_number = "Phone number is required";
-
-      if (!authForm.agreeToTerms) {
-        newErrors.agreeToTerms = "You must agree to the terms";
-      }
+      else if (!isValidPhone(authForm.phone_number))
+        if (!authForm.agreeToTerms) {
+          newErrors.agreeToTerms = "You must agree to the terms";
+        }
     }
 
     const emailError = validateEmail(authForm.email);
@@ -906,7 +922,10 @@ export default function InstantQuotePage() {
               Support
             </Link>
           </div>
-          <p>© 2025 Frigate Engineering Services. Secure & Confidential.</p>
+          <p>
+            © {new Date().getFullYear()} Frigate Engineering Services. Secure &
+            Confidential.
+          </p>
         </footer>
       </main>
 
@@ -982,19 +1001,18 @@ export default function InstantQuotePage() {
                     >
                       <Phone className="w-4 h-4 text-slate-400" /> Phone
                     </Label>
-                    <Input
-                      id="phone_number"
-                      type="tel"
-                      placeholder="+1 (555) 000-0000"
-                      value={authForm.phone_number}
-                      onChange={(e) =>
-                        setAuthForm((prev) => ({
-                          ...prev,
-                          phone_number: e.target.value,
-                        }))
-                      }
-                      className={`bg-slate-50 border-slate-200 focus:border-blue-500 focus:ring-blue-500/20 ${errors.phone_number ? "border-red-500" : ""}`}
-                    />
+                    <div
+                      className={`phone-input-container ${errors.phone_number ? "phone-input-error" : ""}`}
+                    >
+                      <PhoneInput
+                        placeholder="Enter phone number"
+                        value={authForm.phone_number}
+                        onChange={handlePhoneChange}
+                        onCountryChange={(v) => setCountry(v as CountryCode)}
+                        defaultCountry="IN"
+                        className="h-12"
+                      />
+                    </div>
                     {errors.phone_number && (
                       <p className="text-red-500 text-xs">
                         {errors.phone_number}

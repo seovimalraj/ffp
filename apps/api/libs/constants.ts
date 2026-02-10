@@ -83,6 +83,11 @@ export enum InngestEvents {
   ManualQuoteApproval = 'rfq/manual-quote.approval',
 }
 
+export enum TemporalEvents {
+  SendEmailWorkflow = 'sendEmailWorkflow',
+  ReviewManualQuoteWorkflow = 'reviewManualQuoteWorkflow',
+}
+
 /**
  * Materialized view names for optimized queries
  */
