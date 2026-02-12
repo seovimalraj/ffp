@@ -258,19 +258,56 @@ const AuthService = {
     };
   },
   verifyOTP: async (code: string, token: string) => {
+    console.log("<---", code, token);
     const apiUrl = process.env.INTERNAL_API_URL || "https://ffp-api.frigate.ai";
     const res = await fetch(`${apiUrl}/auth/verify-otp`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        Authorization: `Bearer ${token}`,
+        ...(token && { Authorization: `Bearer ${token}` }),
       },
       body: JSON.stringify({ code }),
     });
 
+    console.log(res, "<--res");
+
     if (!res.ok) {
       const errorData = await res.json();
       throw new Error(errorData.message || "Verification failed");
+    }
+
+    return res.json();
+  },
+  otpStatus: async (token: string) => {
+    const apiUrl = process.env.INTERNAL_API_URL || "https://ffp-api.frigate.ai";
+    const res = await fetch(`${apiUrl}/auth/otp-status`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...(token && { Authorization: `Bearer ${token}` }),
+      },
+    });
+
+    if (!res.ok) {
+      const errorData = await res.json();
+      throw new Error(errorData.message || "Failed to get OTP status");
+    }
+
+    return res.json();
+  },
+  resendOTP: async (token: string) => {
+    const apiUrl = process.env.INTERNAL_API_URL || "https://ffp-api.frigate.ai";
+    const res = await fetch(`${apiUrl}/auth/resend-otp`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...(token && { Authorization: `Bearer ${token}` }),
+      },
+    });
+
+    if (!res.ok) {
+      const errorData = await res.json();
+      throw new Error(errorData.message || "Failed to resend OTP");
     }
 
     return res.json();

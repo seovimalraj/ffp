@@ -1,5 +1,5 @@
 "use client";
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import AppHeader from "@/layout/AppHeader";
@@ -54,9 +54,15 @@ export default function CustomerLayout({
 
   const { data, status } = useSession();
 
-  React.useEffect(() => {
+  useEffect(() => {
     if (status === "authenticated" && data?.user?.role !== "customer") {
       router.push(`/${data?.user?.role}`);
+    }
+  }, [data, status, router]);
+
+  useEffect(() => {
+    if (status === "authenticated" && !data.user.verified) {
+      router.push("/verify");
     }
   }, [data, status, router]);
 

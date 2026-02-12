@@ -49,7 +49,11 @@ apiClient.interceptors.response.use(
   },
   (error) => {
     let isSigningOut = false;
-    if (error.response?.status === 401 && !isSigningOut) {
+    if (
+      error.response?.status === 401 &&
+      !isSigningOut &&
+      typeof window !== "undefined"
+    ) {
       console.error("Unauthorized request - redirecting to login");
       // You could redirect to login here if needed
       isSigningOut = true;

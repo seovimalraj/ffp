@@ -11,13 +11,23 @@ const { generateOTP, sendOTPNotification } = proxyActivities<typeof activities>(
   },
 );
 
-export async function otpWorkflow(data: { email: string; username: string }) {
+export async function otpWorkflow(data: {
+  email: string;
+  username: string;
+  code?: string;
+}) {
   log.info("Starting otpWorkflow", {
     email: data.email,
     username: data.username,
+    hasProvidedCode: !!data.code,
   });
 
-  const otp = await generateOTP(data.email);
+  let otp = data.code;
+
+  if (!otp) {
+    log.info("No code provided, generating new OTP");
+    otp = await generateOTP(data.email);
+  }
 
   if (!otp) {
     const errorMsg = "Error in OTP generation: OTP was null or undefined";

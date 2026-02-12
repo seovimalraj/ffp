@@ -109,7 +109,7 @@ export class TemporalService implements OnModuleInit {
     }
   }
 
-  async otpWorkflow(data: { email: string; username: string }) {
+  async otpWorkflow(data: { email: string; username: string; code?: string }) {
     try {
       if (!this.client) {
         throw new Error('Temporal client not initialized');
