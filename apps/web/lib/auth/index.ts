@@ -127,6 +127,7 @@ const authOptions: NextAuthOptions = {
               role: user.role,
               verified: user.verified,
               organizationId: user.organizationId || user.organization_id,
+              accessToken: user.accessToken,
               refreshToken: user.refreshToken,
             };
           }

@@ -10,7 +10,7 @@ export default function AuthLayout({
   children: React.ReactNode;
 }) {
   const pathname = usePathname();
-  const canShowCarousel = pathname !== "verify";
+  const canShowCarousel = pathname !== "/verify";
 
   return (
     <AuroraBackground className="overflow-hidden">
