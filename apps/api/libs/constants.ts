@@ -66,6 +66,8 @@ export enum Tables {
   OrderDocumentsTable = 'order_documents',
 
   ManualQuoteApproval = 'manual_quote_approval',
+
+  OTPTable = 'otps',
 }
 
 /**
@@ -86,6 +88,7 @@ export enum InngestEvents {
 export enum TemporalEvents {
   SendEmailWorkflow = 'sendEmailWorkflow',
   ReviewManualQuoteWorkflow = 'reviewManualQuoteWorkflow',
+  OtpWorkflow = 'otpWorkflow',
 }
 
 /**
@@ -121,6 +124,7 @@ export enum SQLFunctions {
   getRfqStatusCounts = 'get_rfq_status_counts',
   getRfqStatusSummary = 'get_rfq_status_summary',
   getOrderStatusSummary = 'get_order_status_summary',
+  regenerateOtp = 'regenerate_otp',
 }
 
 /**

@@ -1,4 +1,4 @@
-import { IsEnum, IsString } from 'class-validator';
+import { IsBoolean, IsEnum, IsString } from 'class-validator';
 import { RoleNames } from '../../libs/constants';
 
 export class AuthDto {
@@ -52,4 +52,10 @@ export class CurrentUserDto {
 
   @IsEnum(RoleNames)
   role: RoleNames;
+
+  @IsBoolean()
+  verified: boolean;
+
+  @IsString()
+  name: string;
 }

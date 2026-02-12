@@ -6,6 +6,7 @@ create table if not exists users (
     id uuid primary key default gen_random_uuid (),
     email VARCHAR(255) unique not null,
     password_hash VARCHAR(255) not null,
+    verified boolean default false,
     role user_type_enum not null default 'customer',
     role_id uuid references roles (id) on delete
     set null,
