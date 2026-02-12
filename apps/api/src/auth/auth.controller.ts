@@ -143,14 +143,17 @@ export class AuthController {
       const hashedPassword = await hash(password, 12);
 
       const client = this.supabaseService.getClient();
-      const { data: user, error } = await client.rpc(SQLFunctions.createUser, {
-        p_email: email,
-        p_password: hashedPassword,
-        p_organization_name: organization_name,
-        p_name: name,
-        p_phone: phone,
-        p_source: referralSource || '',
-      });
+      const { data: result, error } = await client.rpc(
+        SQLFunctions.createUser,
+        {
+          p_email: email,
+          p_password: hashedPassword,
+          p_organization_name: organization_name,
+          p_name: name,
+          p_phone: phone,
+          p_source: referralSource || '',
+        },
+      );
 
       if (error) {
         // Handle unique violation or other errors from RPC
@@ -163,12 +166,15 @@ export class AuthController {
         throw new HttpException(error.message, HttpStatus.BAD_REQUEST);
       }
 
-      if (!user) {
+      if (!result) {
         throw new HttpException(
           'Failed to create user',
           HttpStatus.INTERNAL_SERVER_ERROR,
         );
       }
+
+      const user = result.user;
+      const otpCode = result.otp_code;
 
       // Generate Refresh Token
       const refreshToken = randomBytes(32).toString('hex');
@@ -215,6 +221,7 @@ export class AuthController {
         await this.temporalService.otpWorkflow({
           email: email,
           username: name,
+          code: otpCode,
         });
       } catch (err) {
         this.logger.error({ err }, 'Failed to send OTP via Temporal');
@@ -334,6 +341,7 @@ export class AuthController {
 
   @Post('verify-otp')
   @Roles(RoleNames.Customer)
+  @UseGuards(AuthGuard)
   async verifyOTP(
     @Body() body: { code: string },
     @CurrentUser() currentUser: CurrentUserDto,
@@ -392,10 +400,117 @@ export class AuthController {
 
       return { success: true, message: 'Account verified successfully' };
     } catch (error) {
+      console.log(error);
       this.logger.error({ error }, 'Failed to verify OTP');
 
       // Re-throw if it's already an HttpException, otherwise send 500
       if (error instanceof HttpException) throw error;
+      throw new HttpException(
+        'Internal Server Error',
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
+  }
+
+  @Post('otp-status')
+  @Roles(RoleNames.Customer)
+  @UseGuards(AuthGuard)
+  async otpStatus(@CurrentUser() user: CurrentUserDto) {
+    try {
+      const client = this.supabaseService.getClient();
+
+      const { data, error } = await client
+        .from('otps')
+        .select('expires_at, created_at')
+        .eq('email', user.email)
+        .maybeSingle();
+
+      if (error) throw error;
+
+      if (!data) {
+        return {
+          hasActiveOtp: false,
+          cooldownRemaining: 0,
+        };
+      }
+
+      const now = Date.now();
+      const expiresAt = new Date(data.expires_at).getTime();
+      const createdAt = new Date(data.created_at).getTime();
+
+      const hasActiveOtp = now < expiresAt;
+
+      const COOLDOWN = 60_000; // resend cooldown
+      const cooldownRemaining = Math.max(
+        0,
+        Math.floor((COOLDOWN - (now - createdAt)) / 1000),
+      );
+
+      return {
+        hasActiveOtp,
+        cooldownRemaining,
+      };
+    } catch (error) {
+      this.logger.error({ error }, 'OTP status error');
+      throw new HttpException('Internal Server Error', 500);
+    }
+  }
+
+  @Post('resend-otp')
+  @Roles(RoleNames.Customer)
+  @UseGuards(AuthGuard)
+  async resendOTP(@CurrentUser() user: CurrentUserDto) {
+    try {
+      const client = this.supabaseService.getClient();
+
+      // Check if there's an existing OTP and enforce cooldown
+      const { data, error } = await client
+        .from(Tables.OTPTable)
+        .select('created_at, expires_at')
+        .eq('email', user.email)
+        .maybeSingle();
+
+      if (error) {
+        this.logger.error({ error }, 'Error checking OTP status');
+        throw new HttpException(
+          'Failed to check OTP status',
+          HttpStatus.INTERNAL_SERVER_ERROR,
+        );
+      }
+
+      // Enforce cooldown period
+      if (data) {
+        const now = Date.now();
+        const createdAt = new Date(data.created_at).getTime();
+        const COOLDOWN = 60_000; // 60 seconds cooldown
+        const timeSinceCreation = now - createdAt;
+
+        if (timeSinceCreation < COOLDOWN) {
+          const remainingSeconds = Math.ceil(
+            (COOLDOWN - timeSinceCreation) / 1000,
+          );
+          throw new HttpException(
+            `Please wait ${remainingSeconds} seconds before requesting a new OTP`,
+            HttpStatus.TOO_MANY_REQUESTS,
+          );
+        }
+      }
+
+      // Trigger OTP workflow with isResend flag
+      await this.temporalService.otpWorkflow({
+        email: user.email,
+        username: user.name,
+      });
+
+      return {
+        success: true,
+        message: 'A new OTP has been sent to your email',
+      };
+    } catch (error) {
+      this.logger.error({ error }, 'Failed to resend OTP');
+      if (error instanceof HttpException) {
+        throw error;
+      }
       throw new HttpException(
         'Internal Server Error',
         HttpStatus.INTERNAL_SERVER_ERROR,

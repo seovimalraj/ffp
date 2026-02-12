@@ -5,10 +5,11 @@ CREATE OR REPLACE FUNCTION create_user(
         p_name VARCHAR,
         p_phone VARCHAR,
         p_source VARCHAR
-    ) RETURNS users LANGUAGE plpgsql AS $$
+    ) RETURNS JSONB LANGUAGE plpgsql AS $$
 DECLARE v_org_id UUID;
 v_role_id UUID;
 v_user users;
+v_otp_code TEXT;
 BEGIN -- Fetch customer role id
 SELECT id INTO v_role_id
 FROM roles
@@ -49,7 +50,14 @@ RETURNING * INTO v_user;
 -- Create referral source
 INSERT INTO referral_sources (user_id, source)
 VALUES (v_user.id, p_source);
-RETURN v_user;
+-- Generate OTP
+v_otp_code := request_otp(p_email);
+RETURN jsonb_build_object(
+    'user',
+    to_jsonb(v_user),
+    'otp_code',
+    v_otp_code
+);
 EXCEPTION
 WHEN unique_violation THEN RAISE EXCEPTION 'User or organization already exists (email: %, organization: %)',
 p_email,
