@@ -11,8 +11,8 @@ import {
 import { notify } from "@/lib/toast";
 import { Loader2, Mail } from "lucide-react";
 import { useSession } from "next-auth/react";
-import CustomLoader from "@/components/ui/loader/CustomLoader";
 import axios from "axios";
+import VerifyLoader from "@/components/auth/VerifyLoader";
 
 export default function VerifyPage() {
   const [otp, setOtp] = useState("");
@@ -132,7 +132,7 @@ export default function VerifyPage() {
   };
 
   if (session.status === "loading" || !otpStatus) {
-    return <CustomLoader />;
+    return <VerifyLoader />;
   }
 
   return (
@@ -141,7 +141,7 @@ export default function VerifyPage() {
         {!otpStatus.hasActiveOtp ? (
           <div className="text-center">
             <div className="mx-auto w-16 h-16 bg-blue-100 rounded-full flex items-center justify-center mb-6">
-              <Mail className="w-8 h-8 text-blue-600" />
+              <Mail className="w-8 h-8 text-purple-600" />
             </div>
             <h1 className="text-3xl font-bold text-gray-900 mb-4">
               Email Verification Needed
@@ -154,7 +154,7 @@ export default function VerifyPage() {
             <Button
               onClick={handleResendOtp}
               disabled={isResending || otpStatus.cooldownRemaining > 0}
-              className="w-full h-12 bg-blue-600 hover:bg-blue-700 text-white rounded-xl shadow-lg transition-all font-semibold"
+              className="w-full h-12 bg-purple-600 hover:bg-purple-700 text-white rounded-xl shadow-lg transition-all font-semibold"
             >
               {isResending ? (
                 <Loader2 className="w-5 h-5 animate-spin mr-2" />

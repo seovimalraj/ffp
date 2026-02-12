@@ -55,6 +55,11 @@ import Logo from "@/components/ui/logo";
 import { isValidPhone } from "@/lib/validation/phone-validation";
 import { CountryCode } from "@/lib/validation/postcode-types";
 import PhoneInput from "react-phone-number-input";
+import {
+  InputOTP,
+  InputOTPGroup,
+  InputOTPSlot,
+} from "@/components/ui/input-otp";
 import "react-phone-number-input/style.css";
 
 interface UploadedFileData {
@@ -89,6 +94,9 @@ export default function InstantQuotePage() {
   });
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [country, setCountry] = useState<CountryCode>(CountryCode.IN);
+  const [showOTPModal, setShowOTPModal] = useState(false);
+  const [otpValue, setOtpValue] = useState("");
+  const [isVerifyingOTP, setIsVerifyingOTP] = useState(false);
 
   const session = useSession();
   const { upload } = useFileUpload();
@@ -423,15 +431,69 @@ export default function InstantQuotePage() {
         }
       }
 
-      setShowAuthModal(false);
-      setIsAuthLoading(false);
-      if (redirectUrl) {
-        router.push(redirectUrl);
+      if (authMode === "signup") {
+        setShowAuthModal(false);
+        setShowOTPModal(true);
+      } else {
+        setShowAuthModal(false);
+        if (redirectUrl) {
+          router.push(redirectUrl);
+        }
       }
+      setIsAuthLoading(false);
     } catch (err: any) {
       console.error(err);
       notify.error(err.message || "Authentication failed");
       setIsAuthLoading(false);
+    }
+  };
+
+  const handleVerifyOTP = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    if (otpValue.length !== 6) {
+      notify.error("Please enter a valid 6-digit code");
+      return;
+    }
+
+    setIsVerifyingOTP(true);
+    try {
+      const res = await fetch("/api/verify-otp", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ code: otpValue }),
+      });
+
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.error || data.message || "Verification failed");
+      }
+
+      notify.success("Email verified successfully!");
+      setShowOTPModal(false);
+
+      // Trigger the quote creation process now that user is verified
+      // if (files.length > 0) {
+      //   handleUploadAndAuth();
+      // }
+    } catch (err: any) {
+      console.error(err);
+      notify.error(err.message || "Invalid verification code");
+    } finally {
+      setIsVerifyingOTP(false);
+    }
+  };
+
+  const handleResendOTP = async () => {
+    try {
+      const res = await fetch("/api/resend-otp", {
+        method: "POST",
+      });
+      const data = await res.json();
+      if (!res.ok)
+        throw new Error(data.error || data.message || "Failed to resend");
+      notify.success("Verification code resent to your email");
+    } catch (err: any) {
+      notify.error(err.message || "Error resending code");
     }
   };
 
@@ -1160,6 +1222,99 @@ export default function InstantQuotePage() {
               )}
             </div>
           </form>
+        </DialogContent>
+      </Dialog>
+
+      {/* OTP Modal */}
+      <Dialog open={showOTPModal} onOpenChange={setShowOTPModal}>
+        <DialogContent
+          onInteractOutside={(e) => e.preventDefault()}
+          className="sm:max-w-[440px] border-0 shadow-2xl bg-white/95 backdrop-blur-md p-0 overflow-hidden"
+        >
+          <div className="bg-blue-600 h-2 w-full" />
+          <div className="p-8">
+            <DialogHeader className="mb-8">
+              <div className="w-16 h-16 bg-blue-50 rounded-2xl flex items-center justify-center mx-auto mb-4 border border-blue-100 shadow-inner">
+                <Shield className="w-8 h-8 text-blue-600" />
+              </div>
+              <DialogTitle className="text-2xl font-semibold text-center text-slate-900">
+                Verify Your Email
+              </DialogTitle>
+              <DialogDescription className="text-center text-slate-500 mt-2 text-balance">
+                We've sent a 6-digit verification code to{" "}
+                <span className="text-slate-900 font-medium">
+                  {authForm.email}
+                </span>
+                . Please enter it below to continue with your quote.
+              </DialogDescription>
+            </DialogHeader>
+
+            <div className="flex flex-col items-center space-y-8">
+              <InputOTP
+                maxLength={6}
+                value={otpValue}
+                onChange={(value) => setOtpValue(value)}
+                onComplete={() => handleVerifyOTP()}
+              >
+                <InputOTPGroup className="gap-2 sm:gap-3">
+                  <InputOTPSlot
+                    index={0}
+                    className="w-12 h-14 text-lg rounded-xl border-slate-200 bg-slate-50/50"
+                  />
+                  <InputOTPSlot
+                    index={1}
+                    className="w-12 h-14 text-lg rounded-xl border-slate-200 bg-slate-50/50"
+                  />
+                  <InputOTPSlot
+                    index={2}
+                    className="w-12 h-14 text-lg rounded-xl border-slate-200 bg-slate-50/50"
+                  />
+                  <InputOTPSlot
+                    index={3}
+                    className="w-12 h-14 text-lg rounded-xl border-slate-200 bg-slate-50/50"
+                  />
+                  <InputOTPSlot
+                    index={4}
+                    className="w-12 h-14 text-lg rounded-xl border-slate-200 bg-slate-50/50"
+                  />
+                  <InputOTPSlot
+                    index={5}
+                    className="w-12 h-14 text-lg rounded-xl border-slate-200 bg-slate-50/50"
+                  />
+                </InputOTPGroup>
+              </InputOTP>
+
+              <div className="w-full space-y-4">
+                <Button
+                  onClick={() => handleVerifyOTP()}
+                  disabled={isVerifyingOTP || otpValue.length !== 6}
+                  className="w-full h-12 bg-blue-600 hover:bg-blue-700 text-white rounded-xl shadow-lg shadow-blue-600/20 transition-all active:scale-[0.98]"
+                >
+                  {isVerifyingOTP ? (
+                    <>
+                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                      Verifying...
+                    </>
+                  ) : (
+                    "Verify & Continue"
+                  )}
+                </Button>
+
+                <div className="text-center">
+                  <p className="text-sm text-slate-500">
+                    Didn't receive the code?{" "}
+                    <button
+                      type="button"
+                      onClick={handleResendOTP}
+                      className="text-blue-600 font-semibold hover:text-blue-700 hover:underline transition-colors"
+                    >
+                      Resend Code
+                    </button>
+                  </p>
+                </div>
+              </div>
+            </div>
+          </div>
         </DialogContent>
       </Dialog>
 
