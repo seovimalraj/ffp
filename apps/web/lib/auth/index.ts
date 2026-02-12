@@ -166,7 +166,7 @@ const authOptions: NextAuthOptions = {
             (user as any).organizationId || (user as any).organization_id,
           accessToken: (user as any).accessToken,
           refreshToken: (user as any).refreshToken,
-          accessTokenExpires: Date.now() + 60 * 60 * 1000, // 1 hour
+          accessTokenExpires: Date.now() + 24 * 60 * 60 * 1000, // 1 day
         };
       }
 
