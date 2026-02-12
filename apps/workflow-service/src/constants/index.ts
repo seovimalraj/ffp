@@ -66,6 +66,8 @@ export enum Tables {
   OrderDocumentsTable = "order_documents",
 
   ManualQuoteApproval = "manual_quote_approval",
+
+  OTPTable = "otps",
 }
 
 /**
@@ -115,6 +117,7 @@ export enum SQLFunctions {
   getRFQPartsInfinite = "get_rfq_parts_infinite",
   getUserRFQsWithPartsCountInfinite = "get_user_rfqs_with_parts_count_infinite",
   getOrdersInfinite = "get_orders_infinite",
+  requestOtp = "request_otp",
 }
 
 /**

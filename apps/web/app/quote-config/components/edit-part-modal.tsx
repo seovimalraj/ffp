@@ -74,13 +74,13 @@ interface EditPartModalProps {
 }
 
 export const CERTIFICATES_LIST = [
-  {
-    value: "itar_ear",
-    label: "ITAR / EAR Registration",
-    description:
-      "U.S. export control compliance for defense-related manufacturing.",
-    category: "Compliance",
-  },
+  // {
+  //   value: "itar_ear",
+  //   label: "ITAR / EAR Registration",
+  //   description:
+  //     "U.S. export control compliance for defense-related manufacturing.",
+  //   category: "Compliance",
+  // },
   // {
   //   value: "cmm",
   //   label: "CMM",
@@ -117,12 +117,6 @@ export const CERTIFICATES_LIST = [
     label: "Material Traceability",
     description: "Full traceability of raw materials to source.",
     category: "Materials",
-  },
-  {
-    value: "jcp_ejcp",
-    label: "JCP / eJCP",
-    description: "U.S. DoD Joint Certification Program compliance.",
-    category: "Defense",
   },
   {
     value: "material_cert",

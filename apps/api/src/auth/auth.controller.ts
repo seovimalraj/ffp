@@ -15,11 +15,16 @@ import { CurrentUser } from './user.decorator';
 
 import { compare, hash } from 'bcrypt';
 import { randomBytes } from 'crypto';
-import { SQLFunctions, Tables } from '../../libs/constants';
-import { AuthDto, LogoutDto, RefreshTokenDto } from './auth.dto';
-import { EmailService } from 'src/email/email.service';
-import { InngestService } from 'src/inngest/inngest.service';
+import { RoleNames, SQLFunctions, Tables } from '../../libs/constants';
+import {
+  AuthDto,
+  CurrentUserDto,
+  LogoutDto,
+  RefreshTokenDto,
+} from './auth.dto';
 import { TemporalService } from 'src/temporal/temporal.service';
+import { isOtpValid } from './auth.utils';
+import { Roles } from './roles.decorator';
 
 @Controller('auth')
 export class AuthController {
@@ -27,8 +32,6 @@ export class AuthController {
     private readonly supabaseService: SupabaseService,
     private readonly jwtService: JwtService,
     private readonly logger: Logger,
-    private readonly emailService: EmailService,
-    private readonly inngestService: InngestService,
     private readonly temporalService: TemporalService,
   ) {}
 
@@ -105,6 +108,7 @@ export class AuthController {
         email: user.email,
         name: user.full_name || user.name || user.email,
         role: user.role,
+        verified: user.verified,
         organizationId: user.organization_id || null,
         accessToken: accessToken,
         refreshToken: refreshToken,
@@ -139,14 +143,17 @@ export class AuthController {
       const hashedPassword = await hash(password, 12);
 
       const client = this.supabaseService.getClient();
-      const { data: user, error } = await client.rpc(SQLFunctions.createUser, {
-        p_email: email,
-        p_password: hashedPassword,
-        p_organization_name: organization_name,
-        p_name: name,
-        p_phone: phone,
-        p_source: referralSource || '',
-      });
+      const { data: result, error } = await client.rpc(
+        SQLFunctions.createUser,
+        {
+          p_email: email,
+          p_password: hashedPassword,
+          p_organization_name: organization_name,
+          p_name: name,
+          p_phone: phone,
+          p_source: referralSource || '',
+        },
+      );
 
       if (error) {
         // Handle unique violation or other errors from RPC
@@ -159,12 +166,15 @@ export class AuthController {
         throw new HttpException(error.message, HttpStatus.BAD_REQUEST);
       }
 
-      if (!user) {
+      if (!result) {
         throw new HttpException(
           'Failed to create user',
           HttpStatus.INTERNAL_SERVER_ERROR,
         );
       }
+
+      const user = result.user;
+      const otpCode = result.otp_code;
 
       // Generate Refresh Token
       const refreshToken = randomBytes(32).toString('hex');
@@ -185,9 +195,6 @@ export class AuthController {
 
       if (refreshTokenError) {
         console.error(refreshTokenError);
-        // We still created the user, but failed to log them in automatically
-        // Maybe just return user and let them log in manually?
-        // No, let's treat it as an error to be consistent with login flow
         throw new HttpException(
           'User created but failed to generate session. Please login.',
           HttpStatus.INTERNAL_SERVER_ERROR,
@@ -202,18 +209,23 @@ export class AuthController {
         organizationId: user.organization_id || null,
       });
 
+      // this.temporalService.sendEmail({
+      //       to: email,
+      //       subject: 'Welcome to Frigate Fast Parts',
+      //       text: '', // or provide a text body
+      //       name: name,
+      //       type: 'welcome',
+      //     }),
+
       try {
-        await this.temporalService.sendEmail({
-          to: email,
-          subject: 'Welcome to Frigate Fast Parts',
-          text: '', // or provide a text body
-          name: name,
-          type: 'welcome',
+        await this.temporalService.otpWorkflow({
+          email: email,
+          username: name,
+          code: otpCode,
         });
       } catch (err) {
-        this.logger.error({ err }, 'Failed to send welcome email via Temporal');
+        this.logger.error({ err }, 'Failed to send OTP via Temporal');
       }
-
       return {
         id: user.id,
         email: user.email,
@@ -327,6 +339,185 @@ export class AuthController {
     }
   }
 
+  @Post('verify-otp')
+  @Roles(RoleNames.Customer)
+  @UseGuards(AuthGuard)
+  async verifyOTP(
+    @Body() body: { code: string },
+    @CurrentUser() currentUser: CurrentUserDto,
+  ) {
+    try {
+      const client = this.supabaseService.getClient();
+
+      const { error, data } = await client
+        .from(Tables.OTPTable)
+        .select('code, expires_at')
+        .eq('email', currentUser.email)
+        .single();
+
+      if (error || !data) {
+        throw new HttpException('OTP not found', HttpStatus.NOT_FOUND);
+      }
+
+      // 1. Check Expiry FIRST
+      if (!isOtpValid(data.expires_at)) {
+        this.logger.error(`OTP Expired for ${currentUser.email}`);
+
+        // Trigger Temporal workflow for a new code
+        await this.temporalService.otpWorkflow({
+          email: currentUser.email,
+          username: currentUser.name,
+        });
+
+        throw new HttpException(
+          'OTP Expired. A new code has been sent.',
+          HttpStatus.GONE,
+        );
+      }
+
+      // 2. Check Code Validity
+      if (data.code !== body.code) {
+        this.logger.error('Invalid OTP attempt');
+        throw new HttpException('Invalid OTP Token', HttpStatus.UNAUTHORIZED);
+      }
+
+      // 3. Success - Update User
+      const { error: updateUserError } = await client
+        .from(Tables.UserTable)
+        .update({ verified: true }) // Pass as object
+        .eq('id', currentUser.id);
+
+      if (updateUserError) {
+        throw new Error('Database update failed');
+      }
+
+      // 4. Cleanup (Optional but Recommended)
+      // Delete the OTP so it cannot be used again
+      await client
+        .from(Tables.OTPTable)
+        .delete()
+        .eq('email', currentUser.email);
+
+      return { success: true, message: 'Account verified successfully' };
+    } catch (error) {
+      console.log(error);
+      this.logger.error({ error }, 'Failed to verify OTP');
+
+      // Re-throw if it's already an HttpException, otherwise send 500
+      if (error instanceof HttpException) throw error;
+      throw new HttpException(
+        'Internal Server Error',
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
+  }
+
+  @Post('otp-status')
+  @Roles(RoleNames.Customer)
+  @UseGuards(AuthGuard)
+  async otpStatus(@CurrentUser() user: CurrentUserDto) {
+    try {
+      const client = this.supabaseService.getClient();
+
+      const { data, error } = await client
+        .from('otps')
+        .select('expires_at, created_at')
+        .eq('email', user.email)
+        .maybeSingle();
+
+      if (error) throw error;
+
+      if (!data) {
+        return {
+          hasActiveOtp: false,
+          cooldownRemaining: 0,
+        };
+      }
+
+      const now = Date.now();
+      const expiresAt = new Date(data.expires_at).getTime();
+      const createdAt = new Date(data.created_at).getTime();
+
+      const hasActiveOtp = now < expiresAt;
+
+      const COOLDOWN = 60_000; // resend cooldown
+      const cooldownRemaining = Math.max(
+        0,
+        Math.floor((COOLDOWN - (now - createdAt)) / 1000),
+      );
+
+      return {
+        hasActiveOtp,
+        cooldownRemaining,
+      };
+    } catch (error) {
+      this.logger.error({ error }, 'OTP status error');
+      throw new HttpException('Internal Server Error', 500);
+    }
+  }
+
+  @Post('resend-otp')
+  @Roles(RoleNames.Customer)
+  @UseGuards(AuthGuard)
+  async resendOTP(@CurrentUser() user: CurrentUserDto) {
+    try {
+      const client = this.supabaseService.getClient();
+
+      // Check if there's an existing OTP and enforce cooldown
+      const { data, error } = await client
+        .from(Tables.OTPTable)
+        .select('created_at, expires_at')
+        .eq('email', user.email)
+        .maybeSingle();
+
+      if (error) {
+        this.logger.error({ error }, 'Error checking OTP status');
+        throw new HttpException(
+          'Failed to check OTP status',
+          HttpStatus.INTERNAL_SERVER_ERROR,
+        );
+      }
+
+      // Enforce cooldown period
+      if (data) {
+        const now = Date.now();
+        const createdAt = new Date(data.created_at).getTime();
+        const COOLDOWN = 60_000; // 60 seconds cooldown
+        const timeSinceCreation = now - createdAt;
+
+        if (timeSinceCreation < COOLDOWN) {
+          const remainingSeconds = Math.ceil(
+            (COOLDOWN - timeSinceCreation) / 1000,
+          );
+          throw new HttpException(
+            `Please wait ${remainingSeconds} seconds before requesting a new OTP`,
+            HttpStatus.TOO_MANY_REQUESTS,
+          );
+        }
+      }
+
+      // Trigger OTP workflow with isResend flag
+      await this.temporalService.otpWorkflow({
+        email: user.email,
+        username: user.name,
+      });
+
+      return {
+        success: true,
+        message: 'A new OTP has been sent to your email',
+      };
+    } catch (error) {
+      this.logger.error({ error }, 'Failed to resend OTP');
+      if (error instanceof HttpException) {
+        throw error;
+      }
+      throw new HttpException(
+        'Internal Server Error',
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
+  }
+
   @Post('logout')
   async logout(@Body() body: LogoutDto) {
     try {
@@ -360,17 +551,5 @@ export class AuthController {
         HttpStatus.INTERNAL_SERVER_ERROR,
       );
     }
-  }
-
-  @Post('email')
-  async testEmail(@Body() body: any) {
-    await this.emailService.sendEmail(
-      body.to,
-      body.subject,
-      body.text || 'text',
-      body.html || 'html',
-      body.name,
-    );
-    return { message: 'Email queued for sending' };
   }
 }

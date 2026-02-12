@@ -68,6 +68,8 @@ export enum Tables {
   ManualQuoteApproval = 'manual_quote_approval',
 
   DfmFilesTable = 'dfm_files',
+
+  OTPTable = 'otps',
 }
 
 /**
@@ -83,6 +85,12 @@ export enum StockMaterial {
 export enum InngestEvents {
   EmailEvent = 'system/email.send',
   ManualQuoteApproval = 'rfq/manual-quote.approval',
+}
+
+export enum TemporalEvents {
+  SendEmailWorkflow = 'sendEmailWorkflow',
+  ReviewManualQuoteWorkflow = 'reviewManualQuoteWorkflow',
+  OtpWorkflow = 'otpWorkflow',
 }
 
 /**
@@ -118,6 +126,7 @@ export enum SQLFunctions {
   getRfqStatusCounts = 'get_rfq_status_counts',
   getRfqStatusSummary = 'get_rfq_status_summary',
   getOrderStatusSummary = 'get_order_status_summary',
+  regenerateOtp = 'regenerate_otp',
 }
 
 /**

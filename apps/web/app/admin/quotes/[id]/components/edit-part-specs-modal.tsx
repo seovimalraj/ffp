@@ -68,12 +68,6 @@ const CERTIFICATES_LIST = [
     category: "Materials",
   },
   {
-    value: "jcp_ejcp",
-    label: "JCP / eJCP",
-    description: "U.S. DoD Joint Certification Program compliance.",
-    category: "Defense",
-  },
-  {
     value: "material_cert",
     label: "Material Certification",
     description: "Mill certificates verifying material composition.",

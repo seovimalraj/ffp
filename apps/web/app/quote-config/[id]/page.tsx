@@ -1283,6 +1283,18 @@ export default function QuoteConfigPage() {
     updatePartFields(index, { [field]: value }, saveToDb);
   };
 
+  const updatePartById = (
+    partId: string,
+    field: keyof PartConfig,
+    value: any,
+    saveToDb: boolean = true,
+  ) => {
+    const index = parts.findIndex((p) => p.id === partId);
+    if (index !== -1) {
+      updatePart(index, field, value, saveToDb);
+    }
+  };
+
   const standardPrice = parts.reduce(
     (sum, part) => sum + (part.final_price || 0),
     0,
@@ -1343,10 +1355,6 @@ export default function QuoteConfigPage() {
   const handleCheckout = async () => {
     try {
       setSaving(true);
-      // Ensure all changes are saved before checkout logic if needed
-      if (unsavedChanges.size > 0) {
-        await handleSaveDraft("Quote changes saved successfully", "submitted");
-      }
 
       if (standardPrice < 150) {
         notify.error(
@@ -1363,6 +1371,11 @@ export default function QuoteConfigPage() {
 
       if (!checkFor2DDiagrams()) {
         return;
+      }
+
+      // Ensure all changes are saved before checkout logic if needed
+      if (unsavedChanges.size > 0) {
+        await handleSaveDraft("Quote changes saved successfully", "submitted");
       }
 
       router.push(`/checkout/${quoteId}`);
@@ -2031,6 +2044,8 @@ export default function QuoteConfigPage() {
         isSubmitting={false}
         handleSubmit={handleManualQuote}
         submitLable="Submit Request"
+        parts={parts.filter((part) => part.process === "manual-quote")}
+        updatePart={updatePartById}
       />
 
       <ManualQuoteWarningModal
