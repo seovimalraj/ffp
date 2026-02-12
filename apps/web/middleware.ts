@@ -106,12 +106,9 @@ export async function middleware(request: NextRequest) {
     }
   }
 
-  // Required org_id check (if authenticated)
-  if (authed && !parsedUser.organization_id) {
-    const url = request.nextUrl.clone();
-    url.pathname = "/signin";
-    return NextResponse.redirect(url);
-  }
+  // Note: org_id may be absent for newly registered users who haven't
+  // completed onboarding. Don't redirect them to /signin (creates a loop).
+  // The portal pages themselves handle missing org gracefully.
 
   // Skip static assets
   if (pathname.startsWith("/_next/")) return response;

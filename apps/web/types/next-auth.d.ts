@@ -10,6 +10,7 @@ declare module "next-auth" {
       verified: boolean;
       organizationId: string;
     };
+    accessToken?: string;
     error?: string;
   }
 
@@ -30,6 +31,7 @@ declare module "next-auth/jwt" {
     role: string;
     verified: boolean;
     organizationId: string;
+    accessToken: string;
     refreshToken: string;
     accessTokenExpires: number;
     error?: string;

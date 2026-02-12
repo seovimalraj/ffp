@@ -194,8 +194,8 @@ const authOptions: NextAuthOptions = {
         session.user.role = token.role as string;
         session.user.verified = token.verified as boolean;
         session.user.organizationId = token.organizationId as string;
-        // Include access token in session if needed for API calls
-        (session as any).accessToken = token.accessToken;
+        // Include access token in session for API calls
+        session.accessToken = token.accessToken as string;
       }
       return session;
     },
