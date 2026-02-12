@@ -92,6 +92,9 @@ export class MaterialsController {
   async getMinimalMaterials() {
     const client = this.supbaseService.getClient();
 
+    // Uses MaterialTable (parent "material" table) for minimal name/id lookups,
+    // whereas getMaterials() uses GeneralMaterialsTable which includes pricing
+    // and stock variants joined with categories.
     const { data, error } = await client.from(Tables.MaterialTable).select(`
                 name, id
             `);
@@ -258,6 +261,19 @@ export class MaterialsController {
 
     if (materialError) {
       console.error('Material table insert error:', materialError);
+
+      // Rollback: delete the general_materials rows we just inserted
+      if (generalInsert && generalInsert.length > 0) {
+        const idsToDelete = generalInsert.map((row: any) => row.id);
+        const { error: rollbackError } = await client
+          .from(Tables.GeneralMaterialsTable)
+          .delete()
+          .in('id', idsToDelete);
+
+        if (rollbackError) {
+          console.error('Rollback failed for general_materials:', rollbackError);
+        }
+      }
 
       if (materialError.code === '23505') {
         throw new BadRequestException(

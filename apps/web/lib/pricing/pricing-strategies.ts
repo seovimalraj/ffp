@@ -79,10 +79,12 @@ export class CNCMillingStrategy implements PricingStrategy {
     
     // Adjust for hard-to-machine features
     let adjustment = 1.0;
-    if (geometry.advancedFeatures?.deepHoles) {
-      adjustment += geometry.advancedFeatures.deepHoles.count * 0.02;
+    const deepHoleCount = geometry.advancedFeatures?.holes?.deepHoleCount ?? 0;
+    if (deepHoleCount > 0) {
+      adjustment += deepHoleCount * 0.02;
     }
-    if (geometry.advancedFeatures?.undercuts) {
+    const undercutCount = geometry.advancedFeatures?.undercuts?.count ?? 0;
+    if (undercutCount > 0) {
       adjustment += 0.15; // Undercuts require special tools
     }
     
@@ -110,7 +112,11 @@ export class CNCMillingStrategy implements PricingStrategy {
     }
     
     // Simple rectangular parts can be machined faster
-    if (geometry.complexity === 'simple' && !geometry.advancedFeatures) {
+    // Simple parts with no complex features can be machined faster
+    const hasComplexFeatures = (geometry.advancedFeatures?.undercuts?.count ?? 0) > 0 ||
+      (geometry.advancedFeatures?.threads?.count ?? 0) > 0 ||
+      (geometry.advancedFeatures?.holes?.deepHoleCount ?? 0) > 0;
+    if (geometry.complexity === 'simple' && !hasComplexFeatures) {
       efficiencyBonus = 0.10; // 10% discount
     }
     
@@ -140,7 +146,7 @@ export class CNCMillingStrategy implements PricingStrategy {
     
     // Add time for complex setups
     if (geometry.complexity === 'complex') setupHours += 0.25;
-    if (geometry.advancedFeatures?.requires5Axis) setupHours += 0.5;
+    if (geometry.advancedFeatures?.undercuts?.requires5Axis) setupHours += 0.5;
     
     return setupHours;
   }
@@ -177,10 +183,19 @@ export class SheetMetalStrategy implements PricingStrategy {
     // Material cost per area
     const costPerM2 = (material.thickness * material.density * material.costPerKg) / 1000;
     
-    // Add scrap factor (typically 15-25% for sheet metal)
+    // Add scrap factor (uses nesting data when available, otherwise 15-25%)
     const scrapFactor = this.calculateScrapFactor(geometry);
     
-    return areaM2 * costPerM2 * scrapFactor;
+    // Nesting quantity discount: if we can fit multiple parts per sheet,
+    // the per-part material cost decreases
+    let nestingDiscount = 1;
+    const partsPerSheet = (geometry as any).nesting?.partsPerSheet;
+    if (typeof partsPerSheet === 'number' && partsPerSheet > 1) {
+      // Each additional part on the same sheet saves shared border scrap
+      nestingDiscount = Math.max(0.85, 1 - (partsPerSheet - 1) * 0.02);
+    }
+    
+    return areaM2 * costPerM2 * scrapFactor * nestingDiscount;
   }
 
   calculateLaborCost(geometry: GeometryData, hourlyRate: number): number {
@@ -208,7 +223,7 @@ export class SheetMetalStrategy implements PricingStrategy {
     const baseCost = laborCost * 0.06; // Lower than CNC
     
     // Adjust for bend complexity
-    const bendCount = geometry.sheetMetalFeatures?.bends?.length ?? 0;
+    const bendCount = geometry.sheetMetalFeatures?.bendCount ?? geometry.sheetMetalFeatures?.bends?.length ?? 0;
     const bendComplexity = bendCount > 5 ? 1.2 : 1.0;
     
     return baseCost * bendComplexity;
@@ -219,7 +234,7 @@ export class SheetMetalStrategy implements PricingStrategy {
     let riskPremium = 0;
     let efficiencyBonus = 0;
     
-    const bendCount = geometry.sheetMetalFeatures?.bends?.length ?? 0;
+    const bendCount = geometry.sheetMetalFeatures?.bendCount ?? geometry.sheetMetalFeatures?.bends?.length ?? 0;
     const hasComplexBends = bendCount > 4;
     
     // Multiple bends increase complexity
@@ -228,13 +243,13 @@ export class SheetMetalStrategy implements PricingStrategy {
     }
     
     // Sharp bends or tight tolerances increase risk
-    const hasSharpBends = geometry.sheetMetalFeatures?.bends?.some(b => b.angle < 90 || b.angle > 135);
+    const hasSharpBends = geometry.sheetMetalFeatures?.bends?.some((b: any) => b.angle < 90 || b.angle > 135) ?? false;
     if (hasSharpBends) {
       riskPremium += 0.05;
     }
     
     // Simple flat parts with minimal bends are efficient
-    if (bendCount <= 2 && geometry.complexity === 'simple') {
+    if (bendCount <= 2 && (geometry.sheetMetalFeatures?.complexity === 'simple' || geometry.complexity === 'simple')) {
       efficiencyBonus = 0.12;
     }
     
@@ -249,12 +264,25 @@ export class SheetMetalStrategy implements PricingStrategy {
   private calculateDevelopedArea(geometry: GeometryData): number {
     // Estimate developed (unfolded) surface area
     // For accurate calculation, need bend deduction, but use surface area + 10% for bends
-    const bendFactor = (geometry.sheetMetalFeatures?.bends?.length ?? 0) * 0.02 + 1.0;
+    const bendFactor = (geometry.sheetMetalFeatures?.bendCount ?? geometry.sheetMetalFeatures?.bends?.length ?? 0) * 0.02 + 1.0;
     return geometry.surfaceArea * bendFactor;
   }
 
   private calculateScrapFactor(geometry: GeometryData): number {
-    // Sheet metal scrap depends on nesting efficiency
+    // === USE ACTUAL NESTING DATA WHEN AVAILABLE ===
+    // The backend now sends a utilization_pct from the nesting estimator.
+    // This is far more accurate than a bbox-based guess.
+    const nestingUtilization = (geometry as any).nesting?.utilizationPct;
+    if (typeof nestingUtilization === 'number' && nestingUtilization > 0) {
+      // utilization_pct is 0-100 representing how much of the sheet the part uses
+      // Scrap factor = 1 / (utilization / 100), clamped to [1.05, 1.50]
+      const util = Math.max(10, Math.min(95, nestingUtilization)) / 100;
+      const scrapFactor = Math.min(1.5, Math.max(1.05, 1 / util));
+      console.log(`🔲 Nesting-based scrap factor: ${scrapFactor.toFixed(3)} (utilization: ${nestingUtilization.toFixed(1)}%)`);
+      return scrapFactor;
+    }
+
+    // Fallback: bbox-based estimate when nesting data is unavailable
     const bbox = geometry.boundingBox;
     const area = bbox.x * bbox.y;
     
@@ -275,7 +303,7 @@ export class SheetMetalStrategy implements PricingStrategy {
     const cuttingTime = perimeter / cuttingSpeed; // minutes
     
     // Add time for holes and internal cutouts
-    const holeCount = geometry.partCharacteristics?.holeCount ?? 0;
+    const holeCount = geometry.sheetMetalFeatures?.holeCount ?? geometry.advancedFeatures?.holes?.count ?? 0;
     const pierceTime = holeCount * 0.5; // 30 seconds per hole for pierce
     
     return cuttingTime + pierceTime;
@@ -283,7 +311,7 @@ export class SheetMetalStrategy implements PricingStrategy {
 
   private estimateBendingTime(geometry: GeometryData): number {
     // Bending time = number of bends × time per bend
-    const bendCount = geometry.sheetMetalFeatures?.bends?.length ?? 0;
+    const bendCount = geometry.sheetMetalFeatures?.bendCount ?? geometry.sheetMetalFeatures?.bends?.length ?? 0;
     const timePerBend = 1.5; // minutes per bend (includes positioning)
     
     return bendCount * timePerBend;
@@ -322,8 +350,8 @@ export class CNCTurningStrategy implements PricingStrategy {
     
     // Adjust for complexity (threads, grooves, etc.)
     let complexityFactor = 1.0;
-    if (geometry.advancedFeatures?.threads) complexityFactor += 0.3;
-    if (geometry.advancedFeatures?.undercuts) complexityFactor += 0.4;
+    if ((geometry.advancedFeatures?.threads?.count ?? 0) > 0) complexityFactor += 0.3;
+    if ((geometry.advancedFeatures?.undercuts?.count ?? 0) > 0) complexityFactor += 0.4;
     
     return baseTimeHours * complexityFactor * hourlyRate;
   }

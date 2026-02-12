@@ -7,6 +7,95 @@ import { GeometryData } from "../cad-analysis";
 import { MaterialSpec, SheetMetalMaterialSpec, ProcessConfig, FinishOption, SheetMetalFinish, PricingInput, PricingBreakdown } from "../pricing-engine";
 import { PricingStrategyFactory, ProcessAdjustments } from "./pricing-strategies";
 
+// ---------------------------------------------------------------------------
+// DFM Cost Impact Engine
+// ---------------------------------------------------------------------------
+
+/**
+ * Map DFM analysis results into concrete cost multipliers.
+ *
+ * Severity model:
+ *  • critical issues  → each adds 8-15% to the base cost (special tooling, fixturing, etc.)
+ *  • warning issues   → each adds 3-6% (slower feeds, extra ops)
+ *  • info issues      → no cost impact (suggestions only)
+ *
+ * If the backend DFM overall score is available, apply a smooth curve:
+ *   score 100 → 0% surcharge
+ *   score  50 → ~8% surcharge
+ *   score   0 → ~18% surcharge
+ */
+export interface DFMCostImpact {
+  /** Multiplier to apply to the total direct cost (≥ 1.0) */
+  multiplier: number;
+  /** Breakdown per DFM issue */
+  issueImpacts: { issue: string; severity: string; costImpactPct: number }[];
+  /** Human-readable summary */
+  reasoning: string;
+}
+
+export function calculateDFMCostImpact(geometry: GeometryData): DFMCostImpact {
+  const issues = geometry.dfmIssues ?? [];
+  const dfmAnalysis = (geometry as any).dfmAnalysis;
+
+  const issueImpacts: DFMCostImpact['issueImpacts'] = [];
+
+  let totalPct = 0;
+
+  // --- Per-issue surcharges ---
+  for (const issue of issues) {
+    let pct = 0;
+    switch (issue.severity) {
+      case 'critical':
+        pct = 0.10; // 10% per critical issue
+        break;
+      case 'warning':
+        pct = 0.04; // 4% per warning
+        break;
+      case 'info':
+      default:
+        pct = 0; // no cost impact
+    }
+
+    if (pct > 0) {
+      issueImpacts.push({
+        issue: issue.issue,
+        severity: issue.severity,
+        costImpactPct: pct * 100,
+      });
+      totalPct += pct;
+    }
+  }
+
+  // --- Cap per-issue surcharge at 35% ---
+  totalPct = Math.min(0.35, totalPct);
+
+  // --- Smooth DFM score curve (if available from backend) ---
+  if (dfmAnalysis && typeof dfmAnalysis.overallScore === 'number') {
+    // score 100 → 0%, score 0 → 18%, quadratic curve
+    const score = Math.max(0, Math.min(100, dfmAnalysis.overallScore));
+    const scoreSurcharge = 0.18 * Math.pow((100 - score) / 100, 2);
+    // Blend: take the max of per-issue vs score-based (avoids double-counting)
+    totalPct = Math.max(totalPct, scoreSurcharge);
+  }
+
+  const multiplier = 1 + totalPct;
+
+  const criticalCount = issues.filter(i => i.severity === 'critical').length;
+  const warningCount = issues.filter(i => i.severity === 'warning').length;
+
+  let reasoning = '';
+  if (totalPct === 0) {
+    reasoning = 'No DFM issues affecting cost';
+  } else {
+    const parts: string[] = [];
+    if (criticalCount > 0) parts.push(`${criticalCount} critical`);
+    if (warningCount > 0) parts.push(`${warningCount} warning`);
+    reasoning = `DFM surcharge +${(totalPct * 100).toFixed(1)}% for ${parts.join(', ')} issue(s)`;
+  }
+
+  return { multiplier, issueImpacts, reasoning };
+}
+
 /**
  * Cache for cost calculations to avoid redundant computation
  */
@@ -93,8 +182,16 @@ export class AdvancedCostCalculator {
     const directCosts = materialCost + laborCost + setupCost + finishCost + toolingCost + inspectionCost;
     const overheadCost = directCosts * 0.10;
     
+    // === DFM COST IMPACT ===
+    // Apply DFM surcharge based on manufacturability issues
+    const dfmImpact = calculateDFMCostImpact(input.geometry);
+    const dfmSurcharge = (directCosts * dfmImpact.multiplier) - directCosts; // absolute surcharge
+    if (dfmSurcharge > 0) {
+      console.log(`🔧 DFM impact: +${(dfmSurcharge).toFixed(2)} (${dfmImpact.reasoning})`);
+    }
+    
     // Apply process-specific adjustments
-    const adjustedCosts = directCosts * adjustments.complexityMultiplier;
+    const adjustedCosts = (directCosts + dfmSurcharge) * adjustments.complexityMultiplier;
     const riskPremium = adjustedCosts * adjustments.riskPremium;
     
     // Calculate margin (8% competitive)
@@ -130,7 +227,7 @@ export class AdvancedCostCalculator {
       leadTimeMultiplier: leadTimeMultiplier,
       demandAdjustment: 0,
       complexityRiskPremium: riskPremium * input.quantity,
-      materialDifficultyPremium: 0,
+      materialDifficultyPremium: dfmSurcharge * input.quantity,  // repurpose field for DFM impact
       batchOptimizationBonus: adjustments.efficiencyBonus * subtotal * input.quantity,
       totalPerUnit: total,
       totalPrice: total * input.quantity,

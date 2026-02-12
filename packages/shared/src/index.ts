@@ -34,6 +34,7 @@ export * from './leadtime.types';
 export * from './ai/redaction';
 export * from './ai/prompt-registry';
 export * from "./contants"
+export * from './file-validation';
 export * from './ai/model-registry';
 export * from './ai/prompts/pricing-rationale';
 export {

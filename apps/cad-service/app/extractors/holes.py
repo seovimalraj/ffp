@@ -17,6 +17,7 @@ def extract_holes_from_shape(shape) -> List[HoleFeature]:
         from OCC.Core.TopTools import TopTools_IndexedMapOfShape, TopTools_IndexedDataMapOfShapeListOfShape
         from OCC.Core.gp import gp_Dir, gp_Pnt
     except Exception:
+        print("⚠️ OCC imports unavailable for hole extraction - returning empty")
         return []
 
     face_map = TopTools_IndexedMapOfShape()

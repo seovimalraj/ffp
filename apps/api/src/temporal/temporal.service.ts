@@ -6,30 +6,58 @@ import { ConfigService } from '@nestjs/config';
 export class TemporalService implements OnModuleInit {
   private client: Client;
   private readonly logger = new Logger(TemporalService.name);
+  private isConnected = false;
+  private readonly maxRetries = 5;
+  private readonly baseDelayMs = 1000;
 
-  constructor(private configService: ConfigService) {}
+  constructor(private readonly configService: ConfigService) {}
 
   async onModuleInit() {
+    await this.connectWithRetry();
+  }
+
+  private async connectWithRetry(attempt = 1): Promise<void> {
+    const address = this.configService.get<string>(
+      'TEMPORAL_ADDRESS',
+      this.configService.get<string>('temporal.address', 'localhost:7233'),
+    );
+    const namespace = this.configService.get<string>(
+      'TEMPORAL_NAMESPACE',
+      this.configService.get<string>('temporal.namespace', 'default'),
+    );
+
     try {
-      const connection = await Connection.connect({
-        address: this.configService.get<string>(
-          'temporal.address',
-          '172.17.0.1:7233',
-        ),
-      });
+      const connection = await Connection.connect({ address });
 
-      this.client = new Client({
-        connection,
-        namespace: this.configService.get<string>(
-          'temporal.namespace',
-          'default',
-        ),
-      });
+      this.client = new Client({ connection, namespace });
+      this.isConnected = true;
 
-      this.logger.log('Connected to Temporal');
+      this.logger.log(
+        `Connected to Temporal at ${address} (namespace: ${namespace})`,
+      );
     } catch (error) {
-      this.logger.error('Failed to connect to Temporal:', error.message);
+      this.isConnected = false;
+
+      if (attempt >= this.maxRetries) {
+        this.logger.error(
+          `Failed to connect to Temporal after ${this.maxRetries} attempts: ${error.message}`,
+        );
+        return;
+      }
+
+      const delay = this.baseDelayMs * Math.pow(2, attempt - 1);
+      this.logger.warn(
+        `Temporal connection attempt ${attempt}/${this.maxRetries} failed: ${error.message}. Retrying in ${delay}ms...`,
+      );
+
+      await new Promise((resolve) => setTimeout(resolve, delay));
+      return this.connectWithRetry(attempt + 1);
     }
+  }
+
+  /** Check whether the Temporal client is ready. */
+  isHealthy(): boolean {
+    return this.isConnected && !!this.client;
   }
 
   async startQuoteCreatedWorkflow(data: {

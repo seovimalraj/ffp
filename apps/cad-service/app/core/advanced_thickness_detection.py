@@ -350,7 +350,7 @@ class AdvancedThicknessDetector:
             reasons.append(f"weak dominance ({cluster_dominance:.1f}x)")
         
         # Criterion 4: Consistency (low std dev is good)
-        consistency_ratio = std_dev / thickness if thickness > 0 else 1.0
+        consistency_ratio = std_dev / thickness if thickness > 0.001 else 1.0
         if consistency_ratio <= 0.03:
             confidence += 0.10
             reasons.append("very consistent")
@@ -427,5 +427,7 @@ def enhanced_ray_casting_analysis(mesh, bbox_dims: List[float],
         return result
         
     except Exception as e:
+        import traceback
+        traceback.print_exc()
         detector = AdvancedThicknessDetector(bbox_dims, mesh.area)
-        return detector._no_thickness_result(f"Ray-casting error: {str(e)[:50]}")
+        return detector._no_thickness_result(f"Ray-casting error: {type(e).__name__}: {str(e)[:80]}")

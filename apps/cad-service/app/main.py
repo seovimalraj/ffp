@@ -3,6 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 import os
 
 from .routers import analyze, gltf, health
+from .api import manufacturability_scoring, conversion
 from .workers.celery import celery_app
 from . import otel
 from . import logging_config
@@ -51,6 +52,8 @@ def create_app():
     app.include_router(analyze.router, prefix="/analyze", tags=["analyze"])
     app.include_router(gltf.router, prefix="/gltf", tags=["gltf"])
     app.include_router(health.router, tags=["health"])
+    app.include_router(manufacturability_scoring.router, prefix="/scoring", tags=["scoring"])
+    app.include_router(conversion.router, prefix="/convert", tags=["conversion"])
 
     @app.get("/")
     async def root():

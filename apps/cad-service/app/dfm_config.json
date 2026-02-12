@@ -52,13 +52,154 @@
       "max_hole_depth_ratio": 8.0,
       "max_pocket_depth_ratio": 3.0,
       "min_slot_width_mm": 1.5
+    },
+    "sheet_metal": {
+      "name": "sheet_metal",
+      "min_thickness_mm": 0.5,
+      "max_thickness_mm": 6.0,
+      "min_bend_radius_ratio": 1.0,
+      "max_bend_angle": 180,
+      "min_flange_length_mm": 4.0,
+      "min_hole_to_edge_ratio": 1.0,
+      "min_hole_to_bend_mm": 4.0,
+      "min_relief_width_mm": 1.0,
+      "max_bend_count": 20,
+      "standard_gauges_mm": [0.5, 0.8, 1.0, 1.2, 1.5, 2.0, 2.5, 3.0, 4.0, 5.0, 6.0]
+    },
+    "injection_molding": {
+      "name": "injection_molding",
+      "min_wall_thickness_mm": 1.0,
+      "max_wall_thickness_mm": 6.0,
+      "recommended_wall_mm": 2.5,
+      "min_draft_angle_deg": 1.0,
+      "min_rib_thickness_ratio": 0.5,
+      "max_rib_thickness_ratio": 0.75,
+      "max_rib_height_ratio": 3.0,
+      "min_boss_wall_ratio": 0.6,
+      "max_boss_height_ratio": 2.5,
+      "min_gate_distance_mm": 5.0,
+      "max_flow_length_mm": 300.0,
+      "min_corner_radius_ratio": 0.5,
+      "max_undercut_depth_mm": 3.0,
+      "max_dimensions": {"x": 800, "y": 600, "z": 400}
     }
   },
-  "rules": [],
+  "rules": [
+    {
+      "id": "R001",
+      "name": "min_wall_thickness",
+      "description": "Wall thickness must meet material minimum",
+      "condition": "min_wall < material.min_wall_thickness_mm",
+      "severity": "error",
+      "score_penalty": 10,
+      "applies_to": ["cnc_milling", "cnc_turning", "sheet_metal", "injection_molding"]
+    },
+    {
+      "id": "R002",
+      "name": "max_part_size",
+      "description": "Part must fit within machine envelope",
+      "condition": "any_dim > process.max_travel_mm",
+      "severity": "critical",
+      "score_penalty": 15,
+      "applies_to": ["cnc_milling", "cnc_turning", "injection_molding"]
+    },
+    {
+      "id": "R003",
+      "name": "hole_diameter_min",
+      "description": "Holes must be drillable with standard tools",
+      "condition": "min_hole_dia < material.min_hole_diameter_mm",
+      "severity": "warning",
+      "score_penalty": 5,
+      "applies_to": ["cnc_milling", "cnc_turning"]
+    },
+    {
+      "id": "R004",
+      "name": "deep_hole_limit",
+      "description": "Hole depth-to-diameter ratio within limits",
+      "condition": "hole_depth_ratio > process.max_hole_depth_ratio",
+      "severity": "warning",
+      "score_penalty": 3,
+      "applies_to": ["cnc_milling", "cnc_turning"]
+    },
+    {
+      "id": "R005",
+      "name": "sheet_metal_thickness_range",
+      "description": "Sheet thickness within formable range",
+      "condition": "thickness < process.min_thickness_mm OR thickness > process.max_thickness_mm",
+      "severity": "error",
+      "score_penalty": 10,
+      "applies_to": ["sheet_metal"]
+    },
+    {
+      "id": "R006",
+      "name": "bend_radius_min",
+      "description": "Bend radius must be at least 1× material thickness",
+      "condition": "bend_radius < thickness * process.min_bend_radius_ratio",
+      "severity": "warning",
+      "score_penalty": 5,
+      "applies_to": ["sheet_metal"]
+    },
+    {
+      "id": "R007",
+      "name": "flange_length_min",
+      "description": "Flanges must be long enough for tooling grip",
+      "condition": "flange_length < process.min_flange_length_mm",
+      "severity": "warning",
+      "score_penalty": 5,
+      "applies_to": ["sheet_metal"]
+    },
+    {
+      "id": "R008",
+      "name": "hole_to_edge_distance",
+      "description": "Holes must be far enough from edges",
+      "condition": "hole_edge_dist < hole_dia * process.min_hole_to_edge_ratio",
+      "severity": "warning",
+      "score_penalty": 5,
+      "applies_to": ["sheet_metal", "cnc_milling"]
+    },
+    {
+      "id": "R009",
+      "name": "draft_angle_injection",
+      "description": "All vertical faces need sufficient draft for mold release",
+      "condition": "draft_angle < process.min_draft_angle_deg",
+      "severity": "error",
+      "score_penalty": 8,
+      "applies_to": ["injection_molding"]
+    },
+    {
+      "id": "R010",
+      "name": "wall_uniformity_injection",
+      "description": "Uniform wall thickness prevents sink marks and warping",
+      "condition": "wall_variation > 50%",
+      "severity": "warning",
+      "score_penalty": 5,
+      "applies_to": ["injection_molding"]
+    },
+    {
+      "id": "R011",
+      "name": "undercut_feasibility",
+      "description": "Undercuts require side actions or slide cores",
+      "condition": "undercut_count > 0",
+      "severity": "warning",
+      "score_penalty": 5,
+      "applies_to": ["injection_molding"]
+    },
+    {
+      "id": "R012",
+      "name": "slot_width_min",
+      "description": "Slot width must accommodate tooling",
+      "condition": "slot_width < process.min_slot_width_mm",
+      "severity": "warning",
+      "score_penalty": 3,
+      "applies_to": ["cnc_milling"]
+    }
+  ],
   "global_thresholds": {
     "max_shell_count": 2,
     "min_clamp_area_mm2": 1000,
     "max_web_slenderness": 20.0,
-    "min_thread_diameter_mm": 3.0
+    "min_thread_diameter_mm": 3.0,
+    "min_hole_to_edge_ratio": 1.0,
+    "min_hole_to_bend_thickness_multiple": 2.0
   }
 }

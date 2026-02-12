@@ -104,9 +104,9 @@ def calculate_sheet_metal_score(metrics: GeometricMetrics) -> float:
     
     # PENALTY: High volume efficiency indicates CNC machined solid part
     if metrics.volume_efficiency > 0.7:
-        score -= 30  # Strong penalty - likely CNC machined
+        score -= 35  # Strong penalty - likely CNC machined
     elif metrics.volume_efficiency > 0.6:
-        score -= 15  # Moderate penalty
+        score -= 20  # Moderate penalty
     
     return min(100.0, max(0.0, score))
 

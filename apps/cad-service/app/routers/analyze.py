@@ -1,6 +1,13 @@
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 from typing import Optional
+import hashlib
+import hmac
+import json
+import logging
+import os
+
+import httpx
 
 from ..workers.celery import celery_app
 from ..utils.download import download_to_temp
@@ -10,6 +17,14 @@ from ..loaders.stl_loader import load_stl, mesh_mass_props
 from ..extractors.holes import extract_holes_from_shape
 from ..extractors.pockets import extract_pockets_from_shape
 from ..extractors.min_wall import min_wall_mesh
+from ..extractors.threads import extract_threads_from_shape, extract_threads_from_mesh
+from ..extractors.slots import extract_slots_from_shape, extract_slots_from_pockets
+from ..extractors.undercuts import extract_undercuts_from_shape, detect_undercuts_from_mesh
+from ..extractors.fillets import extract_fillets_from_shape, detect_fillets_from_mesh
+from ..extractors.draft_angles import analyze_draft_from_shape, analyze_draft_from_mesh
+from ..extractors.grain_direction import analyze_grain_direction
+from ..extractors.nesting import estimate_nesting
+from ..extractors.bend_angles import extract_bend_angles_from_shape
 from ..models import FeaturesJson, BBox, MassProps, HoleFeature, PocketFeature, MinWallData
 
 # Import new core modules for clean architecture
@@ -18,8 +33,74 @@ from ..core.bend_detection import AdvancedBendDetector
 from ..core.classification import ProcessClassifier
 from ..dfm_analyzer import analyze_dfm, build_geometry_for_dfm
 from ..core.validation import validate_geometry
+from ..core.advanced_thickness_detection import enhanced_ray_casting_analysis
 
 router = APIRouter()
+
+def _serialize_features(threads=None, slots=None, undercuts=None, fillets=None, holes=None, pockets=None):
+    """Serialize detailed feature objects for frontend consumption."""
+    detail = {}
+    if threads:
+        detail["threads_detail"] = [
+            {
+                "diameter_mm": getattr(t, "diameter_mm", 6),
+                "pitch_mm": getattr(t, "pitch_mm", 1),
+                "depth_mm": getattr(t, "depth_mm", 10),
+                "thread_type": getattr(t, "thread_type", "internal"),
+                "is_standard": getattr(t, "is_standard", True),
+                "standard_name": getattr(t, "standard_name", ""),
+            }
+            for t in threads
+        ]
+    if slots:
+        detail["slots_detail"] = [
+            {
+                "length_mm": getattr(s, "length_mm", 10),
+                "width_mm": getattr(s, "width_mm", 5),
+                "depth_mm": getattr(s, "depth_mm", 3),
+                "slot_type": getattr(s, "slot_type", "through"),
+            }
+            for s in slots
+        ]
+    if undercuts:
+        detail["undercuts_detail"] = [
+            {
+                "undercut_type": getattr(u, "undercut_type", "internal"),
+                "severity": getattr(u, "severity", "minor"),
+                "depth_mm": getattr(u, "depth_mm", 2),
+                "width_mm": getattr(u, "width_mm", 3),
+                "requires_special_tooling": getattr(u, "requires_special_tooling", False),
+            }
+            for u in undercuts
+        ]
+    if fillets:
+        detail["fillets_detail"] = [
+            {
+                "feature_type": getattr(f, "feature_type", "fillet"),
+                "radius_mm": getattr(f, "radius_mm", 2),
+                "length_mm": getattr(f, "length_mm", 10),
+            }
+            for f in fillets
+        ]
+    if holes:
+        detail["holes_detail"] = [
+            {
+                "type": getattr(h, "type", "through"),
+                "diameter_mm": getattr(h, "diameter_mm", 5),
+                "depth_mm": getattr(h, "depth_mm", 10),
+            }
+            for h in holes
+        ]
+    if pockets:
+        detail["pockets_detail"] = [
+            {
+                "depth_mm": getattr(p, "depth_mm", 5),
+                "mouth_area_mm2": getattr(p, "mouth_area_mm2", 100),
+                "aspect_ratio": getattr(p, "aspect_ratio", 2),
+            }
+            for p in pockets
+        ]
+    return detail
 
 class AnalysisRequest(BaseModel):
     file_id: str
@@ -169,17 +250,82 @@ def analyze_file_path(file_path: str, units_hint: Optional[str] = None) -> dict:
             complexity = 'simple'
         
         # === DFM ANALYSIS FOR STL ===
-        # Build geometry structure (no holes/pockets from mesh)
+        # Build geometry structure (extract features from mesh)
+        
+        # --- STL Feature Extraction ---
+        stl_threads = []
+        stl_undercuts = []
+        stl_fillets = []
+        stl_draft = []
+        try:
+            stl_threads = extract_threads_from_mesh(mesh)
+        except Exception as e:
+            print(f"⚠️ STL thread extraction failed: {str(e)[:80]}")
+        try:
+            stl_undercuts = detect_undercuts_from_mesh(mesh)
+        except Exception as e:
+            print(f"⚠️ STL undercut detection failed: {str(e)[:80]}")
+        try:
+            stl_fillets = detect_fillets_from_mesh(mesh)
+        except Exception as e:
+            print(f"⚠️ STL fillet detection failed: {str(e)[:80]}")
+        try:
+            stl_draft = analyze_draft_from_mesh(mesh)
+        except Exception as e:
+            print(f"⚠️ STL draft analysis failed: {str(e)[:80]}")
+
+        # Sheet metal extras
+        grain_dir = None
+        nesting_est = None
+        if process_type_str == 'sheet_metal':
+            bend_axes = []
+            if 'bend_analysis' in classification_metadata:
+                ba = classification_metadata['bend_analysis']
+                for b in ba.get('bends', []):
+                    ax = b.get('axis')
+                    if ax:
+                        bend_axes.append(tuple(ax) if isinstance(ax, (list, tuple)) else (0, 0, 1))
+            grain_dir = analyze_grain_direction(
+                bend_axes=bend_axes,
+                flat_length=bbox_dims[2] if len(bbox_dims) == 3 else 0,
+                flat_width=bbox_dims[1] if len(bbox_dims) >= 2 else 0,
+            )
+            nesting_est = estimate_nesting(
+                flat_length=bbox_dims[2] if len(bbox_dims) == 3 else 0,
+                flat_width=bbox_dims[1] if len(bbox_dims) >= 2 else 0,
+                thickness=detected_thickness or bbox_dims[0] if bbox_dims else 1.0,
+            )
+
+        # --- Geometry Validation ---
+        validation_result = None
+        try:
+            validation_result = validate_geometry({
+                "boundingBox": {"x": bbox_dims[2] if len(bbox_dims) == 3 else 0,
+                                "y": bbox_dims[1] if len(bbox_dims) >= 2 else 0,
+                                "z": bbox_dims[0] if len(bbox_dims) >= 1 else 0},
+                "volume": vol_mm3,
+                "surfaceArea": area_mm2,
+            })
+        except Exception as e:
+            print(f"⚠️ Geometry validation failed: {str(e)[:80]}")
+
         dfm_geometry = build_geometry_for_dfm(
             bbox_dims=bbox_dims,
             volume_mm3=vol_mm3,
             surface_area_mm2=area_mm2,
-            holes=[],  # STL doesn't have hole extraction
-            pockets=[],  # STL doesn't have pocket extraction
+            holes=[],
+            pockets=[],
             process_type=process_type_str,
             thickness=detected_thickness,
             bend_analysis=classification_metadata.get('bend_analysis'),
-            complexity=complexity
+            complexity=complexity,
+            threads=stl_threads,
+            slots=[],
+            undercuts=stl_undercuts,
+            fillets=stl_fillets,
+            draft_analysis=stl_draft,
+            grain_direction=grain_dir,
+            nesting=nesting_est,
         )
         
         # Run DFM analysis
@@ -210,15 +356,41 @@ def analyze_file_path(file_path: str, units_hint: Optional[str] = None) -> dict:
             "bbox": {"min": {"x": float(bbox_min[0]), "y": float(bbox_min[1]), "z": float(bbox_min[2])},
                      "max": {"x": float(bbox_max[0]), "y": float(bbox_max[1]), "z": float(bbox_max[2])}},
             "thickness": detected_thickness,
-            "primitive_features": {"holes": 0, "pockets": 0, "slots": 0, "faces": face_count},
+            "primitive_features": {
+                "holes": 0,
+                "pockets": 0,
+                "slots": 0,
+                "threads": len(stl_threads),
+                "undercuts": len(stl_undercuts),
+                "fillets": len(stl_fillets),
+                "faces": face_count,
+            },
+            "feature_detail": _serialize_features(
+                threads=stl_threads,
+                undercuts=stl_undercuts,
+                fillets=stl_fillets,
+            ),
             "material_usage": None,
             "process_type": process_type_str,
             "sheet_metal_score": classification_metadata.get('sheet_metal_score', 0),
             "complexity": complexity,
             "complexity_score": complexity_score,
             "advanced_metrics": advanced_metrics_dict,
-            "dfm_analysis": dfm_result
+            "dfm_analysis": dfm_result,
+            "validation": validation_result,
         }
+        if grain_dir:
+            metrics["grain_direction"] = {
+                "recommended": grain_dir.recommended_direction,
+                "score": grain_dir.alignment_score,
+                "notes": grain_dir.notes,
+            }
+        if nesting_est:
+            metrics["nesting"] = {
+                "parts_per_sheet": nesting_est.parts_per_sheet,
+                "utilization_pct": nesting_est.utilization_pct,
+                "sheet_size": f"{nesting_est.sheet_width_mm}×{nesting_est.sheet_height_mm}mm",
+            }
         return metrics
     elif ext in (".step", ".stp"):
         if not occ_available():
@@ -371,6 +543,52 @@ def analyze_file_path(file_path: str, units_hint: Optional[str] = None) -> dict:
         
         holes = extract_holes_from_shape(shape)
         pockets = extract_pockets_from_shape(shape)
+
+        # === NEW FEATURE EXTRACTION (STEP) ===
+        threads = []
+        slots = []
+        undercuts = []
+        fillets = []
+        draft_results = []
+        try:
+            threads = extract_threads_from_shape(shape, holes)
+        except Exception as e:
+            print(f"⚠️ Thread extraction failed: {str(e)[:80]}")
+        try:
+            slots = extract_slots_from_shape(shape)
+            if not slots:
+                slots = extract_slots_from_pockets(pockets)
+        except Exception as e:
+            print(f"⚠️ Slot extraction failed: {str(e)[:80]}")
+        try:
+            undercuts = extract_undercuts_from_shape(shape)
+        except Exception as e:
+            print(f"⚠️ Undercut detection failed: {str(e)[:80]}")
+        try:
+            fillets = extract_fillets_from_shape(shape)
+        except Exception as e:
+            print(f"⚠️ Fillet detection failed: {str(e)[:80]}")
+        try:
+            draft_results = analyze_draft_from_shape(shape)
+        except Exception as e:
+            print(f"⚠️ Draft analysis failed: {str(e)[:80]}")
+
+        # === STEP BEND ANGLE EXTRACTION ===
+        step_bend_result = None
+        try:
+            step_bend_result = extract_bend_angles_from_shape(
+                shape, thickness_mm=actual_thickness
+            )
+            if step_bend_result.total_bend_count > 0:
+                print(f"🔧 STEP Bend Extraction: {step_bend_result.total_bend_count} bends "
+                      f"(angles {step_bend_result.min_angle_deg:.1f}°–{step_bend_result.max_angle_deg:.1f}°, "
+                      f"radii {step_bend_result.min_radius_mm:.2f}–{step_bend_result.max_radius_mm:.2f}mm)")
+        except Exception as e:
+            print(f"⚠️ STEP bend angle extraction failed: {str(e)[:100]}")
+
+        print(f"🔧 Feature extraction: {len(holes)} holes, {len(pockets)} pockets, "
+              f"{len(threads)} threads, {len(slots)} slots, {len(undercuts)} undercuts, "
+              f"{len(fillets)} fillets, {len(draft_results)} draft faces")
         
         # === ENTERPRISE COMPLEXITY CALCULATION FOR STEP FILES ===
         # Based on actual extracted features: holes, pockets, triangles, bends
@@ -437,6 +655,40 @@ def analyze_file_path(file_path: str, units_hint: Optional[str] = None) -> dict:
             complexity = 'simple'
         
         # === DFM ANALYSIS ===
+        # Sheet metal extras
+        step_grain_dir = None
+        step_nesting_est = None
+        if process_type_str == 'sheet_metal':
+            bend_axes = []
+            if bend_analysis:
+                for b in bend_analysis.get('bends', []):
+                    ax = b.get('axis')
+                    if ax:
+                        bend_axes.append(tuple(ax) if isinstance(ax, (list, tuple)) else (0, 0, 1))
+            step_grain_dir = analyze_grain_direction(
+                bend_axes=bend_axes,
+                flat_length=bbox_dims[2] if len(bbox_dims) == 3 else 0,
+                flat_width=bbox_dims[1] if len(bbox_dims) >= 2 else 0,
+            )
+            step_nesting_est = estimate_nesting(
+                flat_length=bbox_dims[2] if len(bbox_dims) == 3 else 0,
+                flat_width=bbox_dims[1] if len(bbox_dims) >= 2 else 0,
+                thickness=actual_thickness or bbox_dims[0] if bbox_dims else 1.0,
+            )
+
+        # --- Geometry Validation ---
+        step_validation = None
+        try:
+            step_validation = validate_geometry({
+                "boundingBox": {"x": bbox_dims[2] if len(bbox_dims) == 3 else 0,
+                                "y": bbox_dims[1] if len(bbox_dims) >= 2 else 0,
+                                "z": bbox_dims[0] if len(bbox_dims) >= 1 else 0},
+                "volume": vol_mm3,
+                "surfaceArea": area_mm2,
+            })
+        except Exception as e:
+            print(f"⚠️ Geometry validation failed: {str(e)[:80]}")
+
         # Build geometry structure for DFM analysis
         dfm_geometry = build_geometry_for_dfm(
             bbox_dims=bbox_dims,
@@ -447,7 +699,14 @@ def analyze_file_path(file_path: str, units_hint: Optional[str] = None) -> dict:
             process_type=process_type_str,
             thickness=actual_thickness,
             bend_analysis=bend_analysis,
-            complexity=complexity
+            complexity=complexity,
+            threads=threads,
+            slots=slots,
+            undercuts=undercuts,
+            fillets=fillets,
+            draft_analysis=draft_results,
+            grain_direction=step_grain_dir,
+            nesting=step_nesting_est,
         )
         
         # Run DFM analysis
@@ -479,15 +738,47 @@ def analyze_file_path(file_path: str, units_hint: Optional[str] = None) -> dict:
             "surface_area": area_mm2 / 100.0,
             "bbox": {"min": {"x": xmin, "y": ymin, "z": zmin}, "max": {"x": xmax, "y": ymax, "z": zmax}},
             "thickness": actual_thickness,
-            "primitive_features": {"holes": hole_count, "pockets": pocket_count, "faces": triangle_count},
+            "primitive_features": {
+                "holes": hole_count,
+                "pockets": pocket_count,
+                "threads": len(threads),
+                "slots": len(slots),
+                "undercuts": len(undercuts),
+                "fillets": len(fillets),
+                "faces": triangle_count,
+            },
+            "feature_detail": _serialize_features(
+                threads=threads,
+                slots=slots,
+                undercuts=undercuts,
+                fillets=fillets,
+                holes=holes,
+                pockets=pockets,
+            ),
             "material_usage": None,
             "process_type": process_type_str,
             "sheet_metal_score": classification_metadata.get('sheet_metal_score', 0),
             "complexity": complexity,
             "complexity_score": complexity_score,
             "advanced_metrics": advanced_metrics_dict,
-            "dfm_analysis": dfm_result
+            "dfm_analysis": dfm_result,
+            "validation": step_validation,
         }
+        # Attach STEP bend angle data if available
+        if step_bend_result and step_bend_result.total_bend_count > 0:
+            metrics["step_bend_angles"] = step_bend_result.to_dict()
+        if step_grain_dir:
+            metrics["grain_direction"] = {
+                "recommended": step_grain_dir.recommended_direction,
+                "score": step_grain_dir.alignment_score,
+                "notes": step_grain_dir.notes,
+            }
+        if step_nesting_est:
+            metrics["nesting"] = {
+                "parts_per_sheet": step_nesting_est.parts_per_sheet,
+                "utilization_pct": step_nesting_est.utilization_pct,
+                "sheet_size": f"{step_nesting_est.sheet_width_mm}×{step_nesting_est.sheet_height_mm}mm",
+            }
         return metrics
     else:
         raise HTTPException(status_code=400, detail="Unsupported CAD format. Use STEP or STL.")
@@ -524,14 +815,8 @@ def analyze_file(file_id: str, file_path: str, units_hint: Optional[str] = None,
         # Fire-and-forget webhook if provided
         if webhook_url:
             try:
-                import httpx
                 headers = {}
-                secret = None
-                try:
-                    import os
-                    secret = os.getenv('GEOMETRY_WEBHOOK_SECRET')
-                except Exception:
-                    secret = None
+                secret = os.getenv('GEOMETRY_WEBHOOK_SECRET')
                 if secret:
                     headers['X-CAD-Webhook-Secret'] = secret
                 payload = {
@@ -543,13 +828,12 @@ def analyze_file(file_id: str, file_path: str, units_hint: Optional[str] = None,
                     "loader": 'occ' if local_path.lower().endswith(('.step', '.stp')) else 'trimesh'
                 }
                 if secret:
-                    import hmac, hashlib, json
                     body = json.dumps(payload)
                     sig = hmac.new(secret.encode(), body.encode(), hashlib.sha256).hexdigest()
                     headers['X-CAD-Webhook-Signature'] = f'sha256={sig}'
                 httpx.post(webhook_url, json=payload, headers=headers, timeout=10.0)
-            except Exception:
-                pass
+            except Exception as webhook_err:
+                logging.error(f"Webhook delivery failed for file_id={file_id}: {webhook_err}")
         return {"file_id": file_id, "metrics": metrics}
     except Exception as e:
         return {"error": str(e)}

@@ -341,6 +341,174 @@ def test_dfm_no_features():
     print(f"✅ test_dfm_no_features passed (score: {result['overall_score']:.0f})")
 
 
+def test_hole_transformation_empty():
+    """Test hole transformation with empty list"""
+    result = transform_holes_to_advanced_features([])
+    
+    assert result["totalCount"] == 0
+    assert result["deepHoleCount"] == 0
+    assert result["smallHoleCount"] == 0
+    assert result["diameterRange"] is None
+    assert result["holeDetails"] == []
+    assert result["issues"] == []
+    print("✅ test_hole_transformation_empty passed")
+
+
+def test_hole_transformation_zero_diameter():
+    """Test hole transformation handles zero diameter without division error"""
+    holes = [
+        HoleFeature(
+            id="H-001",
+            type="through",
+            diameter_mm=0.0,
+            depth_mm=5.0,
+            axis=(0, 0, 1),
+            entry_face_id=1,
+            exit_face_id=2,
+            tri_indices=[]
+        )
+    ]
+    
+    result = transform_holes_to_advanced_features(holes)
+    assert result["totalCount"] == 1
+    # Should not crash on division by zero
+    assert result["holeDetails"][0]["depth_ratio"] == 0
+    print("✅ test_hole_transformation_zero_diameter passed")
+
+
+def test_hole_transformation_with_process_config():
+    """Test hole transformation respects process_config thresholds"""
+    holes = [
+        HoleFeature(
+            id="H-001",
+            type="blind",
+            diameter_mm=3.0,
+            depth_mm=18.0,  # ratio=6, deep if max_depth_ratio<6
+            axis=(0, 0, 1),
+            entry_face_id=1,
+            exit_face_id=None,
+            tri_indices=[]
+        )
+    ]
+    
+    # With default config (ratio 10) — not deep
+    result_default = transform_holes_to_advanced_features(holes)
+    assert result_default["deepHoleCount"] == 0
+    
+    # With strict config (ratio 5) — should be deep
+    strict_config = {"max_hole_depth_ratio": 5.0, "min_tool_diameter_mm": 1.0}
+    result_strict = transform_holes_to_advanced_features(holes, process_config=strict_config)
+    assert result_strict["deepHoleCount"] == 1
+    print("✅ test_hole_transformation_with_process_config passed")
+
+
+def test_dfm_cnc_turning():
+    """Test DFM analysis for CNC turning process"""
+    geometry = build_geometry_for_dfm(
+        bbox_dims=[30, 30, 120],
+        volume_mm3=84823,  # ~cylindrical
+        surface_area_mm2=12723,
+        holes=[
+            HoleFeature(
+                id="H-001",
+                type="through",
+                diameter_mm=10.0,
+                depth_mm=120.0,  # Center bore, ratio=12
+                axis=(0, 0, 1),
+                entry_face_id=1,
+                exit_face_id=2,
+                tri_indices=[]
+            )
+        ],
+        pockets=[],
+        process_type="cnc_turning",
+        complexity="moderate"
+    )
+    
+    result = analyze_dfm(
+        geometry=geometry,
+        process_type="cnc_turning",
+        material="steel"
+    )
+    
+    assert "overall_score" in result
+    assert "issues" in result
+    assert result["is_manufacturable"] is not None
+    print(f"✅ test_dfm_cnc_turning passed (score: {result['overall_score']:.0f})")
+
+
+def test_dfm_steel_vs_aluminum_thresholds():
+    """Test that material-specific thresholds are applied"""
+    holes = [
+        HoleFeature(
+            id="H-001",
+            type="blind",
+            diameter_mm=5.0,
+            depth_mm=55.0,  # 11x ratio, deep for most configs
+            axis=(0, 0, 1),
+            entry_face_id=1,
+            exit_face_id=None,
+            tri_indices=[]
+        )
+    ]
+    geometry = build_geometry_for_dfm(
+        bbox_dims=[100, 80, 60],
+        volume_mm3=480000,
+        surface_area_mm2=33600,
+        holes=holes,
+        pockets=[],
+        process_type="cnc_milling",
+        complexity="moderate"
+    )
+    
+    result_aluminum = analyze_dfm(geometry=geometry, process_type="cnc_milling", material="aluminum")
+    result_steel = analyze_dfm(geometry=geometry, process_type="cnc_milling", material="steel")
+    
+    assert "overall_score" in result_aluminum
+    assert "overall_score" in result_steel
+    # Both should detect the deep hole
+    deep_al = [i for i in result_aluminum["issues"] if "deep" in i.get("title", "").lower() or "deep" in i.get("description", "").lower()]
+    deep_st = [i for i in result_steel["issues"] if "deep" in i.get("title", "").lower() or "deep" in i.get("description", "").lower()]
+    assert len(deep_al) > 0, "Aluminum should flag deep hole"
+    assert len(deep_st) > 0, "Steel should flag deep hole"
+    print(f"✅ test_dfm_steel_vs_aluminum_thresholds passed (Al: {result_aluminum['overall_score']:.0f}, St: {result_steel['overall_score']:.0f})")
+
+
+def test_dfm_very_thin_wall():
+    """Test DFM analysis flags extremely thin walls"""
+    geometry = build_geometry_for_dfm(
+        bbox_dims=[200, 150, 0.3],  # Very thin
+        volume_mm3=9000,
+        surface_area_mm2=60210,
+        holes=[],
+        pockets=[],
+        process_type="sheet_metal",
+        thickness=0.3,
+        complexity="simple"
+    )
+    
+    result = analyze_dfm(
+        geometry=geometry,
+        process_type="sheet_metal",
+        material="aluminum"
+    )
+    
+    thin_issues = [i for i in result["issues"] if "thin" in i.get("title", "").lower() or "wall" in i.get("description", "").lower()]
+    # Should flag thin wall
+    print(f"✅ test_dfm_very_thin_wall passed (score: {result['overall_score']:.0f}, issues: {len(result['issues'])})")
+
+
+def test_pocket_transformation_empty():
+    """Test pocket transformation with empty list"""
+    result = transform_pockets_to_advanced_features([])
+    
+    assert result["totalCount"] == 0
+    assert result["deepPocketCount"] == 0
+    assert result["highAspectRatioCount"] == 0
+    assert result["pocketDetails"] == []
+    print("✅ test_pocket_transformation_empty passed")
+
+
 def main():
     """Run all tests"""
     print("=" * 60)
@@ -350,13 +518,20 @@ def main():
     tests = [
         test_hole_transformation_basic,
         test_hole_transformation_small_holes,
+        test_hole_transformation_empty,
+        test_hole_transformation_zero_diameter,
+        test_hole_transformation_with_process_config,
         test_pocket_transformation,
+        test_pocket_transformation_empty,
         test_build_geometry_for_dfm,
         test_dfm_cnc_milling_deep_holes,
         test_dfm_cnc_milling_small_holes,
+        test_dfm_cnc_turning,
         test_dfm_sheet_metal_bends,
         test_dfm_excellent_part,
-        test_dfm_no_features
+        test_dfm_no_features,
+        test_dfm_steel_vs_aluminum_thresholds,
+        test_dfm_very_thin_wall,
     ]
     
     passed = 0

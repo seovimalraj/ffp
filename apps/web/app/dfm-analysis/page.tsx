@@ -16,7 +16,11 @@ import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Progress } from "@/components/ui/progress";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { ContractsVNext } from "@cnc-quote/shared";
+import {
+  ContractsVNext,
+  ACCEPTED_FILE_TYPES,
+  ACCEPTED_FILE_EXTENSIONS as FILE_EXTENSIONS,
+} from "@cnc-quote/shared";
 import {
   UploadPresignSchema,
   type UploadPresign,
@@ -54,37 +58,6 @@ interface FormData {
   criticality: string;
   notes: string;
 }
-
-const ACCEPTED_FILE_TYPES = [
-  "application/step",
-  "application/x-step",
-  "application/iges",
-  "application/x-iges",
-  "application/sldprt",
-  "model/x-t",
-  "model/x-b",
-  "application/x-jt",
-  "model/3mf",
-  "image/vnd.dxf",
-  "application/vnd.ms-pki.stl",
-  "application/zip",
-  "application/x-zip-compressed",
-];
-
-const FILE_EXTENSIONS = [
-  ".step",
-  ".stp",
-  ".iges",
-  ".igs",
-  ".sldprt",
-  ".x_t",
-  ".x_b",
-  ".jt",
-  ".3mf",
-  ".dxf",
-  ".stl",
-  ".zip",
-];
 
 const EMPTY_OPTIONS: DFMOptions = {
   tolerances: [],
@@ -389,19 +362,29 @@ export default function DFMAnalysisPage() {
       setUploadProgress(0);
 
       // Request an upload presign payload
-      const uploadResponse = await fetch("/api/dfm/presign", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          fileName: formData.cadFile.name,
-          contentType: formData.cadFile.type,
-          size: formData.cadFile.size,
-          byteLength: formData.cadFile.size,
-        }),
-      });
+      let uploadResponse: Response;
+      try {
+        uploadResponse = await fetch("/api/dfm/presign", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            fileName: formData.cadFile.name,
+            contentType: formData.cadFile.type,
+            size: formData.cadFile.size,
+            byteLength: formData.cadFile.size,
+          }),
+        });
+      } catch (networkErr) {
+        throw new Error(
+          "Network error while preparing upload. Please check your connection and try again.",
+        );
+      }
 
       if (!uploadResponse.ok) {
-        throw new Error("Failed to prepare file upload");
+        const errorBody = await uploadResponse.text().catch(() => "");
+        throw new Error(
+          `Failed to prepare file upload (${uploadResponse.status}): ${errorBody || "Server error"}`,
+        );
       }
 
       const uploadPayload = await uploadResponse.json();
@@ -414,26 +397,42 @@ export default function DFMAnalysisPage() {
       }
 
       // Upload file with progress tracking
-      await uploadFileWithProgress(formData.cadFile, presign);
+      try {
+        await uploadFileWithProgress(formData.cadFile, presign);
+      } catch (uploadErr) {
+        throw new Error(
+          `File upload failed: ${uploadErr instanceof Error ? uploadErr.message : "Unknown upload error"}`,
+        );
+      }
 
       // Create DFM request
-      const dfmResponse = await fetch("/api/dfm/requests", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          fileId,
-          materialId: formData.materialId,
-          tolerancePack: formData.tolerancePack,
-          surfaceFinish: formData.surfaceFinish,
-          industry: formData.industry,
-          certifications: formData.certifications,
-          criticality: formData.criticality,
-          notes: formData.notes,
-        }),
-      });
+      let dfmResponse: Response;
+      try {
+        dfmResponse = await fetch("/api/dfm/requests", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            fileId,
+            materialId: formData.materialId,
+            tolerancePack: formData.tolerancePack,
+            surfaceFinish: formData.surfaceFinish,
+            industry: formData.industry,
+            certifications: formData.certifications,
+            criticality: formData.criticality,
+            notes: formData.notes,
+          }),
+        });
+      } catch (networkErr) {
+        throw new Error(
+          "Network error while creating DFM request. Your file was uploaded but the analysis request could not be started.",
+        );
+      }
 
       if (!dfmResponse.ok) {
-        throw new Error("DFM request creation failed");
+        const errorBody = await dfmResponse.text().catch(() => "");
+        throw new Error(
+          `DFM request creation failed (${dfmResponse.status}): ${errorBody || "Server error"}`,
+        );
       }
 
       const { requestId } = await dfmResponse.json();

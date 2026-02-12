@@ -144,8 +144,57 @@ def load_step_tri_mesh(path: str, deflection: float):
 
 @celery_app.task
 def convert_to_gltf(file_id: str, file_path: str):
-    # Conversion disabled until OCC dependencies are available in production environments.
-    return {"error": "GLTF conversion currently unavailable"}
+    """Convert STEP/STL to GLB format for 3D preview."""
+    import tempfile
+    try:
+        ext = os.path.splitext(file_path)[1].lower()
+
+        if ext in (".stl",):
+            mesh = load_stl(file_path)
+            glb_bytes = mesh.export(file_type="glb")
+            out_path = file_path.rsplit(".", 1)[0] + ".glb"
+            with open(out_path, "wb") as f:
+                f.write(glb_bytes)
+            return {"file_id": file_id, "gltf_url": out_path}
+
+        if ext in (".step", ".stp"):
+            try:
+                from ..loaders.step_loader import occ_available, load_step_shape
+                if not occ_available():
+                    raise RuntimeError("OCC not available")
+                shape = load_step_shape(file_path)
+                from OCC.Core.BRepMesh import BRepMesh_IncrementalMesh
+                BRepMesh_IncrementalMesh(shape, 0.1, True, 0.5, True)
+                from OCC.Extend.DataExchange import write_stl_file
+                fd, tmp_stl = tempfile.mkstemp(suffix=".stl")
+                os.close(fd)
+                try:
+                    write_stl_file(shape, tmp_stl, mode="binary",
+                                   linear_deflection=0.1, angular_deflection=0.5)
+                    mesh = load_stl(tmp_stl)
+                    glb_bytes = mesh.export(file_type="glb")
+                    out_path = file_path.rsplit(".", 1)[0] + ".glb"
+                    with open(out_path, "wb") as f:
+                        f.write(glb_bytes)
+                    return {"file_id": file_id, "gltf_url": out_path}
+                finally:
+                    if os.path.exists(tmp_stl):
+                        os.unlink(tmp_stl)
+            except ImportError:
+                # Fallback: try trimesh import of STEP (limited)
+                import trimesh
+                mesh = trimesh.load(file_path)
+                if hasattr(mesh, "export"):
+                    glb_bytes = mesh.export(file_type="glb")
+                    out_path = file_path.rsplit(".", 1)[0] + ".glb"
+                    with open(out_path, "wb") as f:
+                        f.write(glb_bytes)
+                    return {"file_id": file_id, "gltf_url": out_path}
+                return {"error": "STEP conversion requires pythonOCC"}
+
+        return {"error": f"Unsupported format: {ext}"}
+    except Exception as e:
+        return {"error": f"GLTF conversion failed: {str(e)[:200]}"}
 
 
 @router.post("/{file_id}", response_model=GltfResponse)

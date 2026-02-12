@@ -296,6 +296,22 @@ export interface GeometryData {
     recommendations: string[];
     costOptimizations: string[];
   };
+  
+  // === SHEET METAL SPECIFIC BACKEND DATA ===
+  grainDirection?: {
+    recommended: string;
+    score: number;
+    notes: string[];
+  };
+  nesting?: {
+    partsPerSheet: number;
+    utilizationPct: number;
+    sheetSize: string;
+  };
+  
+  // === ADDITIONAL BACKEND DATA ===
+  validation?: Record<string, any>;
+  complexityScore?: number; // Numeric complexity score (0-100)
 }
 
 /**

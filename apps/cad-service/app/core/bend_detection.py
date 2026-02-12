@@ -164,7 +164,7 @@ class AdvancedBendDetector:
                 'evidence': f"U-bracket geometry detected (AR: {aspect_ratio:.1f})"
             })
             bend_count = max(bend_count, 2)
-            bend_angles.extend([90, 90])  # Two 90° bends
+            bend_angles.extend([90.0, 90.0])  # Two 90° bends
             bend_regions.append({
                 'type': 'U-bracket',
                 'bend_line_1': 'along_length',
@@ -180,7 +180,7 @@ class AdvancedBendDetector:
                 'evidence': "L-bracket geometry detected"
             })
             bend_count = max(bend_count, 1)
-            bend_angles.append(90)
+            bend_angles.append(90.0)
             bend_regions.append({
                 'type': 'L-bracket',
                 'bend_line': 'along_length'
@@ -191,7 +191,7 @@ class AdvancedBendDetector:
         if triangle_count > 0 and self.min_dim < 6:
             triangles_per_area = triangle_count / max(self.surface_area_mm2, 1)
             
-            if triangles_per_area > 0.5:  # High triangle density
+            if triangles_per_area > 1.0:  # High triangle density (raised from 0.5 to reduce false positives)
                 bend_indicators.append({
                     'method': 'mesh_complexity',
                     'confidence': 0.5,
@@ -231,18 +231,35 @@ class AdvancedBendDetector:
             overall_confidence = 0.0
             is_likely_bent = False
         else:
-            # Weighted average of indicator confidences
-            total_confidence = sum(ind['confidence'] for ind in bend_indicators)
-            overall_confidence = total_confidence / len(bend_indicators)
+            # Weighted confidence: stronger methods contribute more
+            weight_map = {
+                'thickness_discrepancy': 3.0,
+                'dimension_ratio': 1.5,
+                'volume_hollowness': 1.5,
+                'surface_excess': 1.0,
+                'u_bracket_pattern': 2.0,
+                'l_bracket_pattern': 1.5,
+                'mesh_complexity': 0.5,
+                'flange_detection': 0.8,
+                'relief_cut_inference': 0.5,
+            }
+            weighted_sum = sum(
+                ind['confidence'] * weight_map.get(str(ind['method']), 1.0)
+                for ind in bend_indicators
+            )
+            total_weight = sum(
+                weight_map.get(str(ind['method']), 1.0)
+                for ind in bend_indicators
+            )
+            overall_confidence = weighted_sum / total_weight if total_weight > 0 else 0.0
             
             # High confidence if multiple strong indicators
             if has_thickness_discrepancy and is_hollow:
                 overall_confidence = min(0.95, overall_confidence + 0.2)
             
-            # LOWERED THRESHOLD: More lenient detection
-            # Any bend with reasonable confidence should be flagged
-            is_likely_bent = (overall_confidence > 0.4 and bend_count > 0) or \
-                            (bend_count >= 2) or \
+            # Threshold raised to 0.55 to reduce false positives on CNC parts
+            is_likely_bent = (overall_confidence > 0.55 and bend_count > 0) or \
+                            (bend_count >= 2 and overall_confidence > 0.45) or \
                             (has_thickness_discrepancy and self.aspect_ratio > 8)
         
         # === COMPLEXITY SCORE ===
@@ -254,7 +271,7 @@ class AdvancedBendDetector:
         
         # Default bend angles if not detected
         if bend_count > 0 and not bend_angles:
-            bend_angles = [90] * min(bend_count, 5)  # Default to 90° bends
+            bend_angles = [90.0] * min(bend_count, 5)  # Default to 90° bends
         
         return BendAnalysis(
             bend_count=bend_count,

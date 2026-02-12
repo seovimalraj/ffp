@@ -156,7 +156,22 @@ function transformBackendGeometry(backendData: any, fileName: string): any {
   const isLikelyBent = bendAnalysis.is_likely_bent || false;
   const bendComplexity = bendAnalysis.complexity || 0;
   
-  console.log('🔧 Bend Analysis:', { bendCount, isLikelyBent, bendConfidence, bendComplexity });
+  // === STEP BEND ANGLES (high-fidelity, from pythonOCC face-pair analysis) ===
+  const stepBendAngles = backendData.step_bend_angles || null;
+  const hasStepBendData = stepBendAngles && stepBendAngles.total_bend_count > 0;
+  const actualBendCount = hasStepBendData ? stepBendAngles.total_bend_count : bendCount;
+  
+  if (hasStepBendData) {
+    console.log('🔧 STEP Bend Angles (high-fidelity):', {
+      count: stepBendAngles.total_bend_count,
+      angles: `${stepBendAngles.min_angle_deg}°–${stepBendAngles.max_angle_deg}°`,
+      radii: `${stepBendAngles.min_radius_mm}–${stepBendAngles.max_radius_mm}mm`,
+      hasAcute: stepBendAngles.has_acute_bends,
+      hasObtuse: stepBendAngles.has_obtuse_bends,
+    });
+  }
+  
+  console.log('🔧 Bend Analysis:', { bendCount: actualBendCount, isLikelyBent, bendConfidence, bendComplexity });
 
   // Map backend process type to frontend format
   const processMap: Record<string, string> = {
@@ -284,14 +299,24 @@ function transformBackendGeometry(backendData: any, fileName: string): any {
     },
     
     advancedFeatures: {
-      ribs: { count: 0, minThickness: 2, locations: [], deflectionRisk: 'low' },
+      ribs: { count: 0, avgThickness: 2, minThickness: 2, thinRibCount: 0, deflectionRisk: 'low' as const },
       holes: extractHoleFeatures(backendData),
-      bosses: { count: backendData.primitive_features?.bosses || 0, locations: [] },
-      fillets: { count: 0, avgRadius: 2, missingCount: 0 },
+      bosses: { count: backendData.primitive_features?.bosses || 0, avgHeight: 5, maxAspectRatio: 2, requiresThreading: false, requiresReaming: false },
+      fillets: {
+        count: backendData.primitive_features?.fillets || 0,
+        avgRadius: 2,
+        minRadius: 1,
+        missingFilletCount: 0,
+        stressConcentrationRisk: 0,
+        blendRadiusCount: 0
+      },
       pockets: extractPocketFeatures(backendData),
-      threads: { count: 0, specs: [] },
-      undercuts: { count: 0, severity: 'none' as const },
-      thinWalls: { count: 0, minThickness: detectedThickness || 2, locations: [] }
+      threads: extractThreadFeatures(backendData),
+      undercuts: extractUndercutFeatures(backendData),
+      chamfers: { count: 0, avgSize: 1, deburringRequired: false },
+      thinWalls: { count: 0, minThickness: detectedThickness || 2, avgThickness: detectedThickness || 2, risk: 'low' as const, requiresSupportFixture: false },
+      toolAccess: { restrictedAreas: 0, requiresIndexing: false, requiresMultiAxisMachining: false, estimatedSetupCount: 1, axisCounts: { '3-axis': 1, '4-axis': 0, '5-axis': 0 }, specialFixturingNeeded: false },
+      surfaceFinish: { estimatedRa: 3.2, criticalSurfaces: 0, requiresPolishing: false, requiresHoning: false }
     },
     
     // === SHEET METAL FEATURES FROM BACKEND BEND DETECTION ===
@@ -302,11 +327,49 @@ function transformBackendGeometry(backendData: any, fileName: string): any {
       perimeterLength: 2 * (boundingBox.x + boundingBox.y),
       
       // BEND DATA FROM BACKEND
-      bendCount: bendCount,
-      bendAngles: bendCount > 0 ? Array(Math.min(bendCount, 10)).fill(90) : [],
-      minBendRadius: (detectedThickness || 2) * 1.0,
-      maxBendRadius: (detectedThickness || 2) * 3.0,
-      hasSharptBends: bendCount > 0 && (detectedThickness || 2) > 2,
+      bendCount: actualBendCount,
+      bendAngles: hasStepBendData
+        ? stepBendAngles.bends.map((b: any) => b.angle_deg)
+        : (bendCount > 0 ? Array(Math.min(bendCount, 10)).fill(90) : []),
+      minBendRadius: hasStepBendData
+        ? stepBendAngles.min_radius_mm
+        : (detectedThickness || 2) * 1.0,
+      maxBendRadius: hasStepBendData
+        ? stepBendAngles.max_radius_mm
+        : (detectedThickness || 2) * 3.0,
+      hasSharptBends: hasStepBendData
+        ? stepBendAngles.has_acute_bends
+        : (bendCount > 0 && (detectedThickness || 2) > 2),
+      
+      // Bend array for pricing engine (PricingStrategy reads .bends?.length and .bends?.some())
+      bends: hasStepBendData
+        ? stepBendAngles.bends.map((b: any) => ({
+            angle: b.angle_deg,
+            radius: b.radius_mm,
+            length: b.length_mm,
+            type: b.bend_type,
+            kFactor: b.k_factor,
+            bendDeduction: b.bend_deduction_mm,
+            isAcute: b.is_acute,
+            isObtuse: b.is_obtuse,
+          }))
+        : (bendCount > 0
+          ? Array.from({ length: Math.min(bendCount, 20) }, (_, i) => ({
+              angle: 90,
+              radius: (detectedThickness || 2) * 1.5,
+              length: Math.max(boundingBox.x, boundingBox.y) * 0.5,
+              index: i
+            }))
+          : []),
+      
+      // STEP bend extraction metadata
+      stepBendData: hasStepBendData ? {
+        totalBendLength: stepBendAngles.total_bend_length_mm,
+        avgAngle: stepBendAngles.avg_angle_deg,
+        hasHems: stepBendAngles.has_hems,
+        sequenceComplexity: stepBendAngles.bend_sequence_complexity,
+        confidence: stepBendAngles.confidence,
+      } : undefined,
       
       // Cutting features (estimated)
       holeCount: backendData.primitive_features?.holes || 0,
@@ -346,7 +409,31 @@ function transformBackendGeometry(backendData: any, fileName: string): any {
     },
     
     recommendedSecondaryOps: [],
-    dfmIssues: transformDFMIssues(backendData.dfm_analysis)
+    dfmIssues: transformDFMIssues(backendData.dfm_analysis),
+    
+    // === FORWARD ADDITIONAL BACKEND DATA ===
+    // Grain direction analysis (sheet metal only)
+    grainDirection: backendData.grain_direction ? {
+      recommended: backendData.grain_direction.recommended,
+      score: backendData.grain_direction.score,
+      notes: backendData.grain_direction.notes || []
+    } : undefined,
+    
+    // Nesting optimization (sheet metal only)
+    nesting: backendData.nesting ? {
+      partsPerSheet: backendData.nesting.parts_per_sheet,
+      utilizationPct: backendData.nesting.utilization_pct,
+      sheetSize: backendData.nesting.sheet_size
+    } : undefined,
+    
+    // Validation results from backend
+    validation: backendData.validation || undefined,
+    
+    // Numeric complexity score for fine-grained pricing
+    complexityScore: backendData.complexity_score || 0,
+    
+    // Feature tags for quick lookups
+    features: generateFeatureTags(backendData, recommendedProcess, bendCount, detectedThickness)
   };
 }
 
@@ -405,17 +492,106 @@ function transformDFMIssues(dfmAnalysis: any): { severity: 'info' | 'warning' | 
 }
 
 /**
+ * Extract thread features from backend data
+ */
+function extractThreadFeatures(backendData: any): {
+  count: number;
+  internalThreads: number;
+  externalThreads: number;
+  specifications: { type: 'metric' | 'imperial' | 'custom'; size: string; count: number }[];
+  avgDiameter: number;
+  requiresTapping: boolean;
+  requiresThreadMilling: boolean;
+  singlePointThreading: boolean;
+} {
+  const threadCount = backendData.primitive_features?.threads || 0;
+  
+  return {
+    count: threadCount,
+    internalThreads: threadCount, // Assume internal by default
+    externalThreads: 0,
+    specifications: threadCount > 0 ? [{ type: 'metric' as const, size: 'M6', count: threadCount }] : [],
+    avgDiameter: 6, // Default M6
+    requiresTapping: threadCount > 0,
+    requiresThreadMilling: threadCount > 4,
+    singlePointThreading: false
+  };
+}
+
+/**
+ * Extract undercut features from backend data
+ */
+function extractUndercutFeatures(backendData: any): {
+  count: number;
+  severity: 'minor' | 'moderate' | 'severe';
+  requires5Axis: boolean;
+} {
+  const undercutCount = backendData.primitive_features?.undercuts || 0;
+  
+  let severity: 'minor' | 'moderate' | 'severe' = 'minor';
+  if (undercutCount > 4) severity = 'severe';
+  else if (undercutCount > 1) severity = 'moderate';
+  
+  return {
+    count: undercutCount,
+    severity: undercutCount > 0 ? severity : 'minor',
+    requires5Axis: undercutCount > 2
+  };
+}
+
+/**
+ * Generate feature tags for quick lookups
+ */
+function generateFeatureTags(backendData: any, process: string, bendCount: number, thickness?: number): string[] {
+  const tags: string[] = [];
+  const pf = backendData.primitive_features || {};
+  
+  if (process === 'sheet-metal') tags.push('sheet-metal');
+  if (process === 'cnc-milling') tags.push('cnc-milling');
+  if (process === 'cnc-turning') tags.push('cnc-turning');
+  if (thickness && thickness < 3) tags.push('thin-wall');
+  if (bendCount > 0) tags.push('has-bends');
+  if (bendCount > 4) tags.push('complex-bends');
+  if ((pf.holes || 0) > 0) tags.push('has-holes');
+  if ((pf.holes || 0) > 10) tags.push('many-holes');
+  if ((pf.threads || 0) > 0) tags.push('has-threads');
+  if ((pf.undercuts || 0) > 0) tags.push('has-undercuts');
+  if ((pf.pockets || 0) > 0) tags.push('has-pockets');
+  if ((pf.fillets || 0) > 0) tags.push('has-fillets');
+  if ((pf.slots || 0) > 0) tags.push('has-slots');
+  
+  return tags;
+}
+
+/**
  * Extract hole features from backend DFM analysis
  */
-function extractHoleFeatures(backendData: any): { count: number; avgDiameter: number; deepHoles: number; microHoles: number; drillingMethod: string } {
+function extractHoleFeatures(backendData: any): {
+  count: number;
+  throughHoles: number;
+  blindHoles: number;
+  tappedHoles: number;
+  reamedHoles: number;
+  countersunkHoles: number;
+  counterboredHoles: number;
+  avgDiameter: number;
+  minDiameter: number;
+  maxDiameter: number;
+  deepHoleCount: number;
+  microHoleCount: number;
+  avgDepthRatio: number;
+  drillingMethod: string;
+  toolAccessIssues: number;
+} {
   const dfmAnalysis = backendData.dfm_analysis;
   const holeCount = backendData.primitive_features?.holes || 0;
   
   // Try to get detailed hole data from DFM analysis
+  let deepHoles = 0;
+  let smallHoles = 0;
+  let drillingMethod = 'standard-drill';
+  
   if (dfmAnalysis?.issues) {
-    let deepHoles = 0;
-    let smallHoles = 0;
-    
     for (const issue of dfmAnalysis.issues) {
       if (issue.title?.toLowerCase().includes('deep hole')) {
         deepHoles = issue.measurement || 1;
@@ -426,56 +602,68 @@ function extractHoleFeatures(backendData: any): { count: number; avgDiameter: nu
     }
     
     // Determine drilling method based on issues
-    let drillingMethod = 'standard-drill';
     if (deepHoles > 0) drillingMethod = 'peck-drill';
     if (smallHoles > 0) drillingMethod = 'micro-drill';
-    
-    return {
-      count: holeCount,
-      avgDiameter: 5, // Default estimate
-      deepHoles,
-      microHoles: smallHoles,
-      drillingMethod
-    };
   }
   
   return {
     count: holeCount,
+    throughHoles: Math.ceil(holeCount * 0.6), // Estimate 60% through
+    blindHoles: Math.floor(holeCount * 0.4),
+    tappedHoles: backendData.primitive_features?.threads || 0,
+    reamedHoles: 0,
+    countersunkHoles: 0,
+    counterboredHoles: 0,
     avgDiameter: 5,
-    deepHoles: 0,
-    microHoles: 0,
-    drillingMethod: 'standard-drill'
+    minDiameter: 3,
+    maxDiameter: 10,
+    deepHoleCount: deepHoles,
+    microHoleCount: smallHoles,
+    avgDepthRatio: 3,
+    drillingMethod,
+    toolAccessIssues: 0
   };
 }
 
 /**
  * Extract pocket features from backend DFM analysis
  */
-function extractPocketFeatures(backendData: any): { count: number; avgDepth: number; deepPockets: number } {
+function extractPocketFeatures(backendData: any): {
+  count: number;
+  openPockets: number;
+  closedPockets: number;
+  deepPockets: number;
+  avgDepth: number;
+  maxAspectRatio: number;
+  minCornerRadius: number;
+  sharpCornersCount: number;
+  requiresSquareEndmill: boolean;
+  requiresBallEndmill: boolean;
+} {
   const dfmAnalysis = backendData.dfm_analysis;
   const pocketCount = backendData.primitive_features?.pockets || 0;
   
   // Try to get detailed pocket data from DFM analysis
+  let deepPockets = 0;
   if (dfmAnalysis?.issues) {
-    let deepPockets = 0;
-    
     for (const issue of dfmAnalysis.issues) {
       if (issue.title?.toLowerCase().includes('deep pocket')) {
         deepPockets++;
       }
     }
-    
-    return {
-      count: pocketCount,
-      avgDepth: 5, // Default estimate
-      deepPockets
-    };
   }
   
   return {
     count: pocketCount,
+    openPockets: Math.ceil(pocketCount * 0.5),
+    closedPockets: Math.floor(pocketCount * 0.5),
+    deepPockets,
     avgDepth: 5,
-    deepPockets: 0
+    maxAspectRatio: deepPockets > 0 ? 4 : 2,
+    minCornerRadius: 2,
+    sharpCornersCount: 0,
+    requiresSquareEndmill: pocketCount > 0,
+    requiresBallEndmill: false
   };
 }
 

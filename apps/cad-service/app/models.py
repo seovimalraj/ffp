@@ -16,6 +16,7 @@ class HoleFeature:
     entry_face_id: Optional[int] = None
     exit_face_id: Optional[int] = None
     tri_indices: List[int] = field(default_factory=list)
+    position: Optional[Tuple[float, float, float]] = None  # Center position
 
 
 @dataclass
@@ -25,6 +26,85 @@ class PocketFeature:
     depth_mm: float
     mouth_area_mm2: float
     aspect_ratio: float
+
+
+@dataclass
+class ThreadFeature:
+    """Detected threaded hole or boss."""
+    id: str
+    hole_id: Optional[str]  # Reference to parent hole if detected from hole
+    diameter_mm: float
+    pitch_mm: float
+    depth_mm: float
+    thread_type: Literal["internal", "external"]
+    is_standard: bool  # Whether it matches a standard thread size
+    standard_name: Optional[str] = None  # e.g. "M6x1.0"
+    position: Optional[Tuple[float, float, float]] = None
+
+
+@dataclass
+class SlotFeature:
+    """Detected slot (elongated pocket with parallel walls)."""
+    id: str
+    length_mm: float
+    width_mm: float
+    depth_mm: float
+    slot_type: Literal["through", "blind", "t_slot", "dovetail"]
+    orientation: Tuple[float, float, float] = (0.0, 0.0, 0.0)  # Slot axis direction
+    face_ids: List[int] = field(default_factory=list)
+
+
+@dataclass
+class UndercutFeature:
+    """Detected undercut (inaccessible region for standard tooling)."""
+    id: str
+    undercut_type: Literal["internal", "external", "groove", "recess"]
+    severity: Literal["minor", "moderate", "severe"]
+    depth_mm: float
+    width_mm: float
+    requires_special_tooling: bool
+    face_ids: List[int] = field(default_factory=list)
+    description: str = ""
+
+
+@dataclass
+class FilletFeature:
+    """Detected fillet or chamfer."""
+    id: str
+    feature_type: Literal["fillet", "chamfer"]
+    radius_mm: float  # Radius for fillet, leg size for chamfer
+    length_mm: float  # Edge length
+    edge_id: Optional[int] = None
+
+
+@dataclass
+class DraftAngleInfo:
+    """Draft angle analysis for a face."""
+    face_id: int
+    draft_angle_deg: float
+    is_sufficient: bool  # Meets minimum for injection molding
+    area_mm2: float
+
+
+@dataclass
+class NestingEstimate:
+    """Sheet metal nesting efficiency estimate."""
+    sheet_width_mm: float
+    sheet_length_mm: float
+    parts_per_sheet: int
+    utilization_pct: float
+    flat_width_mm: float
+    flat_length_mm: float
+    rotation_deg: float = 0.0
+
+
+@dataclass
+class GrainDirectionInfo:
+    """Grain/rolling direction analysis for sheet metal."""
+    recommended_direction: Tuple[float, float, float]
+    bend_axes: List[Tuple[float, float, float]]
+    alignment_score: float  # 0-1, 1 = all bends perpendicular to grain
+    notes: List[str] = field(default_factory=list)
 
 
 @dataclass
@@ -67,4 +147,8 @@ class FeaturesJson:
     pockets: List[PocketFeature]
     min_wall: MinWallData
     source: Dict[str, Any]
+    threads: List[ThreadFeature] = field(default_factory=list)
+    slots: List[SlotFeature] = field(default_factory=list)
+    undercuts: List[UndercutFeature] = field(default_factory=list)
+    fillets: List[FilletFeature] = field(default_factory=list)
 

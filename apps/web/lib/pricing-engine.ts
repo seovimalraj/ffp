@@ -1630,18 +1630,30 @@ export function optimizeSheetMetalSetup(
 
   // Standard sheet size: 1220mm x 2440mm (4' x 8')
   const sheetArea = 1220 * 2440; // mm²
-  const partArea = features?.flatArea;
 
-  // Account for kerf width (3mm) and spacing (5mm minimum between parts)
-  const kerfAndSpacing = 8; // mm
-  const effectivePartArea =
-    partArea + features?.perimeterLength * kerfAndSpacing;
-  const partsPerSheet = Math.max(
-    1,
-    Math.floor((sheetArea / effectivePartArea) * 0.85),
-  ); // 85% efficiency
+  // === USE BACKEND NESTING DATA WHEN AVAILABLE ===
+  const backendNesting = (geometry as any).nesting;
+  let partsPerSheet: number;
+  let materialUtilization: number;
 
-  const materialUtilization = ((partsPerSheet * partArea) / sheetArea) * 100;
+  if (backendNesting && typeof backendNesting.partsPerSheet === 'number' && backendNesting.partsPerSheet > 0) {
+    // Real nesting estimate from the backend geometry engine
+    partsPerSheet = backendNesting.partsPerSheet;
+    materialUtilization = typeof backendNesting.utilizationPct === 'number'
+      ? backendNesting.utilizationPct
+      : ((partsPerSheet * (features?.flatArea ?? 0)) / sheetArea) * 100;
+  } else {
+    // Fallback: bbox-based estimate
+    const partArea = features?.flatArea;
+    const kerfAndSpacing = 8; // mm
+    const effectivePartArea =
+      partArea + features?.perimeterLength * kerfAndSpacing;
+    partsPerSheet = Math.max(
+      1,
+      Math.floor((sheetArea / effectivePartArea) * 0.85),
+    ); // 85% efficiency
+    materialUtilization = ((partsPerSheet * (features?.flatArea ?? 0)) / sheetArea) * 100;
+  }
   const scrapPercent = 100 - materialUtilization;
 
   let nestingEfficiency: "excellent" | "good" | "fair" | "poor";
@@ -4187,11 +4199,22 @@ function calculateSheetMetalAdvancedAdjustments(
   const qualityPremiumAdjustment =
     subtotal * (SHEET_METAL_COST_OPTIMIZATION.qualityPremium - 1);
 
+  // === DFM COST IMPACT ===
+  // If geometry has DFM issues, apply surcharge based on severity
+  let dfmSurcharge = 0;
+  const dfmIssues = geometry.dfmIssues ?? [];
+  for (const issue of dfmIssues) {
+    if (issue.severity === 'critical') dfmSurcharge += subtotal * 0.08;
+    else if (issue.severity === 'warning') dfmSurcharge += subtotal * 0.03;
+  }
+  dfmSurcharge = Math.min(dfmSurcharge, subtotal * 0.30); // cap at 30%
+
   const totalAdjustment =
     demandAdjustment +
     complexityRiskPremium +
     materialDifficultyPremium +
-    qualityPremiumAdjustment -
+    qualityPremiumAdjustment +
+    dfmSurcharge -
     batchOptimizationBonus;
 
   return {

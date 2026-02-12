@@ -37,8 +37,9 @@ def min_wall_mesh(mesh, *, samples: int = 5000, threshold_mm: float = 1.5) -> Mi
     try:
         from trimesh.ray.ray_triangle import RayMeshIntersector
         intersector = RayMeshIntersector(mesh)
-    except Exception:
+    except Exception as e:
         # Fallback: no ray intersector available; return empty result
+        print(f"⚠️ RayMeshIntersector unavailable: {type(e).__name__}: {str(e)[:100]}")
         return MinWallData(global_min_mm=0.0, samples=[])
 
     # Cast rays forward and backward and measure first hit distances

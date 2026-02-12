@@ -2,7 +2,7 @@
 Advanced Geometry Validation and Analysis
 Provides comprehensive validation of geometric data with error checking
 """
-from typing import Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 from dataclasses import dataclass
 from enum import Enum
 
@@ -21,8 +21,8 @@ class ValidationIssue:
     severity: ValidationSeverity
     field: str
     message: str
-    value: Optional[any] = None
-    expected: Optional[any] = None
+    value: Optional[Any] = None
+    expected: Optional[Any] = None
 
 
 @dataclass
@@ -309,9 +309,9 @@ class GeometryValidator:
         """Validate process-specific requirements"""
         process = geometry.get("recommendedProcess")
         
-        if process == "sheet-metal":
+        if process == "sheet_metal":
             self._validate_sheet_metal(geometry, result)
-        elif process in ["cnc-milling", "cnc-turning"]:
+        elif process in ["cnc_milling", "cnc_turning"]:
             self._validate_cnc(geometry, result)
     
     def _validate_sheet_metal(self, geometry: Dict, result: ValidationResult):
@@ -338,7 +338,7 @@ class GeometryValidator:
         bbox = geometry.get("boundingBox", {})
         
         # Check if part fits in typical CNC machine
-        max_cnc_dims = {"x": 1000, "y": 600, "z": 500}  # mm
+        max_cnc_dims = {"x": 1000, "y": 500, "z": 300}  # mm — matches dfm_config.json cnc_milling max_travel_mm
         
         for axis, max_dim in max_cnc_dims.items():
             dim = bbox.get(axis, 0)

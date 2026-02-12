@@ -17,6 +17,7 @@ def extract_pockets_from_shape(shape) -> List[PocketFeature]:
         from OCC.Core.GProp import GProp_GProps
         from OCC.Core.BRepGProp import brepgprop_SurfaceProperties
     except Exception:
+        print("⚠️ OCC imports unavailable for pocket extraction - returning empty")
         return []
 
     face_map = TopTools_IndexedMapOfShape()

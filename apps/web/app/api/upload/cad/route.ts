@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { v4 as uuidv4 } from "uuid";
+import { ALLOWED_MIME_TYPES, ALLOWED_EXTENSIONS } from "@cnc-quote/shared";
 
 export async function POST(request: NextRequest) {
   try {
@@ -19,34 +20,30 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Validate file type
-    // const allowedTypes = [
-    //   'application/step',
-    //   'application/sldprt',
-    //   'model/x.stl',
-    //   'application/x-zip-compressed',
-    //   'application/zip'
-    // ];
+    // Validate file type — lists imported from @cnc-quote/shared
+    const allowedMimeTypes = ALLOWED_MIME_TYPES;
+    const allowedExtensions = ALLOWED_EXTENSIONS;
 
     const fileExtension = file.name.split(".").pop()?.toLowerCase();
-    const allowedExtensions = [
-      "step",
-      "stp",
-      "iges",
-      "igs",
-      "sldprt",
-      "x_t",
-      "x_b",
-      "jt",
-      "3mf",
-      "dxf",
-      "stl",
-      "zip",
-    ];
 
-    if (!allowedExtensions.includes(fileExtension || "")) {
+    const hasValidExtension = allowedExtensions.includes(fileExtension as typeof allowedExtensions[number] || "");
+    const hasValidMimeType =
+      !file.type || file.type === "" || allowedMimeTypes.includes(file.type as typeof allowedMimeTypes[number]);
+
+    if (!hasValidExtension) {
       return NextResponse.json(
-        { error: "Unsupported file type" },
+        {
+          error: `Unsupported file type: .${fileExtension}. Allowed: ${allowedExtensions.join(", ")}`,
+        },
+        { status: 400 },
+      );
+    }
+
+    if (!hasValidMimeType) {
+      return NextResponse.json(
+        {
+          error: `Unsupported MIME type: ${file.type}. File extension .${fileExtension} is valid but the content type is not recognized.`,
+        },
         { status: 400 },
       );
     }
@@ -77,14 +74,16 @@ export async function POST(request: NextRequest) {
     }
 
     // Store file metadata
+    const organizationId =
+      user?.user_metadata?.organization_id ?? null;
     const { error: insertError } = await supabase.from("dfm_files").insert({
       id: fileId,
       file_name: file.name,
       file_path: filePath,
       file_size: file.size,
       mime_type: file.type,
-      organization_id: user?.id,
-      uploaded_by: user?.id,
+      organization_id: organizationId,
+      uploaded_by: user?.id ?? null,
       created_at: new Date().toISOString(),
     });
 
@@ -102,7 +101,12 @@ export async function POST(request: NextRequest) {
       path: signedUrlData.path,
     });
   } catch (error) {
-    console.error("CAD upload error:", error);
-    return NextResponse.json({ error: "File upload failed" }, { status: 500 });
+    const message =
+      error instanceof Error ? error.message : "Unknown error occurred";
+    console.error("CAD upload error:", { message, stack: error instanceof Error ? error.stack : undefined });
+    return NextResponse.json(
+      { error: `File upload failed: ${message}` },
+      { status: 500 },
+    );
   }
 }

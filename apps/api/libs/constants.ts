@@ -61,11 +61,13 @@ export enum Tables {
 
   OrderPaymentsTable = 'order_payments',
 
-  organizationAgreementsTable = 'organization_agreements',
+  OrganizationAgreementsTable = 'organization_agreements',
 
   OrderDocumentsTable = 'order_documents',
 
   ManualQuoteApproval = 'manual_quote_approval',
+
+  DfmFilesTable = 'dfm_files',
 }
 
 /**
@@ -133,6 +135,7 @@ export enum RoleNames {
 export enum BucketNames {
   storage = 'ffp',
   rfqStore = 'ffp-rfq-store',
+  cadFiles = 'cad-files',
 }
 
 export type CurrencyType = 'USD' | 'INR' | 'EUR';

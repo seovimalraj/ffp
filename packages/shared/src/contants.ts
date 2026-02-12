@@ -68,7 +68,7 @@ export enum Tables {
 
   OrderPaymentsTable = "order_payments",
 
-  organizationAgreementsTable = "organization_agreements",
+  OrganizationAgreementsTable = "organization_agreements",
 
   OrderDocumentsTable = "order_documents",
 }

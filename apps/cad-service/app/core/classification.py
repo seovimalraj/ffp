@@ -8,11 +8,20 @@ Uses proper sheet metal thickness detection with:
 - Area-weighted dominance analysis
 - Uniform ratio and thinness criteria
 - Multiple validation factors
+
+ML-ASSISTED CLASSIFICATION:
+When rule-based confidence is below a threshold (< 0.80), the ML classifier
+is consulted to provide a second opinion. If the ML model disagrees with the
+rule engine and the ML confidence is higher, the ML result can override.
 """
+import logging
 from typing import Tuple, Optional
 from .geometry import GeometricMetrics, calculate_sheet_metal_score, calculate_advanced_metrics
 from .bend_detection import AdvancedBendDetector
 from .advanced_thickness_detection import ThicknessAnalysisResult
+from .ml_classifier import MLProcessClassifier, build_feature_vector, MLClassificationResult
+
+logger = logging.getLogger(__name__)
 
 
 # Sheet metal thickness range (standard gauges)
@@ -29,18 +38,26 @@ class ProcessClassifier:
     2. If bend analysis detects bends with thin profile → Sheet Metal
     3. If dimensions show thin profile with high aspect ratio → Sheet Metal
     4. Otherwise → CNC Milling/Turning based on geometry
+    
+    ML-ASSISTED BOOST:
+    When rule-based confidence is marginal (< 0.80), the ML classifier provides
+    a second opinion. For borderline parts, the ensemble of both systems produces
+    more accurate results than either alone.
     """
     
+    _ml_classifier: Optional[MLProcessClassifier] = None
+    
     def __init__(self, metrics: GeometricMetrics):
-        """
-        Initialize classifier with geometric metrics.
-        
-        Args:
-            metrics: GeometricMetrics container with all basic measurements
-        """
         self.metrics = metrics
         self.sheet_metal_score = calculate_sheet_metal_score(metrics)
         self.advanced_metrics = calculate_advanced_metrics(metrics)
+        
+        # Lazily initialize the ML classifier (singleton)
+        if ProcessClassifier._ml_classifier is None:
+            try:
+                ProcessClassifier._ml_classifier = MLProcessClassifier()
+            except Exception as exc:
+                logger.warning("Could not initialize ML classifier: %s", exc)
     
     def classify(self, 
                 detected_thickness: Optional[float] = None,
@@ -111,6 +128,16 @@ class ProcessClassifier:
             
             # If advanced analysis confirms sheet thickness with strong criteria
             if thickness_analysis.is_sheet_thickness and thickness_analysis.confidence > 0.7:
+                # GUARD: Reject sheet metal if part is clearly a solid CNC part
+                # A solid part (high vol efficiency) with low aspect ratio is CNC, not sheet metal
+                if self.metrics.volume_efficiency > 0.60 and aspect_ratio < 10:
+                    metadata['classification_method'] = 'advanced_analysis_cnc_guard'
+                    metadata['reasoning'] = (
+                        f"ADVANCED ANALYSIS detected sheet thickness but part is solid "
+                        f"(vol eff: {self.metrics.volume_efficiency:.2f}, aspect: {aspect_ratio:.1f}:1) - CNC override"
+                    )
+                    return ('cnc_milling', 0.85, metadata)
+                
                 # HIGH CONFIDENCE sheet metal detection using proper criteria
                 confidence = thickness_analysis.confidence
                 
@@ -149,9 +176,9 @@ class ProcessClassifier:
         # CRITICAL: Check volume efficiency AND aspect ratio to distinguish CNC from sheet metal
         # CNC parts: Solid AND chunky (high vol eff + low aspect ratio)
         # Sheet metal: Can be flat (high vol eff + high aspect ratio) OR bent (low vol eff)
-        is_solid_part = self.metrics.volume_efficiency > 0.65
-        is_moderately_solid = self.metrics.volume_efficiency > 0.55
-        is_chunky = aspect_ratio < 8  # Low aspect ratio = box-like, not sheet-like
+        is_solid_part = self.metrics.volume_efficiency > 0.60
+        is_moderately_solid = self.metrics.volume_efficiency > 0.50
+        is_chunky = aspect_ratio < 10  # Low aspect ratio = box-like, not sheet-like
         
         if is_sheet_metal_thickness:
             # Thin thickness detected, but need to verify it's actually sheet metal
@@ -173,13 +200,13 @@ class ProcessClassifier:
                 return ('cnc_milling', 0.85, metadata)
             
             # CAUTION if moderately solid and not very flat - reduce confidence
-            if is_moderately_solid and aspect_ratio < 12:
-                if bend_analysis.is_likely_bent:
-                    # Has bends, moderately hollow - likely sheet metal with some solid features
+            if is_moderately_solid and aspect_ratio < 15:
+                if bend_analysis.is_likely_bent and self.metrics.volume_efficiency < 0.55:
+                    # Has bends, genuinely hollow - likely sheet metal with some solid features
                     confidence = 0.75
                     reasoning = f"THICKNESS-DETECTED: {detected_thickness:.2f}mm with {bend_analysis.bend_count} bends, moderate solidity"
                 else:
-                    # No bends, moderately solid, not very flat - ambiguous, default to CNC
+                    # No bends or moderately solid - ambiguous, default to CNC
                     metadata['classification_method'] = 'cnc_fallback'
                     metadata['reasoning'] = f"THICKNESS-DETECTED: {detected_thickness:.2f}mm but no bends and moderate volume efficiency {self.metrics.volume_efficiency:.2f} suggests CNC"
                     return ('cnc_milling', 0.70, metadata)
@@ -222,7 +249,7 @@ class ProcessClassifier:
         # BUT must also check volume efficiency
         if min_dim < 6 and aspect_ratio > 8:
             # Additional check: volume efficiency
-            if self.metrics.volume_efficiency > 0.65:
+            if self.metrics.volume_efficiency > 0.60:
                 # Solid part despite thin dimension - likely CNC with thin features
                 confidence = 0.75
                 reasoning = f"DIMENSION-BASED: Thin profile but solid part (vol eff: {self.metrics.volume_efficiency:.2f}) - likely CNC"
@@ -277,7 +304,7 @@ class ProcessClassifier:
         # CRITICAL: Check volume efficiency before classifying as sheet metal
         # Even with good score, high volume efficiency indicates CNC machining
         if enhanced_score > 65:
-            if self.metrics.volume_efficiency > 0.65:
+            if self.metrics.volume_efficiency > 0.60:
                 # Solid part - override to CNC despite high sheet metal score
                 return ('cnc_milling', 0.80, {
                     **metadata,
@@ -308,10 +335,96 @@ class ProcessClassifier:
         else:
             cnc_confidence = 0.70
             reasoning = 'Solid geometry or varying wall thickness indicates CNC machining'
-            
-        return ('cnc_milling', cnc_confidence, {
+        
+        rule_process = 'cnc_milling'
+        rule_confidence = cnc_confidence
+        rule_metadata = {
             **metadata,
             'classification_method': 'default_cnc',
             'reasoning': reasoning,
             'cnc_likelihood': cnc_likelihood
-        })
+        }
+        
+        # === ML-ASSISTED CLASSIFICATION (ensemble layer) ===
+        ml_result = self._consult_ml(
+            detected_thickness=detected_thickness,
+            thickness_confidence=thickness_confidence,
+            bend_analysis=bend_analysis,
+            triangle_count=triangle_count,
+        )
+        if ml_result is not None:
+            rule_metadata['ml_classification'] = ml_result.to_dict()
+            
+            # ML override: if rule-based confidence is weak and ML disagrees with higher confidence
+            if rule_confidence < 0.80 and ml_result.confidence > rule_confidence + 0.05:
+                if ml_result.predicted_process != rule_process and not ml_result.is_borderline:
+                    logger.info(
+                        "ML override: %s (%.2f) → %s (%.2f)",
+                        rule_process, rule_confidence,
+                        ml_result.predicted_process, ml_result.confidence,
+                    )
+                    return (ml_result.predicted_process, ml_result.confidence, {
+                        **rule_metadata,
+                        'classification_method': 'ml_override',
+                        'reasoning': (
+                            f'ML classifier overrides rule engine: '
+                            f'{ml_result.predicted_process} ({ml_result.confidence:.0%}) '
+                            f'vs rule {rule_process} ({rule_confidence:.0%})'
+                        ),
+                    })
+            
+            # Confidence boost: if both agree, boost confidence
+            if ml_result.predicted_process == rule_process:
+                boosted = min(0.98, rule_confidence + ml_result.confidence * 0.10)
+                if boosted > rule_confidence:
+                    rule_confidence = boosted
+                    rule_metadata['reasoning'] += f' (ML-confirmed: {ml_result.confidence:.0%})'
+                    rule_metadata['classification_method'] = 'rule_ml_ensemble'
+        
+        return (rule_process, rule_confidence, rule_metadata)
+
+    # ------------------------------------------------------------------
+    # ML consultation helper
+    # ------------------------------------------------------------------
+    def _consult_ml(
+        self,
+        detected_thickness: Optional[float],
+        thickness_confidence: float,
+        bend_analysis,
+        triangle_count: int,
+        hole_count: int = 0,
+        pocket_count: int = 0,
+        thread_count: int = 0,
+        undercut_count: int = 0,
+        fillet_count: int = 0,
+        slot_count: int = 0,
+    ) -> Optional[MLClassificationResult]:
+        """Build feature vector and ask the ML classifier."""
+        if ProcessClassifier._ml_classifier is None:
+            return None
+        if not ProcessClassifier._ml_classifier.is_ready:
+            return None
+        try:
+            fv = build_feature_vector(
+                bbox_dims=[self.metrics.min_dim, self.metrics.mid_dim, self.metrics.max_dim],
+                volume_mm3=self.metrics.volume_mm3,
+                surface_area_mm2=self.metrics.surface_area_mm2,
+                detected_thickness=detected_thickness,
+                thickness_confidence=thickness_confidence,
+                bend_count=bend_analysis.bend_count,
+                bend_confidence=bend_analysis.confidence,
+                bend_complexity=bend_analysis.complexity_score,
+                sheet_metal_score=self.sheet_metal_score,
+                hole_count=hole_count,
+                pocket_count=pocket_count,
+                thread_count=thread_count,
+                undercut_count=undercut_count,
+                fillet_count=fillet_count,
+                slot_count=slot_count,
+                triangle_count=triangle_count,
+                advanced_metrics=self.advanced_metrics,
+            )
+            return ProcessClassifier._ml_classifier.predict(fv)
+        except Exception as exc:
+            logger.warning("ML consultation failed: %s", exc)
+            return None

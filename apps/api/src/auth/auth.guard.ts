@@ -4,12 +4,16 @@ import {
   ExecutionContext,
   UnauthorizedException,
 } from '@nestjs/common';
+import { JwtService } from '@nestjs/jwt';
 import { Tables } from '../../libs/constants';
 import { SupabaseService } from 'src/supabase/supabase.service';
 
 @Injectable()
 export class AuthGuard implements CanActivate {
-  constructor(private readonly supabaseService: SupabaseService) {}
+  constructor(
+    private readonly supabaseService: SupabaseService,
+    private readonly jwtService: JwtService,
+  ) {}
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
     const request = context.switchToHttp().getRequest();
@@ -29,8 +33,17 @@ export class AuthGuard implements CanActivate {
 
     let userId: string;
 
-    if (authHeader && authHeader.startsWith('Bearer ')) {
-      userId = authHeader.substring(7); // Remove 'Bearer ' prefix
+    if (authHeader?.startsWith('Bearer ')) {
+      const token = authHeader.substring(7);
+      try {
+        const decoded = this.jwtService.verify(token);
+        userId = decoded.sub;
+        if (!userId) {
+          throw new UnauthorizedException('Invalid token payload: missing sub');
+        }
+      } catch (error) {
+        throw new UnauthorizedException('Invalid or expired token');
+      }
     } else if (sessionData) {
       try {
         const parsedSession = JSON.parse(sessionData);
@@ -45,7 +58,7 @@ export class AuthGuard implements CanActivate {
     const client = this.supabaseService.getClient();
     const { data: user, error } = await client
       .from(Tables.UserTable)
-      .select('*')
+      .select('id, email, name, role, organization_id')
       .eq('id', userId)
       .single();
 
