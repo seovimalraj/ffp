@@ -181,23 +181,34 @@ function transformBackendGeometry(backendData: any, fileName: string): any {
   };
   const recommendedProcess = processMap[backendData.process_type] || 'cnc-milling';
 
-  // Calculate confidence based on sheet metal score and thickness confidence
+  // === USE BACKEND CLASSIFICATION CONFIDENCE ===
+  // The Python backend runs sophisticated multi-tier classification
+  // (advanced thickness, bend detection, CNC guards, ML ensemble) and returns
+  // a well-calibrated confidence score. Use it directly instead of recalculating.
+  const backendConfidence = advancedMetrics.classification_confidence;
   const sheetMetalScore = backendData.sheet_metal_score || 0;
-  let processConfidence = 0.5;
+  let processConfidence: number;
   
-  if (recommendedProcess === 'sheet-metal') {
-    // For sheet metal, use thickness confidence if available
-    processConfidence = thicknessConfidence > 0.6 
-      ? Math.min(0.95, (sheetMetalScore / 100) * 0.7 + thicknessConfidence * 0.3)
-      : Math.min(0.85, sheetMetalScore / 100);
+  if (typeof backendConfidence === 'number' && backendConfidence > 0) {
+    processConfidence = backendConfidence;
   } else {
-    // For CNC, confidence based on score
-    processConfidence = Math.min(0.90, (100 - sheetMetalScore) / 100);
+    // Fallback: approximate confidence from sheet metal score (legacy paths only)
+    if (recommendedProcess === 'sheet-metal') {
+      processConfidence = thicknessConfidence > 0.6 
+        ? Math.min(0.95, (sheetMetalScore / 100) * 0.7 + thicknessConfidence * 0.3)
+        : Math.min(0.85, sheetMetalScore / 100);
+    } else {
+      processConfidence = Math.min(0.90, (100 - sheetMetalScore) / 100);
+    }
   }
 
-  // Generate reasoning based on detection method
+  // === USE BACKEND REASONING ===
+  // The classification engine provides detailed reasoning; forward it.
+  const backendReasoning = advancedMetrics.reasoning;
   let processReasoning = '';
-  if (detectedThickness && thicknessConfidence > 0.6) {
+  if (typeof backendReasoning === 'string' && backendReasoning.length > 0) {
+    processReasoning = backendReasoning;
+  } else if (detectedThickness && thicknessConfidence > 0.6) {
     processReasoning = `Detected ${detectedThickness.toFixed(2)}mm wall thickness using ray-casting (${(thicknessConfidence * 100).toFixed(0)}% confidence)`;
   } else if (recommendedProcess === 'sheet-metal') {
     processReasoning = `Sheet metal characteristics detected (score: ${sheetMetalScore.toFixed(0)}/100)`;

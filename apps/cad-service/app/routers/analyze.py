@@ -508,43 +508,11 @@ def analyze_file_path(file_path: str, units_hint: Optional[str] = None) -> dict:
             print("   Using bbox approximation")
             thickness_analysis = None
         
-        # === USE NEW CORE MODULES FOR CLEAN CLASSIFICATION ===
-        geom_metrics = GeometricMetrics(bbox_dims, vol_mm3, area_mm2)
-        classifier = ProcessClassifier(geom_metrics)
-        
-        # Classify with advanced thickness analysis
-        process_type, confidence, classification_metadata = classifier.classify(
-            detected_thickness=actual_thickness,
-            thickness_confidence=thickness_confidence,
-            triangle_count=triangle_count,
-            thickness_analysis=thickness_analysis  # Pass advanced analysis
-        )
-        
-        # Legacy format conversion
-        if process_type == 'sheet_metal':
-            process_type_str = 'sheet_metal'
-        elif process_type == 'cnc_turning':
-            process_type_str = 'cnc_turning'
-        else:
-            process_type_str = 'cnc_milling'
-        
-        # Build advanced metrics
-        advanced_metrics_dict = {
-            'detected_thickness_mm': actual_thickness,
-            'thickness_confidence': thickness_confidence,
-            'thickness_detection_method': 'ray_casting_statistical',
-            'classification_confidence': confidence,
-            **classification_metadata
-        }
-        
-        # Log bend detection if found
-        if 'bend_report' in classification_metadata:
-            print(classification_metadata['bend_report'])
-        
+        # === EXTRACT FEATURES BEFORE CLASSIFICATION ===
+        # Feature counts improve ML-assisted classification accuracy
         holes = extract_holes_from_shape(shape)
         pockets = extract_pockets_from_shape(shape)
 
-        # === NEW FEATURE EXTRACTION (STEP) ===
         threads = []
         slots = []
         undercuts = []
@@ -573,6 +541,49 @@ def analyze_file_path(file_path: str, units_hint: Optional[str] = None) -> dict:
         except Exception as e:
             print(f"⚠️ Draft analysis failed: {str(e)[:80]}")
 
+        print(f"🔧 Feature extraction: {len(holes)} holes, {len(pockets)} pockets, "
+              f"{len(threads)} threads, {len(slots)} slots, {len(undercuts)} undercuts, "
+              f"{len(fillets)} fillets, {len(draft_results)} draft faces")
+
+        # === USE NEW CORE MODULES FOR CLEAN CLASSIFICATION ===
+        geom_metrics = GeometricMetrics(bbox_dims, vol_mm3, area_mm2)
+        classifier = ProcessClassifier(geom_metrics)
+        
+        # Classify with advanced thickness analysis + feature counts for ML
+        process_type, confidence, classification_metadata = classifier.classify(
+            detected_thickness=actual_thickness,
+            thickness_confidence=thickness_confidence,
+            triangle_count=triangle_count,
+            thickness_analysis=thickness_analysis,
+            hole_count=len(holes),
+            pocket_count=len(pockets),
+            thread_count=len(threads),
+            undercut_count=len(undercuts),
+            fillet_count=len(fillets),
+            slot_count=len(slots),
+        )
+        
+        # Legacy format conversion
+        if process_type == 'sheet_metal':
+            process_type_str = 'sheet_metal'
+        elif process_type == 'cnc_turning':
+            process_type_str = 'cnc_turning'
+        else:
+            process_type_str = 'cnc_milling'
+        
+        # Build advanced metrics
+        advanced_metrics_dict = {
+            'detected_thickness_mm': actual_thickness,
+            'thickness_confidence': thickness_confidence,
+            'thickness_detection_method': 'ray_casting_statistical',
+            'classification_confidence': confidence,
+            **classification_metadata
+        }
+        
+        # Log bend detection if found
+        if 'bend_report' in classification_metadata:
+            print(classification_metadata['bend_report'])
+
         # === STEP BEND ANGLE EXTRACTION ===
         step_bend_result = None
         try:
@@ -585,10 +596,6 @@ def analyze_file_path(file_path: str, units_hint: Optional[str] = None) -> dict:
                       f"radii {step_bend_result.min_radius_mm:.2f}–{step_bend_result.max_radius_mm:.2f}mm)")
         except Exception as e:
             print(f"⚠️ STEP bend angle extraction failed: {str(e)[:100]}")
-
-        print(f"🔧 Feature extraction: {len(holes)} holes, {len(pockets)} pockets, "
-              f"{len(threads)} threads, {len(slots)} slots, {len(undercuts)} undercuts, "
-              f"{len(fillets)} fillets, {len(draft_results)} draft faces")
         
         # === ENTERPRISE COMPLEXITY CALCULATION FOR STEP FILES ===
         # Based on actual extracted features: holes, pockets, triangles, bends

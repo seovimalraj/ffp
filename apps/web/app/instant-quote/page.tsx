@@ -267,7 +267,7 @@ export default function InstantQuotePage() {
             file_name: r?.name,
             cad_file_url: r?.uploadedPath,
             cad_file_type: r?.name.split(".").pop() || "unknown",
-            material: "aluminum-6061",
+            material: isSheetMetal ? "AL5052-2.0" : "aluminum-6061",
             quantity: 1,
             tolerance: "standard",
             finish: isSheetMetal ? "as-cut" : "as-machined",

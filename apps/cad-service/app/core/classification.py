@@ -63,7 +63,13 @@ class ProcessClassifier:
                 detected_thickness: Optional[float] = None,
                 thickness_confidence: float = 0.0,
                 triangle_count: int = 0,
-                thickness_analysis: Optional[ThicknessAnalysisResult] = None) -> Tuple[str, float, dict]:
+                thickness_analysis: Optional[ThicknessAnalysisResult] = None,
+                hole_count: int = 0,
+                pocket_count: int = 0,
+                thread_count: int = 0,
+                undercut_count: int = 0,
+                fillet_count: int = 0,
+                slot_count: int = 0) -> Tuple[str, float, dict]:
         """
         Advanced classification using proper sheet metal thickness detection.
         
@@ -351,6 +357,12 @@ class ProcessClassifier:
             thickness_confidence=thickness_confidence,
             bend_analysis=bend_analysis,
             triangle_count=triangle_count,
+            hole_count=hole_count,
+            pocket_count=pocket_count,
+            thread_count=thread_count,
+            undercut_count=undercut_count,
+            fillet_count=fillet_count,
+            slot_count=slot_count,
         )
         if ml_result is not None:
             rule_metadata['ml_classification'] = ml_result.to_dict()

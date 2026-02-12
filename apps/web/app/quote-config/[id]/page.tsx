@@ -1012,10 +1012,8 @@ export default function QuoteConfigPage() {
 
               // Recalculate Pricing Object
               if (part.geometry) {
-                const processType =
-                  p.process ||
-                  part.geometry?.recommendedProcess ||
-                  "cnc-milling";
+                // CRITICAL: Use the already-normalized process, not the raw DB value
+                const processType = normalizedProcess;
                 const material = getMaterialForProcess(
                   part.material,
                   processType,
@@ -1182,10 +1180,10 @@ export default function QuoteConfigPage() {
 
     // Recalculate pricing if geometry exists
     if (updatedPart.geometry) {
-      const processType =
-        updatedPart.process ||
-        updatedPart.geometry?.recommendedProcess ||
-        "cnc-milling";
+      // CRITICAL: Normalize process to prevent underscore-format mismatches
+      const processType = normalizeProcessString(
+        updatedPart.process || updatedPart.geometry?.recommendedProcess,
+      );
       const material = getMaterialForProcess(updatedPart.material, processType);
 
       if (material) {
