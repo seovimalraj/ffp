@@ -57,7 +57,19 @@ export default function VerifyPage() {
 
       router.push("/portal/dashboard");
     } catch (error: any) {
-      notify.error(error.message || "Invalid OTP. Please try again.");
+      // Extract error message from axios error response
+      const errorMessage =
+        error.response?.data?.error ||
+        error.message ||
+        "Invalid OTP. Please try again.";
+      notify.error(errorMessage);
+
+      // If authentication issue, redirect to sign in
+      if (error.response?.status === 401) {
+        setTimeout(() => {
+          router.push("/signin");
+        }, 2000);
+      }
     } finally {
       setIsLoading(false);
     }

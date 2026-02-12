@@ -5,8 +5,20 @@ export async function POST(request: NextRequest) {
   try {
     const session = await getSession();
 
-    if (!session || !(session as any).accessToken) {
+    // Check if user is authenticated
+    if (!session || !session.user) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    // Get accessToken from session
+    const accessToken = (session as any).accessToken;
+
+    // If no access token, user needs to re-authenticate
+    if (!accessToken) {
+      return NextResponse.json(
+        { error: "Authentication token missing. Please sign in again." },
+        { status: 401 },
+      );
     }
 
     const { code } = await request.json();
@@ -18,10 +30,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const result = await AuthService.verifyOTP(
-      code,
-      (session as any).accessToken,
-    );
+    const result = await AuthService.verifyOTP(code, accessToken);
     return NextResponse.json(result);
   } catch (error: any) {
     return NextResponse.json(
