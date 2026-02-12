@@ -156,6 +156,7 @@ export function SignUpForm() {
         router.push("/signin");
         return;
       }
+
       const session = await getSession();
 
       if (!session?.user?.role) {
@@ -164,7 +165,7 @@ export function SignUpForm() {
       }
 
       trackEvent("signup_success", { email: formData.email });
-      router.push(`/${session.user.role}`);
+      router.push("/verify");
     } catch (err: any) {
       console.error(err);
       trackEvent("signup_failure", { error: err.message });

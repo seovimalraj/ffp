@@ -125,6 +125,7 @@ const authOptions: NextAuthOptions = {
               email: user.email,
               name: user.name,
               role: user.role,
+              verified: user.verified,
               organizationId: user.organizationId || user.organization_id,
               refreshToken: user.refreshToken,
             };
@@ -143,7 +144,13 @@ const authOptions: NextAuthOptions = {
     maxAge: 30 * 24 * 60 * 60, // 30 days (matches refresh token expiry)
   },
   callbacks: {
-    async jwt({ token, user }) {
+    async jwt({ token, user, trigger, session }) {
+      // Handle session up
+      // date from client
+      if (trigger === "update" && session) {
+        return { ...token, ...session };
+      }
+
       // Initial sign in: Credentials provider may not provide `account`,
       // so create the token whenever `user` is present.
       if (user) {
@@ -153,6 +160,7 @@ const authOptions: NextAuthOptions = {
           email: user.email,
           name: user.name,
           role: (user as any).role,
+          verified: (user as any).verified,
           organizationId:
             (user as any).organizationId || (user as any).organization_id,
           accessToken: (user as any).accessToken,
@@ -183,6 +191,7 @@ const authOptions: NextAuthOptions = {
       if (session.user && token) {
         session.user.id = token.id as string;
         session.user.role = token.role as string;
+        session.user.verified = token.verified as boolean;
         session.user.organizationId = token.organizationId as string;
         // Include access token in session if needed for API calls
         (session as any).accessToken = token.accessToken;
@@ -246,6 +255,24 @@ const AuthService = {
       user: result,
       token: result.accessToken,
     };
+  },
+  verifyOTP: async (code: string, token: string) => {
+    const apiUrl = process.env.INTERNAL_API_URL || "https://ffp-api.frigate.ai";
+    const res = await fetch(`${apiUrl}/auth/verify-otp`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({ code }),
+    });
+
+    if (!res.ok) {
+      const errorData = await res.json();
+      throw new Error(errorData.message || "Verification failed");
+    }
+
+    return res.json();
   },
 };
 

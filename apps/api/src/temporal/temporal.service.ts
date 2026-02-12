@@ -108,4 +108,27 @@ export class TemporalService implements OnModuleInit {
       throw error;
     }
   }
+
+  async otpWorkflow(data: { email: string; username: string }) {
+    try {
+      if (!this.client) {
+        throw new Error('Temporal client not initialized');
+      }
+
+      const handle = await this.client.workflow.start(
+        TemporalEvents.OtpWorkflow,
+        {
+          taskQueue: 'quote-tasks',
+          workflowId: `otp-${Date.now()}-${data.email}`,
+          args: [data],
+        },
+      );
+
+      this.logger.log(`Started OTP workflow: ${handle.workflowId}`);
+      return handle;
+    } catch (error) {
+      this.logger.error('Failed to start OTP workflow:', error.message);
+      throw error;
+    }
+  }
 }

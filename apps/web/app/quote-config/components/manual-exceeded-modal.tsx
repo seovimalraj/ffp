@@ -4,6 +4,7 @@ import React from "react";
 import { AlertCircle, ArrowRightLeft, Trash2, X } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { cn } from "@/lib/utils";
+import { PartConfig } from "@/types/part-config";
 
 interface ManualExceededModalProps {
   isOpen: boolean;
@@ -16,6 +17,10 @@ interface ManualExceededModalProps {
   showCloseButton?: boolean;
   metadata?: {
     partSnapshots?: string[];
+    digrams2D?: {
+      partId: string;
+      diagram: PartConfig["files2d"];
+    }[];
   };
 }
 
