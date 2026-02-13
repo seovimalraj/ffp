@@ -9,7 +9,8 @@ def extract_holes_from_shape(shape) -> List[HoleFeature]:
     If pythonOCC is not available, returns [].
     """
     try:
-        from OCC.Core.TopExp import TopExp_Explorer, TopExp
+        from OCC.Core.TopExp import TopExp_Explorer
+        from OCC.Core import TopExp        
         from OCC.Core.TopAbs import TopAbs_FACE, TopAbs_EDGE
         from OCC.Core.BRep import BRep_Tool
         from OCC.Core.Geom import Geom_CylindricalSurface, Geom_Plane

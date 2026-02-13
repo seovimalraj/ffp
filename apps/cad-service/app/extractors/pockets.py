@@ -9,7 +9,9 @@ def extract_pockets_from_shape(shape) -> List[PocketFeature]:
     Returns a conservative list to reduce false positives.
     """
     try:
-        from OCC.Core.TopExp import TopExp_Explorer, TopExp
+        from OCC.Core.TopExp import TopExp_Explorer
+        from OCC.Core import TopExp
+
         from OCC.Core.TopAbs import TopAbs_FACE, TopAbs_EDGE
         from OCC.Core.BRep import BRep_Tool
         from OCC.Core.Geom import Geom_Plane

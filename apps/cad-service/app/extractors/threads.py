@@ -71,7 +71,8 @@ def extract_threads_from_shape(shape, holes: Optional[List[HoleFeature]] = None)
 
     # --- Try OCC-based helical edge detection ---
     try:
-        from OCC.Core.TopExp import TopExp_Explorer, TopExp
+        from OCC.Core.TopExp import TopExp_Explorer
+        from OCC.Core import TopExp
         from OCC.Core.TopAbs import TopAbs_FACE, TopAbs_EDGE
         from OCC.Core.BRep import BRep_Tool
         from OCC.Core.Geom import Geom_CylindricalSurface
@@ -152,7 +153,7 @@ def extract_threads_from_shape(shape, holes: Optional[List[HoleFeature]] = None)
             return threads
 
     except Exception as e:
-        logger.warning(f"OCC thread helix detection unavailable: {e}")
+        logger.exception("OCC thread helix detection failed")
 
     # --- Fallback: infer threads from hole geometry ---
     if holes:
