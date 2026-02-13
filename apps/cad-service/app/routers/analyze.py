@@ -6,6 +6,7 @@ import hmac
 import json
 import logging
 import os
+import traceback
 
 import httpx
 
@@ -170,16 +171,41 @@ def analyze_file_path(file_path: str, units_hint: Optional[str] = None) -> dict:
             print(f"   Confidence: {thickness_analysis.confidence:.1%}")
         print(f"   Reasoning: {thickness_analysis.reasoning}")
         
+        # --- STL Feature Extraction (Move before classification for ML accuracy) ---
+        stl_threads = []
+        stl_undercuts = []
+        stl_fillets = []
+        stl_draft = []
+        try:
+            stl_threads = extract_threads_from_mesh(mesh)
+        except Exception as e:
+            print(f"⚠️ STL thread extraction failed: {str(e)[:80]}")
+        try:
+            stl_undercuts = detect_undercuts_from_mesh(mesh)
+        except Exception as e:
+            print(f"⚠️ STL undercut detection failed: {str(e)[:80]}")
+        try:
+            stl_fillets = detect_fillets_from_mesh(mesh)
+        except Exception as e:
+            print(f"⚠️ STL fillet detection failed: {str(e)[:80]}")
+        try:
+            stl_draft = analyze_draft_from_mesh(mesh)
+        except Exception as e:
+            print(f"⚠️ STL draft analysis failed: {str(e)[:80]}")
+
         # === USE NEW CORE MODULES FOR CLEAN CLASSIFICATION ===
         geom_metrics = GeometricMetrics(bbox_dims, vol_mm3, area_mm2)
         classifier = ProcessClassifier(geom_metrics)
         
-        # Classify with advanced thickness analysis
+        # Classify with advanced thickness analysis + mesh-extracted features
         process_type, confidence, classification_metadata = classifier.classify(
             detected_thickness=detected_thickness,
             thickness_confidence=thickness_confidence,
             triangle_count=int(mesh.faces.shape[0]),
-            thickness_analysis=thickness_analysis  # Pass advanced analysis
+            thickness_analysis=thickness_analysis,  # Pass advanced analysis
+            thread_count=len(stl_threads),
+            undercut_count=len(stl_undercuts),
+            fillet_count=len(stl_fillets),
         )
         
         # Legacy format conversion
@@ -249,30 +275,6 @@ def analyze_file_path(file_path: str, units_hint: Optional[str] = None) -> dict:
         else:
             complexity = 'simple'
         
-        # === DFM ANALYSIS FOR STL ===
-        # Build geometry structure (extract features from mesh)
-        
-        # --- STL Feature Extraction ---
-        stl_threads = []
-        stl_undercuts = []
-        stl_fillets = []
-        stl_draft = []
-        try:
-            stl_threads = extract_threads_from_mesh(mesh)
-        except Exception as e:
-            print(f"⚠️ STL thread extraction failed: {str(e)[:80]}")
-        try:
-            stl_undercuts = detect_undercuts_from_mesh(mesh)
-        except Exception as e:
-            print(f"⚠️ STL undercut detection failed: {str(e)[:80]}")
-        try:
-            stl_fillets = detect_fillets_from_mesh(mesh)
-        except Exception as e:
-            print(f"⚠️ STL fillet detection failed: {str(e)[:80]}")
-        try:
-            stl_draft = analyze_draft_from_mesh(mesh)
-        except Exception as e:
-            print(f"⚠️ STL draft analysis failed: {str(e)[:80]}")
 
         # Sheet metal extras
         grain_dir = None
@@ -408,7 +410,10 @@ def analyze_file_path(file_path: str, units_hint: Optional[str] = None) -> dict:
                 "surface_area": 0,
                 "bbox": {"min": {"x": 0, "y": 0, "z": 0}, "max": {"x": 0, "y": 0, "z": 0}},
                 "thickness": None,
-                "primitive_features": {"holes": 0, "pockets": 0, "slots": 0, "faces": 0},
+                "primitive_features": {
+                    "holes": 0, "pockets": 0, "slots": 0, "faces": 0,
+                    "threads": 0, "undercuts": 0, "fillets": 0
+                },
                 "material_usage": None,
                 "process_type": "assembly",
                 "sheet_metal_score": 0,
@@ -432,7 +437,25 @@ def analyze_file_path(file_path: str, units_hint: Optional[str] = None) -> dict:
         box = Bnd_Box()
         # Use new static method syntax (pythonocc-core 7.7.1+)
         brepbndlib.Add(shape, box)
-        xmin, ymin, zmin, xmax, ymax, zmax = box.Get()
+        
+        # In 7.7.0, Get() might require variables by reference or return bounds differently
+        xmin, ymin, zmin, xmax, ymax, zmax = 0.0, 0.0, 0.0, 0.0, 0.0, 0.0
+        try:
+            # Try 7.7.1+ return style first
+            coords = box.Get()
+            if coords and len(coords) == 6:
+                xmin, ymin, zmin, xmax, ymax, zmax = coords
+            else:
+                # Handle 7.7.0 reference style or manual extraction
+                p_min = box.CornerMin()
+                p_max = box.CornerMax()
+                xmin, ymin, zmin = p_min.X(), p_min.Y(), p_min.Z()
+                xmax, ymax, zmax = p_max.X(), p_max.Y(), p_max.Z()
+        except:
+            p_min = box.CornerMin()
+            p_max = box.CornerMax()
+            xmin, ymin, zmin = p_min.X(), p_min.Y(), p_min.Z()
+            xmax, ymax, zmax = p_max.X(), p_max.Y(), p_max.Z()
         
         # Calculate bounding box dimensions
         bbox_dims = [xmax - xmin, ymax - ymin, zmax - zmin]
@@ -847,7 +870,7 @@ def analyze_file(file_id: str, file_path: str, units_hint: Optional[str] = None,
         return {"error": str(e)}
 
 @router.post("/", response_model=AnalysisResponse)
-async def analyze_cad_file(request: AnalysisRequest):
+def analyze_cad_file(request: AnalysisRequest):
     # Queue the analysis task
     task = analyze_file.delay(request.file_id, request.file_path or "", request.units_hint, request.file_url, request.org_id, request.webhook_url)
     
@@ -858,7 +881,7 @@ async def analyze_cad_file(request: AnalysisRequest):
     }
 
 @router.get("/{task_id}", response_model=AnalysisResponse)
-async def get_analysis_result(task_id: str):
+def get_analysis_result(task_id: str):
     task = analyze_file.AsyncResult(task_id)
     
     if task.ready():
@@ -870,7 +893,7 @@ async def get_analysis_result(task_id: str):
         raise HTTPException(status_code=202, detail="Analysis in progress")
 
 @router.post("/sync", response_model=AnalysisResponse)
-async def analyze_cad_file_sync(request: AnalysisRequest):
+def analyze_cad_file_sync(request: AnalysisRequest):
     """Synchronous analysis for immediate results (smaller files)."""
     try:
         local_path = request.file_path
