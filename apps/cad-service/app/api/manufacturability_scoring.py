@@ -18,6 +18,7 @@ Provides:
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 from typing import List, Dict, Optional, Literal
+from typing import Any
 import logging
 from enum import Enum
 
@@ -106,7 +107,7 @@ class ScoringResponse(BaseModel):
     grade: Literal["A", "B", "C", "D", "F"]
     category_scores: List[CategoryScore]
     recommendations: List[Recommendation]
-    metadata: Dict[str, any]
+    metadata: Dict[str, Any]
 
 
 @router.post("/score", response_model=ScoringResponse)
