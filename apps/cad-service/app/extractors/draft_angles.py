@@ -78,7 +78,7 @@ def analyze_draft_from_shape(
     face_map = TopTools_IndexedMapOfShape()
     TopExp.MapShapes(shape, TopAbs_FACE, face_map)
 
-    for i in range(1, face_map.Extent() + 1):
+    for i in range(1, face_map.Size() + 1):
         face = face_map.FindKey(i)
         adaptor = BRepAdaptor_Surface(face)
         stype = adaptor.GetType()

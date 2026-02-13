@@ -139,12 +139,12 @@ def extract_bend_angles_from_shape(shape, thickness_mm: Optional[float] = None) 
     # ------------------------------------------------------------------
     # Step 2 – iterate all edges
     # ------------------------------------------------------------------
-    for edge_idx in range(1, edge_face_map.Extent() + 1):
+    for edge_idx in range(1, edge_face_map.Size() + 1):
         edge = topods.Edge(edge_face_map.FindKey(edge_idx))
         face_list = edge_face_map.FindFromIndex(edge_idx)
 
         # We need exactly two adjacent faces
-        if face_list.Extent() != 2:
+        if face_list.Size() != 2:
             continue
 
         face_iter = face_list.cbegin()

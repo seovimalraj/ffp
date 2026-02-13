@@ -506,6 +506,7 @@ def analyze_file_path(file_path: str, units_hint: Optional[str] = None) -> dict:
         except Exception as e:
             print(f"⚠️ Wall thickness detection failed: {str(e)[:100]}")
             print("   Using bbox approximation")
+            traceback.print_exc()
             thickness_analysis = None
         
         # === EXTRACT FEATURES BEFORE CLASSIFICATION ===
