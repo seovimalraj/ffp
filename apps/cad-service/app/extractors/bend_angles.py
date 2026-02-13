@@ -110,7 +110,6 @@ def extract_bend_angles_from_shape(shape, thickness_mm: Optional[float] = None) 
 
     try:
         from OCC.Core.TopExp import TopExp_Explorer
-        from OCC.Core import TopExp
         from OCC.Core.TopAbs import TopAbs_EDGE, TopAbs_FACE
         from OCC.Core.TopoDS import topods
         from OCC.Core.BRep import BRep_Tool
