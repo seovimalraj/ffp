@@ -25,7 +25,9 @@ def extract_undercuts_from_shape(shape) -> List[UndercutFeature]:
     without 5-axis or special tooling → undercut.
     """
     try:
-        from OCC.Core.TopExp import TopExp_Explorer, TopExp
+        from OCC.Core.TopExp import TopExp_Explorer
+        from OCC.Core import TopExp
+        
         from OCC.Core.TopAbs import TopAbs_FACE
         from OCC.Core.BRep import BRep_Tool
         from OCC.Core.Geom import Geom_Plane, Geom_CylindricalSurface
