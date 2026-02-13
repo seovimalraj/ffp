@@ -33,4 +33,4 @@ COPY apps/cad-service/app ./app
 
 EXPOSE 10001
 
-CMD ["conda", "run", "-n", "cadenv", "uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "10001"]
+CMD ["bash", "-c", "source /opt/conda/etc/profile.d/conda.sh && conda activate cadenv && uvicorn app.main:app --host 0.0.0.0 --port 10001"]
