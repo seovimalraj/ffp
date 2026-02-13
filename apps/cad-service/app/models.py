@@ -90,7 +90,7 @@ class DraftAngleInfo:
 class NestingEstimate:
     """Sheet metal nesting efficiency estimate."""
     sheet_width_mm: float
-    sheet_length_mm: float
+    sheet_height_mm: float
     parts_per_sheet: int
     utilization_pct: float
     flat_width_mm: float
