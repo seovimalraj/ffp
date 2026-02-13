@@ -1,9 +1,11 @@
-FROM continuumio/miniconda3:latest
-
+FROM continuumio/miniconda3:24.1.2-0
 SHELL ["/bin/bash", "-c"]
+ENV DEBIAN_FRONTEND=noninteractive
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    curl \
+    libgl1 \
+    libglu1-mesa \
+    libspatialindex-dev \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
@@ -12,13 +14,13 @@ RUN conda create -n cadenv python=3.10 -y
 
 RUN conda install -n cadenv -c conda-forge \
     pythonocc-core=7.7.0 \
+    occt=7.7.0 \
+    rtree \
     numpy \
     scipy \
     scikit-learn \
     -y \
  && conda clean --all -f -y
-
-COPY apps/cad-service/pyproject.toml ./pyproject.toml
 
 RUN conda run -n cadenv pip install --no-cache-dir \
     fastapi uvicorn pydantic celery redis python-multipart \
@@ -33,4 +35,4 @@ COPY apps/cad-service/app ./app
 
 EXPOSE 10001
 
-CMD ["bash", "-c", "source /opt/conda/etc/profile.d/conda.sh && conda activate cadenv && uvicorn app.main:app --host 0.0.0.0 --port 10001"]
+CMD ["bash","-c","source /opt/conda/etc/profile.d/conda.sh && conda activate cadenv && uvicorn app.main:app --host 0.0.0.0 --port 10001"]
