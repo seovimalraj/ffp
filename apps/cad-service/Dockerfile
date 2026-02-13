@@ -4,14 +4,6 @@ SHELL ["/bin/bash", "-c"]
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
-    libgl1-mesa-glx \
-    libglu1-mesa \
-    libxrender1 \
-    libxi6 \
-    libxext6 \
-    libfontconfig1 \
-    libsm6 \
-    libice6 \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
