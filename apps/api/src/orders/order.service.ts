@@ -7,6 +7,7 @@ import { SQLFunctions, Tables } from '../../libs/constants';
 import { SupabaseService } from 'src/supabase/supabase.service';
 import { CurrentUserDto } from 'src/auth/auth.dto';
 import { CreateOrderDocumentDto } from './order.dto';
+import { TemporalService } from 'src/temporal/temporal.service';
 
 interface GetOrdersParams {
   organizationId: string | null;
@@ -31,11 +32,11 @@ interface GetOrdersInfiniteParams {
 @Injectable()
 export class OrderService {
   private readonly logger = new Logger(OrderService.name);
-  private readonly supabaseService: SupabaseService;
 
-  constructor(supabaseService: SupabaseService) {
-    this.supabaseService = supabaseService;
-  }
+  constructor(
+    private readonly supabaseService: SupabaseService,
+    private readonly temporalService: TemporalService,
+  ) {}
   async getOrders(params: GetOrdersParams) {
     const client = this.supabaseService.getClient();
     const { data, error } = await client.rpc(SQLFunctions.getOrders, {
@@ -92,15 +93,34 @@ export class OrderService {
     id: string,
     status: string,
     currentUser: CurrentUserDto,
+    notes?: string,
   ) {
     const client = this.supabaseService.getClient();
+
+    // 1. Fetch current status and order ID before updating
+    const { data: partData, error: fetchError } = await client
+      .from(Tables.OrderPartsTable)
+      .select('status, order_id')
+      .eq('id', id)
+      .single();
+
+    if (fetchError || !partData) {
+      throw new InternalServerErrorException(
+        fetchError?.message || 'Part not found',
+      );
+    }
+
+    const prevStatus = partData.status;
+    const orderId = partData.order_id;
+
+    // 2. Perform the update
     const { data, error } = await client.rpc(
       SQLFunctions.updateOrderPartStatus,
       {
         p_order_part_id: id,
         p_new_status: status,
         p_changed_by: currentUser.id,
-        p_reason: null,
+        p_reason: notes ?? null,
         p_metadata: null,
       },
     );
@@ -108,6 +128,19 @@ export class OrderService {
     if (error) {
       throw new InternalServerErrorException(error.message);
     }
+
+    // 3. Trigger Temporal workflow asynchronously
+    this.temporalService
+      .startOrderPartStatusChangeWorkflow({
+        orderId,
+        orderPartId: id,
+        prevStatus,
+        currentStatus: status,
+        notes,
+      })
+      .catch((err) => {
+        this.logger.error('Failed to trigger status change workflow', err);
+      });
 
     return data;
   }

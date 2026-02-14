@@ -29,11 +29,11 @@ import { RoleNames, SQLFunctions, Tables } from '../../libs/constants';
 import { OrderService } from './order.service';
 import { RolesGuard } from 'src/auth/roles.guard';
 import { Roles } from 'src/auth/roles.decorator';
-
 @Controller('orders')
 @UseGuards(AuthGuard, RolesGuard)
 export class OrdersController {
   private readonly logger = new Logger(OrdersController.name);
+
   constructor(
     private readonly supabaseService: SupabaseService,
     private readonly shippingAddressService: ShippingAddressService,
@@ -292,12 +292,6 @@ export class OrdersController {
       const auth = Buffer.from(
         `${process.env.PAYPAL_CLIENT_ID}:${process.env.PAYPAL_CLIENT_SECRET}`,
       ).toString('base64');
-
-      console.log(
-        process.env.PAYPAL_CLIENT_ID,
-        process.env.PAYPAL_CLIENT_SECRET,
-      );
-
       const tokenRes = await fetch(
         'https://api-m.sandbox.paypal.com/v1/oauth2/token',
         {
@@ -310,10 +304,7 @@ export class OrdersController {
         },
       );
 
-      console.log(tokenRes);
-
       const { access_token } = await tokenRes.json();
-      console.log(access_token);
       // 2. Capture Order
       const captureRes = await fetch(
         `https://api-m.sandbox.paypal.com/v2/checkout/orders/${body.orderID}/capture`,
@@ -327,7 +318,6 @@ export class OrdersController {
       );
 
       const captureData = await captureRes.json();
-      console.log(captureData);
 
       if (captureData.status !== 'COMPLETED') {
         throw new Error('PayPal capture failed');
@@ -402,6 +392,7 @@ export class OrdersController {
       partId,
       body.status,
       currentUser,
+      body.notes,
     );
 
     return { success: true };

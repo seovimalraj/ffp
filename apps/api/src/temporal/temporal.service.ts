@@ -159,4 +159,38 @@ export class TemporalService implements OnModuleInit {
       throw error;
     }
   }
+
+  async startOrderPartStatusChangeWorkflow(data: {
+    orderId: string;
+    orderPartId: string;
+    prevStatus: string;
+    currentStatus: string;
+    notes?: string;
+  }) {
+    try {
+      if (!this.client) {
+        throw new Error('Temporal client not initialized');
+      }
+
+      const handle = await this.client.workflow.start(
+        TemporalEvents.OrderPartStatusChangeWorkflow,
+        {
+          taskQueue: 'quote-tasks',
+          workflowId: `order-part-status-${data.orderPartId}-${Date.now()}`,
+          args: [data],
+        },
+      );
+
+      this.logger.log(
+        `Started Order Part Status Change workflow: ${handle.workflowId}`,
+      );
+      return handle;
+    } catch (error) {
+      this.logger.error(
+        'Failed to start Order Part Status Change workflow:',
+        error.message,
+      );
+      throw error;
+    }
+  }
 }
