@@ -41,7 +41,7 @@ export default function CadPage() {
                 type="file"
                 className="absolute inset-0 opacity-0 cursor-pointer z-10"
                 onChange={handleFileChange}
-                accept=".step,.stp,.stl,.obj"
+                accept=".step,.stp,.stl,.obj,.dxf"
               />
               <Button className="bg-blue-600 hover:bg-blue-700 text-white rounded-full px-6 shadow-lg shadow-blue-600/20 transition-all active:scale-95">
                 <Upload className="w-4 h-4 mr-2" />
@@ -105,8 +105,8 @@ export default function CadPage() {
                   No Model Loaded
                 </h2>
                 <p className="text-sm text-slate-500 leading-relaxed">
-                  Drop a STEP or STL file here to begin your high-fidelity 3D
-                  analysis and inspection.
+                  Drop a STEP, STL, OBJ, or DXF file here to begin your
+                  high-fidelity 3D analysis and inspection.
                 </p>
               </div>
 
@@ -115,7 +115,7 @@ export default function CadPage() {
                   type="file"
                   className="absolute inset-0 opacity-0 cursor-pointer z-10"
                   onChange={handleFileChange}
-                  accept=".step,.stp,.stl,.obj"
+                  accept=".step,.stp,.stl,.obj,.dxf"
                 />
                 <Button
                   variant="outline"
@@ -135,6 +135,9 @@ export default function CadPage() {
                 </div>
                 <div className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-widest text-slate-900">
                   <Move className="w-3 h-3" /> Obj
+                </div>
+                <div className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-widest text-slate-900">
+                  <Move className="w-3 h-3" /> Dxf
                 </div>
               </div>
             </div>
