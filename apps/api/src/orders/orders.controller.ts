@@ -199,8 +199,9 @@ export class OrdersController {
   async createDocument(
     @Param('id') id: string,
     @Body() body: CreateOrderDocumentDto,
+    @CurrentUser() currentUser: CurrentUserDto,
   ) {
-    return this.ordersService.createOrderDocument(id, body);
+    return this.ordersService.createOrderDocument(id, body, currentUser);
   }
 
   @Post('')

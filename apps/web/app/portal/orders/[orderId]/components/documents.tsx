@@ -57,6 +57,7 @@ const DOCUMENT_TYPES = [
   { value: "compliance", label: "Compliance" },
   { value: "logistics", label: "Logistics" },
   { value: "finance", label: "Finance" },
+  { value: "other", label: "Other" },
 ];
 
 const Documents = ({ orderId, inView }: DocumentsProps) => {

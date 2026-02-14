@@ -49,7 +49,8 @@ export async function orderPartStatusChangeWorkflow(
   }
 
   // 2. Fetch shipping and contact details
-  const shippingDetails = (await fetchEssentials(orderId)) as any;
+  const essentials = await fetchEssentials(orderId);
+  const shippingDetails = essentials.shippingData as any;
 
   if (!shippingDetails || !shippingDetails.address_snapshot) {
     const errorMsg = `Shipping essentials or address snapshot not found for order ${orderId}`;
@@ -62,7 +63,11 @@ export async function orderPartStatusChangeWorkflow(
     log.info("Order fully completed. Sending overall completion email.", {
       orderId,
     });
-    await sendOrderCompletionEmail(orderId, parts, shippingDetails);
+    await sendOrderCompletionEmail(
+      essentials.order_code,
+      parts,
+      shippingDetails,
+    );
   } else {
     log.info("Sending part status change email.", {
       orderPartId,
@@ -77,7 +82,7 @@ export async function orderPartStatusChangeWorkflow(
       : rfqParts?.snapshot_2d_url || null;
 
     await sendOrderStatusChangeEmail(
-      orderId,
+      essentials.order_code,
       currentPart.part_name,
       partImageUrl,
       prevStatus,

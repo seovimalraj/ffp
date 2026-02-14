@@ -209,14 +209,6 @@ export class AuthController {
         organizationId: user.organization_id || null,
       });
 
-      // this.temporalService.sendEmail({
-      //       to: email,
-      //       subject: 'Welcome to Frigate Fast Parts',
-      //       text: '', // or provide a text body
-      //       name: name,
-      //       type: 'welcome',
-      //     }),
-
       try {
         await this.temporalService.otpWorkflow({
           email: email,
@@ -391,12 +383,22 @@ export class AuthController {
         throw new Error('Database update failed');
       }
 
-      // 4. Cleanup (Optional but Recommended)
-      // Delete the OTP so it cannot be used again
       await client
         .from(Tables.OTPTable)
         .delete()
         .eq('email', currentUser.email);
+
+      try {
+        await this.temporalService.sendEmail({
+          to: currentUser.email,
+          subject: 'Welcome to Frigate Fast Parts',
+          text: '', // or provide a text body
+          name: currentUser.name,
+          type: 'welcome',
+        });
+      } catch (error) {
+        this.logger.error({ error }, 'Error while sending welcome email');
+      }
 
       return { success: true, message: 'Account verified successfully' };
     } catch (error) {

@@ -179,6 +179,7 @@ export class OrderService {
   async createOrderDocument(
     order_id: string,
     document: CreateOrderDocumentDto,
+    currentUser: CurrentUserDto,
   ) {
     const client = this.supabaseService.getClient();
     const { data, error } = await client
@@ -190,6 +191,25 @@ export class OrderService {
 
     if (error) {
       throw new InternalServerErrorException(error.message);
+    }
+
+    try {
+      await this.temporalService.sendEmail({
+        to: currentUser.email,
+        subject: 'New Document was uploaded',
+        type: 'document',
+        metadata: {
+          username: currentUser.name,
+          orderId: order_id,
+          filename: document.file_name,
+          path: document.document_url,
+        },
+        attachments: [
+          { filename: document.file_name, path: document.document_url },
+        ],
+      });
+    } catch (error) {
+      this.logger.error({ error }, 'Error while sending document');
     }
 
     return data;
