@@ -194,22 +194,38 @@ export class OrderService {
     }
 
     try {
-      await this.temporalService.sendEmail({
-        to: currentUser.email,
-        subject: 'New Document was uploaded',
-        type: 'document',
-        metadata: {
-          username: currentUser.name,
-          orderId: order_id,
-          filename: document.file_name,
-          path: document.document_url,
-        },
-        attachments: [
-          { filename: document.file_name, path: document.document_url },
-        ],
-      });
+      const { data: orderWithUser, error: orderError } = await client
+        .from(Tables.OrdersTable)
+        .select('users!created_by(name, email)')
+        .eq('id', order_id)
+        .single();
+
+      if (orderError) {
+        throw orderError;
+      }
+
+      const orderUser = Array.isArray(orderWithUser.users)
+        ? orderWithUser.users[0]
+        : orderWithUser.users;
+
+      if (orderUser) {
+        await this.temporalService.sendEmail({
+          to: orderUser.email,
+          subject: 'New Document was uploaded',
+          type: 'document',
+          metadata: {
+            username: orderUser.name,
+            orderId: order_id,
+            filename: document.file_name,
+            path: document.document_url,
+          },
+          attachments: [
+            { filename: document.file_name, path: document.document_url },
+          ],
+        });
+      }
     } catch (error) {
-      this.logger.error({ error }, 'Error while sending document');
+      this.logger.error({ error }, 'Error while sending document email');
     }
 
     return data;
