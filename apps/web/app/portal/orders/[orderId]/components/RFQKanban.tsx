@@ -6,7 +6,8 @@ import { IOrderFull } from "../page";
 import { notify } from "@/lib/toast";
 import { apiClient } from "@/lib/api";
 import { useSession } from "next-auth/react";
-import { useMemo, useCallback } from "react";
+import { useMemo, useCallback, useState } from "react";
+import { UpdatePartStatusModal } from "@/components/modals/update-part-status-modal";
 
 interface Props {
   parts: IOrderFull["parts"];
@@ -16,6 +17,10 @@ interface Props {
 
 export function RFQKanban({ parts, onRefresh, onItemClick }: Props) {
   const session = useSession();
+  const [pendingMove, setPendingMove] = useState<{
+    itemId: string;
+    toColumnId: string;
+  } | null>(null);
   // Convert RFQ parts to Kanban items
   const kanbanItems: KanbanItem[] = useMemo(() => {
     return parts.map((part) => ({
@@ -85,21 +90,29 @@ export function RFQKanban({ parts, onRefresh, onItemClick }: Props) {
     [kanbanItems],
   );
 
-  const handleItemMove = async (event: any) => {
-    console.log("RFQ Part status changed:", event);
+  const handleItemMove = (event: any) => {
+    setPendingMove({ itemId: event.itemId, toColumnId: event.toColumnId });
+  };
+
+  const handleModalSubmit = async (notes: string) => {
+    if (!pendingMove) return;
+
     try {
-      await apiClient.patch(`/orders/part/${event.itemId}`, {
-        status: event.toColumnId,
+      await apiClient.patch(`/orders/part/${pendingMove.itemId}`, {
+        status: pendingMove.toColumnId,
+        notes: notes,
       });
 
       if (onRefresh) {
-        await onRefresh(); // Silent update
+        await onRefresh();
       }
 
       notify.success("RFQ part status updated successfully");
     } catch (error) {
       console.error(error);
       notify.error("Failed to update RFQ part status");
+    } finally {
+      setPendingMove(null);
     }
   };
 
@@ -126,6 +139,14 @@ export function RFQKanban({ parts, onRefresh, onItemClick }: Props) {
         onItemClick={handleCardClick}
         readOnly={session.data?.user?.role !== "admin"}
         className="bg-transparent"
+      />
+
+      <UpdatePartStatusModal
+        isOpen={!!pendingMove}
+        onClose={() => setPendingMove(null)}
+        onSubmit={handleModalSubmit}
+        title="Update Production Status"
+        targetStatus={pendingMove?.toColumnId || ""}
       />
     </div>
   );

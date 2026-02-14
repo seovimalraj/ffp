@@ -10,12 +10,9 @@ import CustomLoader from "@/components/ui/loader/CustomLoader";
 import RfqSideDrawer from "@/app/portal/orders/[orderId]/components/rfq-side-drawer";
 import { CommandBlock } from "@/components/ui/command-block";
 import {
-  AddressCard,
   Meta,
-  Placeholder,
   SectionTitle,
   StatusPill,
-  Value,
 } from "@/app/portal/orders/[orderId]/page";
 import Documents from "@/app/portal/orders/[orderId]/components/documents";
 import { AddressFlow } from "@/components/ui/animated-flow";
