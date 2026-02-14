@@ -13,6 +13,7 @@ import { LineGeometry } from "three/examples/jsm/lines/LineGeometry.js";
 
 export type Viewer = {
   loadMeshFromGeometry: (geom: THREE.BufferGeometry) => void;
+  loadObject3D: (object: THREE.Object3D) => void;
   clear: () => void;
   setView: (
     preset: "top" | "front" | "right" | "iso" | "bottom" | "left" | "back",
@@ -2414,6 +2415,66 @@ export function createViewer(container: HTMLElement): Viewer {
     }
   }
 
+  function loadObject3D(object: THREE.Object3D) {
+    // Clear mesh-only overlays and edge highlights when switching to linework
+    clearFeatureEdges();
+    disposeWireframeOverlay();
+    clearEdgeHighlight();
+
+    // Remove existing model children except the featureEdgesRoot, disposing resources
+    for (const child of [...modelRoot.children]) {
+      if (child === featureEdgesGroup) continue;
+      try {
+        child.traverse((obj: any) => {
+          if (obj.geometry) obj.geometry.dispose();
+          if (obj.material) {
+            if (Array.isArray(obj.material)) {
+              obj.material.forEach((m: any) => {
+                if (m.map) m.map.dispose();
+                m.dispose();
+              });
+            } else {
+              if (obj.material.map) obj.material.map.dispose();
+              obj.material.dispose();
+            }
+          }
+        });
+      } catch {
+        /* ignore */
+      }
+      try {
+        modelRoot.remove(child);
+      } catch {
+        /* ignore */
+      }
+    }
+
+    modelRoot.position.set(0, 0, 0);
+
+    modelRoot.add(object);
+    modelRoot.updateWorldMatrix(true, true);
+
+    const centeredBox = new THREE.Box3().setFromObject(modelRoot);
+    if (!centeredBox.isEmpty()) {
+      modelBounds = { min: centeredBox.min.y, max: centeredBox.max.y };
+      const centeredSize = centeredBox.getSize(new THREE.Vector3());
+      modelDiagonal = centeredSize.length();
+
+      if (gridHelper) gridHelper.position.y = 0;
+
+      const padding = 1.5;
+      fitCameraToBox(centeredBox, padding);
+      // Reset controls target to origin after camera placement
+      controls.target.set(0, 0, 0);
+      controls.update();
+      updateClippingPlanes();
+    } else {
+      modelBounds = { min: 0, max: 0 };
+      modelDiagonal = 0;
+      updateClippingPlanes();
+    }
+  }
+
   function clear() {
     clearFeatureEdges();
     disposeWireframeOverlay();
@@ -2606,6 +2667,10 @@ export function createViewer(container: HTMLElement): Viewer {
     if (value !== null && renderer.localClippingEnabled === false) {
       renderer.localClippingEnabled = true;
     }
+  }
+
+  function updateClippingPlanes() {
+    setClipping(currentClippingValue);
   }
 
   function fitToScreen(zoom: number = 1) {
@@ -2884,6 +2949,7 @@ export function createViewer(container: HTMLElement): Viewer {
 
   return {
     loadMeshFromGeometry,
+    loadObject3D,
     clear,
     setView,
     setProjection,
