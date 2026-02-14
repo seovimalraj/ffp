@@ -130,7 +130,7 @@ const Documents = ({ orderId, inView }: DocumentsProps) => {
         document_url: uploadRes.url,
         file_name: docName || pendingFile.name,
         mime_type: pendingFile.type,
-        uploaded_by: session?.user?.id || session?.user?.email || "User",
+        uploaded_by: session?.user?.id,
       });
 
       toast({
