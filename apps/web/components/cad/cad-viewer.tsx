@@ -10,6 +10,8 @@ import React, {
 import * as THREE from "three";
 import { createViewer, Viewer } from "./viewer";
 import { loadMeshFile } from "./mesh-loader";
+import { loadDxfFromArrayBuffer, parseDxfFromArrayBuffer } from "./dxf";
+import buildSolidFromDxf from "./dxf_solid";
 import { motion, AnimatePresence } from "framer-motion";
 import { Loader2 } from "lucide-react";
 
@@ -266,9 +268,66 @@ export const CadViewer = forwardRef<CadViewerRef, CadViewerProps>(
 
         try {
           viewerRef.current?.clear();
-          const geom = await loadMeshFile(file, workerRef.current!);
-          setDimsFromGeometry(geom);
-          viewerRef.current?.loadMeshFromGeometry(geom);
+          const fileName = typeof file === "string" ? file : file.name;
+          const ext = fileName.split(".").pop()?.toLowerCase();
+          if (ext === "dxf") {
+            const buf =
+              typeof file === "string"
+                ? await fetch(file).then((resp) => {
+                    if (!resp.ok) {
+                      throw new Error(
+                        `Failed to fetch file: ${resp.statusText}`,
+                      );
+                    }
+                    return resp.arrayBuffer();
+                  })
+                : await file.arrayBuffer();
+            const dxfUnits = units === "in" ? "inch" : "mm";
+            const parse =
+              parseDxfFromArrayBuffer.length > 1
+                ? await (
+                    parseDxfFromArrayBuffer as (
+                      buf: ArrayBuffer,
+                      opts?: { units?: string },
+                    ) => ReturnType<typeof parseDxfFromArrayBuffer>
+                  )(buf, { units: dxfUnits })
+                : await parseDxfFromArrayBuffer(buf);
+            let solid: ReturnType<typeof buildSolidFromDxf> = null;
+            try {
+              solid = buildSolidFromDxf(parse.dxf, parse.meta.scaleToMm, {
+                thicknessMm: 2,
+                edgeThresholdDeg: 25,
+                joinToleranceMm: 0.2,
+              });
+            } catch (solidErr) {
+              console.warn(
+                "Failed to build DXF solid, falling back to linework:",
+                solidErr,
+              );
+              solid = null;
+            }
+            if (solid?.mesh) {
+              const object = solid.mesh;
+              const bounds =
+                solid.bounds ?? new THREE.Box3().setFromObject(object);
+              const size = new THREE.Vector3();
+              bounds.getSize(size);
+              setDimsMM({ x: size.x, y: size.y, z: size.z });
+              viewerRef.current?.loadObject3D(object);
+            } else {
+              const { object, bounds } = loadDxfFromArrayBuffer(buf, {
+                units: dxfUnits,
+              });
+              const size = new THREE.Vector3();
+              bounds.getSize(size);
+              setDimsMM({ x: size.x, y: size.y, z: size.z });
+              viewerRef.current?.loadObject3D(object);
+            }
+          } else {
+            const geom = await loadMeshFile(file, workerRef.current!);
+            setDimsFromGeometry(geom);
+            viewerRef.current?.loadMeshFromGeometry(geom);
+          }
 
           // Reset appearance on new file load
           viewerRef.current?.setMaterialProperties(
