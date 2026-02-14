@@ -113,7 +113,14 @@ export class TemporalService implements OnModuleInit {
     text?: string;
     html?: string;
     name?: string;
-    type?: 'welcome' | 'general';
+    type?: 'welcome' | 'general' | 'document';
+    metadata?: Record<string, string>;
+    attachments?: {
+      filename: string;
+      path?: string;
+      content?: string;
+      cid?: string;
+    }[];
   }) {
     try {
       if (!this.client) {
