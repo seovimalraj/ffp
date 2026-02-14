@@ -8,8 +8,10 @@ import { ShippingAddressService } from './shipping-address.service';
 import { OrderService } from './order.service';
 import { RolesGuard } from 'src/auth/roles.guard';
 
+import { TemporalModule } from 'src/temporal/temporal.module';
+
 @Module({
-  imports: [SupabaseModule],
+  imports: [SupabaseModule, TemporalModule],
   controllers: [OrdersController],
   providers: [
     PermissionGuard,

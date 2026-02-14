@@ -130,6 +130,10 @@ export class PayOrderDto {
 export class UpdateOrderPartStatusDto {
   @IsString()
   status: string;
+
+  @IsOptional()
+  @IsString()
+  notes?: string;
 }
 
 export class CreateOrderDocumentDto {
