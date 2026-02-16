@@ -4292,6 +4292,65 @@ function computeSheetMetalLeadTime(
     bufferDays: number;
     materialProcurementDays: number;
   };
+} {
+  const materialProcurementDays = getMaterialProcurementTime(material, leadTimeType);
+
+  const features = geometry.sheetMetalFeatures!;
+
+  const totalComplexity =
+    features?.complexCuts + features?.bendCount + features?.holeCount * 0.1;
+  const programmingDays = getProgrammingDays(totalComplexity);
+
+  const config = CUTTING_METHODS[cuttingMethod];
+  const totalCuttingLength =
+    features?.perimeterLength + features?.totalHoleDiameter;
+  const cuttingMinutes = totalCuttingLength / config.speedMmPerMin;
+
+  const quantityEfficiencyFactor = getQuantityEfficiency(quantity);
+  const cuttingHours =
+    (cuttingMinutes / 60) * quantity * quantityEfficiencyFactor;
+  const baseCuttingDays = Math.ceil(cuttingHours / 8);
+
+  let baseFormingDays = 0;
+  if (hasBends) {
+    const bendsPerHour = 30 / material.bendability;
+    const formingHours =
+      (features?.bendCount * quantity * quantityEfficiencyFactor) /
+      bendsPerHour;
+    baseFormingDays = Math.ceil(formingHours / 8);
+  }
+
+  const flatAreaM2 = features?.flatArea / 1_000_000;
+  let finishingDays = 0.5;
+  if (flatAreaM2 * quantity > 5) finishingDays = 1.5;
+  else if (flatAreaM2 * quantity > 2) finishingDays = 1;
+
+  const inspectionDays =
+    features?.bendCount > 8 || features?.complexCuts > 10 ? 0.5 : 0;
+
+  const { targetLeadTime, shippingDays } = getLeadTimeConfig(leadTimeType);
+
+  const actualProductionDays = Math.ceil(
+    baseCuttingDays + baseFormingDays + finishingDays + programmingDays + inspectionDays,
+  );
+
+  const availableProductionTime = targetLeadTime - shippingDays - materialProcurementDays;
+  const productionDays = Math.max(actualProductionDays, availableProductionTime);
+  const bufferDays = leadTimeType === "expedited" ? 1 : 0;
+
+  const totalDays = materialProcurementDays + productionDays + shippingDays + bufferDays;
+
+  return {
+    leadTimeDays: Math.max(targetLeadTime, totalDays),
+    components: {
+      productionDays: actualProductionDays,
+      shippingDays,
+      bufferDays,
+      materialProcurementDays,
+    },
+  };
+}
+
 function getMaterialProcurementTime(
   material: SheetMetalMaterialSpec,
   leadTimeType: string,
@@ -4350,65 +4409,6 @@ function getLeadTimeConfig(leadTimeType: string): {
   return {
     targetLeadTime: SHEET_METAL_LEAD_TIME.economy,
     shippingDays: SHEET_METAL_LEAD_TIME.shippingDays.economy,
-  };
-}
-
-} {
-  const features = geometry.sheetMetalFeatures!;
-
-  const materialProcurementDays = getMaterialProcurementTime(material, leadTimeType);
-
-  const totalComplexity =
-    features?.complexCuts + features?.bendCount + features?.holeCount * 0.1;
-  const programmingDays = getProgrammingDays(totalComplexity);
-
-  const config = CUTTING_METHODS[cuttingMethod];
-  const totalCuttingLength =
-    features?.perimeterLength + features?.totalHoleDiameter;
-  const cuttingMinutes = totalCuttingLength / config.speedMmPerMin;
-
-  const quantityEfficiencyFactor = getQuantityEfficiency(quantity);
-  const cuttingHours =
-    (cuttingMinutes / 60) * quantity * quantityEfficiencyFactor;
-  const baseCuttingDays = Math.ceil(cuttingHours / 8);
-
-  let baseFormingDays = 0;
-  if (hasBends) {
-    const bendsPerHour = 30 / material.bendability;
-    const formingHours =
-      (features?.bendCount * quantity * quantityEfficiencyFactor) /
-      bendsPerHour;
-    baseFormingDays = Math.ceil(formingHours / 8);
-  }
-
-  const flatAreaM2 = features?.flatArea / 1_000_000;
-  let finishingDays = 0.5;
-  if (flatAreaM2 * quantity > 5) finishingDays = 1.5;
-  else if (flatAreaM2 * quantity > 2) finishingDays = 1;
-
-  const inspectionDays =
-    features?.bendCount > 8 || features?.complexCuts > 10 ? 0.5 : 0;
-
-  const { targetLeadTime, shippingDays } = getLeadTimeConfig(leadTimeType);
-
-  const actualProductionDays = Math.ceil(
-    baseCuttingDays + baseFormingDays + finishingDays + programmingDays + inspectionDays,
-  );
-
-  const availableProductionTime = targetLeadTime - shippingDays - materialProcurementDays;
-  const productionDays = Math.max(actualProductionDays, availableProductionTime);
-  const bufferDays = leadTimeType === "expedited" ? 1 : 0;
-
-  const totalDays = materialProcurementDays + productionDays + shippingDays + bufferDays;
-
-  return {
-    leadTimeDays: Math.max(targetLeadTime, totalDays),
-    components: {
-      productionDays: actualProductionDays,
-      shippingDays,
-      bufferDays,
-      materialProcurementDays,
-    },
   };
 }
 
