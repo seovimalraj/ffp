@@ -41,30 +41,68 @@ def _normalize(v):
     return (v[0] / mag, v[1] / mag, v[2] / mag)
 
 
+def _draft_from_plane(face, pd, BRep_Tool, Geom_Plane) -> Optional[float]:
+    """Compute draft angle for a planar face."""
+    surf = BRep_Tool.Surface(face)
+    pln = Geom_Plane.DownCast(surf)
+    if pln is None:
+        return None
+    norm_dir = pln.Pln().Axis().Direction()
+    n = (norm_dir.X(), norm_dir.Y(), norm_dir.Z())
+    cos_a = abs(_dot(n, pd))
+    if cos_a > 0.99:
+        return 90.0  # top/bottom face — effectively infinite draft
+    angle_to_pull = math.degrees(math.acos(min(cos_a, 1.0)))
+    return 90.0 - angle_to_pull if angle_to_pull < 90 else angle_to_pull - 90.0
+
+
+def _draft_from_cylinder(adaptor, pd) -> float:
+    """Compute draft angle for a cylindrical face."""
+    cyl = adaptor.Cylinder()
+    ax = cyl.Axis().Direction()
+    axv = (ax.X(), ax.Y(), ax.Z())
+    cos_a = abs(_dot(axv, pd))
+    if cos_a > 0.99:
+        return 0.0  # cylinder axis along pull — no draft on wall
+    return math.degrees(math.acos(min(cos_a, 1.0)))
+
+
+def _draft_from_cone(adaptor) -> float:
+    """Compute draft angle for a conical face."""
+    cone = adaptor.Cone()
+    return abs(math.degrees(cone.SemiAngle()))
+
+
+def _draft_from_general(adaptor, pd) -> Optional[float]:
+    """Sample midpoint normal for BSpline / other surfaces."""
+    try:
+        u_mid = (adaptor.FirstUParameter() + adaptor.LastUParameter()) / 2
+        v_mid = (adaptor.FirstVParameter() + adaptor.LastVParameter()) / 2
+        from OCC.Core.BRepLProp import BRepLProp_SLProps
+        sl_props = BRepLProp_SLProps(adaptor, u_mid, v_mid, 1, 1e-6)
+        if not sl_props.IsNormalDefined():
+            return None
+        norm = sl_props.Normal()
+        n = (norm.X(), norm.Y(), norm.Z())
+        cos_a = abs(_dot(n, pd))
+        angle_to_pull = math.degrees(math.acos(min(cos_a, 1.0)))
+        return 90.0 - angle_to_pull if angle_to_pull < 90 else angle_to_pull - 90.0
+    except Exception:
+        return None
+
+
 def analyze_draft_from_shape(
     shape,
     pull_direction: Tuple[float, float, float] = DEFAULT_PULL_DIRECTION,
     min_draft_deg: float = 1.0,
 ) -> List[DraftAngleInfo]:
-    """Analyse draft angles from BREP shape using OCC.
-
-    Parameters
-    ----------
-    shape : OCC shape
-    pull_direction : Mold pull (opening) direction.
-    min_draft_deg : Minimum acceptable draft angle.
-
-    Returns
-    -------
-    List of DraftAngleInfo per analysed face.
-    """
+    """Analyse draft angles from BREP shape using OCC."""
     try:
         from OCC.Core.TopExp import TopExp_Explorer
         from OCC.Core import TopExp
-
         from OCC.Core.TopAbs import TopAbs_FACE
         from OCC.Core.BRep import BRep_Tool
-        from OCC.Core.Geom import Geom_Plane, Geom_CylindricalSurface
+        from OCC.Core.Geom import Geom_Plane
         from OCC.Core.GProp import GProp_GProps
         from OCC.Core.BRepGProp import brepgprop_SurfaceProperties
         from OCC.Core.TopTools import TopTools_IndexedMapOfShape
@@ -80,73 +118,24 @@ def analyze_draft_from_shape(
     face_map = TopTools_IndexedMapOfShape()
     TopExp.MapShapes(shape, TopAbs_FACE, face_map)
 
+    type_handlers = {
+        GeomAbs_Plane: lambda face, adaptor: _draft_from_plane(face, pd, BRep_Tool, Geom_Plane),
+        GeomAbs_Cylinder: lambda face, adaptor: _draft_from_cylinder(adaptor, pd),
+        GeomAbs_Cone: lambda face, adaptor: _draft_from_cone(adaptor),
+    }
+
     for i in range(1, face_map.Size() + 1):
         face = face_map.FindKey(i)
         adaptor = BRepAdaptor_Surface(face)
-        stype = adaptor.GetType()
-
-        # Surface area
         props = GProp_GProps()
         brepgprop_SurfaceProperties(face, props)
-        area_mm2 = float(props.Mass()) * 1e6  # m^2 → mm^2
+        area_mm2 = float(props.Mass()) * 1e6
 
-        # Skip tiny faces
         if area_mm2 < 0.5:
             continue
 
-        draft_deg: Optional[float] = None
-
-        if stype == GeomAbs_Plane:
-            # Planar face: draft = 90 - angle between normal and pull
-            surf = BRep_Tool.Surface(face)
-            pln = Geom_Plane.DownCast(surf)
-            if pln is None:
-                continue
-            norm_dir = pln.Pln().Axis().Direction()
-            n = (norm_dir.X(), norm_dir.Y(), norm_dir.Z())
-            cos_a = abs(_dot(n, pd))
-            angle_to_pull = math.degrees(math.acos(min(cos_a, 1.0)))
-            # Draft angle is how far the face is from being parallel to pull
-            draft_deg = 90.0 - angle_to_pull if angle_to_pull < 90 else angle_to_pull - 90.0
-
-            # Faces perpendicular to pull need no draft (parting-plane faces)
-            if cos_a > 0.99:
-                draft_deg = 90.0  # effectively infinite draft — top/bottom face
-
-        elif stype == GeomAbs_Cylinder:
-            # Cylinder axis vs pull direction
-            cyl = adaptor.Cylinder()
-            ax = cyl.Axis().Direction()
-            axv = (ax.X(), ax.Y(), ax.Z())
-            cos_a = abs(_dot(axv, pd))
-            # A cylinder aligned with pull has 0 draft; perpendicular has 90
-            draft_deg = math.degrees(math.acos(min(cos_a, 1.0)))
-            # For walls parallel to pull, draft = 0 is bad
-            if cos_a > 0.99:
-                draft_deg = 0.0  # cylinder axis along pull = no draft on wall
-
-        elif stype == GeomAbs_Cone:
-            cone = adaptor.Cone()
-            semi_angle_rad = cone.SemiAngle()
-            # Cone semi-angle approximates draft
-            draft_deg = abs(math.degrees(semi_angle_rad))
-
-        else:
-            # Other surface types (BSpline, etc.) — sample midpoint normal
-            try:
-                u_mid = (adaptor.FirstUParameter() + adaptor.LastUParameter()) / 2
-                v_mid = (adaptor.FirstVParameter() + adaptor.LastVParameter()) / 2
-                from OCC.Core.gp import gp_Pnt, gp_Vec
-                from OCC.Core.BRepLProp import BRepLProp_SLProps
-                sl_props = BRepLProp_SLProps(adaptor, u_mid, v_mid, 1, 1e-6)
-                if sl_props.IsNormalDefined():
-                    norm = sl_props.Normal()
-                    n = (norm.X(), norm.Y(), norm.Z())
-                    cos_a = abs(_dot(n, pd))
-                    angle_to_pull = math.degrees(math.acos(min(cos_a, 1.0)))
-                    draft_deg = 90.0 - angle_to_pull if angle_to_pull < 90 else angle_to_pull - 90.0
-            except Exception:
-                pass
+        handler = type_handlers.get(adaptor.GetType())
+        draft_deg = handler(face, adaptor) if handler else _draft_from_general(adaptor, pd)
 
         if draft_deg is not None:
             results.append(DraftAngleInfo(

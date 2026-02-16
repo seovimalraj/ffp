@@ -59,128 +59,139 @@ def _match_standard_thread(diameter_mm: float) -> Tuple[bool, Optional[str], flo
     return False, None, 0.0
 
 
+def _detect_thread_from_face(
+    face, brep_tool, geom_cyl_surface, gprop_cls,
+    surface_props_fn, geom_bspline_curve, topabs_edge,
+    idx: int,
+) -> Optional[ThreadFeature]:
+    """Analyse a single BREP face for thread signature. Returns ThreadFeature or None."""
+    from OCC.Core.TopExp import TopExp_Explorer
+    from OCC.Core.BRepAdaptor import BRepAdaptor_Curve
+
+    surf = brep_tool.Surface(face)
+    cyl = geom_cyl_surface.DownCast(surf)
+    if cyl is None:
+        return None
+
+    radius = cyl.Cylinder().Radius()
+    diameter = 2.0 * radius
+    if diameter < 0.5:
+        return None
+
+    # Check edges for helical / bspline curves (thread signature)
+    has_helix = False
+    edge_exp = TopExp_Explorer(face, topabs_edge)
+    while edge_exp.More():
+        edge = edge_exp.Current()
+        edge_exp.Next()
+        try:
+            adaptor = BRepAdaptor_Curve(edge)
+            if adaptor.GetType() == geom_bspline_curve:
+                has_helix = True
+                break
+        except Exception:
+            continue
+
+    if not has_helix:
+        return None
+
+    # Determine pitch from surface area
+    props = gprop_cls()
+    surface_props_fn(face, props)
+    area_mm2 = float(props.Mass()) * 1e6
+    circumference = math.pi * diameter
+    length_on_surface = area_mm2 / max(circumference, 0.1) if circumference > 0 else 0
+
+    is_std, std_name, pitch = _match_standard_thread(diameter)
+    if not is_std:
+        pitch = diameter * 0.12 if diameter > 3 else 0.5
+
+    loc = cyl.Cylinder().Location()
+    return ThreadFeature(
+        id=f"T-{idx:03d}",
+        hole_id=None,
+        diameter_mm=float(diameter),
+        pitch_mm=float(pitch),
+        depth_mm=float(length_on_surface),
+        thread_type="internal",
+        is_standard=is_std,
+        standard_name=std_name,
+        position=(float(loc.X()), float(loc.Y()), float(loc.Z())),
+    )
+
+
+def _infer_threads_from_holes(holes: List[HoleFeature], start_idx: int) -> List[ThreadFeature]:
+    """Heuristic thread inference from blind holes with standard diameters."""
+    threads: List[ThreadFeature] = []
+    idx = start_idx
+    for hole in holes:
+        dia = hole.diameter_mm
+        depth = hole.depth_mm
+        if dia < 1.0 or depth <= 0:
+            continue
+        depth_ratio = depth / dia
+        if hole.type != "blind" or not (1.0 <= depth_ratio <= 4.0):
+            continue
+        is_std, std_name, pitch = _match_standard_thread(dia)
+        if is_std:
+            threads.append(ThreadFeature(
+                id=f"T-{idx:03d}",
+                hole_id=hole.id,
+                diameter_mm=dia,
+                pitch_mm=pitch,
+                depth_mm=depth,
+                thread_type="internal",
+                is_standard=True,
+                standard_name=std_name,
+                position=getattr(hole, "position", None),
+            ))
+            idx += 1
+    return threads
+
+
 def extract_threads_from_shape(shape, holes: Optional[List[HoleFeature]] = None) -> List[ThreadFeature]:
     """Detect threads from BREP shape using OCC helix edge analysis.
 
-    If OCC helix analysis isn't available, falls back to heuristic inference
-    from hole dimensions (blind holes with depth/diameter between 1.5-3x and
-    diameter matching standard thread sizes are likely tapped).
+    Falls back to heuristic inference from hole dimensions.
     """
     threads: List[ThreadFeature] = []
     idx = 1
 
-    # --- Try OCC-based helical edge detection ---
     try:
-        from OCC.Core.TopExp import TopExp_Explorer
         from OCC.Core import TopExp
         from OCC.Core.TopAbs import TopAbs_FACE, TopAbs_EDGE
         from OCC.Core.BRep import BRep_Tool
         from OCC.Core.Geom import Geom_CylindricalSurface
-        from OCC.Core.BRepAdaptor import BRepAdaptor_Curve
-        from OCC.Core.GeomAbs import GeomAbs_Line, GeomAbs_Circle, GeomAbs_BSplineCurve
+        from OCC.Core.GeomAbs import GeomAbs_BSplineCurve
         from OCC.Core.TopTools import TopTools_IndexedMapOfShape
-        from OCC.Core.gp import gp_Pnt
         from OCC.Core.BRepGProp import brepgprop_SurfaceProperties
         from OCC.Core.GProp import GProp_GProps
-
-        face_map = TopTools_IndexedMapOfShape()
-        TopExp.MapShapes(shape, TopAbs_FACE, face_map)
+        from OCC.Core.TopExp import TopExp_Explorer
 
         exp = TopExp_Explorer(shape, TopAbs_FACE)
         while exp.More():
             face = exp.Current()
             exp.Next()
-            surf = BRep_Tool.Surface(face)
-            cyl = Geom_CylindricalSurface.DownCast(surf)
-            if cyl is None:
-                continue
-
-            radius = cyl.Cylinder().Radius()
-            diameter = 2.0 * radius
-            if diameter < 0.5:
-                continue
-
-            # Check edges for helical / bspline curves (thread signature)
-            has_helix = False
-            edge_exp = TopExp_Explorer(face, TopAbs_EDGE)
-            while edge_exp.More():
-                edge = edge_exp.Current()
-                edge_exp.Next()
-                try:
-                    adaptor = BRepAdaptor_Curve(edge)
-                    ctype = adaptor.GetType()
-                    if ctype == GeomAbs_BSplineCurve:
-                        # BSpline on cylindrical surface => likely thread helix
-                        has_helix = True
-                        break
-                except Exception:
-                    continue
-
-            if not has_helix:
-                continue
-
-            # This is a thread — determine pitch from surface area
-            props = GProp_GProps()
-            brepgprop_SurfaceProperties(face, props)
-            area_mm2 = float(props.Mass()) * 1e6
-            # Approximate pitch from area: area ≈ π × d × depth, pitch ≈ depth / turns
-            circumference = math.pi * diameter
-            length_on_surface = area_mm2 / max(circumference, 0.1) if circumference > 0 else 0
-
-            is_std, std_name, pitch = _match_standard_thread(diameter)
-            if not is_std:
-                # Estimate pitch from thread depth heuristic
-                pitch = diameter * 0.12 if diameter > 3 else 0.5
-
-            axis_dir = cyl.Cylinder().Axis().Direction()
-            loc = cyl.Cylinder().Location()
-
-            threads.append(ThreadFeature(
-                id=f"T-{idx:03d}",
-                hole_id=None,
-                diameter_mm=float(diameter),
-                pitch_mm=float(pitch),
-                depth_mm=float(length_on_surface),
-                thread_type="internal",
-                is_standard=is_std,
-                standard_name=std_name,
-                position=(float(loc.X()), float(loc.Y()), float(loc.Z())),
-            ))
-            idx += 1
+            tf = _detect_thread_from_face(
+                face, BRep_Tool, Geom_CylindricalSurface,
+                GProp_GProps, brepgprop_SurfaceProperties,
+                GeomAbs_BSplineCurve, TopAbs_EDGE, idx,
+            )
+            if tf is not None:
+                threads.append(tf)
+                idx += 1
 
         if threads:
-            logger.info(f"OCC helix analysis found {len(threads)} thread(s)")
+            logger.info("OCC helix analysis found %d thread(s)", len(threads))
             return threads
 
-    except Exception as e:
+    except Exception:
         logger.exception("OCC thread helix detection failed")
 
-    # --- Fallback: infer threads from hole geometry ---
     if holes:
-        for hole in holes:
-            dia = hole.diameter_mm
-            depth = hole.depth_mm
-            if dia < 1.0 or depth <= 0:
-                continue
-            depth_ratio = depth / dia
-            # Typical tapped hole: blind, depth 1.5-3x diameter, matches standard size
-            if hole.type == "blind" and 1.0 <= depth_ratio <= 4.0:
-                is_std, std_name, pitch = _match_standard_thread(dia)
-                if is_std:
-                    threads.append(ThreadFeature(
-                        id=f"T-{idx:03d}",
-                        hole_id=hole.id,
-                        diameter_mm=dia,
-                        pitch_mm=pitch,
-                        depth_mm=depth,
-                        thread_type="internal",
-                        is_standard=True,
-                        standard_name=std_name,
-                        position=getattr(hole, "position", None),
-                    ))
-                    idx += 1
+        threads = _infer_threads_from_holes(holes, idx)
 
-    logger.info(f"Thread detection (heuristic): found {len(threads)} likely thread(s)")
+    logger.info("Thread detection (heuristic): found %d likely thread(s)", len(threads))
     return threads
 
 

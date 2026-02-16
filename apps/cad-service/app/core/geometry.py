@@ -30,157 +30,150 @@ class GeometricMetrics:
         self.surface_to_volume_ratio = self.surface_area_cm2 / max(self.volume_cm3, 0.1)
 
 
+def _score_thickness(min_dim: float) -> float:
+    """30-40 points for sheet metal thickness range."""
+    if 0.5 <= min_dim <= 6.0:
+        base = 30.0
+        typical = [0.8, 1.0, 1.2, 1.5, 2.0, 2.5, 3.0, 4.0, 5.0, 6.0]
+        if any(abs(min_dim - t) < 0.3 for t in typical):
+            return base + 10.0
+        if min_dim <= 4.0:
+            return base + 5.0
+        return base
+    if 0.3 <= min_dim < 0.5:
+        return 20.0
+    return 0.0
+
+
+def _score_aspect(aspect_ratio: float) -> float:
+    """Up to 25 points for high aspect ratio."""
+    if aspect_ratio > 20:
+        return 25.0
+    if aspect_ratio > 15:
+        return 20.0
+    if aspect_ratio > 10:
+        return 15.0
+    if aspect_ratio > 5:
+        return 8.0
+    return 0.0
+
+
+def _score_sv_ratio(sv_ratio: float) -> float:
+    """Up to 20 points for surface-to-volume ratio."""
+    if sv_ratio > 80:
+        return 20.0
+    if sv_ratio > 60:
+        return 15.0
+    if sv_ratio > 40:
+        return 10.0
+    if sv_ratio > 25:
+        return 5.0
+    return 0.0
+
+
+def _score_flatness(metrics: "GeometricMetrics") -> float:
+    """Up to 15 points for flatness."""
+    if metrics.min_dim <= 0:
+        return 0.0
+    flatness = (metrics.mid_dim * metrics.max_dim) / max(metrics.volume_cm3 * 10 / metrics.min_dim, 1)
+    if flatness > 0.7:
+        return 15.0
+    if flatness > 0.5:
+        return 10.0
+    if flatness > 0.3:
+        return 5.0
+    return 0.0
+
+
+def _score_volume_efficiency(vol_eff: float) -> float:
+    """Up to 20 bonus points, or penalty for high efficiency."""
+    bonus = 0.0
+    if vol_eff < 0.3:
+        bonus = 20.0
+    elif vol_eff < 0.5:
+        bonus = 15.0
+    elif vol_eff < 0.65:
+        bonus = 5.0
+    if vol_eff > 0.7:
+        bonus -= 35.0
+    elif vol_eff > 0.6:
+        bonus -= 20.0
+    return bonus
+
+
 def calculate_sheet_metal_score(metrics: GeometricMetrics) -> float:
     """
     Calculate sheet metal likelihood score (0-100) based on geometric characteristics.
-    
-    Scoring criteria:
-    - Thickness (30-40 points): Sheet metal is 0.5-6mm thick
-    - Aspect ratio (25 points): Sheet is much longer/wider than thick
-    - Surface-to-volume (20 points): High ratio indicates thin-walled structure
-    - Flatness (15 points): Sheet parts are relatively flat
-    - Volume efficiency (20 points): Low efficiency = hollow/bent structure (CRITICAL)
-    
-    Args:
-        metrics: Geometric metrics container
-        
-    Returns:
-        Score from 0-100, higher = more likely sheet metal
     """
-    score = 0.0
-    
-    # 1. Thickness check (30-40 points) - Important but not sole determinant
-    if 0.5 <= metrics.min_dim <= 6.0:
-        score += 30
-        # Bonus for typical sheet metal gauges
-        typical_thicknesses = [0.8, 1.0, 1.2, 1.5, 2.0, 2.5, 3.0, 4.0, 5.0, 6.0]
-        if any(abs(metrics.min_dim - t) < 0.3 for t in typical_thicknesses):
-            score += 10  # Total 40 points
-        elif metrics.min_dim <= 4.0:
-            score += 5   # Bonus for very thin
-    elif 0.3 <= metrics.min_dim < 0.5:
-        score += 20  # Very thin, non-standard
-    
-    # 2. Aspect ratio (25 points) - Sheet is much longer/wider than thick
-    if metrics.aspect_ratio > 20:
-        score += 25
-    elif metrics.aspect_ratio > 15:
-        score += 20
-    elif metrics.aspect_ratio > 10:
-        score += 15
-    elif metrics.aspect_ratio > 5:
-        score += 8
-    
-    # 3. Surface-to-volume ratio (20 points) - Thin-walled = high ratio
-    if metrics.surface_to_volume_ratio > 80:
-        score += 20
-    elif metrics.surface_to_volume_ratio > 60:
-        score += 15
-    elif metrics.surface_to_volume_ratio > 40:
-        score += 10
-    elif metrics.surface_to_volume_ratio > 25:
-        score += 5
-    
-    # 4. Flatness check (15 points)
-    if metrics.min_dim > 0:
-        flatness_ratio = (metrics.mid_dim * metrics.max_dim) / max(metrics.volume_cm3 * 10 / metrics.min_dim, 1)
-        if flatness_ratio > 0.7:
-            score += 15
-        elif flatness_ratio > 0.5:
-            score += 10
-        elif flatness_ratio > 0.3:
-            score += 5
-    
-    # 5. Volume efficiency (20 points) - CRITICAL for distinguishing sheet metal from CNC
-    # Sheet metal has LOW volume efficiency (hollow, bent, thin-walled)
-    # CNC machined parts have HIGH volume efficiency (solid, machined from stock)
-    if metrics.volume_efficiency < 0.3:
-        score += 20  # Very hollow/bent - strong sheet metal indicator
-    elif metrics.volume_efficiency < 0.5:
-        score += 15  # Moderately hollow
-    elif metrics.volume_efficiency < 0.65:
-        score += 5   # Slightly hollow
-    # No points for volume_efficiency >= 0.65 (solid parts)
-    
-    # PENALTY: High volume efficiency indicates CNC machined solid part
-    if metrics.volume_efficiency > 0.7:
-        score -= 35  # Strong penalty - likely CNC machined
-    elif metrics.volume_efficiency > 0.6:
-        score -= 20  # Moderate penalty
-    
+    score = (
+        _score_thickness(metrics.min_dim)
+        + _score_aspect(metrics.aspect_ratio)
+        + _score_sv_ratio(metrics.surface_to_volume_ratio)
+        + _score_flatness(metrics)
+        + _score_volume_efficiency(metrics.volume_efficiency)
+    )
     return min(100.0, max(0.0, score))
+
+
+def _calc_volume_distribution(vol_eff: float) -> float:
+    if vol_eff > 0.7:
+        return 0.9
+    if vol_eff > 0.5:
+        return 0.6
+    if vol_eff > 0.3:
+        return 0.3
+    return 0.1
+
+
+def _calc_wall_consistency(min_dim: float, vol_eff: float) -> float:
+    if min_dim < 6 and vol_eff < 0.5:
+        return 0.8 + (1.0 - vol_eff) * 0.2
+    return 0.4
+
+
+def _calc_planarity(aspect_ratio: float, vol_eff: float) -> float:
+    if aspect_ratio > 10 and vol_eff < 0.5:
+        return 0.7 + min(0.3, aspect_ratio / 100)
+    if aspect_ratio > 5:
+        return 0.5
+    return 0.3
+
+
+def _calc_cnc_likelihood(vol_eff: float, dim_balance: float, aspect_ratio: float, min_dim: float) -> float:
+    score = 0.0
+    if vol_eff > 0.7:
+        score += 0.5
+    elif vol_eff > 0.6:
+        score += 0.3
+    if dim_balance > 0.4:
+        score += 0.2
+    if aspect_ratio < 5:
+        score += 0.2
+    if 6 < min_dim < 50:
+        score += 0.1
+    return min(1.0, score)
 
 
 def calculate_advanced_metrics(metrics: GeometricMetrics) -> Dict[str, float]:
     """
     Calculate advanced geometric metrics for enhanced classification.
-    
-    Returns:
-        Dict with:
-        - wall_thickness_consistency: 0-1, high = uniform walls (sheet metal)
-        - planarity_score: 0-1, high = mostly flat surfaces
-        - volume_distribution: 0-1, high = solid part, low = hollow
-        - dimension_balance: 0-1, high = box-like, low = elongated
-        - surface_to_volume_ratio: numeric ratio
-        - cnc_likelihood: 0-1, high = likely CNC machined
     """
-    # Volume distribution (solid vs hollow)
-    if metrics.volume_efficiency > 0.7:
-        volume_dist = 0.9
-    elif metrics.volume_efficiency > 0.5:
-        volume_dist = 0.6
-    elif metrics.volume_efficiency > 0.3:
-        volume_dist = 0.3
-    else:
-        volume_dist = 0.1
-    
-    # Wall thickness consistency (estimated from volume efficiency)
-    # Low efficiency with thin min dim = consistent thin walls (sheet metal)
-    # High efficiency = varying thickness (machined solid)
-    if metrics.min_dim < 6 and metrics.volume_efficiency < 0.5:
-        wall_consistency = 0.8 + (1.0 - metrics.volume_efficiency) * 0.2
-    else:
-        wall_consistency = 0.4
-    
-    # Planarity score (flat vs complex)
-    # High aspect ratio + low volume efficiency = flat bent sheet
-    if metrics.aspect_ratio > 10 and metrics.volume_efficiency < 0.5:
-        planarity = 0.7 + min(0.3, metrics.aspect_ratio / 100)
-    elif metrics.aspect_ratio > 5:
-        planarity = 0.5
-    else:
-        planarity = 0.3
-    
-    # Dimension balance (how box-like vs elongated)
+    volume_dist = _calc_volume_distribution(metrics.volume_efficiency)
+    wall_consistency = _calc_wall_consistency(metrics.min_dim, metrics.volume_efficiency)
+    planarity = _calc_planarity(metrics.aspect_ratio, metrics.volume_efficiency)
+
     if metrics.mid_dim > 0:
-        mid_to_max_ratio = metrics.mid_dim / metrics.max_dim
-        min_to_mid_ratio = metrics.min_dim / metrics.mid_dim
-        dimension_balance = (mid_to_max_ratio + min_to_mid_ratio) / 2
+        mid_to_max = metrics.mid_dim / metrics.max_dim
+        min_to_mid = metrics.min_dim / metrics.mid_dim
+        dimension_balance = (mid_to_max + min_to_mid) / 2
     else:
-        dimension_balance = 0
-    
-    # CNC likelihood score
-    # High volume efficiency + moderate dimensions = likely CNC machined
-    cnc_score = 0.0
-    if metrics.volume_efficiency > 0.7:
-        cnc_score += 0.5
-    elif metrics.volume_efficiency > 0.6:
-        cnc_score += 0.3
-    
-    # Balanced dimensions suggest machined block
-    if dimension_balance > 0.4:
-        cnc_score += 0.2
-    
-    # Low aspect ratio suggests chunky machined part
-    if metrics.aspect_ratio < 5:
-        cnc_score += 0.2
-    
-    # Moderate thickness (not too thin) suggests machining
-    if 6 < metrics.min_dim < 50:
-        cnc_score += 0.1
-    
-    cnc_score = min(1.0, cnc_score)
-    
+        dimension_balance = 0.0
+
+    cnc_score = _calc_cnc_likelihood(
+        metrics.volume_efficiency, dimension_balance,
+        metrics.aspect_ratio, metrics.min_dim,
+    )
+
     return {
         'wall_thickness_consistency': wall_consistency,
         'planarity_score': planarity,

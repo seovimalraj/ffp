@@ -42,22 +42,23 @@ apiClient.interceptors.request.use(
   },
 );
 
+// Module-level sign-out guard to prevent multiple concurrent sign-out redirects
+let isSigningOut = false;
+
 // Response interceptor for error handling
 apiClient.interceptors.response.use(
   (response: AxiosResponse) => {
     return response;
   },
   (error) => {
-    let isSigningOut = false;
     if (
       error.response?.status === 401 &&
       !isSigningOut &&
-      typeof window !== "undefined"
+      globalThis.window !== undefined
     ) {
       console.error("Unauthorized request - redirecting to login");
-      // You could redirect to login here if needed
       isSigningOut = true;
-      const returnUrl = window.location.pathname + window.location.search;
+      const returnUrl = globalThis.location.pathname + globalThis.location.search;
       useMetaStore.getState().setRedirectUrl(returnUrl);
       signOut({
         callbackUrl: `/signin?returnUrl=${encodeURIComponent(returnUrl)}`,
