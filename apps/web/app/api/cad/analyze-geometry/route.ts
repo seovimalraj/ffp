@@ -145,6 +145,7 @@ interface DFMIssueEntry {
 }
 interface GeometryContext {
   backendData: any;
+  advancedMetrics: Record<string, any>;
   boundingBox: { x: number; y: number; z: number };
   detectedThickness: number | undefined;
   thicknessConfidence: number;
@@ -329,6 +330,7 @@ function transformBackendGeometry(backendData: any, _fileName: string): any {
     'sheet_metal': 'sheet-metal',
     'cnc_milling': 'cnc-milling',
     'cnc_turning': 'cnc-turning',
+    'assembly': 'manual-quote',
   };
   const recommendedProcess = processMap[backendData.process_type] || 'cnc-milling';
   const sheetMetalScore = backendData.sheet_metal_score || 0;
@@ -351,7 +353,7 @@ function transformBackendGeometry(backendData: any, _fileName: string): any {
   const complexity = resolveComplexity(backendData, recommendedProcess, bendData.bendCount);
 
   return buildGeometryResult({
-    backendData, boundingBox, detectedThickness,
+    backendData, advancedMetrics, boundingBox, detectedThickness,
     thicknessConfidence, thicknessMethod, thicknessWarning,
     bendData, recommendedProcess, processConfidence, processReasoning,
     sheetMetalScore, volumeMm3, complexity,
@@ -359,7 +361,7 @@ function transformBackendGeometry(backendData: any, _fileName: string): any {
 }
 
 function buildGeometryResult(ctx: GeometryContext): any {
-  const { backendData, boundingBox, detectedThickness, thicknessConfidence, thicknessMethod, thicknessWarning } = ctx;
+  const { backendData, advancedMetrics, boundingBox, detectedThickness, thicknessConfidence, thicknessMethod, thicknessWarning } = ctx;
   const { bendData, recommendedProcess, processConfidence, processReasoning, sheetMetalScore, volumeMm3, complexity } = ctx;
   const { actualBendCount, bendConfidence, isLikelyBent, bendComplexity, stepBendAngles, hasStepBendData, bendCount } = bendData;
 
@@ -374,6 +376,10 @@ function buildGeometryResult(ctx: GeometryContext): any {
     processConfidence,
     processReasoning,
     sheetMetalScore,
+    needsReview: advancedMetrics.needs_review === true,
+    classificationMethod: advancedMetrics.classification_method || 'unknown',
+    machiningFeatureScore: advancedMetrics.machining_feature_score || 0,
+    faceClassification: advancedMetrics.face_classification || null,
     detectedWallThickness: detectedThickness,
     thicknessConfidence,
     thicknessDetectionMethod: thicknessMethod,
@@ -410,7 +416,7 @@ function buildGeometryResult(ctx: GeometryContext): any {
       toolAccess: { restrictedAreas: 0, requiresIndexing: false, requiresMultiAxisMachining: false, estimatedSetupCount: 1, axisCounts: { '3-axis': 1, '4-axis': 0, '5-axis': 0 }, specialFixturingNeeded: false },
       surfaceFinish: { estimatedRa: 3.2, criticalSurfaces: 0, requiresPolishing: false, requiresHoning: false }
     },
-    sheetMetalFeatures: {
+    sheetMetalFeatures: recommendedProcess === 'sheet-metal' ? {
       thickness: detectedThickness || Math.min(boundingBox.x, boundingBox.y, boundingBox.z),
       flatArea: (backendData.surface_area || 0) * 100 * 0.5,
       developedLength: 2 * (boundingBox.x + boundingBox.y) * (1 + bendCount * 0.05),
@@ -454,7 +460,7 @@ function buildGeometryResult(ctx: GeometryContext): any {
       complexity: resolveSmComplexity(bendCount),
       bendConfidence,
       isLikelyBent,
-    },
+    } : undefined,
     recommendedSecondaryOps: [],
     dfmIssues: transformDFMIssues(backendData.dfm_analysis),
     grainDirection: backendData.grain_direction ? {
@@ -693,12 +699,44 @@ function extractPocketFeatures(backendData: any): {
 }
 
 function estimateMachiningTime(data: any): number {
-  const volume = data.volume || 0;
+  const volume = data.volume || 0;  // cm³
+  const surfaceArea = data.surface_area || 0;  // cm²
   const holes = data.primitive_features?.holes || 0;
   const pockets = data.primitive_features?.pockets || 0;
-  
-  // Rough estimation: 0.5 min per cm³ + 1 min per hole + 3 min per pocket
-  return Math.max(5, volume * 0.5 + holes * 1 + pockets * 3);
+  const threads = data.primitive_features?.threads || 0;
+  const slots = data.primitive_features?.slots || 0;
+  const fillets = data.primitive_features?.fillets || 0;
+  const complexity = data.complexity || 'moderate';
+
+  // Base time: material removal rate ~2-5 cm³/min for aluminum
+  const volumeTime = volume * 0.5;
+
+  // Feature times (minutes)
+  const holeTime = holes * 1;             // drilling + deburring
+  const pocketTime = pockets * 3;         // roughing + finishing passes
+  const threadTime = threads * 2;         // tapping cycles
+  const slotTime = slots * 1.5;           // slotting operations
+  const filletTime = fillets * 0.3;       // finishing passes on radii
+
+  // Surface finishing based on surface area
+  const finishTime = surfaceArea * 0.05;
+
+  // Complexity multiplier for multi-axis, tight tolerances, etc.
+  const complexityMult = { simple: 0.8, moderate: 1, complex: 1.4 }[complexity] || 1;
+
+  const rawTime = (volumeTime + holeTime + pocketTime + threadTime + slotTime + filletTime + finishTime) * complexityMult;
+
+  // Setup time component (loading, fixturing, tool changes)
+  const setupComponent = 5;  // minimum 5 min for any CNC part
+
+  // Bounding box based floor: even a tiny CNC part needs minimum fixturing time
+  const bbox = data.bbox || {};
+  const bboxX = (bbox.max?.x || 0) - (bbox.min?.x || 0);
+  const bboxY = (bbox.max?.y || 0) - (bbox.min?.y || 0);
+  const bboxZ = (bbox.max?.z || 0) - (bbox.min?.z || 0);
+  const bboxVolumeFloor = (bboxX * bboxY * bboxZ) / 1000 * 0.1;  // rough floor from bbox
+
+  return Math.max(setupComponent, rawTime, bboxVolumeFloor);
 }
 
 function calculateMaterialWeight(volumeCm3: number): number {

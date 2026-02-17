@@ -78,13 +78,20 @@ def count_solids_and_compounds(shape) -> AssemblyInfo:
         )
         
     except Exception as e:
-        print(f"⚠️ Assembly detection failed: {e}")
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.warning(
+            "Assembly detection failed (defaulting to single part): %s — "
+            "This may cause assemblies to bypass manual-quote routing. "
+            "Shape type: %s",
+            e, type(shape).__name__
+        )
         return AssemblyInfo(
             is_assembly=False,
             solid_count=1,
             compound_count=0,
             shell_count=0,
-            reason="Could not determine assembly status"
+            reason=f"Assembly detection error: {e}"
         )
 
 

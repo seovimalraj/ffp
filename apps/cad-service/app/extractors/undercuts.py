@@ -47,13 +47,31 @@ def _check_face_accessibility(
     face, access_dirs, brep_tool, geom_plane,
     geom_cyl_surface, uv_bounds_fn,
     surface_props_fn, gprop_cls, face_map, idx,
+    adaptor_cls=None, plane_type=None, cylinder_type=None,
 ) -> Optional[UndercutFeature]:
-    """Return an UndercutFeature if *face* is inaccessible, else None."""
+    """Return an UndercutFeature if *face* is inaccessible, else None.
+
+    Uses BRepAdaptor_Surface.GetType() for robust surface-type detection
+    when available, falling back to Geom_*.DownCast().
+    """
+    # Skip planar and cylindrical faces (always accessible)
+    if adaptor_cls is not None and plane_type is not None:
+        try:
+            adaptor = adaptor_cls(face)
+            surf_type = adaptor.GetType()
+            if surf_type == plane_type or surf_type == cylinder_type:
+                return None
+        except Exception:
+            pass
+    else:
+        surf_geom = brep_tool.Surface(face)
+        if geom_plane.DownCast(surf_geom) is not None:
+            return None
+        if geom_cyl_surface.DownCast(surf_geom) is not None:
+            return None
+
+    # Always get the Geom_Surface for normal computation
     surf = brep_tool.Surface(face)
-    if geom_plane.DownCast(surf) is not None:
-        return None
-    if geom_cyl_surface.DownCast(surf) is not None:
-        return None
 
     try:
         umin, umax, vmin, vmax = uv_bounds_fn(face)
@@ -95,6 +113,8 @@ def extract_undercuts_from_shape(shape) -> List[UndercutFeature]:
     principal axes (±X, ±Y, ±Z). If no axis can "see" the face (i.e., the
     maximum |dot(normal, axis)| < threshold), the face is inaccessible
     without 5-axis or special tooling → undercut.
+
+    Uses BRepAdaptor_Surface for robust surface-type detection when available.
     """
     try:
         from OCC.Core.TopExp import TopExp_Explorer, topexp
@@ -108,6 +128,19 @@ def extract_undercuts_from_shape(shape) -> List[UndercutFeature]:
     except Exception:
         logger.warning("OCC imports unavailable for undercut detection")
         return []
+
+    # Try importing BRepAdaptor for robust face-type detection
+    adaptor_cls = None
+    plane_type = None
+    cylinder_type = None
+    try:
+        from OCC.Core.BRepAdaptor import BRepAdaptor_Surface
+        from OCC.Core.GeomAbs import GeomAbs_Plane, GeomAbs_Cylinder
+        adaptor_cls = BRepAdaptor_Surface
+        plane_type = GeomAbs_Plane
+        cylinder_type = GeomAbs_Cylinder
+    except Exception:
+        pass
 
     face_map = TopTools_IndexedMapOfShape()
     topexp.MapShapes(shape, TopAbs_FACE, face_map)
@@ -130,6 +163,8 @@ def extract_undercuts_from_shape(shape) -> List[UndercutFeature]:
             face, access_dirs, BRep_Tool, Geom_Plane,
             Geom_CylindricalSurface, breptools_UVBounds,
             brepgprop_SurfaceProperties, GProp_GProps, face_map, idx,
+            adaptor_cls=adaptor_cls, plane_type=plane_type,
+            cylinder_type=cylinder_type,
         )
         if result is not None:
             undercuts.append(result)

@@ -7,7 +7,7 @@
 import { GeometryData, SheetMetalFeatures } from "./cad-analysis";
 
 // Type aliases for common union types
-export type ProcessType = "cnc-milling" | "cnc-turning" | "sheet-metal" | "injection-molding";
+export type ProcessType = "cnc-milling" | "cnc-turning" | "sheet-metal" | "injection-molding" | "manual-quote";
 export type ToleranceLevel = "standard" | "precision" | "tight";
 export type LeadTimeType = "economy" | "standard" | "expedited";
 export type CuttingMethod = "laser" | "plasma" | "waterjet" | "turret-punch";
@@ -131,6 +131,9 @@ export interface PricingBreakdown {
   leadTimeDays: number;
   requiresManualQuote: boolean;
   manualQuoteReason?: string;
+  // Classification review metadata — set when backend confidence < 0.70
+  needsReview?: boolean;
+  classificationMethod?: string;
   leadTimeComponents: {
     productionDays: number;
     shippingDays: number;
@@ -4502,6 +4505,16 @@ export function calculatePricing(input: PricingInput): PricingBreakdown {
     leadTimeType,
   } = input;
 
+  // Short-circuit for manual-quote process — assemblies and flagged parts
+  if (process.type === ("manual-quote" as any)) {
+    return manualQuoteBreakdown(leadTimeType, "Assembly or complex part — manual quote required");
+  }
+
+  // Also check geometry-level manual-quote flag (set by backend assembly detection)
+  if (geometry.requiresManualQuote) {
+    return manualQuoteBreakdown(leadTimeType, geometry.manualQuoteReason || "Manual quote required by backend analysis");
+  }
+
   // Route to sheet metal pricing if process is sheet-metal
   if (process.type === "sheet-metal" && "thickness" in material) {
     const cuttingMethod = input.cuttingMethod || "laser"; // Default to laser cutting
@@ -4624,11 +4637,22 @@ export function calculatePricing(input: PricingInput): PricingBreakdown {
   // Final unit price with lead time multiplier
   // Minimum CNC price floor: never go below material cost × 1.5 or $5
   const minCncUnitPrice = Math.max(materialCostPerUnit * 1.5, 5);
-  const unitPrice = Math.max(
-    priceBeforeLeadTimeMultiplier * leadTimePriceMultiplier,
-    minCncUnitPrice,
-  );
+  const calculatedPrice = priceBeforeLeadTimeMultiplier * leadTimePriceMultiplier;
+  const floorHit = calculatedPrice < minCncUnitPrice;
+  const unitPrice = Math.max(calculatedPrice, minCncUnitPrice);
   const totalPrice = unitPrice * quantity;
+
+  // Diagnostic logging for pricing anomalies
+  if (floorHit || materialCostPerUnit < 0.01 || machiningCostPerUnit < 0.01) {
+    console.warn(
+      `⚠️ CNC Pricing diagnostic: floor=${floorHit ? 'HIT' : 'ok'}, ` +
+      `rawWeight=${rawWeightKg.toFixed(4)}kg, materialCost=$${materialCostPerUnit.toFixed(2)}, ` +
+      `machiningTime=${geometry.estimatedMachiningTime.toFixed(1)}min, ` +
+      `machiningCost=$${machiningCostPerUnit.toFixed(2)}, ` +
+      `calculated=$${calculatedPrice.toFixed(2)}, floor=$${minCncUnitPrice.toFixed(2)}, ` +
+      `final=$${unitPrice.toFixed(2)}, bbox=${geometry.boundingBox.x.toFixed(1)}×${geometry.boundingBox.y.toFixed(1)}×${geometry.boundingBox.z.toFixed(1)}mm`
+    );
+  }
 
   // Guard: if price is still $0 or negative, push to manual quote
   if (unitPrice <= 0) {
@@ -4658,6 +4682,8 @@ export function calculatePricing(input: PricingInput): PricingBreakdown {
     leadTimeDays: leadPlan.leadTimeDays,
     requiresManualQuote: false,
     manualQuoteReason: undefined,
+    // Flag when backend classification confidence is low
+    ...(geometry.needsReview && { needsReview: true, classificationMethod: geometry.classificationMethod }),
     leadTimeComponents: leadPlan.components,
   };
 }
@@ -4906,7 +4932,12 @@ function calculateRawStockWeightKg(
   // CRITICAL FIX: 1 cm = 10mm, so 1 cm³ = 10mm × 10mm × 10mm = 1000 mm³
   // Previously was dividing by 1,000,000 which is WRONG
   const bboxVolumeCm3 = bboxVolumeMm3 / 1000;
-  const rawWeightKg = (bboxVolumeCm3 * material.density) / 1000;
+
+  // Floor: even a tiny CNC part needs a minimum stock block (10mm cube)
+  const minStockCm3 = 1;  // 10mm × 10mm × 10mm = 1 cm³
+  const effectiveVolumeCm3 = Math.max(bboxVolumeCm3, minStockCm3);
+
+  const rawWeightKg = (effectiveVolumeCm3 * material.density) / 1000;
   return rawWeightKg * process.materialWasteFactor;
 }
 

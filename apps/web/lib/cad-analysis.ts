@@ -265,6 +265,20 @@ export interface GeometryData {
   requiresManualQuote?: boolean;
   manualQuoteReason?: string;
 
+  // === CLASSIFICATION METADATA (from backend cascade) ===
+  needsReview?: boolean; // True when classification confidence < 0.70
+  classificationMethod?: string; // Which tier resolved the classification (e.g., "face_classification", "bend_detection")
+  machiningFeatureScore?: number; // 0-100, CNC machining signal from detected features
+  faceClassification?: {
+    histogram?: Record<string, number>;
+    cnc_score?: number;
+    sheet_metal_score?: number;
+    dominant_type?: string;
+    paired_plane_count?: number;
+    dominant_pair_thickness?: number;
+    reasoning?: string[];
+  };
+
   // ENTERPRISE-LEVEL: Advanced thickness detection metadata
   detectedWallThickness?: number; // mm - actual material thickness from ray-casting (not bbox)
   thicknessConfidence?: number; // 0-1, confidence in thickness detection

@@ -34,6 +34,7 @@ from ..models import FeaturesJson, BBox, MassProps, HoleFeature, PocketFeature, 
 from ..core.geometry import GeometricMetrics, calculate_sheet_metal_score, calculate_advanced_metrics
 from ..core.bend_detection import AdvancedBendDetector
 from ..core.classification import ProcessClassifier
+from ..core.face_classification import classify_faces
 from ..dfm_analyzer import analyze_dfm, build_geometry_for_dfm
 from ..core.validation import validate_geometry
 from ..core.advanced_thickness_detection import enhanced_ray_casting_analysis
@@ -248,7 +249,7 @@ def _extract_step_additional_features(shape, holes, pockets):
 
 def _classify_process(bbox_dims, vol_mm3, area_mm2, detected_thickness,
                       thickness_confidence, triangle_count, thickness_analysis,
-                      **feature_counts):
+                      face_classification=None, **feature_counts):
     """Run process classification and return formatted results."""
     geom_metrics = GeometricMetrics(bbox_dims, vol_mm3, area_mm2)
     classifier = ProcessClassifier(geom_metrics)
@@ -257,16 +258,30 @@ def _classify_process(bbox_dims, vol_mm3, area_mm2, detected_thickness,
         thickness_confidence=thickness_confidence,
         triangle_count=triangle_count,
         thickness_analysis=thickness_analysis,
+        face_classification=face_classification,
         **feature_counts,
     )
     process_type_str = process_type if process_type in ('sheet_metal', 'cnc_turning') else 'cnc_milling'
+
+    # Confidence calibration: flag low-confidence classifications for review
+    needs_review = confidence < 0.70
+    if needs_review:
+        logging.warning(
+            "LOW CONFIDENCE classification: %s at %.2f — flagged for review",
+            process_type_str, confidence,
+        )
+
     advanced_metrics = {
         'detected_thickness_mm': detected_thickness,
         'thickness_confidence': thickness_confidence,
         'thickness_detection_method': 'ray_casting_statistical',
         'classification_confidence': confidence,
+        'needs_review': needs_review,
         **metadata,
     }
+    # Include face classification in advanced metrics for frontend
+    if face_classification is not None:
+        advanced_metrics['face_classification'] = face_classification.to_dict()
     if 'bend_report' in metadata:
         print(metadata['bend_report'])
     return process_type_str, confidence, metadata, advanced_metrics
@@ -653,6 +668,28 @@ def _analyze_stl(file_path, scale):
     return metrics
 
 
+def _detect_assembly_early(shape) -> dict | None:
+    """Run assembly detection as the absolute first step.
+
+    Returns assembly metrics dict if assembly detected, else None.
+    This must be resilient — if it crashes we still continue analysis.
+    """
+    try:
+        assembly_info = count_solids_and_compounds(shape)
+        if assembly_info.is_assembly:
+            logging.warning(
+                "Assembly detected early: solids=%d compounds=%d shells=%d — %s",
+                assembly_info.solid_count,
+                assembly_info.compound_count,
+                assembly_info.shell_count,
+                assembly_info.reason,
+            )
+            return _build_assembly_metrics(assembly_info)
+    except Exception as exc:
+        logging.warning("Early assembly detection failed (continuing): %s", exc)
+    return None
+
+
 def _analyze_step(file_path):
     """Analyze a STEP file and return normalized metrics."""
     if not occ_available():
@@ -662,14 +699,32 @@ def _analyze_step(file_path):
         )
     shape = load_step_shape(file_path)
 
-    # Assembly detection
-    assembly_info = count_solids_and_compounds(shape)
-    if assembly_info.is_assembly:
-        print(f"⚠️ {assembly_info.reason}")
-        return _build_assembly_metrics(assembly_info)
+    # Assembly detection — FIRST, before anything else
+    assembly_result = _detect_assembly_early(shape)
+    if assembly_result is not None:
+        return assembly_result
 
     vol_mm3, area_mm2 = shape_mass_props(shape)
     bbox_dict, bbox_dims = _extract_occ_bbox(shape)
+
+    # Face type classification (BRepAdaptor — most reliable signal)
+    try:
+        face_result = classify_faces(shape, area_mm2)
+        logging.warning(
+            "Face classification: planes=%.0f%% cyl=%.0f%% freeform=%.0f%% "
+            "pairs=%d SM=%.0f CNC=%.0f → %s",
+            face_result.plane_ratio * 100,
+            face_result.cylinder_ratio * 100,
+            face_result.freeform_ratio * 100,
+            face_result.paired_plane_count,
+            face_result.sheet_metal_face_score,
+            face_result.cnc_face_score,
+            "sheet_metal" if face_result.is_likely_sheet_metal
+            else ("cnc" if face_result.is_likely_cnc else "uncertain"),
+        )
+    except Exception as exc:
+        logging.warning("Face classification failed (continuing): %s", exc)
+        face_result = None
 
     # Wall thickness via meshing
     actual_thickness, thickness_confidence, triangle_count, thickness_analysis = \
@@ -695,6 +750,7 @@ def _analyze_step(file_path):
         thickness_confidence=thickness_confidence,
         triangle_count=triangle_count,
         thickness_analysis=thickness_analysis,
+        face_classification=face_result,
         hole_count=len(holes),
         pocket_count=len(pockets),
         thread_count=len(features['threads']),
@@ -898,4 +954,98 @@ def analyze_cad_file_sync(request: AnalysisRequest):
         # Log the full traceback so real errors are visible in Docker logs
         logging.error("Analysis failed for file_id=%s: %s", request.file_id, str(e))
         traceback.print_exc()
+
+        # Last-resort assembly detection: if analysis crashed but we can
+        # still load and check the shape, return assembly info instead of 500
+        try:
+            ext = os.path.splitext(local_path)[1].lower()
+            if ext in ('.step', '.stp') and occ_available():
+                shape = load_step_shape(local_path)
+                assembly_result = _detect_assembly_early(shape)
+                if assembly_result is not None:
+                    logging.warning(
+                        "Analysis crashed but assembly detected — returning assembly metrics"
+                    )
+                    safe_metrics = _json_safe(assembly_result)
+                    return JSONResponse(
+                        content={"file_id": request.file_id, "metrics": safe_metrics}
+                    )
+        except Exception:
+            pass  # Last resort failed — fall through to original error
+
         raise HTTPException(status_code=500, detail=f"Analysis failed: {str(e)[:500]}")
+
+
+# ---------------------------------------------------------------------------
+# Feedback & retraining endpoints (Phase 6: Confidence calibration)
+# ---------------------------------------------------------------------------
+
+class FeedbackRequest(BaseModel):
+    """Request body for classification feedback."""
+    file_id: str
+    confirmed_process: str  # 'sheet_metal' | 'cnc_milling' | 'cnc_turning'
+    original_process: Optional[str] = None
+    original_confidence: Optional[float] = None
+    features: Optional[dict] = None  # feature vector from original analysis
+
+
+@router.post("/feedback")
+def submit_classification_feedback(request: FeedbackRequest):
+    """Record a user-confirmed classification for ML retraining.
+
+    Called when a user manually overrides the auto-detected process type.
+    This data is stored and used to improve the ML classifier over time.
+    """
+    if request.confirmed_process not in ('sheet_metal', 'cnc_milling', 'cnc_turning'):
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid process type: {request.confirmed_process}. "
+                   f"Must be 'sheet_metal', 'cnc_milling', or 'cnc_turning'.",
+        )
+
+    try:
+        from ..core.ml_classifier import MLProcessClassifier
+        classifier = MLProcessClassifier()
+        features = request.features or {}
+        classifier.record_feedback(features, request.confirmed_process)
+        logging.warning(
+            "Classification feedback recorded: file_id=%s, "
+            "original=%s (%.2f) → confirmed=%s",
+            request.file_id,
+            request.original_process or "unknown",
+            request.original_confidence or 0.0,
+            request.confirmed_process,
+        )
+        return {"status": "ok", "message": "Feedback recorded for ML retraining"}
+    except Exception as e:
+        logging.error("Failed to record feedback: %s", e)
+        raise HTTPException(status_code=500, detail=f"Feedback recording failed: {str(e)[:200]}")
+
+
+@router.post("/retrain")
+def trigger_ml_retrain():
+    """Trigger ML model retraining with accumulated feedback data.
+
+    Should be called periodically (e.g., weekly cron) or by an admin.
+    Requires at least 50 feedback samples to retrain.
+    """
+    try:
+        from ..core.ml_classifier import MLProcessClassifier, _FEEDBACK_PATH
+        if not _FEEDBACK_PATH.exists():
+            return {"status": "skipped", "message": "No feedback data available yet"}
+
+        # Count feedback samples
+        with open(_FEEDBACK_PATH) as f:
+            sample_count = sum(1 for _ in f)
+
+        classifier = MLProcessClassifier()
+        classifier.retrain_with_feedback(min_samples=50)
+        logging.warning("ML retrain triggered with %d feedback samples", sample_count)
+        return {
+            "status": "ok",
+            "message": f"Retrained with {sample_count} feedback samples",
+            "sample_count": sample_count,
+        }
+    except Exception as e:
+        logging.error("ML retrain failed: %s", e)
+        raise HTTPException(status_code=500, detail=f"Retrain failed: {str(e)[:200]}")

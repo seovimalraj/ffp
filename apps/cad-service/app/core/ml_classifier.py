@@ -59,6 +59,14 @@ FEATURE_NAMES = [
     "planarity_score",
     "wall_consistency",
     "cnc_likelihood",
+    # Face classification features (from BRepAdaptor analysis)
+    "face_plane_ratio",
+    "face_cylinder_ratio",
+    "face_freeform_ratio",
+    "face_paired_plane_count",
+    "face_dominant_thickness",
+    "face_cnc_score",
+    "face_sheet_metal_score",
 ]
 
 PROCESS_LABELS = ["sheet_metal", "cnc_milling", "cnc_turning"]
@@ -129,6 +137,14 @@ def _generate_synthetic_dataset(n_per_class: int = 500) -> Tuple[List[List[float
             random.uniform(0.3, 0.9), random.uniform(1.5, 8.0),
             random.uniform(0.5, 0.95), random.uniform(0.6, 0.98),
             random.uniform(0.1, 0.4),
+            # Face classification: sheet metal profile
+            random.uniform(0.75, 0.98),   # plane_ratio (high)
+            random.uniform(0.0, 0.15),    # cylinder_ratio (low)
+            random.uniform(0.0, 0.05),    # freeform_ratio (very low)
+            random.randint(2, 8),          # paired_plane_count (several)
+            random.uniform(0.5, 6.0),      # dominant_thickness (thin)
+            random.uniform(5, 35),         # cnc_score (low)
+            random.uniform(55, 95),        # sheet_metal_score (high)
         ]
         X.append(row)
         y.append(LABEL_MAP["sheet_metal"])
@@ -157,6 +173,14 @@ def _generate_synthetic_dataset(n_per_class: int = 500) -> Tuple[List[List[float
             random.uniform(0.05, 0.35), random.uniform(0.5, 2.0),
             random.uniform(0.1, 0.5), random.uniform(0.1, 0.5),
             random.uniform(0.5, 0.9),
+            # Face classification: CNC milling profile
+            random.uniform(0.30, 0.70),   # plane_ratio (moderate)
+            random.uniform(0.15, 0.45),   # cylinder_ratio (higher)
+            random.uniform(0.05, 0.25),   # freeform_ratio (some)
+            random.randint(0, 3),          # paired_plane_count (few)
+            random.uniform(5, 60),         # dominant_thickness (thick)
+            random.uniform(50, 90),        # cnc_score (high)
+            random.uniform(5, 40),         # sheet_metal_score (low)
         ]
         X.append(row)
         y.append(LABEL_MAP["cnc_milling"])
@@ -188,6 +212,14 @@ def _generate_synthetic_dataset(n_per_class: int = 500) -> Tuple[List[List[float
             random.uniform(0.05, 0.3), random.uniform(0.5, 2.0),
             random.uniform(0.1, 0.5), random.uniform(0.1, 0.5),
             random.uniform(0.4, 0.85),
+            # Face classification: CNC turning profile
+            random.uniform(0.10, 0.40),   # plane_ratio (low)
+            random.uniform(0.40, 0.80),   # cylinder_ratio (high - cylindrical body)
+            random.uniform(0.0, 0.15),    # freeform_ratio (low)
+            random.randint(0, 2),          # paired_plane_count (few)
+            random.uniform(8, 60),         # dominant_thickness (thick)
+            random.uniform(45, 85),        # cnc_score (moderate-high)
+            random.uniform(5, 25),         # sheet_metal_score (low)
         ]
         X.append(row)
         y.append(LABEL_MAP["cnc_turning"])
@@ -431,6 +463,7 @@ def build_feature_vector(
     slot_count: int = 0,
     triangle_count: int = 0,
     advanced_metrics: Optional[Dict] = None,
+    face_classification: Optional[Dict] = None,
 ) -> Dict[str, float]:
     """Build the feature vector dict matching FEATURE_NAMES."""
     dims = sorted(bbox_dims)
@@ -451,6 +484,17 @@ def build_feature_vector(
     planarity = am.get("planarity_score", 0.0)
     wall_cons = am.get("wall_thickness_consistency", 0.0)
     cnc_like = am.get("cnc_likelihood", 0.5)
+
+    # Face classification features
+    fc = face_classification or {}
+    fc_hist = fc.get("histogram", {})
+    face_plane_ratio = fc_hist.get("plane_ratio", 0.0)
+    face_cylinder_ratio = fc_hist.get("cylinder_ratio", 0.0)
+    face_freeform_ratio = fc_hist.get("freeform_ratio", 0.0)
+    face_paired_count = fc.get("paired_plane_count", 0)
+    face_dom_thick = fc.get("dominant_pair_thickness", 0.0)
+    face_cnc = fc.get("cnc_face_score", 0.0)
+    face_sm = fc.get("sheet_metal_face_score", 0.0)
 
     return {
         "volume_mm3": volume_mm3,
@@ -481,4 +525,11 @@ def build_feature_vector(
         "planarity_score": planarity,
         "wall_consistency": wall_cons,
         "cnc_likelihood": cnc_like,
+        "face_plane_ratio": face_plane_ratio,
+        "face_cylinder_ratio": face_cylinder_ratio,
+        "face_freeform_ratio": face_freeform_ratio,
+        "face_paired_plane_count": face_paired_count,
+        "face_dominant_thickness": face_dom_thick,
+        "face_cnc_score": face_cnc,
+        "face_sheet_metal_score": face_sm,
     }
