@@ -3842,12 +3842,14 @@ function generateDefaultSheetMetalFeatures(
   const dims = [bbox.x, bbox.y, bbox.z].sort((a, b) => a - b);
 
   // Priority: 1) explicit material thickness, 2) detected wall thickness from backend, 3) bbox min dim
-  const thickness =
-    materialThickness > 0 && materialThickness <= 25
-      ? materialThickness
-      : geometry.detectedWallThickness && geometry.detectedWallThickness > 0
-        ? geometry.detectedWallThickness
-        : Math.min(dims[0], 8); // Cap at 8mm (aligned with backend max)
+  let thickness: number;
+  if (materialThickness > 0 && materialThickness <= 25) {
+    thickness = materialThickness;
+  } else if (geometry.detectedWallThickness && geometry.detectedWallThickness > 0) {
+    thickness = geometry.detectedWallThickness;
+  } else {
+    thickness = Math.min(dims[0], 8); // Cap at 8mm (aligned with backend max)
+  }
   const width = dims[1];
   const length = dims[2];
 
@@ -5036,7 +5038,7 @@ function calculateVolumeDiscount(
   const rawTotalRate = tierRate + materialRate + efficiencyRate + setupAmortizationBonus;
 
   // Cap CNC volume discount at 40% to prevent excessively low pricing
-  const softCap = 0.40;
+  const softCap = 0.4;
   const finalRate = Math.min(
     rawTotalRate,
     softCap * (1 - Math.exp(-rawTotalRate / 0.3)),

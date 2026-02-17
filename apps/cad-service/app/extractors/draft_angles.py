@@ -41,10 +41,10 @@ def _normalize(v):
     return (v[0] / mag, v[1] / mag, v[2] / mag)
 
 
-def _draft_from_plane(face, pd, BRep_Tool, Geom_Plane) -> Optional[float]:
+def _draft_from_plane(face, pd, brep_tool, geom_plane) -> Optional[float]:
     """Compute draft angle for a planar face."""
-    surf = BRep_Tool.Surface(face)
-    pln = Geom_Plane.DownCast(surf)
+    surf = brep_tool.Surface(face)
+    pln = geom_plane.DownCast(surf)
     if pln is None:
         return None
     norm_dir = pln.Pln().Axis().Direction()

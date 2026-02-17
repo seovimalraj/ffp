@@ -1,0 +1,16 @@
+{
+  "include": ["app"],
+  "reportMissingImports": false,
+  "reportMissingModuleSource": false,
+  "reportGeneralTypeIssues": false,
+  "pythonVersion": "3.10",
+  "typeCheckingMode": "off",
+  "ignore": ["tests"],
+  "extraPaths": [".", "app"],
+  "executionEnvironments": [
+    {
+      "root": "app",
+      "extraPaths": [".."]
+    }
+  ]
+}
