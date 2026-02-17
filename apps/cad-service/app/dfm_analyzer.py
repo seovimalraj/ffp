@@ -806,6 +806,8 @@ class AdvancedDFMAnalyzer:
         self._cnc_check_pockets(advanced_features, report)
         self._cnc_check_undercuts(advanced_features, report)
         self._cnc_check_complex_surfaces(advanced_features, report)
+        self._cnc_check_fillets(advanced_features, report)
+        self._cnc_check_overall_complexity(advanced_features, geometry, report)
 
     # -- CNC sub-checks ---------------------------------------------------
 
@@ -822,15 +824,27 @@ class AdvancedDFMAnalyzer:
         self._cnc_check_small_holes(holes_data, min_hole_dia, report)
         self._cnc_check_hole_issues(holes_data, report)
 
-        if total_holes > 20:
+        if total_holes > 50:
+            report.add_issue(DFMIssue(
+                category="cnc_milling", severity=Severity.WARNING,
+                title="Very high hole count",
+                description=f"{total_holes} holes significantly increase machining time, tool changes, and cost",
+                measurement=float(total_holes),
+                recommendation="Review if all holes are necessary — combining sizes or eliminating redundant holes reduces cost by 10-20%",
+                cost_impact="high",
+                lead_time_impact="medium",
+            ))
+            report.overall_score -= 5
+        elif total_holes > 20:
             report.add_issue(DFMIssue(
                 category="cnc_milling", severity=Severity.INFO,
                 title="High hole count",
                 description=f"{total_holes} holes increase machining time and tool wear",
                 measurement=float(total_holes),
                 recommendation="Consider if all holes are necessary - combining or eliminating holes reduces cost",
-                cost_impact="low",
+                cost_impact="medium",
             ))
+            report.overall_score -= 3
 
         self._cnc_check_hole_diameter_range(holes_data, report)
 
@@ -953,6 +967,87 @@ class AdvancedDFMAnalyzer:
                 cost_impact="medium",
             ))
             report.overall_score -= 3
+
+    @staticmethod
+    def _cnc_check_fillets(advanced_features: Dict,
+                           report: ManufacturabilityReport) -> None:
+        """Check fillet/chamfer count and sizes for CNC manufacturability."""
+        fillets_data = advanced_features.get("fillets")
+        if not fillets_data:
+            return
+        fillet_count = fillets_data.get("filletCount", 0)
+        chamfer_count = fillets_data.get("chamferCount", 0)
+        total = fillet_count + chamfer_count
+        if total == 0:
+            return
+
+        min_radius = fillets_data.get("minRadius", 0)
+
+        if total > 30:
+            report.add_issue(DFMIssue(
+                category="cnc_milling", severity=Severity.WARNING,
+                title="Very high fillet/chamfer count",
+                description=f"{total} fillets/chamfers ({fillet_count} fillets, {chamfer_count} chamfers) significantly increase machining time",
+                measurement=float(total),
+                recommendation="Simplify edge treatments where cosmetic finish is not critical",
+                cost_impact="medium",
+                lead_time_impact="medium",
+            ))
+            report.overall_score -= 5
+        elif total > 15:
+            report.add_issue(DFMIssue(
+                category="cnc_milling", severity=Severity.INFO,
+                title="Many fillets/chamfers",
+                description=f"{total} fillets/chamfers add machining passes",
+                measurement=float(total),
+                recommendation="Combine similar radii to reduce tool changes",
+                cost_impact="low",
+            ))
+            report.overall_score -= 2
+
+        if min_radius > 0 and min_radius < 0.5:
+            report.add_issue(DFMIssue(
+                category="cnc_milling", severity=Severity.WARNING,
+                title="Very small fillet radius",
+                description=f"Smallest fillet radius ({min_radius:.2f}mm) requires micro end mill",
+                measurement=min_radius,
+                recommendation="Increase fillet radius to ≥ 0.5mm for standard tooling",
+                cost_impact="medium",
+            ))
+            report.overall_score -= 3
+
+    @staticmethod
+    def _cnc_check_overall_complexity(advanced_features: Dict,
+                                      geometry: Dict,
+                                      report: ManufacturabilityReport) -> None:
+        """Penalise parts with many diverse features (multi-setup)."""
+        holes = advanced_features.get("holes", {}).get("totalCount", 0)
+        threads_data = advanced_features.get("threads")
+        threads = threads_data.get("totalCount", 0) if threads_data else 0
+        slots_data = advanced_features.get("slots")
+        slots = slots_data.get("totalCount", 0) if slots_data else 0
+        fillets_data = advanced_features.get("fillets")
+        fillets = (fillets_data.get("filletCount", 0) + fillets_data.get("chamferCount", 0)) if fillets_data else 0
+        pockets = advanced_features.get("pockets", {}).get("totalCount", 0)
+
+        # Count distinct feature categories present
+        categories = sum(1 for c in [holes, threads, slots, fillets, pockets] if c > 0)
+        total_features = holes + threads + slots + fillets + pockets
+
+        if total_features > 100 and categories >= 3:
+            report.add_issue(DFMIssue(
+                category="cnc_milling", severity=Severity.WARNING,
+                title="High overall feature complexity",
+                description=(
+                    f"{total_features} features across {categories} categories — "
+                    "expect multiple setups, tool changes, and extended machining time"
+                ),
+                measurement=float(total_features),
+                recommendation="Review design for feature consolidation; consider splitting into sub-assemblies",
+                cost_impact="high",
+                lead_time_impact="high",
+            ))
+            report.overall_score -= 5
 
     # -----------------------------------------------------------------
     # Injection molding DFM
@@ -1169,6 +1264,32 @@ class AdvancedDFMAnalyzer:
                     cost_impact="medium",
                 ))
                 report.overall_score -= 2
+
+        # Thread count penalty — many threads mean secondary operations
+        total_threads = threads.get("totalCount", 0)
+        if total_threads > 10:
+            report.add_issue(DFMIssue(
+                category="threads",
+                severity=Severity.WARNING,
+                title="High thread count",
+                description=f"{total_threads} threaded holes require significant tapping time and increase tap breakage risk",
+                measurement=float(total_threads),
+                recommendation="Consider thread-forming screws or helicoil inserts for non-critical threads",
+                cost_impact="medium",
+                lead_time_impact="medium",
+            ))
+            report.overall_score -= 5
+        elif total_threads > 5:
+            report.add_issue(DFMIssue(
+                category="threads",
+                severity=Severity.INFO,
+                title="Multiple threads",
+                description=f"{total_threads} threaded holes add machining time for tapping operations",
+                measurement=float(total_threads),
+                recommendation="Standardize thread sizes to reduce tap changes",
+                cost_impact="low",
+            ))
+            report.overall_score -= 2
 
     # -----------------------------------------------------------------
     # Slot analysis (CNC)

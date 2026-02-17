@@ -875,8 +875,8 @@ def get_analysis_result(task_id: str):
 @router.post("/sync")
 def analyze_cad_file_sync(request: AnalysisRequest):
     """Synchronous analysis for immediate results (smaller files)."""
-    logging.info("Sync analysis request: file_id=%s, file_path=%s, file_url=%s",
-                 request.file_id, request.file_path, request.file_url)
+    logging.warning("Sync analysis request: file_id=%s, file_path=%s, file_url=%s",
+                    request.file_id, request.file_path, request.file_url)
     local_path = request.file_path
     if not local_path and request.file_url:
         try:

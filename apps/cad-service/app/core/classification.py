@@ -101,6 +101,8 @@ class ProcessClassifier:
         result = self._try_advanced_thickness(
             thickness_analysis, bend_detector, bend_analysis,
             aspect_ratio, metadata,
+            detected_thickness=detected_thickness,
+            thickness_confidence=thickness_confidence,
         )
         if result is not None:
             return result
@@ -165,8 +167,15 @@ class ProcessClassifier:
         return bend_detector, bend_analysis
 
     def _try_advanced_thickness(self, thickness_analysis, bend_detector,
-                                bend_analysis, aspect_ratio, metadata):
-        """Classify using advanced thickness analysis. Returns result or None."""
+                                bend_analysis, aspect_ratio, metadata,
+                                detected_thickness=None,
+                                thickness_confidence=0.0):
+        """Classify using advanced thickness analysis. Returns result or None.
+
+        When the advanced ray-casting analysis disagrees with the simpler
+        legacy wall-thickness detection (min_wall_mesh), we let the cascade
+        continue to _try_legacy_thickness so the legacy value gets a chance.
+        """
         if thickness_analysis is None:
             return None
 
@@ -185,8 +194,25 @@ class ProcessClassifier:
             )
 
         if not thickness_analysis.is_sheet_thickness:
-            # If detected thickness is clearly above sheet metal range, trust
-            # the advanced analysis regardless of its confidence score.
+            # Check if legacy ray-cast detected a valid sheet-metal wall
+            # thickness.  If so, the advanced and legacy analyses disagree;
+            # don't override to CNC here — fall through so
+            # _try_legacy_thickness can apply the legacy detection.
+            legacy_in_sheet_range = (
+                detected_thickness is not None
+                and detected_thickness > 0
+                and SHEET_METAL_MIN_THICKNESS <= detected_thickness <= SHEET_METAL_MAX_THICKNESS
+                and thickness_confidence > 0.3
+            )
+            if legacy_in_sheet_range:
+                logger.info(
+                    "Advanced says NOT sheet (T=%.1fmm) but legacy detected "
+                    "%.2fmm — deferring to legacy tier.",
+                    thickness_analysis.detected_thickness or 0,
+                    detected_thickness,
+                )
+                return None  # let _try_legacy_thickness decide
+
             adv_t = thickness_analysis.detected_thickness or 0
             clearly_not_sheet = (
                 thickness_analysis.confidence > 0.6
