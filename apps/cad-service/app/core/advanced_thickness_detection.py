@@ -249,7 +249,7 @@ class AdvancedThicknessDetector:
         bin_width = max(0.1, (max_d - min_d) / 50)  # At most 50 bins
         
         # Build histogram
-        bins = defaultdict(lambda: {'distances': [], 'areas': []})
+        bins: dict = defaultdict(lambda: {'distances': [], 'areas': []})
         for d, a in zip(distances, areas):
             bin_idx = int(d / bin_width)
             bins[bin_idx]['distances'].append(d)
@@ -405,7 +405,7 @@ def enhanced_ray_casting_analysis(mesh, bbox_dims: List[float],
     Returns:
         ThicknessAnalysisResult
     """
-    from app.extractors.min_wall import min_wall_mesh
+    from ..extractors.min_wall import min_wall_mesh
     
     try:
         # Perform ray-casting with many samples

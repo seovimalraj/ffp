@@ -184,10 +184,19 @@ class ProcessClassifier:
                 aspect_ratio, metadata,
             )
 
-        if not thickness_analysis.is_sheet_thickness and thickness_analysis.confidence > 0.6:
-            metadata['classification_method'] = 'advanced_analysis_cnc_override'
-            metadata['reasoning'] = f"ADVANCED ANALYSIS: {thickness_analysis.reasoning}"
-            return ('cnc_milling', 0.85, metadata)
+        if not thickness_analysis.is_sheet_thickness:
+            # If detected thickness is clearly above sheet metal range, trust
+            # the advanced analysis regardless of its confidence score.
+            adv_t = thickness_analysis.detected_thickness or 0
+            clearly_not_sheet = (
+                thickness_analysis.confidence > 0.6
+                or adv_t > SHEET_METAL_MAX_THICKNESS
+                or thickness_analysis.thickness_to_size_ratio > 0.10
+            )
+            if clearly_not_sheet:
+                metadata['classification_method'] = 'advanced_analysis_cnc_override'
+                metadata['reasoning'] = f"ADVANCED ANALYSIS: {thickness_analysis.reasoning}"
+                return ('cnc_milling', 0.85, metadata)
 
         return None
 

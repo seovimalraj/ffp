@@ -61,10 +61,11 @@ def _collect_cylinder_neighbors(face, edge_faces, occ):
         if not edge_faces.Contains(edge):
             continue
         lst = edge_faces.FindFromKey(edge)
-        it = lst.cbegin()
-        while it.More():
-            f2 = it.Value()
-            it.Next()
+        try:
+            faces = list(lst)
+        except Exception:
+            faces = []
+        for f2 in faces:
             if not f2.IsSame(face):
                 neighbor_faces.add(f2)
     return neighbor_faces

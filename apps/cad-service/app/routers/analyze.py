@@ -41,6 +41,30 @@ from ..core.advanced_thickness_detection import enhanced_ray_casting_analysis
 router = APIRouter()
 
 
+def _safe_float(v: float):
+    """Return None for NaN/inf, otherwise the float."""
+    if math.isnan(v) or math.isinf(v):
+        return None
+    return v
+
+
+def _json_safe_numpy(obj):
+    """Handle numpy types, returning a JSON-safe Python native or None."""
+    try:
+        import numpy as np
+    except ImportError:
+        return None
+    if isinstance(obj, np.integer):
+        return int(obj)
+    if isinstance(obj, np.floating):
+        return _safe_float(float(obj))
+    if isinstance(obj, np.bool_):
+        return bool(obj)
+    if isinstance(obj, np.ndarray):
+        return obj.tolist()
+    return None
+
+
 def _json_safe(obj):
     """Recursively sanitize a dict/list so it's JSON-serializable.
     Converts numpy scalars to Python natives, replaces NaN/inf with None."""
@@ -51,27 +75,12 @@ def _json_safe(obj):
     if isinstance(obj, (list, tuple)):
         return [_json_safe(v) for v in obj]
     if isinstance(obj, float):
-        if math.isnan(obj) or math.isinf(obj):
-            return None
-        return obj
+        return _safe_float(obj)
     if isinstance(obj, (int, str, bool)):
         return obj
-    # Handle numpy scalars (np.float64, np.int64, np.bool_, etc.)
-    try:
-        import numpy as np
-        if isinstance(obj, (np.integer,)):
-            return int(obj)
-        if isinstance(obj, (np.floating,)):
-            v = float(obj)
-            if math.isnan(v) or math.isinf(v):
-                return None
-            return v
-        if isinstance(obj, (np.bool_,)):
-            return bool(obj)
-        if isinstance(obj, np.ndarray):
-            return obj.tolist()
-    except ImportError:
-        pass
+    result = _json_safe_numpy(obj)
+    if result is not None:
+        return result
     # Fallback: try to convert to string
     try:
         return str(obj)
@@ -866,9 +875,16 @@ def get_analysis_result(task_id: str):
 @router.post("/sync")
 def analyze_cad_file_sync(request: AnalysisRequest):
     """Synchronous analysis for immediate results (smaller files)."""
+    logging.info("Sync analysis request: file_id=%s, file_path=%s, file_url=%s",
+                 request.file_id, request.file_path, request.file_url)
     local_path = request.file_path
     if not local_path and request.file_url:
-        local_path = download_to_temp(request.file_url)
+        try:
+            local_path = download_to_temp(request.file_url)
+        except Exception as dl_err:
+            logging.error("Download failed for %s: %s", request.file_url, dl_err)
+            traceback.print_exc()
+            raise HTTPException(status_code=400, detail=f"File download failed: {str(dl_err)[:300]}")
     if not local_path:
         raise HTTPException(status_code=400, detail="file_path or file_url is required")
     try:

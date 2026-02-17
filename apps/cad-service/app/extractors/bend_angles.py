@@ -271,13 +271,15 @@ def extract_bend_angles_from_shape(shape, thickness_mm: Optional[float] = None) 
     for edge_idx in range(1, edge_face_map.Size() + 1):
         edge = occ['topods'].Edge(edge_face_map.FindKey(edge_idx))
         face_list = edge_face_map.FindFromIndex(edge_idx)
-        if face_list.Size() != 2:
-            continue
 
-        face_iter = face_list.cbegin()
-        face1 = occ['topods'].Face(face_iter.Value())
-        face_iter.Next()
-        face2 = occ['topods'].Face(face_iter.Value())
+        try:
+            face_items = list(face_list)
+        except Exception:
+            continue
+        if len(face_items) != 2:
+            continue
+        face1 = occ['topods'].Face(face_items[0])
+        face2 = occ['topods'].Face(face_items[1])
 
         surf1 = occ['BRepAdaptor_Surface'](face1)
         surf2 = occ['BRepAdaptor_Surface'](face2)
