@@ -20,6 +20,7 @@ from .geometry import GeometricMetrics, calculate_sheet_metal_score, calculate_a
 from .bend_detection import AdvancedBendDetector
 from .advanced_thickness_detection import ThicknessAnalysisResult
 from .ml_classifier import MLProcessClassifier, build_feature_vector, MLClassificationResult
+from .face_classification import FaceClassificationResult
 
 logger = logging.getLogger(__name__)
 
@@ -64,6 +65,7 @@ class ProcessClassifier:
                 thickness_confidence: float = 0.0,
                 triangle_count: int = 0,
                 thickness_analysis: Optional[ThicknessAnalysisResult] = None,
+                face_classification: Optional[FaceClassificationResult] = None,
                 hole_count: int = 0,
                 pocket_count: int = 0,
                 thread_count: int = 0,
@@ -84,6 +86,32 @@ class ProcessClassifier:
             'volume_efficiency': self.metrics.volume_efficiency,
         }
 
+        # Compute machining feature score (used throughout cascade)
+        self._feature_counts = {
+            'hole_count': hole_count,
+            'pocket_count': pocket_count,
+            'thread_count': thread_count,
+            'undercut_count': undercut_count,
+            'fillet_count': fillet_count,
+            'slot_count': slot_count,
+        }
+        self._machining_feature_score = self._compute_machining_feature_score()
+        metadata['machining_feature_score'] = self._machining_feature_score
+
+        # Store face classification for use throughout cascade
+        self._face_classification = face_classification
+        if face_classification is not None:
+            metadata['face_classification_summary'] = {
+                'plane_ratio': face_classification.plane_ratio,
+                'cylinder_ratio': face_classification.cylinder_ratio,
+                'cnc_face_score': face_classification.cnc_face_score,
+                'sheet_metal_face_score': face_classification.sheet_metal_face_score,
+                'is_likely_sheet_metal': face_classification.is_likely_sheet_metal,
+                'is_likely_cnc': face_classification.is_likely_cnc,
+                'paired_plane_count': face_classification.paired_plane_count,
+                'dominant_pair_thickness': face_classification.dominant_pair_thickness,
+            }
+
         bend_detector, bend_analysis = self._run_bend_detection(
             detected_thickness, thickness_confidence, triangle_count,
         )
@@ -96,6 +124,13 @@ class ProcessClassifier:
 
         aspect_ratio = self.metrics.aspect_ratio or 1.0
         min_dim = self.metrics.min_dim or 10.0
+
+        # 0) Face-type classification (highest reliability, direct B-Rep signal)
+        result = self._try_face_classification(
+            face_classification, bend_analysis, aspect_ratio, metadata,
+        )
+        if result is not None:
+            return result
 
         # 1) Advanced thickness analysis (preferred)
         result = self._try_advanced_thickness(
@@ -166,6 +201,112 @@ class ProcessClassifier:
         )
         return bend_detector, bend_analysis
 
+    def _compute_machining_feature_score(self) -> float:
+        """Compute a CNC-likelihood score from extracted machining features.
+
+        Returns 0-100 score. Higher = more CNC-like.
+        Used throughout the cascade to override sheet-metal classifications
+        when the part has strong CNC evidence (threads, pockets, undercuts).
+        """
+        fc = self._feature_counts
+        score = 0.0
+        if fc['thread_count'] > 0:
+            score += min(25, 15 + fc['thread_count'] * 5)
+        if fc['pocket_count'] >= 3:
+            score += min(20, 10 + fc['pocket_count'] * 3)
+        elif fc['pocket_count'] >= 1:
+            score += 5
+        if fc['undercut_count'] > 0:
+            score += min(25, 15 + fc['undercut_count'] * 5)
+        if fc['slot_count'] >= 4:
+            score += 10
+        elif fc['slot_count'] >= 1:
+            score += 3
+        # Many holes without bends → drilled CNC plate
+        if fc['hole_count'] > 20:
+            score += 10
+        elif fc['hole_count'] > 10:
+            score += 5
+        return min(100.0, score)
+
+    def _try_face_classification(self, face_result, bend_analysis,
+                                  aspect_ratio, metadata):
+        """Tier 0: Classify using BRepAdaptor face-type distribution.
+
+        This is the most reliable signal because it directly inspects the B-Rep
+        topology rather than relying on mesh approximations.  Only fires when
+        the face classifier is highly confident (score >= 70).
+
+        Returns classification result or None to continue cascade.
+        """
+        if face_result is None:
+            return None
+
+        sm_score = face_result.sheet_metal_face_score
+        cnc_score = face_result.cnc_face_score
+        mf_score = self._machining_feature_score
+
+        # Strong CNC signal from faces AND machining features
+        if face_result.is_likely_cnc and cnc_score >= 70:
+            # Don't override if there are genuine bends + thin paired walls
+            if (bend_analysis.is_likely_bent
+                    and face_result.dominant_pair_thickness is not None
+                    and 0.4 <= face_result.dominant_pair_thickness <= 8.0):
+                logger.info(
+                    "Face classification says CNC (%.0f) but bends + "
+                    "paired thickness %.1fmm — deferring to thickness tiers.",
+                    cnc_score, face_result.dominant_pair_thickness,
+                )
+                return None
+
+            confidence = min(0.95, 0.80 + cnc_score / 1000)
+            metadata['classification_method'] = 'face_type_cnc'
+            metadata['reasoning'] = (
+                f"FACE-TYPE ANALYSIS: {face_result.reasoning} "
+                f"(CNC={cnc_score:.0f}, SM={sm_score:.0f}, "
+                f"machining_features={mf_score:.0f})"
+            )
+            return ('cnc_milling', confidence, metadata)
+
+        # Strong sheet metal signal from faces
+        if face_result.is_likely_sheet_metal and sm_score >= 70:
+            # Override to CNC if machining features are very strong
+            if mf_score >= 50:
+                logger.info(
+                    "Face classification says sheet metal (%.0f) but "
+                    "machining feature score %.0f — deferring.",
+                    sm_score, mf_score,
+                )
+                return None
+
+            # Override to CNC if volume efficiency is very high (solid block)
+            if self.metrics.volume_efficiency > 0.80 and aspect_ratio < 4:
+                logger.info(
+                    "Face classification says sheet metal (%.0f) but "
+                    "solid block (vol_eff=%.2f, AR=%.1f) — CNC override.",
+                    sm_score, self.metrics.volume_efficiency, aspect_ratio,
+                )
+                metadata['classification_method'] = 'face_type_cnc_solid_override'
+                metadata['reasoning'] = (
+                    f"FACE-TYPE says sheet metal but solid block "
+                    f"(vol_eff={self.metrics.volume_efficiency:.2f})"
+                )
+                return ('cnc_milling', 0.82, metadata)
+
+            confidence = min(0.93, 0.78 + sm_score / 1000)
+            if bend_analysis.is_likely_bent:
+                confidence = min(0.96, confidence + 0.05)
+            metadata['classification_method'] = 'face_type_sheet_metal'
+            metadata['reasoning'] = (
+                f"FACE-TYPE ANALYSIS: {face_result.reasoning} "
+                f"(SM={sm_score:.0f}, CNC={cnc_score:.0f}, "
+                f"pairs={face_result.paired_plane_count})"
+            )
+            return ('sheet_metal', confidence, metadata)
+
+        # Face classification not confident enough — let cascade continue
+        return None
+
     def _try_advanced_thickness(self, thickness_analysis, bend_detector,
                                 bend_analysis, aspect_ratio, metadata,
                                 detected_thickness=None,
@@ -229,6 +370,19 @@ class ProcessClassifier:
     def _advanced_sheet_or_cnc_guard(self, thickness_analysis, bend_detector,
                                      bend_analysis, aspect_ratio, metadata):
         """Handle confirmed sheet-thickness with CNC guard."""
+        mf_score = self._machining_feature_score
+
+        # Strong machining features override sheet classification
+        if mf_score >= 50:
+            metadata['classification_method'] = 'advanced_analysis_cnc_feature_override'
+            metadata['reasoning'] = (
+                f"ADVANCED ANALYSIS detected sheet thickness but machining "
+                f"features score {mf_score:.0f} (threads={self._feature_counts['thread_count']}, "
+                f"pockets={self._feature_counts['pocket_count']}, "
+                f"undercuts={self._feature_counts['undercut_count']}) — CNC override"
+            )
+            return ('cnc_milling', 0.85, metadata)
+
         # Only override to CNC if truly solid AND no bends detected
         # Bent sheet metal enclosures have high volume efficiency in bbox
         is_truly_solid = (self.metrics.volume_efficiency > 0.75
@@ -283,6 +437,16 @@ class ProcessClassifier:
         """Decide sheet-metal vs CNC for valid sheet-range thickness."""
         is_solid = self.metrics.volume_efficiency > 0.75
         is_chunky = aspect_ratio < 5
+        mf_score = self._machining_feature_score
+
+        # Strong machining features → CNC regardless of thickness
+        if mf_score >= 50:
+            metadata['classification_method'] = 'cnc_feature_override'
+            metadata['reasoning'] = (
+                f"THICKNESS-DETECTED: {detected_thickness:.2f}mm but "
+                f"machining features score {mf_score:.0f} — CNC override"
+            )
+            return ('cnc_milling', 0.85, metadata)
 
         # Flat sheet
         if aspect_ratio >= 15:
@@ -342,22 +506,79 @@ class ProcessClassifier:
     def _try_bend_classification(self, bend_detector, bend_analysis, min_dim,
                                  metadata):
         """Classify based on bend detection alone. Returns result or None.
-        
-        Bends are very strong evidence of sheet metal manufacturing.
-        For bent parts, min_dim is bbox minimum (not wall thickness), so we
-        should NOT require min_dim < 8mm — a bent enclosure could be 100×80×60mm.
+
+        Bends are evidence of sheet metal, but ONLY when supported by other
+        signals.  Small CNC parts with chamfers/fillets can produce false-
+        positive "bends" from the triangle normal analyzer.
+
+        Guards against false positives:
+        - Volume efficiency > 0.65 requires very strong bend evidence
+        - Machining features (threads, pockets, undercuts) suppress bend signal
+        - Face classification override when available
+        - No detected thin wall thickness requires stricter thresholds
         """
         if not bend_analysis.is_likely_bent:
             return None
 
-        # High bend count with good confidence → sheet metal regardless of bbox dims
+        mf_score = self._machining_feature_score
+
+        # Guard 1: Strong machining features → almost certainly CNC
+        if mf_score >= 40:
+            logger.info(
+                "Bend detection suppressed: machining feature score %.0f "
+                "(threads=%d, pockets=%d, undercuts=%d)",
+                mf_score,
+                self._feature_counts['thread_count'],
+                self._feature_counts['pocket_count'],
+                self._feature_counts['undercut_count'],
+            )
+            return None
+
+        # Guard 2: Face classification says CNC
+        fc = self._face_classification
+        if fc is not None and fc.is_likely_cnc and fc.cnc_face_score >= 60:
+            logger.info(
+                "Bend detection suppressed: face classification says CNC "
+                "(CNC=%.0f, SM=%.0f)",
+                fc.cnc_face_score, fc.sheet_metal_face_score,
+            )
+            return None
+
+        # Guard 3: Solid block with high volume efficiency
+        if self.metrics.volume_efficiency > 0.65:
+            # Only allow if bends are very strong evidence
+            if bend_analysis.bend_count < 4 or bend_analysis.confidence < 0.7:
+                logger.info(
+                    "Bend detection suppressed: high volume efficiency %.2f "
+                    "with only %d bends (conf=%.2f)",
+                    self.metrics.volume_efficiency,
+                    bend_analysis.bend_count,
+                    bend_analysis.confidence,
+                )
+                return None
+
+        # Guard 4: No thin wall detected — require stricter evidence
+        has_thin_wall = (
+            metadata.get('detected_thickness') is not None
+            and 0.3 <= metadata['detected_thickness'] <= 10.0
+        )
+        if not has_thin_wall:
+            # Without wall thickness evidence, require ≥3 bends with high confidence
+            if bend_analysis.bend_count < 3 or bend_analysis.confidence < 0.65:
+                logger.info(
+                    "Bend detection suppressed: no thin wall detected and "
+                    "only %d bends (conf=%.2f)",
+                    bend_analysis.bend_count,
+                    bend_analysis.confidence,
+                )
+                return None
+
+        # Passed all guards — classify as sheet metal
         if bend_analysis.bend_count >= 2 and bend_analysis.confidence >= 0.5:
             confidence = min(0.92, 0.75 + bend_analysis.confidence * 0.15)
         elif min_dim < SHEET_METAL_MAX_THICKNESS:
-            # Single bend with thin profile
             confidence = min(0.85, 0.70 + bend_analysis.confidence * 0.15)
         else:
-            # Single bend with large bbox min — less certain
             confidence = min(0.75, 0.60 + bend_analysis.confidence * 0.10)
 
         reasoning = (f"BEND-DETECTED: {bend_analysis.bend_count} bends "
@@ -381,6 +602,17 @@ class ProcessClassifier:
                 'reasoning': (
                     f"DIMENSION-BASED: Thin profile but solid part "
                     f"(vol eff: {self.metrics.volume_efficiency:.2f}) - likely CNC"
+                ),
+            })
+
+        # Machining features override dimension-based sheet metal
+        if self._machining_feature_score >= 40:
+            return ('cnc_milling', 0.78, {
+                **metadata,
+                'classification_method': 'dimension_cnc_feature_override',
+                'reasoning': (
+                    f"DIMENSION-BASED: Thin profile ({min_dim:.2f}mm) but "
+                    f"machining feature score {self._machining_feature_score:.0f} — CNC"
                 ),
             })
 
@@ -427,7 +659,7 @@ class ProcessClassifier:
         )
 
     def _compute_enhanced_score(self, bend_analysis) -> float:
-        """Compute the enhanced sheet-metal score."""
+        """Compute the enhanced sheet-metal score incorporating face classification."""
         score = self.sheet_metal_score
         score += self.advanced_metrics['wall_thickness_consistency'] * 15
         score += self.advanced_metrics['planarity_score'] * 15
@@ -435,6 +667,18 @@ class ProcessClassifier:
             score -= 25
         if bend_analysis.bend_count > 0:
             score += min(20, bend_analysis.bend_count * 8)
+
+        # Incorporate face classification signal
+        fc = self._face_classification
+        if fc is not None:
+            if fc.is_likely_sheet_metal:
+                score += min(20, fc.sheet_metal_face_score * 0.25)
+            elif fc.is_likely_cnc:
+                score -= min(25, fc.cnc_face_score * 0.3)
+
+        # Machining features dampen sheet metal score
+        score -= self._machining_feature_score * 0.4
+
         return max(0.0, min(100.0, score))
 
     def _try_score_classification(self, enhanced_score, metadata):
@@ -544,6 +788,14 @@ class ProcessClassifier:
         if not ProcessClassifier._ml_classifier.is_ready:
             return None
         try:
+            # Build face classification dict for ML feature vector
+            fc_dict = None
+            if self._face_classification is not None:
+                try:
+                    fc_dict = self._face_classification.to_dict()
+                except Exception:
+                    pass
+
             fv = build_feature_vector(
                 bbox_dims=[self.metrics.min_dim, self.metrics.mid_dim, self.metrics.max_dim],
                 volume_mm3=self.metrics.volume_mm3,
@@ -562,6 +814,7 @@ class ProcessClassifier:
                 slot_count=slot_count,
                 triangle_count=triangle_count,
                 advanced_metrics=self.advanced_metrics,
+                face_classification=fc_dict,
             )
             return ProcessClassifier._ml_classifier.predict(fv)
         except Exception as exc:

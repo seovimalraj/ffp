@@ -20,8 +20,22 @@ def _dot3(a, b):
     return a[0] * b[0] + a[1] * b[1] + a[2] * b[2]
 
 
-def _plane_normal(face, brep_tool, geom_plane):
-    """Return the planar normal of *face* as a 3-tuple, or ``None``."""
+def _plane_normal(face, brep_tool, geom_plane, adaptor_cls=None, plane_type=None):
+    """Return the planar normal of *face* as a 3-tuple, or ``None``.
+
+    Uses BRepAdaptor_Surface when available for robust type detection.
+    """
+    # Prefer BRepAdaptor_Surface
+    if adaptor_cls is not None and plane_type is not None:
+        try:
+            adaptor = adaptor_cls(face)
+            if adaptor.GetType() == plane_type:
+                pln = adaptor.Plane()
+                d = pln.Axis().Direction()
+                return (d.X(), d.Y(), d.Z())
+        except Exception:
+            pass
+    # Fallback to DownCast
     surf = brep_tool.Surface(face)
     plane = geom_plane.DownCast(surf)
     if plane is None:
@@ -59,11 +73,16 @@ def _collect_edge_neighbors(floor_face, edge_faces, explorer_cls, edge_type):
     return neighbors
 
 
-def _find_perp_walls(floor_normal, neighbors, brep_tool, geom_plane):
-    """Return list of ``(face, normal)`` for neighbor faces perpendicular to *floor_normal*."""
+def _find_perp_walls(floor_normal, neighbors, brep_tool, geom_plane,
+                     adaptor_cls=None, plane_type=None):
+    """Return list of ``(face, normal)`` for neighbor faces perpendicular to *floor_normal*.
+
+    Uses BRepAdaptor_Surface when available for robust face-type detection.
+    """
     walls = []
     for nf in neighbors:
-        nv = _plane_normal(nf, brep_tool, geom_plane)
+        nv = _plane_normal(nf, brep_tool, geom_plane,
+                          adaptor_cls=adaptor_cls, plane_type=plane_type)
         if nv is not None and abs(_dot3(floor_normal, nv)) <= 0.15:
             walls.append((nf, nv))
     return walls
@@ -113,6 +132,8 @@ def extract_slots_from_shape(shape) -> List[SlotFeature]:
     A slot is identified as a planar floor face with exactly two parallel
     planar side walls whose normals are anti-parallel, plus optional
     end-cap faces (for blind slots) or through openings.
+
+    Uses BRepAdaptor_Surface for robust surface-type detection when available.
     """
     try:
         from OCC.Core.TopExp import TopExp_Explorer, topexp
@@ -128,6 +149,17 @@ def extract_slots_from_shape(shape) -> List[SlotFeature]:
         logger.warning("OCC imports unavailable for slot extraction")
         return []
 
+    # Try importing BRepAdaptor for robust face-type detection
+    adaptor_cls = None
+    plane_type = None
+    try:
+        from OCC.Core.BRepAdaptor import BRepAdaptor_Surface
+        from OCC.Core.GeomAbs import GeomAbs_Plane
+        adaptor_cls = BRepAdaptor_Surface
+        plane_type = GeomAbs_Plane
+    except Exception:
+        pass
+
     face_map = TopTools_IndexedMapOfShape()
     topexp.MapShapes(shape, TopAbs_FACE, face_map)
 
@@ -141,12 +173,14 @@ def extract_slots_from_shape(shape) -> List[SlotFeature]:
     while exp.More():
         floor_face = exp.Current()
         exp.Next()
-        floor_normal = _plane_normal(floor_face, BRep_Tool, Geom_Plane)
+        floor_normal = _plane_normal(floor_face, BRep_Tool, Geom_Plane,
+                                     adaptor_cls=adaptor_cls, plane_type=plane_type)
         if floor_normal is None:
             continue
 
         neighbors = _collect_edge_neighbors(floor_face, edge_faces, TopExp_Explorer, TopAbs_EDGE)
-        walls = _find_perp_walls(floor_normal, neighbors, BRep_Tool, Geom_Plane)
+        walls = _find_perp_walls(floor_normal, neighbors, BRep_Tool, Geom_Plane,
+                                 adaptor_cls=adaptor_cls, plane_type=plane_type)
         if len(walls) < 2:
             continue
 

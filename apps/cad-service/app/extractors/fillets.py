@@ -34,7 +34,8 @@ def _try_import_occ():
     except Exception:
         logger.warning("OCC imports unavailable for fillet/chamfer detection")
         return None
-    return {
+
+    result = {
         "TopExp_Explorer": TopExp_Explorer,
         "TopExp": topexp,
         "TopAbs_FACE": TopAbs_FACE,
@@ -48,6 +49,24 @@ def _try_import_occ():
         "brepgprop_SurfaceProperties": brepgprop_SurfaceProperties,
     }
 
+    # Add BRepAdaptor for robust surface-type detection
+    try:
+        from OCC.Core.BRepAdaptor import BRepAdaptor_Surface
+        from OCC.Core.GeomAbs import (
+            GeomAbs_Torus, GeomAbs_Plane, GeomAbs_Cylinder,
+            GeomAbs_Sphere, GeomAbs_Cone,
+        )
+        result["BRepAdaptor_Surface"] = BRepAdaptor_Surface
+        result["GeomAbs_Torus"] = GeomAbs_Torus
+        result["GeomAbs_Plane"] = GeomAbs_Plane
+        result["GeomAbs_Cylinder"] = GeomAbs_Cylinder
+        result["GeomAbs_Sphere"] = GeomAbs_Sphere
+        result["GeomAbs_Cone"] = GeomAbs_Cone
+    except Exception:
+        pass
+
+    return result
+
 
 def _dot(a, b):
     """Dot product of two 3-element tuples."""
@@ -55,12 +74,32 @@ def _dot(a, b):
 
 
 def _try_detect_fillet(face, surf, idx, fid, occ):
-    """Check if *face* has a toroidal surface (indicating a fillet blend)."""
-    torus = occ["Geom_ToroidalSurface"].DownCast(surf)
-    if torus is None:
-        return None
+    """Check if *face* has a toroidal surface (indicating a fillet blend).
 
-    minor_r = torus.MinorRadius()
+    Uses BRepAdaptor_Surface.GetType() for robust detection when available,
+    falling back to Geom_ToroidalSurface.DownCast().
+    """
+    minor_r = None
+
+    # Prefer BRepAdaptor_Surface for type detection
+    BRepAdaptor = occ.get("BRepAdaptor_Surface")
+    GeomAbs_Torus = occ.get("GeomAbs_Torus")
+    if BRepAdaptor is not None and GeomAbs_Torus is not None:
+        try:
+            adaptor = BRepAdaptor(face)
+            if adaptor.GetType() == GeomAbs_Torus:
+                torus_obj = adaptor.Torus()
+                minor_r = torus_obj.MinorRadius()
+        except Exception:
+            pass
+
+    # Fallback to DownCast
+    if minor_r is None:
+        torus = occ["Geom_ToroidalSurface"].DownCast(surf)
+        if torus is None:
+            return None
+        minor_r = torus.MinorRadius()
+
     props = occ["GProp_GProps"]()
     occ["brepgprop_SurfaceProperties"](face, props)
     area = float(props.Mass()) * 1e6
@@ -99,17 +138,34 @@ def _collect_neighbor_faces(face, edge_faces, occ):
 def _compute_avg_neighbor_angle(fn, neighbors, occ):
     """Return average angle between *fn* and the first two neighbor normals.
 
+    Uses BRepAdaptor_Surface when available for robust plane detection.
     Returns ``None`` when fewer than two valid planar neighbours exist.
     """
+    BRepAdaptor = occ.get("BRepAdaptor_Surface")
+    GeomAbs_Plane = occ.get("GeomAbs_Plane")
+
     angle_sum = 0.0
     valid_count = 0
     for nf in neighbors[:2]:
-        nsurf = occ["BRep_Tool"].Surface(nf)
-        np_ = occ["Geom_Plane"].DownCast(nsurf)
-        if np_ is None:
-            continue
-        nn = np_.Pln().Axis().Direction()
-        nnv = (nn.X(), nn.Y(), nn.Z())
+        nnv = None
+        # Prefer BRepAdaptor_Surface
+        if BRepAdaptor is not None and GeomAbs_Plane is not None:
+            try:
+                adaptor = BRepAdaptor(nf)
+                if adaptor.GetType() == GeomAbs_Plane:
+                    pln = adaptor.Plane()
+                    nn = pln.Axis().Direction()
+                    nnv = (nn.X(), nn.Y(), nn.Z())
+            except Exception:
+                pass
+        # Fallback to DownCast
+        if nnv is None:
+            nsurf = occ["BRep_Tool"].Surface(nf)
+            np_ = occ["Geom_Plane"].DownCast(nsurf)
+            if np_ is None:
+                continue
+            nn = np_.Pln().Axis().Direction()
+            nnv = (nn.X(), nn.Y(), nn.Z())
         dot = abs(_dot(fn, nnv))
         angle_deg = math.degrees(math.acos(min(dot, 1.0)))
         angle_sum += angle_deg
@@ -121,17 +177,37 @@ def _compute_avg_neighbor_angle(fn, neighbors, occ):
 
 
 def _try_detect_chamfer(face, surf, area, idx, fid, edge_faces, occ):
-    """Detect a chamfer: a small planar face bridging two faces at ~45°."""
-    plane = occ["Geom_Plane"].DownCast(surf)
-    if plane is None or area > 200:
+    """Detect a chamfer: a small planar face bridging two faces at ~45°.
+
+    Uses BRepAdaptor_Surface when available for robust plane detection.
+    """
+    fn = None
+    BRepAdaptor = occ.get("BRepAdaptor_Surface")
+    GeomAbs_Plane = occ.get("GeomAbs_Plane")
+
+    if BRepAdaptor is not None and GeomAbs_Plane is not None:
+        try:
+            adaptor = BRepAdaptor(face)
+            if adaptor.GetType() == GeomAbs_Plane:
+                pln = adaptor.Plane()
+                face_n = pln.Axis().Direction()
+                fn = (face_n.X(), face_n.Y(), face_n.Z())
+        except Exception:
+            pass
+
+    if fn is None:
+        plane = occ["Geom_Plane"].DownCast(surf)
+        if plane is None:
+            return None
+        face_n = plane.Pln().Axis().Direction()
+        fn = (face_n.X(), face_n.Y(), face_n.Z())
+
+    if area > 200:
         return None
 
     neighbors = _collect_neighbor_faces(face, edge_faces, occ)
     if len(neighbors) < 2:
         return None
-
-    face_n = plane.Pln().Axis().Direction()
-    fn = (face_n.X(), face_n.Y(), face_n.Z())
 
     avg_angle = _compute_avg_neighbor_angle(fn, neighbors, occ)
     if avg_angle is None or not (30 <= avg_angle <= 60):
