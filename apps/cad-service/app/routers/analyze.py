@@ -1,10 +1,12 @@
 from fastapi import APIRouter, HTTPException
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 from typing import Optional
 import hashlib
 import hmac
 import json
 import logging
+import math
 import os
 import traceback
 
@@ -37,6 +39,45 @@ from ..core.validation import validate_geometry
 from ..core.advanced_thickness_detection import enhanced_ray_casting_analysis
 
 router = APIRouter()
+
+
+def _json_safe(obj):
+    """Recursively sanitize a dict/list so it's JSON-serializable.
+    Converts numpy scalars to Python natives, replaces NaN/inf with None."""
+    if obj is None:
+        return None
+    if isinstance(obj, dict):
+        return {k: _json_safe(v) for k, v in obj.items()}
+    if isinstance(obj, (list, tuple)):
+        return [_json_safe(v) for v in obj]
+    if isinstance(obj, float):
+        if math.isnan(obj) or math.isinf(obj):
+            return None
+        return obj
+    if isinstance(obj, (int, str, bool)):
+        return obj
+    # Handle numpy scalars (np.float64, np.int64, np.bool_, etc.)
+    try:
+        import numpy as np
+        if isinstance(obj, (np.integer,)):
+            return int(obj)
+        if isinstance(obj, (np.floating,)):
+            v = float(obj)
+            if math.isnan(v) or math.isinf(v):
+                return None
+            return v
+        if isinstance(obj, (np.bool_,)):
+            return bool(obj)
+        if isinstance(obj, np.ndarray):
+            return obj.tolist()
+    except ImportError:
+        pass
+    # Fallback: try to convert to string
+    try:
+        return str(obj)
+    except Exception:
+        return None
+
 
 def _serialize_features(threads=None, slots=None, undercuts=None, fillets=None, holes=None, pockets=None):
     """Serialize detailed feature objects for frontend consumption."""
@@ -814,16 +855,23 @@ def get_analysis_result(task_id: str):
     else:
         raise HTTPException(status_code=202, detail="Analysis in progress")
 
-@router.post("/sync", response_model=AnalysisResponse)
+@router.post("/sync")
 def analyze_cad_file_sync(request: AnalysisRequest):
     """Synchronous analysis for immediate results (smaller files)."""
+    local_path = request.file_path
+    if not local_path and request.file_url:
+        local_path = download_to_temp(request.file_url)
+    if not local_path:
+        raise HTTPException(status_code=400, detail="file_path or file_url is required")
     try:
-        local_path = request.file_path
-        if not local_path and request.file_url:
-            local_path = download_to_temp(request.file_url)
-        if not local_path:
-            raise HTTPException(status_code=400, detail="file_path or file_url is required")
         metrics = analyze_file_path(local_path, request.units_hint)
-        return {"file_id": request.file_id, "metrics": metrics}
+        # Sanitize metrics to ensure JSON serializability (handles numpy types, NaN, inf)
+        safe_metrics = _json_safe(metrics)
+        return JSONResponse(content={"file_id": request.file_id, "metrics": safe_metrics})
+    except HTTPException:
+        raise
     except Exception as e:
-        raise HTTPException(status_code=400, detail=str(e))
+        # Log the full traceback so real errors are visible in Docker logs
+        logging.error("Analysis failed for file_id=%s: %s", request.file_id, str(e))
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"Analysis failed: {str(e)[:500]}")

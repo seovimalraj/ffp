@@ -2655,15 +2655,18 @@ function calculateSheetMetalScore(
 
   let score = 0;
 
-  // Basic thickness check (bbox approximation only)
-  if (minDim >= 0.5 && minDim <= 6) score += 40;
+  // Basic thickness check (bbox approximation only, aligned with backend 0.4-8mm range)
+  if (minDim >= 0.4 && minDim <= 8) score += 40;
+  else if (minDim >= 0.3 && minDim <= 10) score += 20; // generous margin
 
-  // Basic aspect ratio check
+  // Basic aspect ratio check (more permissive for bent parts)
   if (aspectRatio > 10) score += 30;
-  else if (aspectRatio > 5) score += 15;
+  else if (aspectRatio > 5) score += 20;
+  else if (aspectRatio > 3) score += 10;
 
-  // Basic volume efficiency (hollow = possibly bent)
-  if (volumeEfficiency < 0.5) score += 30;
+  // Basic volume efficiency (hollow = possibly bent sheet metal)
+  if (volumeEfficiency < 0.4) score += 30;
+  else if (volumeEfficiency < 0.6) score += 15;
 
   return Math.max(0, Math.min(100, score));
 }
@@ -2710,12 +2713,12 @@ function recommendManufacturingProcess(
     warning: "Cannot detect bent sheet metal - use backend for accuracy",
   });
 
-  // Very conservative classification - prefer CNC for safety
+  // Conservative classification - prefer CNC but identify obvious sheet metal
   if (
-    minDim >= 0.5 &&
-    minDim <= 6 &&
-    aspectRatio > 15 &&
-    sheetMetalScore > 70
+    minDim >= 0.3 &&
+    minDim <= 8 &&
+    aspectRatio > 8 &&
+    sheetMetalScore > 60
   ) {
     return {
       process: "sheet-metal",
