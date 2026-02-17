@@ -109,6 +109,8 @@ function normalizeProcessString(rawProcess: string | undefined | null): string {
     sheet_metal: "sheet-metal",
     cnc_milling: "cnc-milling",
     cnc_turning: "cnc-turning",
+    manual_quote: "manual-quote",
+    assembly: "manual-quote",
   };
 
   return processMap[process] || process || "cnc-milling";
@@ -279,6 +281,9 @@ export const calculateLeadTime = (
   const processType = normalizeProcessString(
     part.process || part.geometry?.recommendedProcess,
   );
+
+  // Manual-quote parts (assemblies) get default lead time
+  if (processType === "manual-quote") return 7;
 
   const material = getMaterialForProcess(part.material, processType);
   if (!material) return 7;
@@ -1026,7 +1031,8 @@ export default function QuoteConfigPage() {
               };
 
               // Recalculate Pricing Object
-              if (part.geometry) {
+              // Skip pricing for manual-quote parts (assemblies) — they must show $0
+              if (part.geometry && normalizedProcess !== "manual-quote") {
                 // CRITICAL: Use the already-normalized process, not the raw DB value
                 const processType = normalizedProcess;
                 const material = getMaterialForProcess(
@@ -1194,7 +1200,8 @@ export default function QuoteConfigPage() {
     }
 
     // Recalculate pricing if geometry exists
-    if (updatedPart.geometry) {
+    // Skip pricing for manual-quote parts (assemblies) — they must show $0
+    if (updatedPart.geometry && normalizeProcessString(updatedPart.process) !== "manual-quote") {
       // CRITICAL: Normalize process to prevent underscore-format mismatches
       const processType = normalizeProcessString(
         updatedPart.process || updatedPart.geometry?.recommendedProcess,
