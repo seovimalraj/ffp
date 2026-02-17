@@ -666,9 +666,17 @@ def _analyze_step(file_path):
     actual_thickness, thickness_confidence, triangle_count, thickness_analysis = \
         _detect_step_wall_thickness(shape, bbox_dims)
 
-    # Feature extraction
-    holes = extract_holes_from_shape(shape)
-    pockets = extract_pockets_from_shape(shape)
+    # Feature extraction (wrapped so one failure doesn't crash the whole analysis)
+    try:
+        holes = extract_holes_from_shape(shape)
+    except Exception as e:
+        logging.warning("Hole extraction failed: %s", str(e)[:120])
+        holes = []
+    try:
+        pockets = extract_pockets_from_shape(shape)
+    except Exception as e:
+        logging.warning("Pocket extraction failed: %s", str(e)[:120])
+        pockets = []
     features = _extract_step_additional_features(shape, holes, pockets)
 
     # Classification

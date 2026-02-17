@@ -158,7 +158,6 @@ def extract_threads_from_shape(shape, holes: Optional[List[HoleFeature]] = None)
     idx = 1
 
     try:
-        from OCC.Core import TopExp
         from OCC.Core.TopAbs import TopAbs_FACE, TopAbs_EDGE
         from OCC.Core.BRep import BRep_Tool
         from OCC.Core.Geom import Geom_CylindricalSurface

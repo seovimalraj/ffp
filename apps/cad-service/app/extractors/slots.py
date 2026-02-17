@@ -114,9 +114,7 @@ def extract_slots_from_shape(shape) -> List[SlotFeature]:
     end-cap faces (for blind slots) or through openings.
     """
     try:
-        from OCC.Core.TopExp import TopExp_Explorer
-        from OCC.Core import TopExp
-
+        from OCC.Core.TopExp import TopExp_Explorer, topexp
         from OCC.Core.TopAbs import TopAbs_FACE, TopAbs_EDGE
         from OCC.Core.BRep import BRep_Tool
         from OCC.Core.Geom import Geom_Plane
@@ -130,10 +128,10 @@ def extract_slots_from_shape(shape) -> List[SlotFeature]:
         return []
 
     face_map = TopTools_IndexedMapOfShape()
-    TopExp.MapShapes(shape, TopAbs_FACE, face_map)
+    topexp.MapShapes(shape, TopAbs_FACE, face_map)
 
     edge_faces = TopTools_IndexedDataMapOfShapeListOfShape()
-    TopExp.MapShapesAndAncestors(shape, TopAbs_EDGE, TopAbs_FACE, edge_faces)
+    topexp.MapShapesAndAncestors(shape, TopAbs_EDGE, TopAbs_FACE, edge_faces)
 
     slots: List[SlotFeature] = []
     idx = 1

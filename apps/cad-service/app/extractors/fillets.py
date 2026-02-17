@@ -21,8 +21,7 @@ def _try_import_occ():
     Returns a dict of OCC classes/functions on success, or ``None``.
     """
     try:
-        from OCC.Core.TopExp import TopExp_Explorer
-        from OCC.Core import TopExp
+        from OCC.Core.TopExp import TopExp_Explorer, topexp
         from OCC.Core.TopAbs import TopAbs_FACE, TopAbs_EDGE
         from OCC.Core.BRep import BRep_Tool
         from OCC.Core.Geom import Geom_ToroidalSurface, Geom_Plane
@@ -37,7 +36,7 @@ def _try_import_occ():
         return None
     return {
         "TopExp_Explorer": TopExp_Explorer,
-        "TopExp": TopExp,
+        "TopExp": topexp,
         "TopAbs_FACE": TopAbs_FACE,
         "TopAbs_EDGE": TopAbs_EDGE,
         "BRep_Tool": BRep_Tool,
