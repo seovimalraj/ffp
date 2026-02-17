@@ -98,8 +98,7 @@ def analyze_draft_from_shape(
 ) -> List[DraftAngleInfo]:
     """Analyse draft angles from BREP shape using OCC."""
     try:
-        from OCC.Core.TopExp import TopExp_Explorer
-        from OCC.Core import TopExp
+        from OCC.Core.TopExp import TopExp_Explorer, topexp
         from OCC.Core.TopAbs import TopAbs_FACE
         from OCC.Core.BRep import BRep_Tool
         from OCC.Core.Geom import Geom_Plane
@@ -116,7 +115,7 @@ def analyze_draft_from_shape(
     results: List[DraftAngleInfo] = []
 
     face_map = TopTools_IndexedMapOfShape()
-    TopExp.MapShapes(shape, TopAbs_FACE, face_map)
+    topexp.MapShapes(shape, TopAbs_FACE, face_map)
 
     type_handlers = {
         GeomAbs_Plane: lambda face, adaptor: _draft_from_plane(face, pd, BRep_Tool, Geom_Plane),

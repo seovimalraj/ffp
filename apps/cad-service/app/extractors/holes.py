@@ -11,8 +11,7 @@ logger = logging.getLogger(__name__)
 def _try_import_hole_occ():
     """Attempt to import OCC modules for hole detection."""
     try:
-        from OCC.Core.TopExp import TopExp_Explorer
-        from OCC.Core import TopExp
+        from OCC.Core.TopExp import TopExp_Explorer, topexp
         from OCC.Core.TopAbs import TopAbs_FACE, TopAbs_EDGE
         from OCC.Core.BRep import BRep_Tool
         from OCC.Core.Geom import Geom_CylindricalSurface, Geom_Plane
@@ -26,7 +25,7 @@ def _try_import_hole_occ():
         return None
     return {
         "TopExp_Explorer": TopExp_Explorer,
-        "TopExp": TopExp,
+        "TopExp": topexp,
         "TopAbs_FACE": TopAbs_FACE,
         "TopAbs_EDGE": TopAbs_EDGE,
         "BRep_Tool": BRep_Tool,
