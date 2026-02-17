@@ -89,6 +89,30 @@ export async function POST(request: NextRequest) {
           estimatedMachiningTime: 0,
           materialWeight: 0,
           sheetMetalScore: 0,
+          // Complete GeometryData fields to prevent crashes on reload
+          partCharacteristics: {
+            isRotationalSymmetric: false,
+            isThinWalled: false,
+            hasCurvedSurfaces: false,
+            hasComplexFeatures: false,
+            aspectRatio: 1,
+          },
+          features: ['assembly'],
+          advancedFeatures: {
+            ribs: { count: 0, avgThickness: 0, minThickness: 0, thinRibCount: 0, deflectionRisk: 'low' },
+            holes: { count: 0, avgDiameter: 0, minDiameter: 0, maxDepth: 0, deepHoleCount: 0, blindHoleCount: 0, throughHoleCount: 0, threadedHoleCount: 0, requiresReaming: false, smallDiameterCount: 0, requiresEDM: false, microHoleCount: 0 },
+            bosses: { count: 0, avgHeight: 0, maxAspectRatio: 0, requiresThreading: false, requiresReaming: false },
+            fillets: { count: 0, avgRadius: 0, minRadius: 0, missingFilletCount: 0, stressConcentrationRisk: 0, blendRadiusCount: 0 },
+            pockets: { count: 0, avgDepth: 0, maxDepthRatio: 0, narrowPocketCount: 0, requiresEDM: false, thinWallPockets: 0, microPockets: 0, deepNarrowPockets: 0 },
+            threads: { count: 0, standardThreadCount: 0, customThreadCount: 0, internalCount: 0, externalCount: 0, finePitchCount: 0, requiresThreadMilling: false },
+            undercuts: { count: 0, internalCount: 0, externalCount: 0, requiresEDM: false, requiresSpecialTooling: false, maxDepth: 0 },
+            chamfers: { count: 0, avgSize: 0, deburringRequired: false },
+            thinWalls: { count: 0, minThickness: 0, avgThickness: 0, risk: 'low', requiresSupportFixture: false },
+            toolAccess: { restrictedAreas: 0, requiresIndexing: false, requiresMultiAxisMachining: false, estimatedSetupCount: 0, axisCounts: { '3-axis': 0, '4-axis': 0, '5-axis': 0 }, specialFixturingNeeded: false },
+            surfaceFinish: { estimatedRa: 0, criticalSurfaces: 0, requiresPolishing: false, requiresHoning: false },
+          },
+          recommendedSecondaryOps: [],
+          dfmIssues: [],
         });
       }
       
@@ -376,6 +400,10 @@ function buildGeometryResult(ctx: GeometryContext): any {
     processConfidence,
     processReasoning,
     sheetMetalScore,
+    // Assembly / manual-quote flags — propagate from backend
+    isAssembly: backendData.is_assembly === true,
+    requiresManualQuote: backendData.requires_manual_quote === true || recommendedProcess === 'manual-quote',
+    manualQuoteReason: backendData.manual_quote_reason || (recommendedProcess === 'manual-quote' ? 'Assembly or complex part requires manual quoting' : undefined),
     needsReview: advancedMetrics.needs_review === true,
     classificationMethod: advancedMetrics.classification_method || 'unknown',
     machiningFeatureScore: advancedMetrics.machining_feature_score || 0,
