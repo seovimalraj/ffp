@@ -17,8 +17,8 @@ from ..utils.download import download_to_temp
 from ..utils.units import scale_to_mm
 from ..loaders.step_loader import occ_available, load_step_shape, shape_mass_props, count_solids_and_compounds
 from ..loaders.stl_loader import load_stl, mesh_mass_props
-from ..extractors.holes import extract_holes_from_shape
-from ..extractors.pockets import extract_pockets_from_shape
+from ..extractors.holes import extract_holes_from_shape, extract_holes_from_mesh
+from ..extractors.pockets import extract_pockets_from_shape, extract_pockets_from_mesh
 from ..extractors.min_wall import min_wall_mesh
 from ..extractors.threads import extract_threads_from_shape, extract_threads_from_mesh
 from ..extractors.slots import extract_slots_from_shape, extract_slots_from_pockets
@@ -28,6 +28,10 @@ from ..extractors.draft_angles import analyze_draft_from_shape, analyze_draft_fr
 from ..extractors.grain_direction import analyze_grain_direction
 from ..extractors.nesting import estimate_nesting
 from ..extractors.bend_angles import extract_bend_angles_from_shape
+from ..extractors.bosses import extract_bosses_from_shape, extract_bosses_from_mesh
+from ..extractors.ribs import extract_ribs_from_shape, extract_ribs_from_mesh
+from ..extractors.surface_finish import extract_surface_finish_from_shape, extract_surface_finish_from_mesh
+from ..extractors.tolerances import extract_tolerance_from_shape, extract_tolerance_from_mesh
 from ..models import FeaturesJson, BBox, MassProps, HoleFeature, PocketFeature, MinWallData
 
 # Import new core modules for clean architecture
@@ -35,6 +39,9 @@ from ..core.geometry import GeometricMetrics, calculate_sheet_metal_score, calcu
 from ..core.bend_detection import AdvancedBendDetector
 from ..core.classification import ProcessClassifier
 from ..core.face_classification import classify_faces
+from ..core.machining_complexity import analyze_machining_complexity, analyze_machining_complexity_from_mesh
+from ..core.assembly_analysis import analyze_multi_body_assembly, get_per_body_classifications
+from ..core.process_detection import analyze_weldment, analyze_casting_origin
 from ..dfm_analyzer import analyze_dfm, build_geometry_for_dfm
 from ..core.validation import validate_geometry
 from ..core.advanced_thickness_detection import enhanced_ray_casting_analysis
@@ -161,6 +168,7 @@ class AnalysisRequest(BaseModel):
     units_hint: Optional[str] = None
     org_id: Optional[str] = None
     webhook_url: Optional[str] = None
+    material: Optional[str] = None  # e.g. "steel", "aluminum", "stainless", "copper", "brass", "titanium"
 
 class AnalysisResponse(BaseModel):
     file_id: str
@@ -204,18 +212,30 @@ def _log_thickness_analysis(analysis, label=""):
 
 def _extract_mesh_features(mesh):
     """Extract features from STL mesh with per-feature error handling."""
-    results = {"threads": [], "undercuts": [], "fillets": [], "draft": []}
+    results = {
+        "threads": [], "undercuts": [], "fillets": [], "draft": [],
+        "holes": [], "pockets": [], "bosses": [], "ribs": []
+    }
     extractors = [
         ("threads", lambda: extract_threads_from_mesh(mesh)),
         ("undercuts", lambda: detect_undercuts_from_mesh(mesh)),
         ("fillets", lambda: detect_fillets_from_mesh(mesh)),
         ("draft", lambda: analyze_draft_from_mesh(mesh)),
+        ("holes", lambda: extract_holes_from_mesh(mesh)),
+        ("pockets", lambda: extract_pockets_from_mesh(mesh)),
+        ("bosses", lambda: extract_bosses_from_mesh(mesh)),
+        ("ribs", lambda: extract_ribs_from_mesh(mesh)),
     ]
     for name, fn in extractors:
         try:
             results[name] = fn()
         except Exception as e:
             print(f"⚠️ STL {name} extraction failed: {str(e)[:80]}")
+    
+    # Log mesh feature extraction summary
+    print(f"🔧 STL feature extraction: {len(results['holes'])} holes, "
+          f"{len(results['pockets'])} pockets, {len(results['bosses'])} bosses, "
+          f"{len(results['ribs'])} ribs, {len(results['threads'])} threads")
     return results
 
 
@@ -226,14 +246,22 @@ def _try_extract_slots(shape, pockets):
 
 
 def _extract_step_additional_features(shape, holes, pockets):
-    """Extract threads, slots, undercuts, fillets, draft from STEP shape."""
-    results = {"threads": [], "slots": [], "undercuts": [], "fillets": [], "draft": []}
+    """Extract threads, slots, undercuts, fillets, draft, bosses, ribs from STEP shape."""
+    results = {
+        "threads": [], "slots": [], "undercuts": [], 
+        "fillets": [], "draft": [], "bosses": [], "ribs": [],
+        "surface_finish": None, "tolerances": None,
+    }
     extractors = [
         ("threads", lambda: extract_threads_from_shape(shape, holes)),
         ("slots", lambda: _try_extract_slots(shape, pockets)),
         ("undercuts", lambda: extract_undercuts_from_shape(shape)),
         ("fillets", lambda: extract_fillets_from_shape(shape)),
         ("draft", lambda: analyze_draft_from_shape(shape)),
+        ("bosses", lambda: extract_bosses_from_shape(shape)),
+        ("ribs", lambda: extract_ribs_from_shape(shape)),
+        ("surface_finish", lambda: extract_surface_finish_from_shape(shape)),
+        ("tolerances", lambda: extract_tolerance_from_shape(shape, holes, pockets)),
     ]
     for name, fn in extractors:
         try:
@@ -243,22 +271,104 @@ def _extract_step_additional_features(shape, holes, pockets):
     print(f"🔧 Feature extraction: {len(holes)} holes, {len(pockets)} pockets, "
           f"{len(results['threads'])} threads, {len(results['slots'])} slots, "
           f"{len(results['undercuts'])} undercuts, {len(results['fillets'])} fillets, "
-          f"{len(results['draft'])} draft faces")
+          f"{len(results['draft'])} draft faces, {len(results['bosses'])} bosses, "
+          f"{len(results['ribs'])} ribs")
+    return results
+
+
+def _extract_advanced_process_analysis(shape, holes, pockets, undercuts, face_result, body_count):
+    """Extract machining complexity, weldment, and casting analysis."""
+    results = {
+        "machining_complexity": None,
+        "weldment_analysis": None,
+        "casting_analysis": None,
+        "assembly_analysis": None,
+    }
+    
+    try:
+        results["machining_complexity"] = analyze_machining_complexity(
+            shape, holes=holes, pockets=pockets, undercuts=undercuts,
+            face_classification=face_result
+        )
+    except Exception as e:
+        print(f"⚠️ Machining complexity analysis failed: {str(e)[:80]}")
+    
+    try:
+        results["weldment_analysis"] = analyze_weldment(
+            shape, body_count=body_count, face_classification=face_result
+        )
+    except Exception as e:
+        print(f"⚠️ Weldment analysis failed: {str(e)[:80]}")
+    
+    try:
+        from ..loaders.step_loader import shape_mass_props
+        vol, area = shape_mass_props(shape)
+        results["casting_analysis"] = analyze_casting_origin(
+            shape, holes=holes, pockets=pockets, 
+            face_classification=face_result,
+            volume_mm3=vol, surface_area_mm2=area
+        )
+    except Exception as e:
+        print(f"⚠️ Casting analysis failed: {str(e)[:80]}")
+    
+    if body_count > 1:
+        try:
+            results["assembly_analysis"] = analyze_multi_body_assembly(shape)
+        except Exception as e:
+            print(f"⚠️ Assembly analysis failed: {str(e)[:80]}")
+    
     return results
 
 
 def _classify_process(bbox_dims, vol_mm3, area_mm2, detected_thickness,
                       thickness_confidence, triangle_count, thickness_analysis,
-                      face_classification=None, **feature_counts):
-    """Run process classification and return formatted results."""
+                      face_classification=None, 
+                      holes=None, pockets=None, fillets=None,
+                      bends=None, undercuts=None, draft_analysis=None,
+                      slots=None, threads=None,  # GAP FIX: Add slots and threads
+                      material='default',
+                      **feature_counts):
+    """Run process classification and return formatted results.
+    
+    ENHANCED: Now passes full feature objects for advanced analysis
+    (hole depth ratio, pocket depth, fillet radius, thickness uniformity,
+    bend radius analysis, undercut severity, draft angle detection,
+    slot geometry, thread pitch analysis).
+    """
     geom_metrics = GeometricMetrics(bbox_dims, vol_mm3, area_mm2)
     classifier = ProcessClassifier(geom_metrics)
+    
+    # Extract paired plane distances from face classification if available
+    # GAP FIX: Pass ALL pair distances, not just dominant
+    paired_plane_distances = []
+    if face_classification is not None:
+        # Use all paired plane distances for better thickness uniformity analysis
+        if hasattr(face_classification, 'paired_plane_distances'):
+            paired_plane_distances = getattr(face_classification, 'paired_plane_distances', [])
+        elif hasattr(face_classification, 'dominant_pair_thickness'):
+            # Fallback to dominant thickness if full list not available
+            if face_classification.dominant_pair_thickness is not None:
+                paired_plane_distances = [face_classification.dominant_pair_thickness]
+    
     process_type, confidence, metadata = classifier.classify(
         detected_thickness=detected_thickness,
         thickness_confidence=thickness_confidence,
         triangle_count=triangle_count,
         thickness_analysis=thickness_analysis,
         face_classification=face_classification,
+        # Pass full feature objects for advanced analysis
+        holes=holes,
+        pockets=pockets,
+        fillets=fillets,
+        paired_plane_distances=paired_plane_distances,
+        # NEW: Pass bends, undercuts, and draft analysis (GAP 4, 9, 13)
+        bends=bends,
+        undercuts=undercuts,
+        draft_analysis=draft_analysis,
+        # GAP FIX: Pass slots and threads for geometry/pitch analysis
+        slots=slots,
+        threads=threads,
+        material=material,
         **feature_counts,
     )
     process_type_str = process_type if process_type in ('sheet_metal', 'cnc_turning') else 'cnc_milling'
@@ -573,8 +683,14 @@ def _detect_step_wall_thickness(shape, bbox_dims):
 # Branch implementations
 # ---------------------------------------------------------------------------
 
-def _analyze_stl(file_path, scale):
-    """Analyze an STL file and return normalized metrics."""
+def _analyze_stl(file_path, scale, material: str = 'default'):
+    """Analyze an STL file and return normalized metrics.
+    
+    Args:
+        file_path: Path to STL file
+        scale: Scale factor for units conversion
+        material: Material type for classification thresholds
+    """
     mesh = load_stl(file_path, scale=scale)
     vol_mm3, area_mm2 = mesh_mass_props(mesh)
     bbox_min, bbox_max = mesh.bounds[0], mesh.bounds[1]
@@ -604,9 +720,13 @@ def _analyze_stl(file_path, scale):
         thickness_confidence=thickness_confidence,
         triangle_count=face_count,
         thickness_analysis=thickness_analysis,
+        material=material,
         thread_count=len(features['threads']),
         undercut_count=len(features['undercuts']),
         fillet_count=len(features['fillets']),
+        # GAP FIX: Pass threads and slots for geometry analysis
+        threads=features['threads'],
+        slots=[],  # STL mesh doesn't have slot extraction yet
     )
 
     # Complexity
@@ -690,8 +810,13 @@ def _detect_assembly_early(shape) -> dict | None:
     return None
 
 
-def _analyze_step(file_path):
-    """Analyze a STEP file and return normalized metrics."""
+def _analyze_step(file_path, material: str = 'default'):
+    """Analyze a STEP file and return normalized metrics.
+    
+    Args:
+        file_path: Path to STEP file
+        material: Material type for classification thresholds
+    """
     if not occ_available():
         raise HTTPException(
             status_code=400,
@@ -742,8 +867,22 @@ def _analyze_step(file_path):
         logging.warning("Pocket extraction failed: %s", str(e)[:120])
         pockets = []
     features = _extract_step_additional_features(shape, holes, pockets)
+    
+    # NEW: Extract bends BEFORE classification (GAP 4)
+    # This allows bend radius analysis to inform classification
+    step_bend_result = _extract_step_bends(shape, actual_thickness)
+    bends_list = []
+    if step_bend_result is not None and hasattr(step_bend_result, 'bends'):
+        bends_list = step_bend_result.bends
 
-    # Classification
+    # NEW: Extract advanced process analysis (machining complexity, weldment, casting)
+    body_count_info = count_solids_and_compounds(shape)
+    body_count = getattr(body_count_info, 'solid_count', 1) if body_count_info else 1
+    advanced_process = _extract_advanced_process_analysis(
+        shape, holes, pockets, features['undercuts'], face_result, body_count
+    )
+
+    # Classification - pass full feature objects for enhanced analysis
     process_type_str, _conf, metadata, advanced_metrics = _classify_process(
         bbox_dims, vol_mm3, area_mm2,
         detected_thickness=actual_thickness,
@@ -751,16 +890,37 @@ def _analyze_step(file_path):
         triangle_count=triangle_count,
         thickness_analysis=thickness_analysis,
         face_classification=face_result,
+        # Pass full feature objects
+        holes=holes,
+        pockets=pockets,
+        fillets=features['fillets'],
+        # Pass bends, undercuts, and draft analysis
+        bends=bends_list,
+        undercuts=features['undercuts'],
+        draft_analysis=features['draft'],
+        # Pass slots and threads for geometry/pitch analysis
+        slots=features['slots'],
+        threads=features['threads'],
+        material=material,
+        # Pass counts for backward compatibility
         hole_count=len(holes),
         pocket_count=len(pockets),
         thread_count=len(features['threads']),
         undercut_count=len(features['undercuts']),
         fillet_count=len(features['fillets']),
         slot_count=len(features['slots']),
+        boss_count=len(features['bosses']),
+        rib_count=len(features['ribs']),
+        # NEW: Pass extended analysis results
+        surface_finish_analysis=features.get('surface_finish'),
+        tolerance_analysis=features.get('tolerances'),
+        machining_complexity=advanced_process.get('machining_complexity'),
+        casting_analysis=advanced_process.get('casting_analysis'),
+        weldment_analysis=advanced_process.get('weldment_analysis'),
+        body_count=body_count,
     )
 
-    # STEP bend angle extraction
-    step_bend_result = _extract_step_bends(shape, actual_thickness)
+    # Complexity (step_bend_result already extracted above)
 
     # Complexity
     bend_analysis = metadata.get('bend_analysis', {})
@@ -838,16 +998,24 @@ def _extract_step_bends(shape, thickness_mm):
         return None
 
 
-def analyze_file_path(file_path: str, units_hint: Optional[str] = None) -> dict:
+def analyze_file_path(file_path: str, units_hint: Optional[str] = None, 
+                      material: Optional[str] = None) -> dict:
     """Analyze a CAD file (STEP/STL) and return normalized metrics.
     Returns a dict matching previous mock structure to limit integration changes.
+    
+    Args:
+        file_path: Path to the CAD file
+        units_hint: Unit hint for STL files (e.g. "mm", "inch")
+        material: Material type for thickness classification
+                  (e.g. "steel", "aluminum", "stainless", "copper", "brass", "titanium")
     """
     ext = os.path.splitext(file_path)[1].lower()
     scale = scale_to_mm(units_hint)
+    material_type = material or 'default'
     if ext in (".stl",):
-        return _analyze_stl(file_path, scale)
+        return _analyze_stl(file_path, scale, material=material_type)
     if ext in (".step", ".stp"):
-        return _analyze_step(file_path)
+        return _analyze_step(file_path, material=material_type)
     raise HTTPException(status_code=400, detail="Unsupported CAD format. Use STEP or STL.")
 
 def calculate_stock_size(bbox: dict, thickness: Optional[float] = None) -> dict:
@@ -870,7 +1038,9 @@ def calculate_stock_size(bbox: dict, thickness: Optional[float] = None) -> dict:
         }
 
 @celery_app.task
-def analyze_file(file_id: str, file_path: str, units_hint: Optional[str] = None, file_url: Optional[str] = None, org_id: Optional[str] = None, webhook_url: Optional[str] = None):
+def analyze_file(file_id: str, file_path: str, units_hint: Optional[str] = None, 
+                 file_url: Optional[str] = None, org_id: Optional[str] = None, 
+                 webhook_url: Optional[str] = None, material: Optional[str] = None):
     try:
         local_path = file_path
         if not local_path and file_url:
@@ -878,7 +1048,7 @@ def analyze_file(file_id: str, file_path: str, units_hint: Optional[str] = None,
         if not local_path:
             raise ValueError("file_path or file_url is required")
 
-        metrics = analyze_file_path(local_path, units_hint)
+        metrics = analyze_file_path(local_path, units_hint, material=material)
         # Fire-and-forget webhook if provided
         if webhook_url:
             try:
@@ -908,7 +1078,10 @@ def analyze_file(file_id: str, file_path: str, units_hint: Optional[str] = None,
 @router.post("/", response_model=AnalysisResponse)
 def analyze_cad_file(request: AnalysisRequest):
     # Queue the analysis task
-    task = analyze_file.delay(request.file_id, request.file_path or "", request.units_hint, request.file_url, request.org_id, request.webhook_url)
+    task = analyze_file.delay(
+        request.file_id, request.file_path or "", request.units_hint, 
+        request.file_url, request.org_id, request.webhook_url, request.material
+    )
     
     return {
         "file_id": request.file_id,

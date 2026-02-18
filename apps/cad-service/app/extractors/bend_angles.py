@@ -400,32 +400,258 @@ def _classify_bend_type(angle: float, radius: float, thickness: float) -> str:
     return "v-bend"
 
 
-def _calculate_k_factor(radius: float, thickness: float, _angle: float = 0.0) -> float:
+# Material-specific K-factor lookup tables
+# K-factor depends on material type, temper, and bend radius/thickness ratio
+# Source: Machinery's Handbook, SME forming guidelines
+MATERIAL_K_FACTORS = {
+    "aluminum": {
+        # Aluminum alloys - softer materials have lower K-factor
+        "soft": {  # 1100, 3003, 5052-O
+            "tight": 0.33,    # R/T < 1
+            "normal": 0.38,   # 1 <= R/T < 2
+            "loose": 0.42,    # 2 <= R/T < 3
+            "open": 0.45,     # R/T >= 3
+        },
+        "half_hard": {  # 5052-H32, 6061-T4
+            "tight": 0.35,
+            "normal": 0.40,
+            "loose": 0.44,
+            "open": 0.48,
+        },
+        "hard": {  # 6061-T6, 7075
+            "tight": 0.38,
+            "normal": 0.42,
+            "loose": 0.46,
+            "open": 0.50,
+        },
+    },
+    "steel": {
+        # Mild steel and HSLA
+        "soft": {  # A36, CR1008
+            "tight": 0.35,
+            "normal": 0.40,
+            "loose": 0.44,
+            "open": 0.48,
+        },
+        "half_hard": {  # A569, HSLA
+            "tight": 0.38,
+            "normal": 0.42,
+            "loose": 0.46,
+            "open": 0.50,
+        },
+        "hard": {  # A606, Spring steel
+            "tight": 0.40,
+            "normal": 0.44,
+            "loose": 0.48,
+            "open": 0.50,
+        },
+    },
+    "stainless": {
+        # Stainless steels work-harden significantly
+        "soft": {  # 304 annealed, 316 annealed
+            "tight": 0.38,
+            "normal": 0.42,
+            "loose": 0.46,
+            "open": 0.50,
+        },
+        "half_hard": {  # 301, 304 1/4H
+            "tight": 0.40,
+            "normal": 0.44,
+            "loose": 0.48,
+            "open": 0.50,
+        },
+        "hard": {  # 301 FH, 17-7PH
+            "tight": 0.42,
+            "normal": 0.46,
+            "loose": 0.50,
+            "open": 0.50,
+        },
+    },
+    "copper": {
+        "soft": {
+            "tight": 0.30,
+            "normal": 0.35,
+            "loose": 0.40,
+            "open": 0.44,
+        },
+        "hard": {
+            "tight": 0.35,
+            "normal": 0.40,
+            "loose": 0.44,
+            "open": 0.48,
+        },
+    },
+    "brass": {
+        "soft": {
+            "tight": 0.32,
+            "normal": 0.38,
+            "loose": 0.42,
+            "open": 0.46,
+        },
+        "hard": {
+            "tight": 0.38,
+            "normal": 0.42,
+            "loose": 0.46,
+            "open": 0.50,
+        },
+    },
+    "default": {
+        # Generic fallback
+        "soft": {"tight": 0.33, "normal": 0.40, "loose": 0.44, "open": 0.48},
+        "half_hard": {"tight": 0.38, "normal": 0.42, "loose": 0.46, "open": 0.50},
+        "hard": {"tight": 0.40, "normal": 0.44, "loose": 0.48, "open": 0.50},
+    },
+}
+
+
+def _get_rt_category(ratio: float) -> str:
+    """Categorize R/T ratio for K-factor lookup."""
+    if ratio < 1.0:
+        return "tight"
+    elif ratio < 2.0:
+        return "normal"
+    elif ratio < 3.0:
+        return "loose"
+    else:
+        return "open"
+
+
+def _calculate_k_factor(
+    radius: float, 
+    thickness: float, 
+    _angle: float = 0.0,
+    material: str = "default",
+    temper: str = "half_hard"
+) -> float:
     """
+    Calculate K-factor based on material, temper, and bend geometry.
+    
     K-factor determines where the neutral axis sits within the bend.
-    Typical range: 0.3–0.5.  Tight radii shift the neutral axis inward.
+    Typical range: 0.3–0.5. Tight radii shift the neutral axis inward.
+    Harder materials and tighter bends have lower K-factors.
+    
+    Args:
+        radius: Inner bend radius in mm
+        thickness: Material thickness in mm
+        _angle: Bend angle (not currently used, reserved for future)
+        material: Material type ('aluminum', 'steel', 'stainless', 'copper', 'brass')
+        temper: Material temper ('soft', 'half_hard', 'hard')
+        
+    Returns:
+        K-factor value (typically 0.30-0.50)
     """
     if thickness <= 0:
-        return 0.44
+        return 0.44  # Default fallback
+    
     ratio = radius / thickness
-    if ratio < 1.0:
-        return 0.33
-    if ratio < 2.0:
-        return 0.40
-    if ratio < 3.0:
-        return 0.44
-    return 0.50
+    rt_category = _get_rt_category(ratio)
+    
+    # Get material-specific K-factor table
+    material_lower = material.lower() if material else "default"
+    if material_lower not in MATERIAL_K_FACTORS:
+        material_lower = "default"
+    
+    material_table = MATERIAL_K_FACTORS[material_lower]
+    
+    # Get temper-specific values
+    temper_lower = temper.lower() if temper else "half_hard"
+    if temper_lower not in material_table:
+        # Find closest match
+        if "half_hard" in material_table:
+            temper_lower = "half_hard"
+        elif "soft" in material_table:
+            temper_lower = "soft"
+        else:
+            temper_lower = list(material_table.keys())[0]
+    
+    temper_table = material_table[temper_lower]
+    
+    return temper_table.get(rt_category, 0.44)
+
+
+def calculate_bend_allowance(
+    angle_deg: float, 
+    radius: float, 
+    thickness: float,
+    k_factor: Optional[float] = None,
+    material: str = "default",
+    temper: str = "half_hard"
+) -> float:
+    """
+    Calculate bend allowance (BA) - the arc length of the neutral axis.
+    
+    BA = (π × angle_deg / 180) × (radius + K × thickness)
+    
+    This is the material added to flat pattern to account for stretching
+    during the bend process.
+    
+    Args:
+        angle_deg: Bend angle in degrees
+        radius: Inner bend radius in mm
+        thickness: Material thickness in mm
+        k_factor: Override K-factor (if None, calculated from material/temper)
+        material: Material type for K-factor lookup
+        temper: Material temper for K-factor lookup
+        
+    Returns:
+        Bend allowance in mm
+    """
+    if k_factor is None:
+        k_factor = _calculate_k_factor(radius, thickness, angle_deg, material, temper)
+    
+    a_rad = math.radians(angle_deg)
+    ba = a_rad * (radius + k_factor * thickness)
+    return ba
+
+
+def calculate_outside_setback(
+    angle_deg: float, 
+    radius: float, 
+    thickness: float
+) -> float:
+    """
+    Calculate outside setback (OSSB) for a bend.
+    
+    OSSB = (R + T) × tan(angle/2)
+    
+    This is the distance from the bend tangent point to the apex
+    of the bend on the outside surface.
+    
+    Args:
+        angle_deg: Bend angle in degrees
+        radius: Inner bend radius in mm
+        thickness: Material thickness in mm
+        
+    Returns:
+        Outside setback in mm
+    """
+    a_rad = math.radians(angle_deg)
+    if abs(math.cos(a_rad / 2.0)) < 1e-9:
+        return 0.0
+    return (radius + thickness) * math.tan(a_rad / 2.0)
 
 
 def _bend_deduction(angle_deg: float, radius: float, thickness: float, k_factor: float) -> float:
     """
     Bend Deduction (BD) = 2 × (R + T) × tan(A/2)  −  Bend Allowance
-    Bend Allowance (BA) = A_rad × (R + K × T)
+    
+    This is the amount to subtract from the flat pattern leg lengths
+    to account for the bend.
+    
+    For a 90° bend: BD = 2 × OSSB - BA
+    
+    Args:
+        angle_deg: Bend angle in degrees
+        radius: Inner bend radius in mm
+        thickness: Material thickness in mm
+        k_factor: K-factor for neutral axis position
+        
+    Returns:
+        Bend deduction in mm (always >= 0)
     """
-    a_rad = math.radians(angle_deg)
-    ba = a_rad * (radius + k_factor * thickness)
-    outside_setback = 2.0 * (radius + thickness) * math.tan(a_rad / 2.0) if abs(math.cos(a_rad / 2.0)) > 1e-9 else 0.0
-    bd = outside_setback - ba
+    ba = calculate_bend_allowance(angle_deg, radius, thickness, k_factor)
+    ossb = calculate_outside_setback(angle_deg, radius, thickness)
+    bd = 2.0 * ossb - ba
     return max(0.0, bd)
 
 

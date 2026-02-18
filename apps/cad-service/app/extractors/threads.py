@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import math
 import logging
-from typing import List, Optional, Tuple
+from typing import List, Literal, Optional, Tuple
 
 from ..models import HoleFeature, ThreadFeature
 
@@ -66,7 +66,7 @@ def _detect_thread_from_face(
 ) -> Optional[ThreadFeature]:
     """Analyse a single BREP face for thread signature. Returns ThreadFeature or None."""
     from OCC.Core.TopExp import TopExp_Explorer
-    from OCC.Core.BRepAdaptor import BRepAdaptor_Curve
+    from OCC.Core.BRepAdaptor import BRepAdaptor_Curve, BRepAdaptor_Surface
 
     surf = brep_tool.Surface(face)
     cyl = geom_cyl_surface.DownCast(surf)
@@ -94,6 +94,41 @@ def _detect_thread_from_face(
 
     if not has_helix:
         return None
+    
+    # GAP 9 FIX: Detect internal vs external thread using surface normal
+    # Internal threads (tapped holes): normal points toward axis (concave surface)
+    # External threads (bolts): normal points away from axis (convex surface)
+    thread_type: Literal["internal", "external"] = "internal"  # Default assumption
+    try:
+        from OCC.Core.GeomLProp import GeomLProp_SLProps
+        
+        adaptor_surf = BRepAdaptor_Surface(face)
+        u_mid = (adaptor_surf.FirstUParameter() + adaptor_surf.LastUParameter()) / 2
+        v_mid = (adaptor_surf.FirstVParameter() + adaptor_surf.LastVParameter()) / 2
+        props_sl = GeomLProp_SLProps(surf, u_mid, v_mid, 1, 1e-6)
+        if props_sl.IsNormalDefined():
+            normal = props_sl.Normal()
+            # Get point on surface and axis location
+            pnt = adaptor_surf.Value(u_mid, v_mid)
+            axis = cyl.Cylinder().Axis()
+            axis_loc = axis.Location()
+            axis_dir = axis.Direction()
+            axis_vec = (axis_dir.X(), axis_dir.Y(), axis_dir.Z())
+            
+            # Vector from axis to point on surface
+            to_point = (pnt.X() - axis_loc.X(), pnt.Y() - axis_loc.Y(), pnt.Z() - axis_loc.Z())
+            # Project out axis component to get radial direction
+            dot_axis = to_point[0]*axis_vec[0] + to_point[1]*axis_vec[1] + to_point[2]*axis_vec[2]
+            radial = (to_point[0] - dot_axis*axis_vec[0], 
+                      to_point[1] - dot_axis*axis_vec[1], 
+                      to_point[2] - dot_axis*axis_vec[2])
+            # Dot product of normal with radial direction
+            # External: normal points outward (same as radial) - bolts, studs
+            # Internal: normal points inward (opposite to radial) - tapped holes
+            normal_dot_radial = (normal.X()*radial[0] + normal.Y()*radial[1] + normal.Z()*radial[2])
+            thread_type = "external" if normal_dot_radial > 0 else "internal"
+    except Exception:
+        pass  # Keep default "internal" on error
 
     # Determine pitch from surface area
     props = gprop_cls()
@@ -113,7 +148,7 @@ def _detect_thread_from_face(
         diameter_mm=float(diameter),
         pitch_mm=float(pitch),
         depth_mm=float(length_on_surface),
-        thread_type="internal",
+        thread_type=thread_type,  # GAP 9 FIX: Use detected internal/external
         is_standard=is_std,
         standard_name=std_name,
         position=(float(loc.X()), float(loc.Y()), float(loc.Z())),
