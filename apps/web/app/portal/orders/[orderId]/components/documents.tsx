@@ -35,6 +35,7 @@ import {
   SelectValue,
 } from "@/src/components/ui/select";
 import { PdfViewerModal } from "@/components/pdf-viewer-modal";
+import { notify } from "@/lib/toast";
 
 type Document = {
   id: string;
@@ -150,6 +151,20 @@ const Documents = ({ orderId, inView }: DocumentsProps) => {
     }
   };
 
+  const handleDownload = async (fileUrl: string, fileName: string) => {
+    const response = await fetch(fileUrl);
+    const blob = await response.blob();
+    const url = window.URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    const type = blob.type.split("/")[1];
+    link.download = `${fileName}.${type}`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    window.URL.revokeObjectURL(url);
+  };
+
   const handleCloseModal = () => {
     setIsModalOpen(false);
     setPendingFile(null);
@@ -160,10 +175,22 @@ const Documents = ({ orderId, inView }: DocumentsProps) => {
 
   const getFileIcon = (mimeType: string) => {
     if (mimeType.includes("pdf"))
-      return <FileText className="h-8 w-8 text-rose-500" />;
+      return (
+        <div className="bg-rose-50 p-4 rounded-2xl">
+          <FileText className="h-12 w-12 text-rose-500" />
+        </div>
+      );
     if (mimeType.includes("image"))
-      return <FileIcon className="h-8 w-8 text-sky-500" />;
-    return <FileIcon className="h-8 w-8 text-slate-400" />;
+      return (
+        <div className="bg-sky-50 p-4 rounded-2xl">
+          <FileIcon className="h-12 w-12 text-sky-500" />
+        </div>
+      );
+    return (
+      <div className="bg-slate-100 p-4 rounded-2xl">
+        <FileIcon className="h-12 w-12 text-slate-400" />
+      </div>
+    );
   };
 
   const openPdfViewer = (url: string, name: string) => {
@@ -251,17 +278,22 @@ const Documents = ({ orderId, inView }: DocumentsProps) => {
           {documents.map((doc) => (
             <Card
               key={doc.id}
-              className="group overflow-hidden hover:shadow-lg transition-all border-slate-200"
+              className="group overflow-hidden hover:shadow-xl transition-all duration-300 border-slate-200/60 hover:border-indigo-200 flex flex-col h-full bg-white ring-1 ring-slate-200/50 hover:ring-indigo-200/50"
             >
-              <CardContent className="p-0">
-                <div className="p-4 bg-slate-50 flex items-center justify-center aspect-video relative group-hover:bg-slate-100 transition-colors">
-                  {getFileIcon(doc.mime_type)}
+              <CardContent className="p-0 flex flex-col h-full">
+                {/* Preview Area */}
+                <div className="p-6 bg-gradient-to-br from-slate-50 to-slate-100 flex items-center justify-center aspect-[16/10] relative overflow-hidden group-hover:from-indigo-50 group-hover:to-indigo-50/30 transition-colors duration-500">
+                  <div className="transform group-hover:scale-110 transition-transform duration-500">
+                    {getFileIcon(doc.mime_type)}
+                  </div>
+
+                  {/* Quick View Overlay (for PDFs) */}
                   {doc.mime_type.includes("pdf") && (
-                    <div className="absolute inset-0 bg-black/0 group-hover:bg-black/5 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-all">
+                    <div className="absolute inset-0 bg-indigo-900/10 backdrop-blur-[2px] flex items-center justify-center opacity-0 group-hover:opacity-100 transition-all duration-300">
                       <Button
                         size="sm"
                         variant="secondary"
-                        className="bg-white/90 backdrop-blur-sm active:scale-95"
+                        className="bg-white text-indigo-600 font-semibold shadow-xl border-none active:scale-95 hover:bg-white hover:text-indigo-700"
                         onClick={() =>
                           openPdfViewer(doc.document_url, doc.file_name)
                         }
@@ -271,55 +303,60 @@ const Documents = ({ orderId, inView }: DocumentsProps) => {
                       </Button>
                     </div>
                   )}
-                </div>
-                <div className="p-4 space-y-3">
-                  <div className="flex justify-between items-start gap-2">
-                    <div className="flex-1 min-w-0">
-                      <h4
-                        className="text-sm font-semibold text-slate-900 truncate"
-                        title={doc.file_name}
-                      >
-                        {doc.file_name}
-                      </h4>
-                      <p className="text-[10px] text-slate-400 font-medium uppercase tracking-wider mt-0.5">
-                        {format(new Date(doc.created_at), "MMM d, yyyy")}
-                      </p>
-                    </div>
-                    <span className="flex-shrink-0 inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold bg-indigo-50 text-indigo-600 uppercase tracking-tight">
+
+                  {/* Type Badge - Top Right */}
+                  <div className="absolute top-3 right-3">
+                    <span className="inline-flex items-center px-2.5 py-1 rounded-full text-[10px] font-bold bg-white/90 backdrop-blur-md text-slate-600 shadow-sm border border-slate-100 uppercase tracking-wider">
                       {doc.document_type.replace("_", " ")}
                     </span>
                   </div>
+                </div>
 
-                  <div className="pt-2 flex items-center justify-between border-t border-slate-100">
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="text-slate-500 hover:text-indigo-600 hover:bg-indigo-50 h-8 flex-1 text-xs"
-                      asChild
+                {/* Content Area */}
+                <div className="p-5 flex flex-col flex-1">
+                  <div className="flex-1 min-w-0 mb-4">
+                    <h4
+                      className="text-sm font-bold text-slate-800 line-clamp-2 leading-snug hover:text-indigo-600 transition-colors cursor-default"
+                      title={doc.file_name}
                     >
-                      <a
-                        href={doc.document_url}
-                        download
-                        target="_blank"
-                        rel="noopener noreferrer"
-                      >
-                        <Download className="h-3.5 w-3.5 mr-1.5" />
-                        Download
-                      </a>
+                      {doc.file_name}
+                    </h4>
+                    <div className="flex items-center mt-2 space-x-2">
+                      <div className="h-1.5 w-1.5 rounded-full bg-slate-300"></div>
+                      <p className="text-[11px] text-slate-400 font-medium">
+                        Uploaded{" "}
+                        {format(new Date(doc.created_at), "MMM d, yyyy")}
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="pt-4 flex items-center gap-2 border-t border-slate-100/80">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() =>
+                        handleDownload(doc.document_url, doc.file_name)
+                      }
+                      className="text-slate-600 border-slate-200 hover:border-indigo-200 hover:bg-indigo-50 hover:text-indigo-600 h-9 flex-1 text-xs font-semibold shadow-sm transition-all active:scale-95"
+                    >
+                      <Download className="h-3.5 w-3.5 mr-2" />
+                      Download
                     </Button>
-                    {doc.mime_type.includes("pdf") && (
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        className="text-slate-500 hover:text-indigo-600 hover:bg-indigo-50 h-8 flex-1 text-xs"
-                        onClick={() =>
-                          openPdfViewer(doc.document_url, doc.file_name)
-                        }
-                      >
-                        <Eye className="h-3.5 w-3.5 mr-1.5" />
-                        View
-                      </Button>
-                    )}
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="text-slate-600 border-slate-200 hover:border-indigo-200 hover:bg-indigo-50 hover:text-indigo-600 h-9 flex-1 text-xs font-semibold shadow-sm transition-all active:scale-95"
+                      onClick={() => {
+                        navigator.clipboard.writeText(doc.document_url);
+                        notify.success(
+                          "URL Copied to clipboard",
+                          "Document URL has been copied to clipboard",
+                        );
+                      }}
+                    >
+                      <Paperclip className="h-3.5 w-3.5 mr-2" />
+                      Copy Link
+                    </Button>
                   </div>
                 </div>
               </CardContent>

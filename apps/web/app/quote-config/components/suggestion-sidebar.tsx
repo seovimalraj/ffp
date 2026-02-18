@@ -4,14 +4,16 @@ import { X, Cpu, ChevronDown } from "lucide-react";
 import type { PartConfig } from "@/types/part-config";
 import { cn } from "@/lib/utils";
 import { motion, AnimatePresence } from "framer-motion"; // Added Framer Motion
-import { useState, useMemo } from "react"; // Added useState import
+import { useState, useMemo, useEffect } from "react"; // Added useState import
 import { Button } from "@/components/ui/button"; // Added Button import
 import { generateSuggestions } from "@/utils/suggestion-utils"; // Added generateSuggestions import
+import { useSuggestionContext } from "@/components/store/suggestion-store";
 
 // Declare SuggestionSidebarProps interface
 interface SuggestionSidebarProps {
   parts: PartConfig[];
   onApplySuggestion: (suggestion: any) => void;
+  filterPart?: string;
 }
 
 // Category types
@@ -24,14 +26,31 @@ type SuggestionCategory =
 export function SuggestionSidebar({
   parts,
   onApplySuggestion,
+  filterPart,
 }: SuggestionSidebarProps) {
-  const [isOpen, setIsOpen] = useState(false);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
-  const [selectedPart, setSelectedPart] = useState<string>("all");
+  const [selectedPart, setSelectedPart] = useState<string>(filterPart || "all");
   const [selectedCategory, setSelectedCategory] =
     useState<SuggestionCategory>("all");
   const [isPartDropdownOpen, setIsPartDropdownOpen] = useState(false);
   const [isCategoryDropdownOpen, setIsCategoryDropdownOpen] = useState(false);
+
+  const {
+    isOpen,
+    setIsOpen,
+    suggestions: allSuggestions,
+    setSuggestions,
+  } = useSuggestionContext();
+
+  useEffect(() => {
+    if (filterPart !== undefined) setSelectedPart(filterPart || "all");
+    setSelectedCategory("all");
+  }, [filterPart]);
+
+  useEffect(() => {
+    const currentSuggestions = generateSuggestions(parts);
+    setSuggestions(currentSuggestions);
+  }, [parts]);
 
   const toggleSidebar = () => {
     if (!isOpen) {
@@ -40,8 +59,6 @@ export function SuggestionSidebar({
     }
     setIsOpen(!isOpen);
   };
-
-  const allSuggestions = generateSuggestions(parts);
 
   // Categorize suggestions
   const categorizedSuggestions = useMemo(() => {
@@ -147,6 +164,17 @@ export function SuggestionSidebar({
     );
   };
 
+  // Check if any filter is active
+  const isFilterActive = selectedPart !== "all" || selectedCategory !== "all";
+
+  // Clear all filters
+  const clearFilters = () => {
+    setSelectedPart("all");
+    setSelectedCategory("all");
+    setIsPartDropdownOpen(false);
+    setIsCategoryDropdownOpen(false);
+  };
+
   return (
     <>
       {/* Floating Button at Bottom */}
@@ -164,7 +192,7 @@ export function SuggestionSidebar({
                 alt="Logo"
                 className="w-10 grayscale invert"
               />
-              {allSuggestions.length > 0 && (
+              {filteredSuggestions.length > 0 && (
                 <span className="absolute -top-2 -right-2 w-5 h-5 bg-white text-blue-600 rounded-full text-[11px] font-black flex items-center justify-center shadow-sm">
                   {filteredSuggestions.length}
                 </span>
@@ -250,6 +278,20 @@ export function SuggestionSidebar({
         {/* Filters */}
         {!isAnalyzing && (
           <div className="px-6 py-4 border-b border-zinc-100 space-y-3 bg-white">
+            <div className="flex items-center justify-between">
+              <span className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">
+                Filters
+              </span>
+              {isFilterActive && (
+                <button
+                  onClick={clearFilters}
+                  className="text-[10px] font-bold text-blue-600 hover:text-blue-700 uppercase tracking-wider transition-colors flex items-center gap-1"
+                >
+                  <X className="w-3 h-3" />
+                  Clear All
+                </button>
+              )}
+            </div>
             <div className="grid grid-cols-2 gap-3">
               {/* Part Selector Dropdown */}
               <div className="relative">

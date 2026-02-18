@@ -74,6 +74,7 @@ import { SuggestionSidebar } from "../components/suggestion-sidebar";
 import ManualQuoteModal from "../../quote-config/components/manual-quote-modal";
 import { ManualExceededModal } from "../components/manual-exceeded-modal";
 import { ManualQuoteWarningModal } from "../components/manual-quote-warning-modal";
+import { SuggestionProvider } from "@/components/store/suggestion-store";
 
 /**
  * Normalize process string from database/API to clean format.
@@ -431,6 +432,7 @@ export default function QuoteConfigPage() {
 
   const [rfq, setRfq] = useState<IRFQ>({} as IRFQ);
   const [parts, setParts] = useState<PartConfig[]>([]);
+  const [suggestionPart, setSuggestionPart] = useState<string>("");
 
   // currentPartIndex removed as we list all parts
   const [loading, setLoading] = useState(true);
@@ -1350,6 +1352,19 @@ export default function QuoteConfigPage() {
     return isValid;
   };
 
+  const checkIndividualPrice = () => {
+    let isValid = true;
+
+    for (const part of parts) {
+      if (typeof part.final_price === "number" && part.final_price < 150) {
+        notify.info(`Part ${part.fileName} has valuation below $150`);
+        isValid = false;
+      }
+    }
+
+    return isValid;
+  };
+
   const handleCheckout = async () => {
     try {
       setSaving(true);
@@ -1364,6 +1379,10 @@ export default function QuoteConfigPage() {
       // Check for manual parts before checkout
       if (manualParts.length > 0) {
         setShowManualExceededModal(true);
+        return;
+      }
+
+      if (!checkIndividualPrice()) {
         return;
       }
 
@@ -1499,436 +1518,465 @@ export default function QuoteConfigPage() {
   }
 
   return (
-    <div className="min-h-screen invisible-scrollbar bg-[#F0F4F8] relative font-sans text-slate-900">
-      {/* Dynamic Background Elements */}
-      <div className="fixed inset-0 z-0 pointer-events-none">
-        <div className="absolute top-[-20%] right-[-10%] w-[800px] h-[800px] bg-blue-400/20 rounded-full blur-[100px] opacity-40"></div>
-        <div className="absolute bottom-[-20%] left-[-10%] w-[600px] h-[600px] bg-indigo-400/20 rounded-full blur-[100px] opacity-40"></div>
-      </div>
+    <SuggestionProvider>
+      <div className="min-h-screen invisible-scrollbar bg-[#F0F4F8] relative font-sans text-slate-900">
+        {/* Dynamic Background Elements */}
+        <div className="fixed inset-0 z-0 pointer-events-none">
+          <div className="absolute top-[-20%] right-[-10%] w-[800px] h-[800px] bg-blue-400/20 rounded-full blur-[100px] opacity-40"></div>
+          <div className="absolute bottom-[-20%] left-[-10%] w-[600px] h-[600px] bg-indigo-400/20 rounded-full blur-[100px] opacity-40"></div>
+        </div>
 
-      {/* HEADER - Updated to be flat and at top */}
-      <header className="sticky top-0 z-50 w-full border-b border-white/20 bg-white/80 backdrop-blur-xl shadow-sm supports-[backdrop-filter]:bg-white/60">
-        <div className="max-w-[1920px] mx-auto px-4 sm:px-6 h-20 flex items-center justify-between gap-4 py-3">
-          {/* Left: Logo & Breadcrumbs */}
-          <div className="flex items-center gap-6">
-            <Link
-              href="/"
-              className="flex items-center gap-2 group transition-opacity hover:opacity-80"
-            >
-              <div className="h-12 w-auto relative">
-                <Logo classNames="h-full w-auto object-contain" />
-              </div>
-            </Link>
-
-            <div className="hidden md:block w-px h-8 bg-slate-200"></div>
-
-            <div className="hidden md:flex items-center gap-2 text-sm font-medium text-slate-500">
+        {/* HEADER - Updated to be flat and at top */}
+        <header className="sticky top-0 z-50 w-full border-b border-white/20 bg-white/80 backdrop-blur-xl shadow-sm supports-[backdrop-filter]:bg-white/60">
+          <div className="max-w-[1920px] mx-auto px-4 sm:px-6 h-20 flex items-center justify-between gap-4 py-3">
+            {/* Left: Logo & Breadcrumbs */}
+            <div className="flex items-center gap-6">
               <Link
-                href="/instant-quote"
-                className="hover:text-blue-600 transition-colors"
+                href="/"
+                className="flex items-center gap-2 group transition-opacity hover:opacity-80"
               >
-                Instant Quote
+                <div className="h-12 w-auto relative">
+                  <Logo classNames="h-full w-auto object-contain" />
+                </div>
               </Link>
 
-              <ChevronRight className="w-4 h-4 text-slate-400" />
-              <span className="px-2.5 py-1 bg-blue-50 text-blue-700 rounded-lg text-xs font-bold uppercase tracking-wider border border-blue-100">
-                Configuration
-              </span>
+              <div className="hidden md:block w-px h-8 bg-slate-200"></div>
 
-              {rfq.rfq_type === "manual" && (
-                <span className="px-2.5 py-1 bg-amber-50 text-amber-700 rounded-lg text-xs font-bold uppercase tracking-wider border border-amber-100">
-                  Manual Review
+              <div className="hidden md:flex items-center gap-2 text-sm font-medium text-slate-500">
+                <Link
+                  href="/instant-quote"
+                  className="hover:text-blue-600 transition-colors"
+                >
+                  Instant Quote
+                </Link>
+
+                <ChevronRight className="w-4 h-4 text-slate-400" />
+                <span className="px-2.5 py-1 bg-blue-50 text-blue-700 rounded-lg text-xs font-bold uppercase tracking-wider border border-blue-100">
+                  Configuration
                 </span>
-              )}
 
-              <ChevronRight className="w-4 h-4 text-slate-400" />
-              <span>Checkout</span>
+                {rfq.rfq_type === "manual" && (
+                  <span className="px-2.5 py-1 bg-amber-50 text-amber-700 rounded-lg text-xs font-bold uppercase tracking-wider border border-amber-100">
+                    Manual Review
+                  </span>
+                )}
+
+                <ChevronRight className="w-4 h-4 text-slate-400" />
+                <span>Checkout</span>
+              </div>
             </div>
-          </div>
 
-          {/* Right: Actions & Profile */}
-          <div className="flex items-center gap-3 sm:gap-4">
-            {/* Price Display (Desktop) */}
-            <div className="hidden lg:flex items-baseline gap-3 pl-4 pr-5 py-2 bg-slate-50 border border-slate-100 rounded-full shadow-sm">
-              <div className="flex items-center gap-2">
-                <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse"></div>
-                <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">
-                  Total
+            {/* Right: Actions & Profile */}
+            <div className="flex items-center gap-3 sm:gap-4">
+              {/* Price Display (Desktop) */}
+              <div className="hidden lg:flex items-baseline gap-3 pl-4 pr-5 py-2 bg-slate-50 border border-slate-100 rounded-full shadow-sm">
+                <div className="flex items-center gap-2">
+                  <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse"></div>
+                  <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">
+                    Total
+                  </span>
+                </div>
+                <span className="font-bold text-slate-900 text-lg tabular-nums">
+                  {formatCurrencyFixed(standardPrice)}
                 </span>
               </div>
-              <span className="font-bold text-slate-900 text-lg tabular-nums">
-                {formatCurrencyFixed(standardPrice)}
+
+              <div className="w-px h-8 bg-slate-200 mx-1 hidden sm:block"></div>
+
+              {/* Action Buttons */}
+              <div className="flex items-center gap-2">
+                <Button
+                  onClick={() =>
+                    handleSaveDraft("Quote changes saved successfully")
+                  }
+                  disabled={saving || unsavedChanges.size === 0}
+                  className="text-blue-600 bg-blue-50 hover:text-blue-700 hover:bg-blue-50 font-medium shadow-lg shadow-blue-600/20 transition-all hover:scale-[1.02] active:scale-[0.98] rounded-lg"
+                >
+                  <Save className="w-4 h-4" />
+                  <span className="hidden lg:inline">
+                    {saving
+                      ? "Saving..."
+                      : unsavedChanges.size > 0
+                        ? "Save Changes"
+                        : "Save Quote"}
+                  </span>
+                </Button>
+
+                <Button
+                  onClick={() => setShowUploadModal(true)}
+                  className="bg-blue-600 hover:bg-blue-700 text-white font-medium shadow-lg shadow-blue-600/20 transition-all hover:scale-[1.02] active:scale-[0.98] rounded-lg"
+                >
+                  <Plus className="w-4 h-4 sm:mr-2" />
+                  <span className="hidden sm:inline">New Quote</span>
+                </Button>
+              </div>
+
+              {/* User Profile */}
+              {session.status === "authenticated" ? (
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button
+                      variant="ghost"
+                      className="relative h-10 w-10 rounded-full bg-slate-100 p-0 hover:bg-blue-50 hover:text-blue-600 transition-all border border-slate-200 hover:border-blue-200"
+                    >
+                      <User className="w-5 h-5" />
+                      <span className="absolute -top-1 -right-1 flex h-3 w-3">
+                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
+                        <span className="relative inline-flex rounded-full h-3 w-3 bg-green-500 border border-white"></span>
+                      </span>
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent
+                    align="end"
+                    className="w-60 p-2 shadow-xl border-slate-100 rounded-xl"
+                  >
+                    <DropdownMenuLabel className="font-normal p-2">
+                      <div className="flex flex-col space-y-1">
+                        <p className="text-sm font-bold text-slate-900 leading-none">
+                          {session?.data?.user?.name}
+                        </p>
+                        <p className="text-xs leading-none text-slate-500 truncate">
+                          {session?.data?.user?.email}
+                        </p>
+                      </div>
+                    </DropdownMenuLabel>
+                    <DropdownMenuSeparator className="bg-slate-100 my-1" />
+                    <DropdownMenuItem
+                      onClick={() => router.push("/portal/dashboard")}
+                      className="text-slate-700 cursor-pointer rounded-lg focus:bg-slate-50 focus:text-blue-600 p-2"
+                    >
+                      <LayoutDashboard className="w-4 h-4 mr-2" />
+                      Dashboard
+                    </DropdownMenuItem>
+                    <DropdownMenuItem
+                      onClick={() => router.push("/portal/orders")}
+                      className="text-slate-700 cursor-pointer rounded-lg focus:bg-slate-50 focus:text-blue-600 p-2"
+                    >
+                      <Package2 className="w-4 h-4 mr-2" />
+                      Orders
+                    </DropdownMenuItem>
+                    <DropdownMenuSeparator className="bg-slate-100 my-1" />
+                    <DropdownMenuItem
+                      onClick={() => signOut()}
+                      className="text-red-600 cursor-pointer rounded-lg focus:bg-red-50 focus:text-red-700 p-2"
+                    >
+                      <LogOut className="w-4 h-4 mr-2" />
+                      Sign Out
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              ) : (
+                <div className="flex items-center gap-2 pl-2">
+                  <Link href="/login">
+                    <Button
+                      variant="ghost"
+                      className="text-slate-600 hover:text-blue-600 font-medium"
+                    >
+                      Sign In
+                    </Button>
+                  </Link>
+                </div>
+              )}
+            </div>
+          </div>
+        </header>
+        {/* Quote ID / Status - Refactored for better aesthetics and integration */}
+
+        <div className="flex items-center justify-between flex-wrap gap-4 px-4 pt-4 sm:px-6 sm:pt-6 lg:px-10 lg:pt-8 max-w-[1440px] mx-auto">
+          <div className="flex items-center gap-2 md:gap-3 text-base md:text-lg">
+            <Link
+              href="/portal/quotes"
+              className="font-medium text-blue-700 hover:text-blue-800 transition-colors"
+            >
+              Quotes
+            </Link>
+
+            <ChevronRight className="w-4 h-4 md:w-5 md:h-5 text-slate-400" />
+
+            <span className="font-bold text-slate-900 tracking-wide truncate max-w-[200px] md:max-w-none">
+              {rfq.rfq_code}
+            </span>
+          </div>
+
+          {/* Total Parts Count - Inline */}
+          <div className="flex items-center gap-2 flex-shrink-0">
+            <div className="flex items-center gap-2 px-3 py-1.5 bg-blue-600 rounded-lg">
+              <Package className="w-4 h-4 text-white" />
+              <span className="text-sm font-semibold text-white">
+                {parts.length}{" "}
+                {parts.length === 1 ? "Part Uploaded" : "Parts Uploaded"}
               </span>
             </div>
 
-            <div className="w-px h-8 bg-slate-200 mx-1 hidden sm:block"></div>
-
-            {/* Action Buttons */}
-            <div className="flex items-center gap-2">
-              <Button
-                onClick={() =>
-                  handleSaveDraft("Quote changes saved successfully")
-                }
-                disabled={saving || unsavedChanges.size === 0}
-                className="text-blue-600 bg-blue-50 hover:text-blue-700 hover:bg-blue-50 font-medium shadow-lg shadow-blue-600/20 transition-all hover:scale-[1.02] active:scale-[0.98] rounded-lg"
-              >
-                <Save className="w-4 h-4" />
-                <span className="hidden lg:inline">
-                  {saving
-                    ? "Saving..."
-                    : unsavedChanges.size > 0
-                      ? "Save Changes"
-                      : "Save Quote"}
+            {archivedParts.length > 0 && (
+              <div className="flex items-center gap-2 px-3 py-1.5 bg-gray-600 rounded-lg">
+                <Archive className="w-4 h-4 text-white" />
+                <span className="text-sm font-semibold text-white">
+                  {archivedParts.length}{" "}
+                  {archivedParts.length === 1
+                    ? "Part Archived"
+                    : "Parts Archived"}
                 </span>
-              </Button>
-
-              <Button
-                onClick={() => setShowUploadModal(true)}
-                className="bg-blue-600 hover:bg-blue-700 text-white font-medium shadow-lg shadow-blue-600/20 transition-all hover:scale-[1.02] active:scale-[0.98] rounded-lg"
-              >
-                <Plus className="w-4 h-4 sm:mr-2" />
-                <span className="hidden sm:inline">New Quote</span>
-              </Button>
-            </div>
-
-            {/* User Profile */}
-            {session.status === "authenticated" ? (
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button
-                    variant="ghost"
-                    className="relative h-10 w-10 rounded-full bg-slate-100 p-0 hover:bg-blue-50 hover:text-blue-600 transition-all border border-slate-200 hover:border-blue-200"
-                  >
-                    <User className="w-5 h-5" />
-                    <span className="absolute -top-1 -right-1 flex h-3 w-3">
-                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
-                      <span className="relative inline-flex rounded-full h-3 w-3 bg-green-500 border border-white"></span>
-                    </span>
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent
-                  align="end"
-                  className="w-60 p-2 shadow-xl border-slate-100 rounded-xl"
-                >
-                  <DropdownMenuLabel className="font-normal p-2">
-                    <div className="flex flex-col space-y-1">
-                      <p className="text-sm font-bold text-slate-900 leading-none">
-                        {session?.data?.user?.name}
-                      </p>
-                      <p className="text-xs leading-none text-slate-500 truncate">
-                        {session?.data?.user?.email}
-                      </p>
-                    </div>
-                  </DropdownMenuLabel>
-                  <DropdownMenuSeparator className="bg-slate-100 my-1" />
-                  <DropdownMenuItem
-                    onClick={() => router.push("/portal/dashboard")}
-                    className="text-slate-700 cursor-pointer rounded-lg focus:bg-slate-50 focus:text-blue-600 p-2"
-                  >
-                    <LayoutDashboard className="w-4 h-4 mr-2" />
-                    Dashboard
-                  </DropdownMenuItem>
-                  <DropdownMenuItem
-                    onClick={() => router.push("/portal/orders")}
-                    className="text-slate-700 cursor-pointer rounded-lg focus:bg-slate-50 focus:text-blue-600 p-2"
-                  >
-                    <Package2 className="w-4 h-4 mr-2" />
-                    Orders
-                  </DropdownMenuItem>
-                  <DropdownMenuSeparator className="bg-slate-100 my-1" />
-                  <DropdownMenuItem
-                    onClick={() => signOut()}
-                    className="text-red-600 cursor-pointer rounded-lg focus:bg-red-50 focus:text-red-700 p-2"
-                  >
-                    <LogOut className="w-4 h-4 mr-2" />
-                    Sign Out
-                  </DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
-            ) : (
-              <div className="flex items-center gap-2 pl-2">
-                <Link href="/login">
-                  <Button
-                    variant="ghost"
-                    className="text-slate-600 hover:text-blue-600 font-medium"
-                  >
-                    Sign In
-                  </Button>
-                </Link>
               </div>
             )}
           </div>
-        </div>
-      </header>
-      {/* Quote ID / Status - Refactored for better aesthetics and integration */}
 
-      <div className="flex items-center justify-between flex-wrap gap-4 px-4 pt-4 sm:px-6 sm:pt-6 lg:px-10 lg:pt-8 max-w-[1440px] mx-auto">
-        <div className="flex items-center gap-2 md:gap-3 text-base md:text-lg">
-          <Link
-            href="/portal/quotes"
-            className="font-medium text-blue-700 hover:text-blue-800 transition-colors"
+          <Button
+            className="bg-gray-300 hover:bg-gray-400 text-black hover:text-white transition-colors relative flex-shrink-0 text-sm md:text-base"
+            onClick={() => setShowArchiveModal(true)}
           >
-            Quotes
-          </Link>
-
-          <ChevronRight className="w-4 h-4 md:w-5 md:h-5 text-slate-400" />
-
-          <span className="font-bold text-slate-900 tracking-wide truncate max-w-[200px] md:max-w-none">
-            {rfq.rfq_code}
-          </span>
-        </div>
-
-        {/* Total Parts Count - Inline */}
-        <div className="flex items-center gap-2 flex-shrink-0">
-          <div className="flex items-center gap-2 px-3 py-1.5 bg-blue-600 rounded-lg">
-            <Package className="w-4 h-4 text-white" />
-            <span className="text-sm font-semibold text-white">
-              {parts.length}{" "}
-              {parts.length === 1 ? "Part Uploaded" : "Parts Uploaded"}
-            </span>
-          </div>
-
-          {archivedParts.length > 0 && (
-            <div className="flex items-center gap-2 px-3 py-1.5 bg-gray-600 rounded-lg">
-              <Archive className="w-4 h-4 text-white" />
-              <span className="text-sm font-semibold text-white">
-                {archivedParts.length}{" "}
-                {archivedParts.length === 1
-                  ? "Part Archived"
-                  : "Parts Archived"}
+            <Archive className="size-4 md:mr-2" />
+            <span className="hidden md:inline">Archive</span>
+            {archivedParts.length > 0 && (
+              <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs font-bold rounded-full h-5 w-5 flex items-center justify-center">
+                {archivedParts.length}
               </span>
-            </div>
-          )}
+            )}
+          </Button>
         </div>
 
-        <Button
-          className="bg-gray-300 hover:bg-gray-400 text-black hover:text-white transition-colors relative flex-shrink-0 text-sm md:text-base"
-          onClick={() => setShowArchiveModal(true)}
-        >
-          <Archive className="size-4 md:mr-2" />
-          <span className="hidden md:inline">Archive</span>
-          {archivedParts.length > 0 && (
-            <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs font-bold rounded-full h-5 w-5 flex items-center justify-center">
-              {archivedParts.length}
-            </span>
-          )}
-        </Button>
-      </div>
+        <div className="flex flex-col lg:flex-row max-w-[1440px] mx-auto">
+          {/* LEFT MAIN CONTENT (PARTS) */}
+          <div
+            ref={partsContainerRef}
+            className="flex-1 p-4 sm:p-6 md:p-8 lg:p-10 overflow-scroll invisible-scrollbar space-y-6 md:space-y-8 pb-32"
+          >
+            {parts.map((part, index) => {
+              // Get process-specific materials, tolerances, and finishes
+              const processMaterials = getMaterialsForProcess(part.process);
+              const processTolerances =
+                part.process === "sheet-metal" ||
+                part.process?.includes("sheet")
+                  ? SHEET_METAL_TOLERANCES_LIST
+                  : TOLERANCES_LIST;
+              const processFinishes =
+                part.process === "sheet-metal" ||
+                part.process?.includes("sheet")
+                  ? SHEET_METAL_FINISHES_LIST
+                  : FINISHES_LIST;
 
-      <div className="flex flex-col lg:flex-row max-w-[1440px] mx-auto">
-        {/* LEFT MAIN CONTENT (PARTS) */}
-        <div
-          ref={partsContainerRef}
-          className="flex-1 p-4 sm:p-6 md:p-8 lg:p-10 overflow-scroll invisible-scrollbar space-y-6 md:space-y-8 pb-32"
-        >
-          {parts.map((part, index) => {
-            // Get process-specific materials, tolerances, and finishes
-            const processMaterials = getMaterialsForProcess(part.process);
-            const processTolerances =
-              part.process === "sheet-metal" || part.process?.includes("sheet")
-                ? SHEET_METAL_TOLERANCES_LIST
-                : TOLERANCES_LIST;
-            const processFinishes =
-              part.process === "sheet-metal" || part.process?.includes("sheet")
-                ? SHEET_METAL_FINISHES_LIST
-                : FINISHES_LIST;
+              return (
+                <PartCardItem
+                  key={index}
+                  part={part}
+                  index={index}
+                  updatePart={updatePart}
+                  updatePartFields={updatePartFields}
+                  handleDeletePart={handleDeletePart}
+                  handleArchivePart={handleArchivePart}
+                  calculatePrice={calculatePrice}
+                  MATERIALS_LIST={processMaterials}
+                  TOLERANCES_LIST={processTolerances}
+                  FINISHES_LIST={processFinishes}
+                  THREAD_OPTIONS={THREAD_OPTIONS}
+                  INSPECTIONS_OPTIONS={INSPECTION_OPTIONS}
+                  isSelected={selectedParts.has(part.id)}
+                  onToggleSelection={() => togglePartSelection(part.id)}
+                  suggestionPart={suggestionPart}
+                  setSuggestionPart={(part: string) => setSuggestionPart(part)}
+                />
+              );
+            })}
 
-            return (
-              <PartCardItem
-                key={index}
-                part={part}
-                index={index}
-                updatePart={updatePart}
-                updatePartFields={updatePartFields}
-                handleDeletePart={handleDeletePart}
-                handleArchivePart={handleArchivePart}
-                calculatePrice={calculatePrice}
-                MATERIALS_LIST={processMaterials}
-                TOLERANCES_LIST={processTolerances}
-                FINISHES_LIST={processFinishes}
-                THREAD_OPTIONS={THREAD_OPTIONS}
-                INSPECTIONS_OPTIONS={INSPECTION_OPTIONS}
-                isSelected={selectedParts.has(part.id)}
-                onToggleSelection={() => togglePartSelection(part.id)}
-              />
-            );
-          })}
+            {/* Add Part Button */}
+            <div className="pt-6 md:pt-8 w-full">
+              <div
+                {...getRootProps()}
+                className={`bg-gradient-to-br from-white to-slate-50/80 rounded-xl md:rounded-2xl border-2 shadow-sm overflow-hidden transition-all duration-300 cursor-pointer ${
+                  isDragActive
+                    ? "border-blue-500 border-dashed bg-blue-50/50 shadow-lg scale-[1.01]"
+                    : "border-slate-200 hover:border-blue-400 border-dashed hover:shadow-md"
+                }`}
+              >
+                <input {...getInputProps()} />
 
-          {/* Add Part Button */}
-          <div className="pt-6 md:pt-8 w-full">
-            <div
-              {...getRootProps()}
-              className={`bg-gradient-to-br from-white to-slate-50/80 rounded-xl md:rounded-2xl border-2 shadow-sm overflow-hidden transition-all duration-300 cursor-pointer ${
-                isDragActive
-                  ? "border-blue-500 border-dashed bg-blue-50/50 shadow-lg scale-[1.01]"
-                  : "border-slate-200 hover:border-blue-400 border-dashed hover:shadow-md"
-              }`}
-            >
-              <input {...getInputProps()} />
-
-              {/* Upload Area */}
-              <div className="p-6 md:p-8 lg:p-12 bg-white/50 flex flex-col items-center justify-center gap-3 md:gap-4 text-center border-b border-slate-200">
-                {is3DFileUploading ? (
-                  <div className="flex flex-col items-center justify-center py-6">
-                    <div className="p-4 bg-blue-50 rounded-2xl mb-4 relative">
-                      <div className="absolute inset-0 bg-blue-400 opacity-20 blur-xl rounded-full animate-pulse"></div>
-                      <Loader2 className="w-10 h-10 text-blue-600 animate-spin relative z-10" />
+                {/* Upload Area */}
+                <div className="p-6 md:p-8 lg:p-12 bg-white/50 flex flex-col items-center justify-center gap-3 md:gap-4 text-center border-b border-slate-200">
+                  {is3DFileUploading ? (
+                    <div className="flex flex-col items-center justify-center py-6">
+                      <div className="p-4 bg-blue-50 rounded-2xl mb-4 relative">
+                        <div className="absolute inset-0 bg-blue-400 opacity-20 blur-xl rounded-full animate-pulse"></div>
+                        <Loader2 className="w-10 h-10 text-blue-600 animate-spin relative z-10" />
+                      </div>
+                      <p className="font-bold text-xl mb-2 text-slate-900 animate-pulse">
+                        Analyzing Geometry...
+                      </p>
+                      <p className="text-sm text-slate-500 max-w-xs mx-auto">
+                        Please wait while we upload and process your CAD files
+                        for manufacturing analysis.
+                      </p>
                     </div>
-                    <p className="font-bold text-xl mb-2 text-slate-900 animate-pulse">
-                      Analyzing Geometry...
-                    </p>
-                    <p className="text-sm text-slate-500 max-w-xs mx-auto">
-                      Please wait while we upload and process your CAD files for
-                      manufacturing analysis.
-                    </p>
-                  </div>
-                ) : (
-                  <>
-                    <div
-                      className={`p-3 md:p-4 bg-gradient-to-br rounded-xl md:rounded-2xl transition-all shadow-sm ${
-                        isDragActive
-                          ? "from-blue-200 to-blue-100 scale-110"
-                          : "from-blue-50 to-slate-50"
-                      }`}
-                    >
-                      <Upload
-                        className={`w-8 h-8 md:w-10 md:h-10 transition-colors ${
-                          isDragActive ? "text-blue-700" : "text-blue-600"
-                        }`}
-                      />
-                    </div>
-                    <div>
-                      <p
-                        className={`font-bold text-lg md:text-xl mb-2 transition-colors ${
-                          isDragActive ? "text-blue-700" : "text-slate-900"
+                  ) : (
+                    <>
+                      <div
+                        className={`p-3 md:p-4 bg-gradient-to-br rounded-xl md:rounded-2xl transition-all shadow-sm ${
+                          isDragActive
+                            ? "from-blue-200 to-blue-100 scale-110"
+                            : "from-blue-50 to-slate-50"
                         }`}
                       >
-                        {isDragActive
-                          ? "Drop your files here"
-                          : "Add Another Part"}
-                      </p>
-                      <p className="text-xs md:text-sm text-slate-500 max-w-xs mx-auto">
-                        {isDragActive
-                          ? "Release to upload your CAD files"
-                          : "Click to upload or drag and drop your CAD files here"}
-                      </p>
-                    </div>
-                    <div className="flex flex-wrap gap-1.5 md:gap-2 justify-center mt-2">
-                      {["STEP", "STL", "IGES", "OBJ", "and More"].map((fmt) => (
-                        <span
-                          key={fmt}
-                          className={`px-2 md:px-2.5 py-0.5 md:py-1 text-[10px] md:text-xs font-medium rounded-md transition-colors ${
-                            isDragActive
-                              ? "bg-blue-200 text-blue-800"
-                              : "bg-slate-100 text-slate-600"
+                        <Upload
+                          className={`w-8 h-8 md:w-10 md:h-10 transition-colors ${
+                            isDragActive ? "text-blue-700" : "text-blue-600"
+                          }`}
+                        />
+                      </div>
+                      <div>
+                        <p
+                          className={`font-bold text-lg md:text-xl mb-2 transition-colors ${
+                            isDragActive ? "text-blue-700" : "text-slate-900"
                           }`}
                         >
-                          {fmt}
-                        </span>
-                      ))}
-                    </div>
-                  </>
-                )}
+                          {isDragActive
+                            ? "Drop your files here"
+                            : "Add Another Part"}
+                        </p>
+                        <p className="text-xs md:text-sm text-slate-500 max-w-xs mx-auto">
+                          {isDragActive
+                            ? "Release to upload your CAD files"
+                            : "Click to upload or drag and drop your CAD files here"}
+                        </p>
+                      </div>
+                      <div className="flex flex-wrap gap-1.5 md:gap-2 justify-center mt-2">
+                        {["STEP", "STL", "IGES", "OBJ", "and More"].map(
+                          (fmt) => (
+                            <span
+                              key={fmt}
+                              className={`px-2 md:px-2.5 py-0.5 md:py-1 text-[10px] md:text-xs font-medium rounded-md transition-colors ${
+                                isDragActive
+                                  ? "bg-blue-200 text-blue-800"
+                                  : "bg-slate-100 text-slate-600"
+                              }`}
+                            >
+                              {fmt}
+                            </span>
+                          ),
+                        )}
+                      </div>
+                    </>
+                  )}
+                </div>
               </div>
             </div>
           </div>
-        </div>
 
-        {/* RIGHT SIDEBAR (FIXED) */}
-        <div className="w-full lg:w-[300px] xl:w-[400px] lg:py-10 lg:flex-shrink-0 z-30">
-          <div className="lg:sticky lg:top-[85px] custom-scrollbar">
-            <div className="backdrop-blur-xl border bg-white border-white/60 shadow-xl rounded-2xl p-6 flex flex-col gap-6">
-              <div className="flex items-center gap-2 pb-4 border-b border-slate-100">
-                <div className="p-2 bg-green-100 text-green-700 rounded-lg">
-                  <ScrollText className="w-5 h-5" />
+          {/* RIGHT SIDEBAR (FIXED) */}
+          <div className="w-full lg:w-[300px] xl:w-[400px] lg:py-10 lg:flex-shrink-0 z-30">
+            <div className="lg:sticky lg:top-[85px] custom-scrollbar">
+              <div className="backdrop-blur-xl border bg-white border-white/60 shadow-xl rounded-2xl p-6 flex flex-col gap-6">
+                <div className="flex items-center gap-2 pb-4 border-b border-slate-100">
+                  <div className="p-2 bg-green-100 text-green-700 rounded-lg">
+                    <ScrollText className="w-5 h-5" />
+                  </div>
+                  <h2 className="text-base md:text-lg font-bold text-slate-800">
+                    Order Summary
+                  </h2>
                 </div>
-                <h2 className="text-base md:text-lg font-bold text-slate-800">
-                  Order Summary
-                </h2>
-              </div>
 
-              {/* Mini Breakdown */}
-              <div className="space-y-3 max-h-[calc(100vh-85px)] overflow-y-auto custom-scrollbar pr-1">
-                {parts.map((p, i) => {
-                  console.log(p, "p");
-                  const isManual = p.process === "manual-quote";
-                  const pPrice = p.final_price || 0;
-                  const calculatedLeadTime = p.leadTime || 0;
-                  return (
-                    <div
-                      key={p.id}
-                      className="flex justify-between items-center text-sm p-2 rounded-lg hover:bg-white/50 transition-colors"
-                    >
-                      <div className="flex flex-col gap-0.5">
-                        <div className="flex items-center gap-1.5">
-                          <span className="font-medium text-slate-800">
-                            <span className="truncate max-w-[120px] inline-block">
-                              {i + 1}. {p.fileName}
+                {/* Mini Breakdown */}
+                <div className="space-y-3 max-h-[calc(100vh-85px)] overflow-y-auto custom-scrollbar pr-1">
+                  {parts.map((p, i) => {
+                    console.log(p, "p");
+                    const isManual = p.process === "manual-quote";
+                    const pPrice = p.final_price || 0;
+                    const calculatedLeadTime = p.leadTime || 0;
+                    return (
+                      <div
+                        key={p.id}
+                        className="flex justify-between items-center text-sm p-2 rounded-lg hover:bg-white/50 transition-colors"
+                      >
+                        <div className="flex flex-col gap-0.5">
+                          <div className="flex items-center gap-1.5">
+                            <span className="font-medium text-slate-800">
+                              <span className="truncate max-w-[120px] inline-block">
+                                {i + 1}. {p.fileName}
+                              </span>
                             </span>
-                          </span>
+                          </div>
+                          {!isManual && (
+                            <span className="text-xs text-slate-500">
+                              Qty: {p.quantity} |{" "}
+                              {LEAD_TIME_SHORT[p.leadTimeType]} (
+                              {calculatedLeadTime} Business Days)
+                            </span>
+                          )}
                         </div>
-                        {!isManual && (
-                          <span className="text-xs text-slate-500">
-                            Qty: {p.quantity} |{" "}
-                            {LEAD_TIME_SHORT[p.leadTimeType]} (
-                            {calculatedLeadTime} Business Days)
-                          </span>
-                        )}
+                        <span className="font-semibold mt-0.5 text-slate-700">
+                          {isManual ? "-" : formatCurrencyFixed(pPrice)}
+                        </span>
                       </div>
-                      <span className="font-semibold mt-0.5 text-slate-700">
-                        {isManual ? "-" : formatCurrencyFixed(pPrice)}
-                      </span>
-                    </div>
-                  );
-                })}
-              </div>
+                    );
+                  })}
+                </div>
 
-              {/* Free Delivery Section */}
-              <div className="mt-4 p-4 rounded-xl bg-gradient-to-br from-green-50 to-green-100/60 border border-green-200 flex items-center gap-3">
-                <div className="p-2 bg-green-600 text-white rounded-lg">
-                  <Truck className="w-5 h-5" />
-                </div>
-                <div className="flex flex-col">
-                  <span className="font-semibold text-green-800 text-sm">
-                    Free Delivery
-                  </span>
-                  <span className="text-xs text-green-700">
-                    Available on all RFQ orders
-                  </span>
-                </div>
-              </div>
-
-              {/* Total Section */}
-              <div className="mt-4 pt-4 border-t border-slate-200 space-y-2">
-                <div className="flex justify-between items-center text-sm">
-                  <span className="text-slate-600 font-medium">Subtotal</span>
-                  <span className="font-semibold text-slate-900">
-                    {formatCurrencyFixed(standardPrice)}
-                  </span>
-                </div>
-                <div className="flex justify-between items-center text-sm">
-                  <span className="text-slate-600 font-medium">Shipping</span>
-                  <span className="font-semibold text-green-600">Free</span>
-                </div>
-                <div className="pt-3 mt-3 border-t border-slate-200">
-                  <div className="flex justify-between items-center">
-                    <span className="text-base font-bold text-slate-900">
-                      Total
+                {/* Free Delivery Section */}
+                <div className="mt-4 p-4 rounded-xl bg-gradient-to-br from-green-50 to-green-100/60 border border-green-200 flex items-center gap-3">
+                  <div className="p-2 bg-green-600 text-white rounded-lg">
+                    <Truck className="w-5 h-5" />
+                  </div>
+                  <div className="flex flex-col">
+                    <span className="font-semibold text-green-800 text-sm">
+                      Free Delivery
                     </span>
-                    <span className="text-2xl font-bold text-blue-600">
+                    <span className="text-xs text-green-700">
+                      Available on all RFQ orders
+                    </span>
+                  </div>
+                </div>
+
+                {/* Total Section */}
+                <div className="mt-4 pt-4 border-t border-slate-200 space-y-2">
+                  <div className="flex justify-between items-center text-sm">
+                    <span className="text-slate-600 font-medium">Subtotal</span>
+                    <span className="font-semibold text-slate-900">
                       {formatCurrencyFixed(standardPrice)}
                     </span>
                   </div>
+                  <div className="flex justify-between items-center text-sm">
+                    <span className="text-slate-600 font-medium">Shipping</span>
+                    <span className="font-semibold text-green-600">Free</span>
+                  </div>
+                  <div className="pt-3 mt-3 border-t border-slate-200">
+                    <div className="flex justify-between items-center">
+                      <span className="text-base font-bold text-slate-900">
+                        Total
+                      </span>
+                      <span className="text-2xl font-bold text-blue-600">
+                        {formatCurrencyFixed(standardPrice)}
+                      </span>
+                    </div>
+                  </div>
                 </div>
-              </div>
 
-              <div className="flex flex-col gap-4 mt-6">
-                {!isManualQuote ? (
-                  <>
-                    {/* Primary Checkout Button */}
+                <div className="flex flex-col gap-4 mt-6">
+                  {!isManualQuote ? (
+                    <>
+                      {/* Primary Checkout Button */}
+                      <Button
+                        size="lg"
+                        onClick={handleCheckout}
+                        disabled={saving}
+                        className="w-full bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white shadow-[0_10px_20px_-10px_rgba(37,99,235,0.5)] rounded-2xl h-16 text-lg font-bold transition-all hover:scale-[1.02] active:scale-[0.98] group relative overflow-hidden"
+                      >
+                        <div className="flex items-center justify-center w-full">
+                          {saving ? (
+                            <Loader2 className="w-6 h-6 animate-spin" />
+                          ) : (
+                            <>
+                              Make Payment
+                              <div className="ml-3 bg-white/20 p-1.5 rounded-xl group-hover:bg-white/30 transition-colors">
+                                <ArrowRight className="w-4 h-4 transition-transform group-hover:translate-x-0.5" />
+                              </div>
+                            </>
+                          )}
+                        </div>
+                      </Button>
+                    </>
+                  ) : (
+                    /* Primary Manual Quote Button (Full style when all parts are manual) */
                     <Button
                       size="lg"
-                      onClick={handleCheckout}
+                      onClick={() => setShowManualQuoteModal(true)}
                       disabled={saving}
                       className="w-full bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white shadow-[0_10px_20px_-10px_rgba(37,99,235,0.5)] rounded-2xl h-16 text-lg font-bold transition-all hover:scale-[1.02] active:scale-[0.98] group relative overflow-hidden"
                     >
@@ -1937,7 +1985,7 @@ export default function QuoteConfigPage() {
                           <Loader2 className="w-6 h-6 animate-spin" />
                         ) : (
                           <>
-                            Make Payment
+                            Request Manual Quote
                             <div className="ml-3 bg-white/20 p-1.5 rounded-xl group-hover:bg-white/30 transition-colors">
                               <ArrowRight className="w-4 h-4 transition-transform group-hover:translate-x-0.5" />
                             </div>
@@ -1945,177 +1993,159 @@ export default function QuoteConfigPage() {
                         )}
                       </div>
                     </Button>
-                  </>
-                ) : (
-                  /* Primary Manual Quote Button (Full style when all parts are manual) */
-                  <Button
-                    size="lg"
-                    onClick={() => setShowManualQuoteModal(true)}
-                    disabled={saving}
-                    className="w-full bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white shadow-[0_10px_20px_-10px_rgba(37,99,235,0.5)] rounded-2xl h-16 text-lg font-bold transition-all hover:scale-[1.02] active:scale-[0.98] group relative overflow-hidden"
-                  >
-                    <div className="flex items-center justify-center w-full">
-                      {saving ? (
-                        <Loader2 className="w-6 h-6 animate-spin" />
-                      ) : (
-                        <>
-                          Request Manual Quote
-                          <div className="ml-3 bg-white/20 p-1.5 rounded-xl group-hover:bg-white/30 transition-colors">
-                            <ArrowRight className="w-4 h-4 transition-transform group-hover:translate-x-0.5" />
-                          </div>
-                        </>
-                      )}
-                    </div>
-                  </Button>
-                )}
+                  )}
+                </div>
               </div>
             </div>
           </div>
         </div>
-      </div>
 
-      {/* Footer Area - Minimal */}
-      <footer className="border-t pb-10 border-slate-100 pt-8 mt-12 text-center text-slate-400 text-sm">
-        <div className="flex justify-center gap-6 mb-4">
-          <Link href="#" className="hover:text-blue-600 transition-colors">
-            Privacy
-          </Link>
-          <Link href="#" className="hover:text-blue-600 transition-colors">
-            Terms
-          </Link>
-          <Link href="#" className="hover:text-blue-600 transition-colors">
-            Support
-          </Link>
-        </div>
-        <p>
-          © {new Date().getFullYear()} Frigate Engineering Services. Secure &
-          Confidential.
-        </p>
-      </footer>
-
-      <ManualExceededModal
-        isOpen={
-          showManualExceededModal || (exceeded && !hasDismissedExceededModal)
-        }
-        manualPartsCount={manualParts.length}
-        onMoveToManual={async () => {
-          setHasDismissedExceededModal(true);
-          setShowManualExceededModal(false);
-          setShowManualQuoteModal(true);
-        }}
-        onDeleteManual={async () => {
-          // Logic to delete manual parts
-          await handleBulkDelete(new Set(manualPartIds));
-          setShowManualExceededModal(false);
-        }}
-        onClose={() => {
-          setHasDismissedExceededModal(true);
-          setShowManualExceededModal(false);
-        }}
-        metadata={{
-          partSnapshots: getManualQuoteSnapshots() || [],
-        }}
-      />
-
-      <UploadFileModal
-        open={showUploadModal}
-        setOpen={setShowUploadModal}
-        parts={parts}
-        saveAsDraft={handleSaveDraft}
-        setParts={setParts}
-      />
-
-      {/* Archive Modal */}
-      <ArchiveModal
-        showArchiveModal={showArchiveModal}
-        setShowArchiveModal={setShowArchiveModal}
-        archivedParts={archivedParts}
-        MATERIALS_LIST={MATERIALS_LIST}
-        FINISHES_LIST={FINISHES_LIST}
-        handleUnarchivePart={handleUnarchivePart}
-        handleUnarchiveAll={handleUnarchiveAll}
-      />
-
-      <ManualQuoteModal
-        showManualQuoteModal={showManualQuoteModal}
-        setShowManualQuoteModal={setShowManualQuoteModal}
-        isSubmitting={false}
-        handleSubmit={handleManualQuote}
-        submitLable="Submit Request"
-        parts={parts.filter((part) => part.process === "manual-quote")}
-        updatePart={updatePartById}
-      />
-
-      <ManualQuoteWarningModal
-        isOpen={showManualWarningModal}
-        onRedirectToQuotes={() => router.push("/portal/quotes")}
-        onRedirectToCheckout={() => router.push(`/checkout/${quoteId}`)}
-        showCheckout={rfq.status === "pending approval"}
-      />
-
-      {/* Suggestion Sidebar */}
-      <SuggestionSidebar
-        parts={parts}
-        onApplySuggestion={handleApplySuggestion}
-      />
-
-      <FloatingActions
-        count={selectedParts.size}
-        totalCount={parts.length}
-        onClear={exitSelectionMode}
-        itemLabel="part"
-        actions={[
-          {
-            label:
-              selectedParts.size === parts.length
-                ? "Deselect All"
-                : "Select All",
-            icon:
-              selectedParts.size === parts.length ? (
-                <Square className="w-4 h-4" />
-              ) : (
-                <CheckSquare className="w-4 h-4" />
-              ),
-            variant: "outline",
-            onClick: toggleSelectAll,
-          },
-          {
-            label: "Archive",
-            icon: <Archive className="w-4 h-4" />,
-            variant: "outline",
-            onClick: handleBulkArchive,
-            disabled: selectedParts.size === 0,
-          },
-          {
-            label: "Delete Selected",
-            icon: <Trash2 className="w-4 h-4" />,
-            variant: "destructive",
-            onClick: () => handleBulkDelete(selectedParts),
-            disabled: selectedParts.size === 0,
-          },
-          {
-            label: "Cancel",
-            icon: <X className="w-4 h-4" />,
-            variant: "ghost",
-            onClick: exitSelectionMode,
-          },
-        ]}
-      />
-
-      {/* Scroll Indicator */}
-      {showScrollIndicator && (
-        <div className="fixed bottom-2 left-1/2 -translate-x-1/2 z-10 pointer-events-none transition-opacity duration-300">
-          <div className="flex flex-col items-center gap-1.5 px-4 py-2 rounded-full bg-white shadow-lg border border-gray-200 animate-bounce">
-            {/* Icon */}
-            <ChevronDown className="w-4 h-4 text-blue-600" />
-
-            {/* Text */}
-            <p className="text-xs font-medium text-gray-700 whitespace-nowrap">
-              {parts.length > 1 ? "Scroll to view all parts" : "Add more parts"}
-            </p>
+        {/* Footer Area - Minimal */}
+        <footer className="border-t pb-10 border-slate-100 pt-8 mt-12 text-center text-slate-400 text-sm">
+          <div className="flex justify-center gap-6 mb-4">
+            <Link href="#" className="hover:text-blue-600 transition-colors">
+              Privacy
+            </Link>
+            <Link href="#" className="hover:text-blue-600 transition-colors">
+              Terms
+            </Link>
+            <Link href="#" className="hover:text-blue-600 transition-colors">
+              Support
+            </Link>
           </div>
-        </div>
-      )}
-    </div>
+          <p>
+            © {new Date().getFullYear()} Frigate Engineering Services. Secure &
+            Confidential.
+          </p>
+        </footer>
+
+        <ManualExceededModal
+          isOpen={
+            showManualExceededModal || (exceeded && !hasDismissedExceededModal)
+          }
+          manualPartsCount={manualParts.length}
+          onMoveToManual={async () => {
+            setHasDismissedExceededModal(true);
+            setShowManualExceededModal(false);
+            setShowManualQuoteModal(true);
+          }}
+          onDeleteManual={async () => {
+            // Logic to delete manual parts
+            await handleBulkDelete(new Set(manualPartIds));
+            setShowManualExceededModal(false);
+          }}
+          onClose={() => {
+            setHasDismissedExceededModal(true);
+            setShowManualExceededModal(false);
+          }}
+          metadata={{
+            partSnapshots: getManualQuoteSnapshots() || [],
+          }}
+        />
+
+        <UploadFileModal
+          open={showUploadModal}
+          setOpen={setShowUploadModal}
+          parts={parts}
+          saveAsDraft={handleSaveDraft}
+          setParts={setParts}
+        />
+
+        {/* Archive Modal */}
+        <ArchiveModal
+          showArchiveModal={showArchiveModal}
+          setShowArchiveModal={setShowArchiveModal}
+          archivedParts={archivedParts}
+          MATERIALS_LIST={MATERIALS_LIST}
+          FINISHES_LIST={FINISHES_LIST}
+          handleUnarchivePart={handleUnarchivePart}
+          handleUnarchiveAll={handleUnarchiveAll}
+        />
+
+        <ManualQuoteModal
+          showManualQuoteModal={showManualQuoteModal}
+          setShowManualQuoteModal={setShowManualQuoteModal}
+          isSubmitting={false}
+          handleSubmit={handleManualQuote}
+          submitLable="Submit Request"
+          parts={parts.filter((part) => part.process === "manual-quote")}
+          updatePart={updatePartById}
+        />
+
+        <ManualQuoteWarningModal
+          isOpen={showManualWarningModal}
+          onRedirectToQuotes={() => router.push("/portal/quotes")}
+          onRedirectToCheckout={() => router.push(`/checkout/${quoteId}`)}
+          showCheckout={rfq.status === "pending approval"}
+        />
+
+        {/* Suggestion Sidebar */}
+        <SuggestionSidebar
+          parts={parts}
+          onApplySuggestion={handleApplySuggestion}
+          filterPart={suggestionPart}
+        />
+
+        <FloatingActions
+          count={selectedParts.size}
+          totalCount={parts.length}
+          onClear={exitSelectionMode}
+          itemLabel="part"
+          actions={[
+            {
+              label:
+                selectedParts.size === parts.length
+                  ? "Deselect All"
+                  : "Select All",
+              icon:
+                selectedParts.size === parts.length ? (
+                  <Square className="w-4 h-4" />
+                ) : (
+                  <CheckSquare className="w-4 h-4" />
+                ),
+              variant: "outline",
+              onClick: toggleSelectAll,
+            },
+            {
+              label: "Archive",
+              icon: <Archive className="w-4 h-4" />,
+              variant: "outline",
+              onClick: handleBulkArchive,
+              disabled: selectedParts.size === 0,
+            },
+            {
+              label: "Delete Selected",
+              icon: <Trash2 className="w-4 h-4" />,
+              variant: "destructive",
+              onClick: () => handleBulkDelete(selectedParts),
+              disabled: selectedParts.size === 0,
+            },
+            {
+              label: "Cancel",
+              icon: <X className="w-4 h-4" />,
+              variant: "ghost",
+              onClick: exitSelectionMode,
+            },
+          ]}
+        />
+
+        {/* Scroll Indicator */}
+        {showScrollIndicator && (
+          <div className="fixed bottom-2 left-1/2 -translate-x-1/2 z-10 pointer-events-none transition-opacity duration-300">
+            <div className="flex flex-col items-center gap-1.5 px-4 py-2 rounded-full bg-white shadow-lg border border-gray-200 animate-bounce">
+              {/* Icon */}
+              <ChevronDown className="w-4 h-4 text-blue-600" />
+
+              {/* Text */}
+              <p className="text-xs font-medium text-gray-700 whitespace-nowrap">
+                {parts.length > 1
+                  ? "Scroll to view all parts"
+                  : "Add more parts"}
+              </p>
+            </div>
+          </div>
+        )}
+      </div>
+    </SuggestionProvider>
   );
 }

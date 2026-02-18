@@ -1,111 +1,53 @@
 "use client";
 
 import { motion } from "framer-motion";
-import { Mail, ShieldCheck } from "lucide-react";
 
 export default function VerifyLoader() {
   return (
-    <div className="w-full h-screen flex flex-col items-center justify-center bg-white dark:bg-gray-950">
-      <div className="relative">
-        {/* Outer glowing ring */}
-        <motion.div
-          className="absolute inset-0 rounded-full bg-blue-500/20 blur-xl"
-          animate={{
-            scale: [1, 1.2, 1],
-            opacity: [0.5, 0.8, 0.5],
-          }}
-          transition={{
-            duration: 2,
-            repeat: Infinity,
-            ease: "easeInOut",
-          }}
-        />
-
-        {/* Main icon container */}
-        <div className="relative w-24 h-24 bg-white dark:bg-gray-900 rounded-3xl shadow-2xl border border-gray-100 dark:border-gray-800 flex items-center justify-center overflow-hidden">
-          <motion.div
-            animate={{
-              y: [0, -4, 0],
-            }}
-            transition={{
-              duration: 2,
-              repeat: Infinity,
-              ease: "easeInOut",
-            }}
-          >
-            <Mail className="w-10 h-10 text-blue-600 dark:text-blue-400" />
-          </motion.div>
-
-          {/* Progress ring */}
-          <svg className="absolute inset-0 w-full h-full -rotate-90">
-            <motion.circle
-              cx="48"
-              cy="48"
-              r="45"
-              stroke="currentColor"
-              strokeWidth="2"
-              fill="transparent"
-              className="text-blue-600/20"
-            />
-            <motion.circle
-              cx="48"
-              cy="48"
-              r="45"
-              stroke="currentColor"
-              strokeWidth="2"
-              fill="transparent"
-              strokeDasharray="283"
-              animate={{
-                strokeDashoffset: [283, 0, -283],
-              }}
-              transition={{
-                duration: 3,
-                repeat: Infinity,
-                ease: "linear",
-              }}
-              className="text-blue-600"
-            />
-          </svg>
-        </div>
-
-        {/* Small floating shield check */}
-        <motion.div
-          className="absolute -bottom-2 -right-2 w-10 h-10 bg-emerald-500 rounded-full border-4 border-white dark:border-gray-950 flex items-center justify-center shadow-lg"
-          initial={{ scale: 0 }}
-          animate={{ scale: 1 }}
-          transition={{ delay: 0.5, type: "spring", stiffness: 200 }}
-        >
-          <ShieldCheck className="w-5 h-5 text-white" />
-        </motion.div>
-      </div>
-
+    <div className="relative flex h-screen w-full flex-col items-center justify-center bg-white font-sans transition-colors duration-500 dark:bg-gray-950">
       <motion.div
-        className="mt-8 text-center"
-        initial={{ opacity: 0, y: 10 }}
+        initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: 0.3 }}
+        transition={{ duration: 0.8, ease: "easeOut" }}
+        className="flex flex-col items-center"
       >
-        <h2 className="text-xl font-bold text-gray-900 dark:text-white mb-2">
-          Securing your session
+        <h2 className="text-3xl font-light tracking-widest text-gray-900 dark:text-white uppercase">
+          Verifying
         </h2>
-        <div className="flex items-center justify-center gap-1.5">
+
+        <div className="mt-8 flex items-center justify-center gap-3">
           {[0, 1, 2].map((i) => (
             <motion.div
               key={i}
-              className="w-1.5 h-1.5 bg-blue-600 rounded-full"
+              className="h-1 w-8 rounded-full bg-blue-600 dark:bg-blue-500"
               animate={{
-                scale: [1, 1.5, 1],
-                opacity: [0.3, 1, 0.3],
+                scaleX: [1, 1.5, 1],
+                opacity: [0.2, 1, 0.2],
               }}
               transition={{
-                duration: 1,
+                duration: 2,
                 repeat: Infinity,
-                delay: i * 0.2,
+                delay: i * 0.3,
+                ease: "easeInOut",
               }}
             />
           ))}
         </div>
+
+        <motion.p
+          className="mt-6 text-sm font-medium tracking-widest text-gray-400 dark:text-gray-500 uppercase"
+          animate={{ opacity: [0.4, 1, 0.4] }}
+          transition={{ duration: 3, repeat: Infinity, ease: "easeInOut" }}
+        >
+          Securing your session
+        </motion.p>
       </motion.div>
+
+      {/* Subtle corner gradients for premium feel without clutter */}
+      <div className="pointer-events-none absolute inset-0 overflow-hidden">
+        <div className="absolute -top-[10%] -left-[10%] h-[40%] w-[40%] rounded-full bg-blue-500/5 blur-[100px]" />
+        <div className="absolute -bottom-[10%] -right-[10%] h-[40%] w-[40%] rounded-full bg-indigo-500/5 blur-[100px]" />
+      </div>
     </div>
   );
 }
