@@ -13,13 +13,15 @@ import {
   Activity,
   Ruler,
   Check,
-  Archive,
   Wrench,
   Expand,
   Layers,
   Droplet,
   ClipboardCheck,
   Edit,
+  BrainCog,
+  AlertTriangle,
+  CheckCircle2,
 } from "lucide-react";
 import { useCallback, useState } from "react";
 import { useDropzone } from "react-dropzone";
@@ -62,8 +64,11 @@ import {
 } from "@/types/part-config";
 import { apiClient } from "@/lib/api";
 import FileManagementModal from "./file-management-modal";
-import { formatCurrencyFixed } from "@/lib/utils";
+import { formatCurrencyFixed, cn } from "@/lib/utils";
 import { leadTimeMeta, markupMap } from "@cnc-quote/shared";
+import { Badge } from "@/components/ui/badge";
+import { useSuggestionContext } from "@/components/store/suggestion-store";
+import { PartStatusModal } from "./part-status-modal";
 
 // Valid sheet metal thicknesses in mm
 const VALID_SHEET_THICKNESSES = [
@@ -124,6 +129,8 @@ export function PartCardItem({
   INSPECTIONS_OPTIONS,
   isSelected,
   onToggleSelection,
+  suggestionPart,
+  setSuggestionPart,
 }: {
   part: PartConfig;
   index: number;
@@ -151,6 +158,8 @@ export function PartCardItem({
   THREAD_OPTIONS: ThreadItem[];
   isSelected?: boolean;
   onToggleSelection?: () => void;
+  suggestionPart: string;
+  setSuggestionPart: (part: string) => void;
 }) {
   // const [isEditing, setIsEditing] = useState(false);
   const [selectedFile, setSelectedFile] = useState<File2D | null>(null);
@@ -159,9 +168,16 @@ export function PartCardItem({
   const [isPdfViewerOpen, setIsPdfViewerOpen] = useState(false);
   const [isFilesModalOpen, setIsFilesModalOpen] = useState(false);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+  const [isStatusModalOpen, setIsStatusModalOpen] = useState(false);
   const [expandedFile, setExpandedFile] = useState<File | string | null>(null);
 
   const { upload, uploadBase64 } = useFileUpload();
+  const { suggestionCountMap, setIsOpen } = useSuggestionContext();
+
+  const totalPrice = calculatePrice(part, part.leadTimeType);
+  const hasPriceIssue = totalPrice < 150;
+  const has2DIssue = !part.files2d || part.files2d.length === 0;
+  const hasCaution = hasPriceIssue || has2DIssue;
 
   const onDrop = useCallback(
     async (acceptedFiles: File[]) => {
@@ -268,6 +284,8 @@ export function PartCardItem({
       }
     }
 
+    if (suggestionPart === part.id) setSuggestionPart("");
+
     const currentFiles = part.files2d || [];
     const updatedFiles = currentFiles.filter((_, i) => i !== fileIndex);
     updatePart(index, "files2d", updatedFiles);
@@ -292,6 +310,26 @@ export function PartCardItem({
         >
           {isSelected && <Check className="w-4 h-4 text-white" />}
         </div>
+      </div>
+
+      {/* Top Right Status Badge */}
+      <div className="absolute top-0 right-1 z-10">
+        {hasCaution ? (
+          <div
+            onClick={(e) => {
+              e.stopPropagation();
+              setIsStatusModalOpen(true);
+            }}
+            className="flex h-8 w-8 cursor-pointer items-center justify-center rounded-full bg-red-100 text-red-600 shadow-sm transition-all hover:scale-110 active:scale-95 border border-red-200"
+            title="Click to see issues"
+          >
+            <AlertTriangle className="h-5 w-5" />
+          </div>
+        ) : (
+          <div className="flex h-8 w-8 items-center justify-center rounded-full bg-emerald-100 text-emerald-600 shadow-sm border border-emerald-200">
+            <CheckCircle2 className="h-5 w-5" />
+          </div>
+        )}
       </div>
 
       <div className="flex flex-col md:flex-row">
@@ -548,23 +586,45 @@ export function PartCardItem({
                 </div>
 
                 <div className="flex items-center gap-2 shrink-0 ml-2">
-                  {/* Secondary (Archive) */}
-                  {handleArchivePart && (
+                  <div className="relative">
+                    {(suggestionCountMap.get(part.id) || 0) > 0 && (
+                      <Badge
+                        variant="warning"
+                        className="absolute -top-1.5 -right-1.5 h-5 min-w-[20px] flex items-center justify-center p-0.5 rounded-full border-2 border-white shadow-sm text-[10px] font-bold z-20"
+                      >
+                        {suggestionCountMap.get(part.id)}
+                      </Badge>
+                    )}
                     <Button
                       variant="outline"
-                      onClick={() => handleArchivePart(part.id)}
-                      title="Archive Part"
+                      onClick={() => {
+                        setSuggestionPart(part.id);
+                        setIsOpen(true);
+                      }}
+                      title="Part Suggestions"
                       size="icon"
-                      className="
-                        h-9 w-9 rounded-lg
-                        border-slate-200 text-slate-400
-                        hover:border-amber-400 hover:bg-amber-50 hover:text-amber-700
-                        transition-all
-                      "
+                      className={cn(
+                        "h-9 w-9 rounded-lg border-slate-200 text-slate-400 transition-all overflow-hidden relative group",
+                        (suggestionCountMap.get(part.id) || 0) > 0
+                          ? "animated-gradient-btn border-transparent text-white shadow-[0_0_15px_rgba(59,130,246,0.5)] hover:shadow-[0_0_20px_rgba(59,130,246,0.7)] hover:scale-110"
+                          : "hover:border-amber-400 hover:bg-amber-50 hover:text-amber-700",
+                      )}
                     >
-                      <Archive className="h-4 w-4" />
+                      {(suggestionCountMap.get(part.id) || 0) > 0 && (
+                        <>
+                          <div className="absolute inset-0 bg-white/10 opacity-0 group-hover:opacity-100 transition-opacity" />
+                          <div className="absolute inset-0 pulse-glow bg-blue-400/20 rounded-lg" />
+                        </>
+                      )}
+                      <BrainCog
+                        className={cn(
+                          "h-4 w-4 relative z-10",
+                          (suggestionCountMap.get(part.id) || 0) > 0 &&
+                            "text-white",
+                        )}
+                      />
                     </Button>
-                  )}
+                  </div>
 
                   {/* Destructive (Delete) */}
                   <Button
@@ -961,6 +1021,15 @@ export function PartCardItem({
           part={part}
         />
       )}
+
+      <PartStatusModal
+        isOpen={isStatusModalOpen}
+        onClose={() => setIsStatusModalOpen(false)}
+        snapshotUrl={part.snapshot_2d_url}
+        hasPriceIssue={hasPriceIssue}
+        has2DIssue={has2DIssue}
+        totalPrice={totalPrice}
+      />
     </Card>
   );
 }

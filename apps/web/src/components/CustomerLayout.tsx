@@ -18,6 +18,7 @@ import Logo from "@/components/ui/logo";
 import UserDropdown from "@/components/Header/UserDropdown";
 import NotificationDropdown from "@/components/Header/NotificationDropdown";
 import { useSession } from "next-auth/react";
+import VerifyLoader from "./auth/VerifyLoader";
 
 interface CustomerLayoutProps {
   readonly children: React.ReactNode;
@@ -65,7 +66,7 @@ export default function CustomerLayout({
       router.push("/verify");
     }
   }, [data, status, router]);
-
+  
   return (
     <div className="flex h-screen w-full overflow-hidden bg-[#F8FAFC]">
       {/* Sidebar */}
