@@ -126,7 +126,6 @@ class FaceClassificationResult:
     plane_ratio: float  # fraction of faces that are planar
     cylinder_ratio: float  # fraction that are cylindrical (holes/fillets)
     freeform_ratio: float  # fraction that are BSpline/Bezier (NOT revolution)
-    revolution_ratio: float = 0.0  # GAP FIX: separate revolution for turning detection
     mixed_ratio: float  # 1 - plane_ratio  (cone+sphere+torus+…)
 
     # Area-weighted variants (more meaningful than simple counts)
@@ -137,7 +136,6 @@ class FaceClassificationResult:
     paired_plane_count: int  # number of plane pairs at uniform distance
     paired_plane_area: float  # total area covered by paired planes (mm²)
     dominant_pair_thickness: Optional[float]  # most common pair distance (mm)
-    paired_plane_distances: List[float] = field(default_factory=list)  # GAP FIX: All pair distances
 
     # Classification hints
     is_likely_sheet_metal: bool  # True when distribution strongly suggests SM
@@ -146,6 +144,10 @@ class FaceClassificationResult:
     sheet_metal_face_score: float  # 0-100 score for SM likelihood from faces
 
     reasoning: str
+
+    # Fields with defaults must come after fields without defaults
+    revolution_ratio: float = 0.0  # GAP FIX: separate revolution for turning detection
+    paired_plane_distances: List[float] = field(default_factory=list)  # GAP FIX: All pair distances
     
     # NEW: Raw face data for downstream analysis (GAP 5, 6)
     planar_faces_info: List[PlanarFaceInfo] = field(default_factory=list)
