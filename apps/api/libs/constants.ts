@@ -8,6 +8,11 @@ export enum MetaNames {
   permissionsMetaKey = 'permissions',
 }
 
+export enum TaskQueues {
+  CoreTaskQueue = 'quote-tasks',
+  SupportTaskQueue = 'support-tasks',
+}
+
 /**
  * Database table names used throughout the application
  */
@@ -70,6 +75,10 @@ export enum Tables {
   DfmFilesTable = 'dfm_files',
 
   OTPTable = 'otps',
+
+  SystemConfig = 'system_config',
+
+  TechnicalSupportRequest = 'technical_support_request ',
 }
 
 /**
@@ -92,6 +101,7 @@ export enum TemporalEvents {
   ReviewManualQuoteWorkflow = 'reviewManualQuoteWorkflow',
   OtpWorkflow = 'otpWorkflow',
   OrderPartStatusChangeWorkflow = 'orderPartStatusChangeWorkflow',
+  TechnicalSupportWorkflow = 'technicalSupportWorkflow',
 }
 
 /**
@@ -128,6 +138,8 @@ export enum SQLFunctions {
   getRfqStatusSummary = 'get_rfq_status_summary',
   getOrderStatusSummary = 'get_order_status_summary',
   regenerateOtp = 'regenerate_otp',
+
+  createTechRequest = 'create_tech_request',
 }
 
 /**

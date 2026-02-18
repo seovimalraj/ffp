@@ -1,7 +1,7 @@
 import { Injectable, OnModuleInit, Logger } from '@nestjs/common';
 import { Connection, Client } from '@temporalio/client';
 import { ConfigService } from '@nestjs/config';
-import { TemporalEvents } from '../../libs/constants';
+import { TaskQueues, TemporalEvents } from '../../libs/constants';
 
 @Injectable()
 export class TemporalService implements OnModuleInit {
@@ -72,7 +72,7 @@ export class TemporalService implements OnModuleInit {
       }
 
       const handle = await this.client.workflow.start('quoteCreatedWorkflow', {
-        taskQueue: 'quote-tasks',
+        taskQueue: TaskQueues.CoreTaskQueue,
         workflowId: `quote-${data.quoteId}`,
         args: [data],
       });
@@ -94,7 +94,7 @@ export class TemporalService implements OnModuleInit {
       const handle = await this.client.workflow.start(
         TemporalEvents.ReviewManualQuoteWorkflow,
         {
-          taskQueue: 'quote-tasks',
+          taskQueue: TaskQueues.CoreTaskQueue,
           workflowId: `quote-rmqw-${data.quoteId}`,
           args: [data],
         },
@@ -130,7 +130,7 @@ export class TemporalService implements OnModuleInit {
       const handle = await this.client.workflow.start(
         TemporalEvents.SendEmailWorkflow,
         {
-          taskQueue: 'quote-tasks',
+          taskQueue: TaskQueues.CoreTaskQueue,
           workflowId: `email-${Date.now()}-${data.to}`,
           args: [data],
         },
@@ -153,7 +153,7 @@ export class TemporalService implements OnModuleInit {
       const handle = await this.client.workflow.start(
         TemporalEvents.OtpWorkflow,
         {
-          taskQueue: 'quote-tasks',
+          taskQueue: TaskQueues.CoreTaskQueue,
           workflowId: `otp-${Date.now()}-${data.email}`,
           args: [data],
         },
@@ -163,6 +163,42 @@ export class TemporalService implements OnModuleInit {
       return handle;
     } catch (error) {
       this.logger.error('Failed to start OTP workflow:', error.message);
+      throw error;
+    }
+  }
+
+  async technicalSupportWorkflow(data: {
+    userId: string;
+    organizationId: string;
+    quoteId: string;
+    email: string;
+    phone: string;
+    text: string;
+
+    // Email Params
+    customerName: string;
+    quoteCode: string;
+  }) {
+    try {
+      if (!this.client) {
+        throw new Error('Temporal client not initialized');
+      }
+
+      const handle = await this.client.workflow.start(
+        TemporalEvents.TechnicalSupportWorkflow,
+        {
+          taskQueue: TaskQueues.SupportTaskQueue,
+          workflowId: `ts-${Date.now()}-${data.email}`,
+          args: [data],
+        },
+      );
+
+      return handle;
+    } catch (error) {
+      this.logger.error(
+        'Failed to start TechnicalSupport workflow:',
+        error.message,
+      );
       throw error;
     }
   }
@@ -182,7 +218,7 @@ export class TemporalService implements OnModuleInit {
       const handle = await this.client.workflow.start(
         TemporalEvents.OrderPartStatusChangeWorkflow,
         {
-          taskQueue: 'quote-tasks',
+          taskQueue: TaskQueues.CoreTaskQueue,
           workflowId: `order-part-status-${data.orderPartId}-${Date.now()}`,
           args: [data],
         },

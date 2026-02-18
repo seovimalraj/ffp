@@ -80,7 +80,7 @@ app.get("/health", async (c) => {
  * 4️⃣ TEMPORAL WORKER
  * ======================
  */
-async function startWorker() {
+async function startWorker(taskQueue: string) {
   try {
     // Establish connection to Temporal server
     const connection = await NativeConnection.connect({
@@ -102,21 +102,26 @@ async function startWorker() {
       connection,
       workflowsPath,
       activities,
-      taskQueue: "quote-tasks",
+      taskQueue,
     });
 
-    logger.info("Temporal Worker is online and listening for tasks...");
+    logger.info(
+      `Temporal Worker [${taskQueue}] is online and listening for tasks...`,
+    );
     await worker.run();
   } catch (err: any) {
-    logger.error({ err: err.message }, "Temporal Worker failed to start");
+    logger.error(
+      { err: err.message, taskQueue },
+      `Temporal Worker [${taskQueue}] failed to start`,
+    );
   }
 }
-
 async function startServer() {
   logger.info("Starting workflow service (Worker mode)...");
 
-  // Start Temporal Worker in background
-  startWorker();
+  // Start Temporal Workers in background (one per task queue)
+  startWorker("quote-tasks");
+  startWorker("support-tasks");
 
   // Start Hono Server (for health checks and potentially direct triggers)
   serve({

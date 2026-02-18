@@ -439,6 +439,42 @@ export class RfqController {
     };
   }
 
+  @Post('technical-support/:rfqId')
+  @Roles(RoleNames.Customer)
+  async sendTechnicalSupportRequest(
+    @Param('rfqId') rfqId: string,
+    @CurrentUser() currentUser: CurrentUserDto,
+    @Body()
+    body: {
+      quoteCode: string;
+      phone: string;
+      email: string;
+      text: string;
+    },
+  ) {
+    try {
+      await this.temporalService.technicalSupportWorkflow({
+        userId: currentUser.id,
+        organizationId: currentUser.organizationId,
+        quoteId: rfqId,
+        email: body.email,
+        phone: body.phone,
+        text: body.text,
+
+        customerName: currentUser.name,
+        quoteCode: body.quoteCode,
+      });
+    } catch (temporalError) {
+      this.logger.error('Failed to start Temporal workflow', temporalError);
+      // Optional: Rollback status if workflow fail?
+      // For now, just throw error to let admin know it failed.
+      throw new HttpException(
+        'Failed to send technical support emails',
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
+  }
+
   @Post(':rfqId/add-parts')
   @Roles(RoleNames.Admin, RoleNames.Customer)
   async addParts(

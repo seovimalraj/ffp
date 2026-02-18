@@ -67,6 +67,8 @@ export enum Tables {
 
   ManualQuoteApproval = "manual_quote_approval",
 
+  SystemConfig = "system_config",
+
   OTPTable = "otps",
 }
 
@@ -118,6 +120,8 @@ export enum SQLFunctions {
   getUserRFQsWithPartsCountInfinite = "get_user_rfqs_with_parts_count_infinite",
   getOrdersInfinite = "get_orders_infinite",
   requestOtp = "request_otp",
+
+  createTechRequest = "create_tech_request",
 }
 
 /**
