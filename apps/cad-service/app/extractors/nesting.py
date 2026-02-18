@@ -26,6 +26,32 @@ STANDARD_SHEETS = {
 DEFAULT_KERF_MM = 3.0
 
 
+def _select_sheet_size(part_l: float, part_w: float, kerf_mm: float) -> Tuple[float, float]:
+    """Select the smallest standard sheet that fits at least one part."""
+    for name in ["small", "medium", "large", "jumbo"]:
+        csw, csh = STANDARD_SHEETS[name]
+        if (part_l + kerf_mm) <= csw and (part_w + kerf_mm) <= csh:
+            return csw, csh
+        if (part_w + kerf_mm) <= csw and (part_l + kerf_mm) <= csh:
+            return csw, csh
+    return STANDARD_SHEETS["medium"]
+
+
+def _compute_mixed_packing(
+    cols_0: int, cols_90: int, step_w_0: float, step_w_90: float, sh: float,
+) -> int:
+    """Try alternating rows of 0° and 90° orientations."""
+    pair_height = step_w_0 + step_w_90
+    full_pairs = int(sh // pair_height)
+    remaining = sh - full_pairs * pair_height
+    mixed_count = full_pairs * (cols_0 + cols_90)
+    if remaining >= step_w_0:
+        mixed_count += cols_0
+    elif remaining >= step_w_90:
+        mixed_count += cols_90
+    return mixed_count
+
+
 def estimate_nesting(
     flat_length: float,
     flat_width: float,
@@ -68,16 +94,7 @@ def estimate_nesting(
     if sheet_size:
         sw, sh = sheet_size
     else:
-        # Pick the smallest standard sheet that fits at least one part
-        sw, sh = STANDARD_SHEETS["medium"]
-        for name in ["small", "medium", "large", "jumbo"]:
-            csw, csh = STANDARD_SHEETS[name]
-            if (part_l + kerf_mm) <= csw and (part_w + kerf_mm) <= csh:
-                sw, sh = csw, csh
-                break
-            if (part_w + kerf_mm) <= csw and (part_l + kerf_mm) <= csh:
-                sw, sh = csw, csh
-                break
+        sw, sh = _select_sheet_size(part_l, part_w, kerf_mm)
 
     # --- Strip-pack in orientation 0° ---
     step_l_0 = part_l + kerf_mm
@@ -97,17 +114,7 @@ def estimate_nesting(
 
     # Mixed packing: try alternating rows of 0° and 90°
     if count_0 > 0 and count_90 > 0:
-        rows_0_height = step_w_0
-        rows_90_height = step_w_90
-        # How many alternating row pairs fit?
-        pair_height = rows_0_height + rows_90_height
-        full_pairs = int(sh // pair_height)
-        remaining = sh - full_pairs * pair_height
-        mixed_count = full_pairs * (cols_0 + cols_90)
-        if remaining >= rows_0_height:
-            mixed_count += cols_0
-        elif remaining >= rows_90_height:
-            mixed_count += cols_90
+        mixed_count = _compute_mixed_packing(cols_0, cols_90, step_w_0, step_w_90, sh)
         best_count = max(best_count, mixed_count)
 
     sheet_area = sw * sh
@@ -123,7 +130,7 @@ def estimate_nesting(
     )
 
     logger.info(
-        f"Nesting estimate: {best_count} parts/sheet, "
-        f"{est.utilization_pct}% utilisation on {sw}×{sh}mm sheet"
+        "Nesting estimate: %d parts/sheet, %.1f%% utilisation on %.0f×%.0fmm sheet",
+        best_count, est.utilization_pct, sw, sh,
     )
     return est

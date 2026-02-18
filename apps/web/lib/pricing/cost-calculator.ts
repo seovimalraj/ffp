@@ -4,8 +4,8 @@
  */
 
 import { GeometryData } from "../cad-analysis";
-import { MaterialSpec, SheetMetalMaterialSpec, ProcessConfig, FinishOption, SheetMetalFinish, PricingInput, PricingBreakdown } from "../pricing-engine";
-import { PricingStrategyFactory, ProcessAdjustments } from "./pricing-strategies";
+import { PricingInput, PricingBreakdown } from "../pricing-engine";
+import { PricingStrategyFactory } from "./pricing-strategies";
 
 // ---------------------------------------------------------------------------
 // DFM Cost Impact Engine
@@ -46,14 +46,14 @@ export function calculateDFMCostImpact(geometry: GeometryData): DFMCostImpact {
     let pct = 0;
     switch (issue.severity) {
       case 'critical':
-        pct = 0.10; // 10% per critical issue
+        pct = 0.1; // 10% per critical issue
         break;
       case 'warning':
         pct = 0.04; // 4% per warning
         break;
       case 'info':
       default:
-        pct = 0; // no cost impact
+        break; // no cost impact
     }
 
     if (pct > 0) {
@@ -100,8 +100,8 @@ export function calculateDFMCostImpact(geometry: GeometryData): DFMCostImpact {
  * Cache for cost calculations to avoid redundant computation
  */
 class CostCalculationCache {
-  private cache: Map<string, any> = new Map();
-  private maxSize: number = 1000;
+  private readonly cache: Map<string, any> = new Map();
+  private readonly maxSize: number = 1000;
   
   getCacheKey(input: Partial<PricingInput>): string {
     // Generate cache key from geometry and process
@@ -116,7 +116,7 @@ class CostCalculationCache {
     return key;
   }
   
-  get(key: string): any | null {
+  get(key: string): any {
     return this.cache.get(key) || null;
   }
   
@@ -138,7 +138,7 @@ class CostCalculationCache {
  * Advanced Cost Calculator with intelligent pricing
  */
 export class AdvancedCostCalculator {
-  private cache: CostCalculationCache;
+  private readonly cache: CostCalculationCache;
   
   constructor() {
     this.cache = new CostCalculationCache();
@@ -180,7 +180,7 @@ export class AdvancedCostCalculator {
     
     // Calculate overhead (10% of direct costs)
     const directCosts = materialCost + laborCost + setupCost + finishCost + toolingCost + inspectionCost;
-    const overheadCost = directCosts * 0.10;
+    const overheadCost = directCosts * 0.1;
     
     // === DFM COST IMPACT ===
     // Apply DFM surcharge based on manufacturability issues
@@ -302,12 +302,12 @@ export class AdvancedCostCalculator {
    */
   private getLeadTimeMultiplier(leadTimeType: string): number {
     const multipliers = {
-      economy: 0.90,    // 10% discount for longer lead time
-      standard: 1.00,   // Normal pricing
+      economy: 0.9,     // 10% discount for longer lead time
+      standard: 1,       // Normal pricing
       expedited: 1.35   // 35% upcharge for rush
     };
     
-    return multipliers[leadTimeType as keyof typeof multipliers] || 1.0;
+    return multipliers[leadTimeType as keyof typeof multipliers] || 1;
   }
   
   /**

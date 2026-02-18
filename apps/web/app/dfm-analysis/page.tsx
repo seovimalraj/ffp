@@ -374,9 +374,11 @@ export default function DFMAnalysisPage() {
             byteLength: formData.cadFile.size,
           }),
         });
-      } catch (networkErr) {
+      } catch (error_) {
+        console.error("Upload preparation failed:", error_);
         throw new Error(
           "Network error while preparing upload. Please check your connection and try again.",
+          { cause: error_ },
         );
       }
 
@@ -399,9 +401,9 @@ export default function DFMAnalysisPage() {
       // Upload file with progress tracking
       try {
         await uploadFileWithProgress(formData.cadFile, presign);
-      } catch (uploadErr) {
+      } catch (error_) {
         throw new Error(
-          `File upload failed: ${uploadErr instanceof Error ? uploadErr.message : "Unknown upload error"}`,
+          `File upload failed: ${error_ instanceof Error ? error_.message : "Unknown upload error"}`,
         );
       }
 
@@ -422,9 +424,11 @@ export default function DFMAnalysisPage() {
             notes: formData.notes,
           }),
         });
-      } catch (networkErr) {
+      } catch (error_) {
+        console.error("DFM request creation failed:", error_);
         throw new Error(
           "Network error while creating DFM request. Your file was uploaded but the analysis request could not be started.",
+          { cause: error_ },
         );
       }
 

@@ -29,7 +29,7 @@ export class AuthGuard implements CanActivate {
 
     let userId: string;
 
-    if (authHeader && authHeader.startsWith('Bearer ')) {
+    if (authHeader?.startsWith('Bearer ')) {
       userId = authHeader.substring(7); // Remove 'Bearer ' prefix
     } else if (sessionData) {
       try {

@@ -15,6 +15,214 @@ from ..models import FilletFeature
 logger = logging.getLogger(__name__)
 
 
+def _try_import_occ():
+    """Attempt to import OCC modules for fillet detection.
+
+    Returns a dict of OCC classes/functions on success, or ``None``.
+    """
+    try:
+        from OCC.Core.TopExp import TopExp_Explorer, topexp
+        from OCC.Core.TopAbs import TopAbs_FACE, TopAbs_EDGE
+        from OCC.Core.BRep import BRep_Tool
+        from OCC.Core.Geom import Geom_ToroidalSurface, Geom_Plane
+        from OCC.Core.TopTools import (
+            TopTools_IndexedMapOfShape,
+            TopTools_IndexedDataMapOfShapeListOfShape,
+        )
+        from OCC.Core.GProp import GProp_GProps
+        from OCC.Core.BRepGProp import brepgprop_SurfaceProperties
+    except Exception:
+        logger.warning("OCC imports unavailable for fillet/chamfer detection")
+        return None
+
+    result = {
+        "TopExp_Explorer": TopExp_Explorer,
+        "TopExp": topexp,
+        "TopAbs_FACE": TopAbs_FACE,
+        "TopAbs_EDGE": TopAbs_EDGE,
+        "BRep_Tool": BRep_Tool,
+        "Geom_ToroidalSurface": Geom_ToroidalSurface,
+        "Geom_Plane": Geom_Plane,
+        "TopTools_IndexedMapOfShape": TopTools_IndexedMapOfShape,
+        "TopTools_IndexedDataMapOfShapeListOfShape": TopTools_IndexedDataMapOfShapeListOfShape,
+        "GProp_GProps": GProp_GProps,
+        "brepgprop_SurfaceProperties": brepgprop_SurfaceProperties,
+    }
+
+    # Add BRepAdaptor for robust surface-type detection
+    try:
+        from OCC.Core.BRepAdaptor import BRepAdaptor_Surface
+        from OCC.Core.GeomAbs import (
+            GeomAbs_Torus, GeomAbs_Plane, GeomAbs_Cylinder,
+            GeomAbs_Sphere, GeomAbs_Cone,
+        )
+        result["BRepAdaptor_Surface"] = BRepAdaptor_Surface
+        result["GeomAbs_Torus"] = GeomAbs_Torus
+        result["GeomAbs_Plane"] = GeomAbs_Plane
+        result["GeomAbs_Cylinder"] = GeomAbs_Cylinder
+        result["GeomAbs_Sphere"] = GeomAbs_Sphere
+        result["GeomAbs_Cone"] = GeomAbs_Cone
+    except Exception:
+        pass
+
+    return result
+
+
+def _dot(a, b):
+    """Dot product of two 3-element tuples."""
+    return a[0] * b[0] + a[1] * b[1] + a[2] * b[2]
+
+
+def _try_detect_fillet(face, surf, idx, fid, occ):
+    """Check if *face* has a toroidal surface (indicating a fillet blend).
+
+    Uses BRepAdaptor_Surface.GetType() for robust detection when available,
+    falling back to Geom_ToroidalSurface.DownCast().
+    """
+    minor_r = None
+
+    # Prefer BRepAdaptor_Surface for type detection
+    BRepAdaptor = occ.get("BRepAdaptor_Surface")
+    GeomAbs_Torus = occ.get("GeomAbs_Torus")
+    if BRepAdaptor is not None and GeomAbs_Torus is not None:
+        try:
+            adaptor = BRepAdaptor(face)
+            if adaptor.GetType() == GeomAbs_Torus:
+                torus_obj = adaptor.Torus()
+                minor_r = torus_obj.MinorRadius()
+        except Exception:
+            pass
+
+    # Fallback to DownCast
+    if minor_r is None:
+        torus = occ["Geom_ToroidalSurface"].DownCast(surf)
+        if torus is None:
+            return None
+        minor_r = torus.MinorRadius()
+
+    props = occ["GProp_GProps"]()
+    occ["brepgprop_SurfaceProperties"](face, props)
+    area = float(props.Mass()) * 1e6
+    # length ≈ area / (π × minor_r) for a quarter-round fillet
+    length = area / max(math.pi * minor_r * 1e3 * 0.5, 0.01)
+
+    return FilletFeature(
+        id=f"FL-{idx:03d}",
+        feature_type="fillet",
+        radius_mm=float(minor_r * 1e3),  # m -> mm
+        length_mm=float(length),
+        edge_id=fid,
+    )
+
+
+def _collect_neighbor_faces(face, edge_faces, occ):
+    """Collect all faces adjacent to *face* via shared edges."""
+    neighbors = []
+    edge_exp = occ["TopExp_Explorer"](face, occ["TopAbs_EDGE"])
+    while edge_exp.More():
+        edge = edge_exp.Current()
+        edge_exp.Next()
+        if not edge_faces.Contains(edge):
+            continue
+        lst = edge_faces.FindFromKey(edge)
+        try:
+            faces = list(lst)
+        except Exception:
+            faces = []
+        for f2 in faces:
+            if not f2.IsSame(face):
+                neighbors.append(f2)
+    return neighbors
+
+
+def _compute_avg_neighbor_angle(fn, neighbors, occ):
+    """Return average angle between *fn* and the first two neighbor normals.
+
+    Uses BRepAdaptor_Surface when available for robust plane detection.
+    Returns ``None`` when fewer than two valid planar neighbours exist.
+    """
+    BRepAdaptor = occ.get("BRepAdaptor_Surface")
+    GeomAbs_Plane = occ.get("GeomAbs_Plane")
+
+    angle_sum = 0.0
+    valid_count = 0
+    for nf in neighbors[:2]:
+        nnv = None
+        # Prefer BRepAdaptor_Surface
+        if BRepAdaptor is not None and GeomAbs_Plane is not None:
+            try:
+                adaptor = BRepAdaptor(nf)
+                if adaptor.GetType() == GeomAbs_Plane:
+                    pln = adaptor.Plane()
+                    nn = pln.Axis().Direction()
+                    nnv = (nn.X(), nn.Y(), nn.Z())
+            except Exception:
+                pass
+        # Fallback to DownCast
+        if nnv is None:
+            nsurf = occ["BRep_Tool"].Surface(nf)
+            np_ = occ["Geom_Plane"].DownCast(nsurf)
+            if np_ is None:
+                continue
+            nn = np_.Pln().Axis().Direction()
+            nnv = (nn.X(), nn.Y(), nn.Z())
+        dot = abs(_dot(fn, nnv))
+        angle_deg = math.degrees(math.acos(min(dot, 1.0)))
+        angle_sum += angle_deg
+        valid_count += 1
+
+    if valid_count < 2:
+        return None
+    return angle_sum / valid_count
+
+
+def _try_detect_chamfer(face, surf, area, idx, fid, edge_faces, occ):
+    """Detect a chamfer: a small planar face bridging two faces at ~45°.
+
+    Uses BRepAdaptor_Surface when available for robust plane detection.
+    """
+    fn = None
+    BRepAdaptor = occ.get("BRepAdaptor_Surface")
+    GeomAbs_Plane = occ.get("GeomAbs_Plane")
+
+    if BRepAdaptor is not None and GeomAbs_Plane is not None:
+        try:
+            adaptor = BRepAdaptor(face)
+            if adaptor.GetType() == GeomAbs_Plane:
+                pln = adaptor.Plane()
+                face_n = pln.Axis().Direction()
+                fn = (face_n.X(), face_n.Y(), face_n.Z())
+        except Exception:
+            pass
+
+    if fn is None:
+        plane = occ["Geom_Plane"].DownCast(surf)
+        if plane is None:
+            return None
+        face_n = plane.Pln().Axis().Direction()
+        fn = (face_n.X(), face_n.Y(), face_n.Z())
+
+    if area > 200:
+        return None
+
+    neighbors = _collect_neighbor_faces(face, edge_faces, occ)
+    if len(neighbors) < 2:
+        return None
+
+    avg_angle = _compute_avg_neighbor_angle(fn, neighbors, occ)
+    if avg_angle is None or not (30 <= avg_angle <= 60):
+        return None
+
+    leg = math.sqrt(area) * 0.7
+    return FilletFeature(
+        id=f"CH-{idx:03d}",
+        feature_type="chamfer",
+        radius_mm=float(leg),
+        length_mm=float(math.sqrt(area)),
+        edge_id=fid,
+    )
+
+
 def extract_fillets_from_shape(shape) -> List[FilletFeature]:
     """Detect fillets and chamfers from BREP shape.
 
@@ -22,39 +230,24 @@ def extract_fillets_from_shape(shape) -> List[FilletFeature]:
     radius blends). Chamfers are identified as narrow planar faces connecting
     two faces at ~45 degrees.
     """
-    try:
-        from OCC.Core.TopExp import TopExp_Explorer
-        from OCC.Core import TopExp
-
-        from OCC.Core.TopAbs import TopAbs_FACE, TopAbs_EDGE
-        from OCC.Core.BRep import BRep_Tool
-        from OCC.Core.Geom import Geom_ToroidalSurface, Geom_Plane, Geom_CylindricalSurface
-        from OCC.Core.TopTools import (
-            TopTools_IndexedMapOfShape,
-            TopTools_IndexedDataMapOfShapeListOfShape,
-        )
-        from OCC.Core.GProp import GProp_GProps
-        from OCC.Core.BRepGProp import brepgprop_SurfaceProperties, brepgprop_LinearProperties
-        from OCC.Core.BRepAdaptor import BRepAdaptor_Curve
-    except Exception:
-        logger.warning("OCC imports unavailable for fillet/chamfer detection")
+    occ = _try_import_occ()
+    if occ is None:
         return []
 
-    face_map = TopTools_IndexedMapOfShape()
-    TopExp.MapShapes(shape, TopAbs_FACE, face_map)
+    top_exp = occ["TopExp"]
+    face_map = occ["TopTools_IndexedMapOfShape"]()
+    top_exp.MapShapes(shape, occ["TopAbs_FACE"], face_map)
 
-    edge_faces = TopTools_IndexedDataMapOfShapeListOfShape()
-    TopExp.MapShapesAndAncestors(shape, TopAbs_EDGE, TopAbs_FACE, edge_faces)
-
-    def _dot(a, b):
-        return a[0] * b[0] + a[1] * b[1] + a[2] * b[2]
+    edge_faces = occ["TopTools_IndexedDataMapOfShapeListOfShape"]()
+    top_exp.MapShapesAndAncestors(
+        shape, occ["TopAbs_EDGE"], occ["TopAbs_FACE"], edge_faces
+    )
 
     features: List[FilletFeature] = []
     idx = 1
     seen_faces = set()
 
-    # --- Detect fillets (toroidal blend surfaces) ---
-    exp = TopExp_Explorer(shape, TopAbs_FACE)
+    exp = occ["TopExp_Explorer"](shape, occ["TopAbs_FACE"])
     while exp.More():
         face = exp.Current()
         exp.Next()
@@ -62,94 +255,27 @@ def extract_fillets_from_shape(shape) -> List[FilletFeature]:
         if fid in seen_faces:
             continue
 
-        surf = BRep_Tool.Surface(face)
-        torus = Geom_ToroidalSurface.DownCast(surf)
-        if torus is not None:
-            seen_faces.add(fid)
-            minor_r = torus.MinorRadius()
-            # Compute edge length to estimate fillet extent
-            props = GProp_GProps()
-            brepgprop_SurfaceProperties(face, props)
-            area = float(props.Mass()) * 1e6
-            # length ≈ area / (π × minor_r) for a quarter-round fillet
-            length = area / max(math.pi * minor_r * 1e3 * 0.5, 0.01)
+        surf = occ["BRep_Tool"].Surface(face)
 
-            features.append(FilletFeature(
-                id=f"FL-{idx:03d}",
-                feature_type="fillet",
-                radius_mm=float(minor_r * 1e3),  # m -> mm
-                length_mm=float(length),
-                edge_id=fid,
-            ))
+        fillet = _try_detect_fillet(face, surf, idx, fid, occ)
+        if fillet is not None:
+            seen_faces.add(fid)
+            features.append(fillet)
             idx += 1
             continue
 
-        # --- Detect chamfers (narrow planar face between two larger faces) ---
-        plane = Geom_Plane.DownCast(surf)
-        if plane is None:
-            continue
-
-        props = GProp_GProps()
-        brepgprop_SurfaceProperties(face, props)
+        # Compute face area for chamfer candidate screening
+        props = occ["GProp_GProps"]()
+        occ["brepgprop_SurfaceProperties"](face, props)
         area = float(props.Mass()) * 1e6  # mm^2
 
-        # Chamfer faces are typically small/narrow
-        if area > 200:  # skip large faces
-            continue
+        chamfer = _try_detect_chamfer(face, surf, area, idx, fid, edge_faces, occ)
+        if chamfer is not None:
+            seen_faces.add(fid)
+            features.append(chamfer)
+            idx += 1
 
-        # Collect neighbors
-        neighbors = []
-        edge_exp = TopExp_Explorer(face, TopAbs_EDGE)
-        while edge_exp.More():
-            edge = edge_exp.Current()
-            edge_exp.Next()
-            if edge_faces.Contains(edge):
-                lst = edge_faces.FindFromKey(edge)
-                it = lst.cbegin()
-                while it.More():
-                    f2 = it.Value()
-                    it.Next()
-                    if not f2.IsSame(face):
-                        neighbors.append(f2)
-
-        if len(neighbors) < 2:
-            continue
-
-        # Check if face bridges two neighbors at ~45 deg
-        face_n = plane.Pln().Axis().Direction()
-        fn = (face_n.X(), face_n.Y(), face_n.Z())
-
-        angle_sum = 0.0
-        valid_neighbors = 0
-        for nf in neighbors[:2]:
-            nsurf = BRep_Tool.Surface(nf)
-            np_ = Geom_Plane.DownCast(nsurf)
-            if np_ is None:
-                continue
-            nn = np_.Pln().Axis().Direction()
-            nnv = (nn.X(), nn.Y(), nn.Z())
-            dot = abs(_dot(fn, nnv))
-            angle_deg = math.degrees(math.acos(min(dot, 1.0)))
-            angle_sum += angle_deg
-            valid_neighbors += 1
-
-        if valid_neighbors >= 2:
-            avg_angle = angle_sum / valid_neighbors
-            if 30 <= avg_angle <= 60:
-                # Chamfer leg size ≈ sqrt(area / length)
-                # Approximate length from first edge
-                leg = math.sqrt(area) * 0.7  # rough estimate
-                seen_faces.add(fid)
-                features.append(FilletFeature(
-                    id=f"CH-{idx:03d}",
-                    feature_type="chamfer",
-                    radius_mm=float(leg),
-                    length_mm=float(math.sqrt(area)),
-                    edge_id=fid,
-                ))
-                idx += 1
-
-    logger.info(f"Fillet/chamfer detection: found {len(features)} feature(s)")
+    logger.info("Fillet/chamfer detection: found %d feature(s)", len(features))
     return features
 
 

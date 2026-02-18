@@ -18,7 +18,11 @@ try:
     from OCC.Core.StlAPI import StlAPI_Writer
     from OCC.Core.BRepMesh import BRepMesh_IncrementalMesh
     from OCC.Core.BRepBuilderAPI import BRepBuilderAPI_Transform
-    from OCC.Extend.DataExchange import write_stl_file, write_obj_file
+    from OCC.Extend.DataExchange import write_stl_file
+    try:
+        from OCC.Extend.DataExchange import write_obj_file
+    except ImportError:
+        write_obj_file = None  # not available in all pythonocc builds
     from OCC.Core.gp import gp_Trsf, gp_Pnt
     from OCC.Core.Bnd import Bnd_Box
     from OCC.Core.BRepBndLib import brepbndlib_Add
@@ -218,6 +222,8 @@ def write_stl_to_buffer(shape, buffer: io.BytesIO):
 
 def write_obj_to_buffer(shape, buffer: io.BytesIO):
     """Write shape to OBJ format in buffer"""
+    if write_obj_file is None:
+        raise RuntimeError("OBJ export is not available in this pythonocc build")
     try:
         # Create temporary file
         with tempfile.NamedTemporaryFile(delete=False, suffix='.obj') as temp_file:

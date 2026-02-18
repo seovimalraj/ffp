@@ -69,209 +69,47 @@ class AdvancedBendDetector:
         Returns:
             BendAnalysis with detected features and confidence
         """
-        bend_indicators = []
+        bend_indicators: List[Dict] = []
         bend_count = 0
-        bend_angles = []
-        bend_regions = []
+        bend_angles: List[float] = []
+        bend_regions: List[Dict] = []
         
-        # === METHOD 1: THICKNESS DISCREPANCY ===
-        # Most reliable indicator for bent parts
-        has_thickness_discrepancy = False
-        
-        if detected_thickness and detected_thickness > 0:
-            thickness_ratio = detected_thickness / self.min_dim if self.min_dim > 0 else 1.0
-            
-            # Actual thickness significantly smaller than bbox = bent part
-            # LOWERED: Accept lower confidence threshold (0.4 instead of 0.6)
-            if thickness_ratio < 0.5 and thickness_confidence > 0.4:
-                has_thickness_discrepancy = True
-                confidence = min(0.95, thickness_confidence + 0.2)  # Boost confidence
-                bend_indicators.append({
-                    'method': 'thickness_discrepancy',
-                    'confidence': confidence,
-                    'ratio': thickness_ratio,
-                    'evidence': f"Wall {detected_thickness:.1f}mm << bbox {self.min_dim:.1f}mm"
-                })
-                
-                # Estimate bend count from discrepancy severity
-                # Smaller ratio = more bending
-                if thickness_ratio < 0.2:
-                    bend_count = max(3, int(10 * (1 - thickness_ratio)))  # Complex bends
-                elif thickness_ratio < 0.35:
-                    bend_count = 2  # Multiple bends (U-bracket)
-                else:
-                    bend_count = 1  # Single bend (L-bracket)
-        
-        # === METHOD 1B: DIMENSION RATIO DETECTION ===
-        # NEW: Detect bent parts purely from dimensions when thickness detection fails
-        # A thin min dimension with high aspect ratio strongly suggests sheet metal bending
-        if not has_thickness_discrepancy and self.min_dim < 6 and self.aspect_ratio > 8:
-            bend_indicators.append({
-                'method': 'dimension_ratio',
-                'confidence': 0.70,
-                'evidence': f"Thin profile ({self.min_dim:.1f}mm) with high aspect ratio ({self.aspect_ratio:.1f})"
-            })
-            bend_count = max(bend_count, 1)  # At least one bend likely
-        
-        # === METHOD 2: VOLUME HOLLOWNESS ===
-        # Low volume efficiency indicates bent/hollow structure
         is_hollow = self.volume_efficiency < 0.4
-        
-        if is_hollow:
-            hollowness = 1.0 - self.volume_efficiency
-            bend_indicators.append({
-                'method': 'volume_hollowness',
-                'confidence': 0.7,
-                'hollowness': hollowness,
-                'evidence': f"Volume efficiency {self.volume_efficiency:.1%} (hollow structure)"
-            })
-            
-            # Extremely hollow = complex bends
-            if self.volume_efficiency < 0.25:
-                bend_count = max(bend_count, 3)
-            elif self.volume_efficiency < 0.35:
-                bend_count = max(bend_count, 2)
-        
-        # === METHOD 3: SURFACE AREA EXCESS ===
-        # Bent parts have higher surface area than flat equivalents
-        flat_surface_estimate = 2 * (self.mid_dim * self.max_dim + 
-                                     self.min_dim * self.max_dim + 
-                                     self.min_dim * self.mid_dim)
-        
-        if flat_surface_estimate > 0:
-            surface_excess = (self.surface_area_mm2 - flat_surface_estimate) / flat_surface_estimate
-            
-            if surface_excess > 0.3:  # 30% more surface than flat box
-                bend_indicators.append({
-                    'method': 'surface_excess',
-                    'confidence': 0.6,
-                    'excess': surface_excess,
-                    'evidence': f"Surface area {surface_excess:.0%} higher than flat equivalent"
-                })
-                bend_count = max(bend_count, 1)
-        
-        # === METHOD 4: DIMENSION RATIO ANALYSIS ===
-        # Bent parts have characteristic dimension relationships
-        aspect_ratio = self.max_dim / max(self.min_dim, 0.1)
-        mid_to_max_ratio = self.mid_dim / self.max_dim if self.max_dim > 0 else 0
-        
-        # U-bracket pattern: high aspect ratio + medium mid dimension
-        if aspect_ratio > 15 and 0.3 < mid_to_max_ratio < 0.7 and is_hollow:
-            bend_indicators.append({
-                'method': 'u_bracket_pattern',
-                'confidence': 0.75,
-                'pattern': 'U-shape',
-                'evidence': f"U-bracket geometry detected (AR: {aspect_ratio:.1f})"
-            })
-            bend_count = max(bend_count, 2)
-            bend_angles.extend([90.0, 90.0])  # Two 90° bends
-            bend_regions.append({
-                'type': 'U-bracket',
-                'bend_line_1': 'along_length',
-                'bend_line_2': 'along_length_opposite'
-            })
-        
-        # L-bracket pattern: high aspect ratio + thin + one dominant face
-        elif aspect_ratio > 10 and mid_to_max_ratio < 0.4 and self.min_dim < 6:
-            bend_indicators.append({
-                'method': 'l_bracket_pattern',
-                'confidence': 0.7,
-                'pattern': 'L-shape',
-                'evidence': "L-bracket geometry detected"
-            })
-            bend_count = max(bend_count, 1)
-            bend_angles.append(90.0)
-            bend_regions.append({
-                'type': 'L-bracket',
-                'bend_line': 'along_length'
-            })
-        
-        # === METHOD 5: TRIANGLE COUNT COMPLEXITY ===
-        # More triangles in thin part = more bends/curves
-        if triangle_count > 0 and self.min_dim < 6:
-            triangles_per_area = triangle_count / max(self.surface_area_mm2, 1)
-            
-            if triangles_per_area > 1.0:  # High triangle density (raised from 0.5 to reduce false positives)
-                bend_indicators.append({
-                    'method': 'mesh_complexity',
-                    'confidence': 0.5,
-                    'density': triangles_per_area,
-                    'evidence': f"High mesh complexity: {triangles_per_area:.2f} triangles/mm²"
-                })
-                
-                # Estimate bends from triangle count
-                estimated_bends = min(5, int(triangle_count / 3000))
-                bend_count = max(bend_count, estimated_bends)
-        
-        # === METHOD 6: FLANGE DETECTION ===
-        # Flanges are small perpendicular faces at edges
-        has_flanges = False
-        if self.min_dim < 6 and is_hollow:
-            # Thin + hollow often has flanges
-            has_flanges = True
-            bend_indicators.append({
-                'method': 'flange_detection',
-                'confidence': 0.6,
-                'evidence': "Thin walls with hollow structure suggest flanges"
-            })
-        
-        # === METHOD 7: RELIEF CUT DETECTION ===
-        # Relief cuts appear as notches at bend corners
-        has_relief_cuts = False
-        if bend_count >= 2 and self.volume_efficiency < 0.35:
-            has_relief_cuts = True
-            bend_indicators.append({
-                'method': 'relief_cut_inference',
-                'confidence': 0.5,
-                'evidence': "Multiple bends suggest relief cuts at corners"
-            })
-        
-        # === CALCULATE OVERALL CONFIDENCE ===
-        if len(bend_indicators) == 0:
-            overall_confidence = 0.0
-            is_likely_bent = False
-        else:
-            # Weighted confidence: stronger methods contribute more
-            weight_map = {
-                'thickness_discrepancy': 3.0,
-                'dimension_ratio': 1.5,
-                'volume_hollowness': 1.5,
-                'surface_excess': 1.0,
-                'u_bracket_pattern': 2.0,
-                'l_bracket_pattern': 1.5,
-                'mesh_complexity': 0.5,
-                'flange_detection': 0.8,
-                'relief_cut_inference': 0.5,
-            }
-            weighted_sum = sum(
-                ind['confidence'] * weight_map.get(str(ind['method']), 1.0)
-                for ind in bend_indicators
-            )
-            total_weight = sum(
-                weight_map.get(str(ind['method']), 1.0)
-                for ind in bend_indicators
-            )
-            overall_confidence = weighted_sum / total_weight if total_weight > 0 else 0.0
-            
-            # High confidence if multiple strong indicators
-            if has_thickness_discrepancy and is_hollow:
-                overall_confidence = min(0.95, overall_confidence + 0.2)
-            
-            # Threshold raised to 0.55 to reduce false positives on CNC parts
-            is_likely_bent = (overall_confidence > 0.55 and bend_count > 0) or \
-                            (bend_count >= 2 and overall_confidence > 0.45) or \
-                            (has_thickness_discrepancy and self.aspect_ratio > 8)
-        
-        # === COMPLEXITY SCORE ===
+
+        # Run detection methods
+        bend_count, has_thickness_discrepancy = self._check_thickness_discrepancy(
+            detected_thickness, thickness_confidence, bend_indicators, bend_count
+        )
+        bend_count = self._check_dimension_ratio(
+            has_thickness_discrepancy, bend_indicators, bend_count
+        )
+        bend_count = self._check_volume_hollowness(
+            is_hollow, bend_indicators, bend_count
+        )
+        self._check_surface_excess(bend_indicators, bend_count)
+        bend_count, bend_angles, bend_regions = self._check_dimension_patterns(
+            is_hollow, bend_indicators, bend_count, bend_angles, bend_regions
+        )
+        bend_count = self._check_mesh_complexity(
+            triangle_count, bend_indicators, bend_count
+        )
+        has_flanges = self._check_flanges(is_hollow, bend_indicators)
+        has_relief_cuts = self._check_relief_cuts(bend_count, bend_indicators)
+
+        # Calculate overall confidence
+        overall_confidence, is_likely_bent = self._compute_confidence(
+            bend_indicators, has_thickness_discrepancy, is_hollow, bend_count
+        )
+
+        # Complexity score
         complexity_score = min(100, 
                               bend_count * 15 + 
                               (10 if has_flanges else 0) +
                               (5 if has_relief_cuts else 0) +
                               (1 - self.volume_efficiency) * 30)
         
-        # Default bend angles if not detected
         if bend_count > 0 and not bend_angles:
-            bend_angles = [90.0] * min(bend_count, 5)  # Default to 90° bends
+            bend_angles = [90.0] * min(bend_count, 5)
         
         return BendAnalysis(
             bend_count=bend_count,
@@ -283,6 +121,210 @@ class AdvancedBendDetector:
             is_likely_bent=is_likely_bent,
             confidence=overall_confidence
         )
+    
+    def _check_thickness_discrepancy(
+        self, detected_thickness: Optional[float],
+        thickness_confidence: float,
+        indicators: List[Dict], bend_count: int
+    ) -> tuple:
+        """METHOD 1: Thickness discrepancy - most reliable indicator."""
+        has_discrepancy = False
+        if not (detected_thickness and detected_thickness > 0):
+            return bend_count, has_discrepancy
+
+        thickness_ratio = detected_thickness / self.min_dim if self.min_dim > 0 else 1.0
+        if thickness_ratio >= 0.5 or thickness_confidence <= 0.4:
+            return bend_count, has_discrepancy
+
+        has_discrepancy = True
+        confidence = min(0.95, thickness_confidence + 0.2)
+        indicators.append({
+            'method': 'thickness_discrepancy',
+            'confidence': confidence,
+            'ratio': thickness_ratio,
+            'evidence': f"Wall {detected_thickness:.1f}mm << bbox {self.min_dim:.1f}mm"
+        })
+        
+        if thickness_ratio < 0.2:
+            bend_count = max(3, int(10 * (1 - thickness_ratio)))
+        elif thickness_ratio < 0.35:
+            bend_count = max(bend_count, 2)
+        else:
+            bend_count = max(bend_count, 1)
+
+        return bend_count, has_discrepancy
+
+    def _check_dimension_ratio(
+        self, has_thickness_discrepancy: bool,
+        indicators: List[Dict], bend_count: int
+    ) -> int:
+        """METHOD 1B: Dimension ratio detection when thickness detection fails."""
+        if has_thickness_discrepancy or self.min_dim >= 6 or self.aspect_ratio <= 8:
+            return bend_count
+        indicators.append({
+            'method': 'dimension_ratio',
+            'confidence': 0.70,
+            'evidence': f"Thin profile ({self.min_dim:.1f}mm) with high aspect ratio ({self.aspect_ratio:.1f})"
+        })
+        return max(bend_count, 1)
+
+    def _check_volume_hollowness(
+        self, is_hollow: bool,
+        indicators: List[Dict], bend_count: int
+    ) -> int:
+        """METHOD 2: Volume hollowness."""
+        if not is_hollow:
+            return bend_count
+        indicators.append({
+            'method': 'volume_hollowness',
+            'confidence': 0.7,
+            'hollowness': 1.0 - self.volume_efficiency,
+            'evidence': f"Volume efficiency {self.volume_efficiency:.1%} (hollow structure)"
+        })
+        if self.volume_efficiency < 0.25:
+            return max(bend_count, 3)
+        if self.volume_efficiency < 0.35:
+            return max(bend_count, 2)
+        return bend_count
+
+    def _check_surface_excess(
+        self, indicators: List[Dict], bend_count: int
+    ) -> int:
+        """METHOD 3: Surface area excess."""
+        flat_surface_estimate = 2 * (self.mid_dim * self.max_dim + 
+                                     self.min_dim * self.max_dim + 
+                                     self.min_dim * self.mid_dim)
+        if flat_surface_estimate <= 0:
+            return bend_count
+        surface_excess = (self.surface_area_mm2 - flat_surface_estimate) / flat_surface_estimate
+        if surface_excess > 0.3:
+            indicators.append({
+                'method': 'surface_excess',
+                'confidence': 0.6,
+                'excess': surface_excess,
+                'evidence': f"Surface area {surface_excess:.0%} higher than flat equivalent"
+            })
+            return max(bend_count, 1)
+        return bend_count
+
+    def _check_dimension_patterns(
+        self, is_hollow: bool,
+        indicators: List[Dict], bend_count: int,
+        bend_angles: List[float], bend_regions: List[Dict]
+    ) -> tuple:
+        """METHOD 4: Dimension ratio analysis (U-bracket, L-bracket patterns)."""
+        aspect_ratio = self.max_dim / max(self.min_dim, 0.1)
+        mid_to_max_ratio = self.mid_dim / self.max_dim if self.max_dim > 0 else 0
+        
+        if aspect_ratio > 15 and 0.3 < mid_to_max_ratio < 0.7 and is_hollow:
+            indicators.append({
+                'method': 'u_bracket_pattern',
+                'confidence': 0.75,
+                'pattern': 'U-shape',
+                'evidence': f"U-bracket geometry detected (AR: {aspect_ratio:.1f})"
+            })
+            bend_count = max(bend_count, 2)
+            bend_angles.extend([90.0, 90.0])
+            bend_regions.append({
+                'type': 'U-bracket',
+                'bend_line_1': 'along_length',
+                'bend_line_2': 'along_length_opposite'
+            })
+        elif aspect_ratio > 10 and mid_to_max_ratio < 0.4 and self.min_dim < 6:
+            indicators.append({
+                'method': 'l_bracket_pattern',
+                'confidence': 0.7,
+                'pattern': 'L-shape',
+                'evidence': "L-bracket geometry detected"
+            })
+            bend_count = max(bend_count, 1)
+            bend_angles.append(90.0)
+            bend_regions.append({
+                'type': 'L-bracket',
+                'bend_line': 'along_length'
+            })
+
+        return bend_count, bend_angles, bend_regions
+
+    def _check_mesh_complexity(
+        self, triangle_count: int,
+        indicators: List[Dict], bend_count: int
+    ) -> int:
+        """METHOD 5: Triangle count complexity."""
+        if triangle_count <= 0 or self.min_dim >= 6:
+            return bend_count
+        triangles_per_area = triangle_count / max(self.surface_area_mm2, 1)
+        if triangles_per_area > 1.0:
+            indicators.append({
+                'method': 'mesh_complexity',
+                'confidence': 0.5,
+                'density': triangles_per_area,
+                'evidence': f"High mesh complexity: {triangles_per_area:.2f} triangles/mm²"
+            })
+            return max(bend_count, min(5, int(triangle_count / 3000)))
+        return bend_count
+
+    def _check_flanges(self, is_hollow: bool, indicators: List[Dict]) -> bool:
+        """METHOD 6: Flange detection."""
+        if self.min_dim < 6 and is_hollow:
+            indicators.append({
+                'method': 'flange_detection',
+                'confidence': 0.6,
+                'evidence': "Thin walls with hollow structure suggest flanges"
+            })
+            return True
+        return False
+
+    def _check_relief_cuts(self, bend_count: int, indicators: List[Dict]) -> bool:
+        """METHOD 7: Relief cut detection."""
+        if bend_count >= 2 and self.volume_efficiency < 0.35:
+            indicators.append({
+                'method': 'relief_cut_inference',
+                'confidence': 0.5,
+                'evidence': "Multiple bends suggest relief cuts at corners"
+            })
+            return True
+        return False
+
+    def _compute_confidence(
+        self, bend_indicators: List[Dict],
+        has_thickness_discrepancy: bool, is_hollow: bool,
+        bend_count: int
+    ) -> tuple:
+        """Calculate overall confidence from all indicators."""
+        if not bend_indicators:
+            return 0.0, False
+        
+        weight_map = {
+            'thickness_discrepancy': 3.0,
+            'dimension_ratio': 1.5,
+            'volume_hollowness': 1.5,
+            'surface_excess': 1.0,
+            'u_bracket_pattern': 2.0,
+            'l_bracket_pattern': 1.5,
+            'mesh_complexity': 0.5,
+            'flange_detection': 0.8,
+            'relief_cut_inference': 0.5,
+        }
+        weighted_sum = sum(
+            float(ind['confidence']) * weight_map.get(str(ind['method']), 1.0)
+            for ind in bend_indicators
+        )
+        total_weight = sum(
+            weight_map.get(str(ind['method']), 1.0)
+            for ind in bend_indicators
+        )
+        overall_confidence = weighted_sum / total_weight if total_weight > 0 else 0.0
+        
+        if has_thickness_discrepancy and is_hollow:
+            overall_confidence = min(0.95, overall_confidence + 0.2)
+        
+        is_likely_bent = (
+            (overall_confidence > 0.55 and bend_count > 0)
+            or (bend_count >= 2 and overall_confidence > 0.45)
+            or (has_thickness_discrepancy and self.aspect_ratio > 8)
+        )
+        return overall_confidence, is_likely_bent
     
     def get_bend_detection_report(self, analysis: BendAnalysis) -> str:
         """

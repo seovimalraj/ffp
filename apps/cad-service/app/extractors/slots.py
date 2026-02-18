@@ -15,17 +15,128 @@ from ..models import SlotFeature, PocketFeature
 logger = logging.getLogger(__name__)
 
 
+def _dot3(a, b):
+    """Dot product of two 3-tuples."""
+    return a[0] * b[0] + a[1] * b[1] + a[2] * b[2]
+
+
+def _plane_normal(face, brep_tool, geom_plane, adaptor_cls=None, plane_type=None):
+    """Return the planar normal of *face* as a 3-tuple, or ``None``.
+
+    Uses BRepAdaptor_Surface when available for robust type detection.
+    """
+    # Prefer BRepAdaptor_Surface
+    if adaptor_cls is not None and plane_type is not None:
+        try:
+            adaptor = adaptor_cls(face)
+            if adaptor.GetType() == plane_type:
+                pln = adaptor.Plane()
+                d = pln.Axis().Direction()
+                return (d.X(), d.Y(), d.Z())
+        except Exception:
+            pass
+    # Fallback to DownCast
+    surf = brep_tool.Surface(face)
+    plane = geom_plane.DownCast(surf)
+    if plane is None:
+        return None
+    d = plane.Pln().Axis().Direction()
+    return (d.X(), d.Y(), d.Z())
+
+
+def _face_uv_spans(face, uv_bounds_fn):
+    """Return ``(u_span, v_span)`` of the face parameter bounds."""
+    try:
+        umin, umax, vmin, vmax = uv_bounds_fn(face)
+        return abs(umax - umin), abs(vmax - vmin)
+    except Exception:
+        return 0.0, 0.0
+
+
+def _collect_edge_neighbors(floor_face, edge_faces, explorer_cls, edge_type):
+    """Return the set of faces sharing an edge with *floor_face*."""
+    neighbors: set = set()
+    edge_exp = explorer_cls(floor_face, edge_type)
+    while edge_exp.More():
+        edge = edge_exp.Current()
+        edge_exp.Next()
+        if not edge_faces.Contains(edge):
+            continue
+        lst = edge_faces.FindFromKey(edge)
+        try:
+            faces = list(lst)
+        except Exception:
+            faces = []
+        for f2 in faces:
+            if not f2.IsSame(floor_face):
+                neighbors.add(f2)
+    return neighbors
+
+
+def _find_perp_walls(floor_normal, neighbors, brep_tool, geom_plane,
+                     adaptor_cls=None, plane_type=None):
+    """Return list of ``(face, normal)`` for neighbor faces perpendicular to *floor_normal*.
+
+    Uses BRepAdaptor_Surface when available for robust face-type detection.
+    """
+    walls = []
+    for nf in neighbors:
+        nv = _plane_normal(nf, brep_tool, geom_plane,
+                          adaptor_cls=adaptor_cls, plane_type=plane_type)
+        if nv is not None and abs(_dot3(floor_normal, nv)) <= 0.15:
+            walls.append((nf, nv))
+    return walls
+
+
+def _build_slot(
+    f1, n1, f2, n2,
+    floor_face, floor_normal, neighbors,
+    face_map, uv_bounds_fn, idx,
+) -> Optional[SlotFeature]:
+    """Try to build a ``SlotFeature`` from an anti-parallel wall pair."""
+    if _dot3(n1, n2) >= -0.9:
+        return None
+
+    floor_u, floor_v = _face_uv_spans(floor_face, uv_bounds_fn)
+    wall_u1, wall_v1 = _face_uv_spans(f1, uv_bounds_fn)
+    wall_u2, wall_v2 = _face_uv_spans(f2, uv_bounds_fn)
+
+    length = max(floor_u, floor_v)
+    width = min(floor_u, floor_v)
+    depth = max(wall_u1, wall_v1, wall_u2, wall_v2)
+
+    if width <= 0 or length / max(width, 0.01) < 1.8:
+        return None
+
+    end_caps = len(neighbors) - 2
+    slot_type = "blind" if end_caps >= 2 else "through"
+
+    fid1 = face_map.FindIndex(floor_face)
+    fid2 = face_map.FindIndex(f1)
+    fid3 = face_map.FindIndex(f2)
+
+    return SlotFeature(
+        id=f"SL-{idx:03d}",
+        length_mm=float(length),
+        width_mm=float(width),
+        depth_mm=float(depth),
+        slot_type=slot_type,
+        orientation=floor_normal,
+        face_ids=[int(fid1), int(fid2), int(fid3)],
+    )
+
+
 def extract_slots_from_shape(shape) -> List[SlotFeature]:
     """Detect slots from BREP shape using OCC face adjacency analysis.
 
     A slot is identified as a planar floor face with exactly two parallel
     planar side walls whose normals are anti-parallel, plus optional
     end-cap faces (for blind slots) or through openings.
+
+    Uses BRepAdaptor_Surface for robust surface-type detection when available.
     """
     try:
-        from OCC.Core.TopExp import TopExp_Explorer
-        from OCC.Core import TopExp
-
+        from OCC.Core.TopExp import TopExp_Explorer, topexp
         from OCC.Core.TopAbs import TopAbs_FACE, TopAbs_EDGE
         from OCC.Core.BRep import BRep_Tool
         from OCC.Core.Geom import Geom_Plane
@@ -34,126 +145,57 @@ def extract_slots_from_shape(shape) -> List[SlotFeature]:
             TopTools_IndexedMapOfShape,
             TopTools_IndexedDataMapOfShapeListOfShape,
         )
-        from OCC.Core.GProp import GProp_GProps
-        from OCC.Core.BRepGProp import brepgprop_SurfaceProperties, brepgprop_LinearProperties
     except Exception:
         logger.warning("OCC imports unavailable for slot extraction")
         return []
 
+    # Try importing BRepAdaptor for robust face-type detection
+    adaptor_cls = None
+    plane_type = None
+    try:
+        from OCC.Core.BRepAdaptor import BRepAdaptor_Surface
+        from OCC.Core.GeomAbs import GeomAbs_Plane
+        adaptor_cls = BRepAdaptor_Surface
+        plane_type = GeomAbs_Plane
+    except Exception:
+        pass
+
     face_map = TopTools_IndexedMapOfShape()
-    TopExp.MapShapes(shape, TopAbs_FACE, face_map)
+    topexp.MapShapes(shape, TopAbs_FACE, face_map)
 
     edge_faces = TopTools_IndexedDataMapOfShapeListOfShape()
-    TopExp.MapShapesAndAncestors(shape, TopAbs_EDGE, TopAbs_FACE, edge_faces)
+    topexp.MapShapesAndAncestors(shape, TopAbs_EDGE, TopAbs_FACE, edge_faces)
 
     slots: List[SlotFeature] = []
     idx = 1
 
-    def _dot(a, b):
-        return a[0] * b[0] + a[1] * b[1] + a[2] * b[2]
-
-    def _normal_vec(face):
-        surf = BRep_Tool.Surface(face)
-        plane = Geom_Plane.DownCast(surf)
-        if plane is None:
-            return None
-        d = plane.Pln().Axis().Direction()
-        return (d.X(), d.Y(), d.Z())
-
-    def _face_area(face) -> float:
-        props = GProp_GProps()
-        brepgprop_SurfaceProperties(face, props)
-        return float(props.Mass()) * 1e6  # m^2 -> mm^2
-
-    def _face_dims(face):
-        """Return (u_span, v_span) of face parameter bounds."""
-        try:
-            umin, umax, vmin, vmax = breptools_UVBounds(face)
-            return abs(umax - umin), abs(vmax - vmin)
-        except Exception:
-            return 0.0, 0.0
-
-    # Iterate floor candidates (planar faces)
     exp = TopExp_Explorer(shape, TopAbs_FACE)
     while exp.More():
         floor_face = exp.Current()
         exp.Next()
-        floor_normal = _normal_vec(floor_face)
+        floor_normal = _plane_normal(floor_face, BRep_Tool, Geom_Plane,
+                                     adaptor_cls=adaptor_cls, plane_type=plane_type)
         if floor_normal is None:
             continue
 
-        # Collect neighbors
-        neighbors = set()
-        edge_exp = TopExp_Explorer(floor_face, TopAbs_EDGE)
-        while edge_exp.More():
-            edge = edge_exp.Current()
-            edge_exp.Next()
-            if edge_faces.Contains(edge):
-                lst = edge_faces.FindFromKey(edge)
-                it = lst.cbegin()
-                while it.More():
-                    f2 = it.Value()
-                    it.Next()
-                    if not f2.IsSame(floor_face):
-                        neighbors.add(f2)
-
-        # Find walls perpendicular to floor
-        walls = []
-        for nf in neighbors:
-            nv = _normal_vec(nf)
-            if nv is None:
-                continue
-            if abs(_dot(floor_normal, nv)) <= 0.15:  # perpendicular
-                walls.append((nf, nv))
-
+        neighbors = _collect_edge_neighbors(floor_face, edge_faces, TopExp_Explorer, TopAbs_EDGE)
+        walls = _find_perp_walls(floor_normal, neighbors, BRep_Tool, Geom_Plane,
+                                 adaptor_cls=adaptor_cls, plane_type=plane_type)
         if len(walls) < 2:
             continue
 
-        # Find anti-parallel wall pairs (slot signature)
         for i in range(len(walls)):
             for j in range(i + 1, len(walls)):
-                f1, n1 = walls[i]
-                f2, n2 = walls[j]
-                if _dot(n1, n2) < -0.9:  # anti-parallel
-                    # This looks like a slot — compute dimensions
-                    floor_u, floor_v = _face_dims(floor_face)
-                    wall_u1, wall_v1 = _face_dims(f1)
-                    wall_u2, wall_v2 = _face_dims(f2)
-
-                    # Slot length = longer floor param bound
-                    # Slot depth = wall height, Slot width = shorter floor param bound
-                    length = max(floor_u, floor_v)
-                    width = min(floor_u, floor_v)
-                    depth = max(wall_u1, wall_v1, wall_u2, wall_v2)
-
-                    # Skip if not elongated (slot should be at least 2x longer than wide)
-                    if width <= 0 or length / max(width, 0.01) < 1.8:
-                        continue
-
-                    # Determine slot type
-                    # Count end-cap faces (non-floor, non-wall neighbors perpendicular to length axis)
-                    end_caps = len(neighbors) - 2  # subtract the two walls
-                    if end_caps >= 2:
-                        slot_type = "blind"
-                    else:
-                        slot_type = "through"
-
-                    fid1 = face_map.FindIndex(floor_face)
-                    fid2 = face_map.FindIndex(f1)
-                    fid3 = face_map.FindIndex(f2)
-
-                    slots.append(SlotFeature(
-                        id=f"SL-{idx:03d}",
-                        length_mm=float(length),
-                        width_mm=float(width),
-                        depth_mm=float(depth),
-                        slot_type=slot_type,
-                        orientation=floor_normal,
-                        face_ids=[int(fid1), int(fid2), int(fid3)],
-                    ))
+                slot = _build_slot(
+                    walls[i][0], walls[i][1], walls[j][0], walls[j][1],
+                    floor_face, floor_normal, neighbors,
+                    face_map, breptools_UVBounds, idx,
+                )
+                if slot is not None:
+                    slots.append(slot)
                     idx += 1
 
-    logger.info(f"Slot detection: found {len(slots)} slot(s)")
+    logger.info("Slot detection: found %d slot(s)", len(slots))
     return slots
 
 

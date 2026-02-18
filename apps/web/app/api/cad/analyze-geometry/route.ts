@@ -89,6 +89,30 @@ export async function POST(request: NextRequest) {
           estimatedMachiningTime: 0,
           materialWeight: 0,
           sheetMetalScore: 0,
+          // Complete GeometryData fields to prevent crashes on reload
+          partCharacteristics: {
+            isRotationalSymmetric: false,
+            isThinWalled: false,
+            hasCurvedSurfaces: false,
+            hasComplexFeatures: false,
+            aspectRatio: 1,
+          },
+          features: ['assembly'],
+          advancedFeatures: {
+            ribs: { count: 0, avgThickness: 0, minThickness: 0, thinRibCount: 0, deflectionRisk: 'low' },
+            holes: { count: 0, avgDiameter: 0, minDiameter: 0, maxDepth: 0, deepHoleCount: 0, blindHoleCount: 0, throughHoleCount: 0, threadedHoleCount: 0, requiresReaming: false, smallDiameterCount: 0, requiresEDM: false, microHoleCount: 0 },
+            bosses: { count: 0, avgHeight: 0, maxAspectRatio: 0, requiresThreading: false, requiresReaming: false },
+            fillets: { count: 0, avgRadius: 0, minRadius: 0, missingFilletCount: 0, stressConcentrationRisk: 0, blendRadiusCount: 0 },
+            pockets: { count: 0, avgDepth: 0, maxDepthRatio: 0, narrowPocketCount: 0, requiresEDM: false, thinWallPockets: 0, microPockets: 0, deepNarrowPockets: 0 },
+            threads: { count: 0, standardThreadCount: 0, customThreadCount: 0, internalCount: 0, externalCount: 0, finePitchCount: 0, requiresThreadMilling: false },
+            undercuts: { count: 0, internalCount: 0, externalCount: 0, requiresEDM: false, requiresSpecialTooling: false, maxDepth: 0 },
+            chamfers: { count: 0, avgSize: 0, deburringRequired: false },
+            thinWalls: { count: 0, minThickness: 0, avgThickness: 0, risk: 'low', requiresSupportFixture: false },
+            toolAccess: { restrictedAreas: 0, requiresIndexing: false, requiresMultiAxisMachining: false, estimatedSetupCount: 0, axisCounts: { '3-axis': 0, '4-axis': 0, '5-axis': 0 }, specialFixturingNeeded: false },
+            surfaceFinish: { estimatedRa: 0, criticalSurfaces: 0, requiresPolishing: false, requiresHoning: false },
+          },
+          recommendedSecondaryOps: [],
+          dfmIssues: [],
         });
       }
       
@@ -132,10 +156,186 @@ export async function POST(request: NextRequest) {
   }
 }
 
+// ---------- Type aliases ----------
+type DFMSeverity = 'info' | 'warning' | 'critical';
+type ComplexityLevel = 'simple' | 'moderate' | 'complex';
+type SmPartType = 'flat-pattern' | 'simple-enclosure' | 'complex-enclosure' | 'bracket' | 'panel' | 'chassis' | 'housing' | 'cabinet';
+type SmComplexity = 'simple' | 'moderate' | 'complex' | 'very-complex';
+interface DFMIssueEntry {
+  severity: DFMSeverity;
+  issue: string;
+  recommendation: string;
+  potentialSavings?: number;
+}
+interface GeometryContext {
+  backendData: any;
+  advancedMetrics: Record<string, any>;
+  boundingBox: { x: number; y: number; z: number };
+  detectedThickness: number | undefined;
+  thicknessConfidence: number;
+  thicknessMethod: string;
+  thicknessWarning: string | undefined;
+  bendData: ReturnType<typeof extractBendData>;
+  recommendedProcess: string;
+  processConfidence: number;
+  processReasoning: string;
+  sheetMetalScore: number;
+  volumeMm3: number;
+  complexity: ComplexityLevel;
+}
+
+// ---------- Helpers for transformBackendGeometry ----------
+
+function extractBendData(backendData: any) {
+  const advancedMetrics = backendData.advanced_metrics || {};
+  const bendAnalysis = advancedMetrics.bend_analysis || {};
+  const bendCount = bendAnalysis.bend_count || 0;
+  const bendConfidence = bendAnalysis.confidence || 0;
+  const isLikelyBent = bendAnalysis.is_likely_bent || false;
+  const bendComplexity = bendAnalysis.complexity || 0;
+
+  const stepBendAngles = backendData.step_bend_angles || null;
+  const hasStepBendData = !!(stepBendAngles && stepBendAngles.total_bend_count > 0);
+  const actualBendCount = hasStepBendData ? stepBendAngles.total_bend_count : bendCount;
+
+  return { bendCount, bendConfidence, isLikelyBent, bendComplexity, stepBendAngles, hasStepBendData, actualBendCount };
+}
+
+function resolveProcessConfidence(
+  backendConfidence: number | undefined,
+  recommendedProcess: string,
+  thicknessConfidence: number,
+  sheetMetalScore: number,
+): number {
+  if (typeof backendConfidence === 'number' && backendConfidence > 0) {
+    return backendConfidence;
+  }
+  if (recommendedProcess !== 'sheet-metal') {
+    return Math.min(0.9, (100 - sheetMetalScore) / 100);
+  }
+  if (thicknessConfidence > 0.6) {
+    return Math.min(0.95, (sheetMetalScore / 100) * 0.7 + thicknessConfidence * 0.3);
+  }
+  return Math.min(0.85, sheetMetalScore / 100);
+}
+
+function resolveProcessReasoning(
+  backendReasoning: string | undefined,
+  detectedThickness: number | undefined,
+  thicknessConfidence: number,
+  recommendedProcess: string,
+  sheetMetalScore: number,
+): string {
+  if (typeof backendReasoning === 'string' && backendReasoning.length > 0) {
+    return backendReasoning;
+  }
+  if (detectedThickness && thicknessConfidence > 0.6) {
+    return `Detected ${detectedThickness.toFixed(2)}mm wall thickness using ray-casting (${(thicknessConfidence * 100).toFixed(0)}% confidence)`;
+  }
+  if (recommendedProcess === 'sheet-metal') {
+    return `Sheet metal characteristics detected (score: ${sheetMetalScore.toFixed(0)}/100)`;
+  }
+  return 'CNC characteristics detected (solid part or varying thickness)';
+}
+
+function sanitizeVolumeMm3(backendVolume: number, boundingBox: { x: number; y: number; z: number }): number {
+  let volumeMm3 = (backendVolume || 0) * 1000;
+  const bboxVolume = boundingBox.x * boundingBox.y * boundingBox.z;
+  if (volumeMm3 > bboxVolume * 2 || volumeMm3 > 10000000 || volumeMm3 < 0.001) {
+    volumeMm3 = bboxVolume * 0.6;
+  }
+  return volumeMm3;
+}
+
+function resolveComplexity(backendData: any, recommendedProcess: string, bendCount: number): ComplexityLevel {
+  if (backendData.complexity && ['simple', 'moderate', 'complex'].includes(backendData.complexity)) {
+    return backendData.complexity;
+  }
+  return calcFallbackComplexity(backendData, recommendedProcess, bendCount);
+}
+
+function calcFallbackComplexity(backendData: any, recommendedProcess: string, bendCount: number): ComplexityLevel {
+  const pf = backendData.primitive_features || {};
+  let score = 0;
+  score += scoreFromThresholds(pf.holes || 0, 15, 30, 8, 20, 3, 10);
+  score += scoreFromThresholds(pf.pockets || 0, 8, 25, 4, 15, 1, 8);
+  score += scoreFromThresholds(pf.faces || 0, 10000, 20, 5000, 12, 2000, 6);
+  if (recommendedProcess === 'sheet-metal' && bendCount > 0) {
+    score += scoreFromThresholds(bendCount, 5, 25, 2, 15, 0, 8);
+  }
+  if (score >= 45) return 'complex';
+  if (score >= 20) return 'moderate';
+  return 'simple';
+}
+
+function scoreFromThresholds(
+  value: number,
+  highThresh: number, highPts: number,
+  midThresh: number, midPts: number,
+  lowThresh: number, lowPts: number,
+): number {
+  if (value > highThresh) return highPts;
+  if (value > midThresh) return midPts;
+  if (value > lowThresh) return lowPts;
+  return 0;
+}
+
+function resolveBendAngles(hasStepBendData: boolean, stepBendAngles: any, bendCount: number): number[] {
+  if (hasStepBendData) {
+    return stepBendAngles.bends.map((b: any) => b.angle_deg);
+  }
+  if (bendCount > 0) {
+    return new Array(Math.min(bendCount, 10)).fill(90);
+  }
+  return [];
+}
+
+function resolveBendArray(hasStepBendData: boolean, stepBendAngles: any, bendCount: number, detectedThickness: number | undefined, boundingBox: { x: number; y: number; z: number }): any[] {
+  if (hasStepBendData) {
+    return stepBendAngles.bends.map((b: any) => ({
+      angle: b.angle_deg,
+      radius: b.radius_mm,
+      length: b.length_mm,
+      type: b.bend_type,
+      kFactor: b.k_factor,
+      bendDeduction: b.bend_deduction_mm,
+      isAcute: b.is_acute,
+      isObtuse: b.is_obtuse,
+    }));
+  }
+  if (bendCount > 0) {
+    return Array.from({ length: Math.min(bendCount, 20) }, (_, i) => ({
+      angle: 90,
+      radius: (detectedThickness || 2) * 1.5,
+      length: Math.max(boundingBox.x, boundingBox.y) * 0.5,
+      index: i,
+    }));
+  }
+  return [];
+}
+
+function resolveSmPartType(bendCount: number): SmPartType {
+  if (bendCount > 4) return 'complex-enclosure';
+  if (bendCount > 1) return 'bracket';
+  return 'flat-pattern';
+}
+
+function resolveSmComplexity(bendCount: number): SmComplexity {
+  if (bendCount > 8) return 'complex';
+  if (bendCount > 3) return 'moderate';
+  return 'simple';
+}
+
+function mapCostImpactToSavings(costImpact: string | undefined): number {
+  if (costImpact === 'high') return 50;
+  if (costImpact === 'medium') return 25;
+  return 10;
+}
+
 /**
  * Transform backend Python analysis to frontend TypeScript GeometryData format
  */
-function transformBackendGeometry(backendData: any, fileName: string): any {
+function transformBackendGeometry(backendData: any, _fileName: string): any {
   const bbox = backendData.bbox || { min: { x: 0, y: 0, z: 0 }, max: { x: 0, y: 0, z: 0 } };
   const boundingBox = {
     x: bbox.max.x - bbox.min.x,
@@ -143,155 +343,75 @@ function transformBackendGeometry(backendData: any, fileName: string): any {
     z: bbox.max.z - bbox.min.z
   };
 
-  // Extract advanced metrics
   const advancedMetrics = backendData.advanced_metrics || {};
   const detectedThickness = advancedMetrics.detected_thickness_mm || backendData.thickness;
   const thicknessConfidence = advancedMetrics.thickness_confidence || 0.5;
   const thicknessMethod = advancedMetrics.thickness_detection_method || 'bbox_approximation';
-  
-  // === EXTRACT BEND ANALYSIS FROM BACKEND ===
-  const bendAnalysis = advancedMetrics.bend_analysis || {};
-  const bendCount = bendAnalysis.bend_count || 0;
-  const bendConfidence = bendAnalysis.confidence || 0;
-  const isLikelyBent = bendAnalysis.is_likely_bent || false;
-  const bendComplexity = bendAnalysis.complexity || 0;
-  
-  // === STEP BEND ANGLES (high-fidelity, from pythonOCC face-pair analysis) ===
-  const stepBendAngles = backendData.step_bend_angles || null;
-  const hasStepBendData = stepBendAngles && stepBendAngles.total_bend_count > 0;
-  const actualBendCount = hasStepBendData ? stepBendAngles.total_bend_count : bendCount;
-  
-  if (hasStepBendData) {
-    console.log('🔧 STEP Bend Angles (high-fidelity):', {
-      count: stepBendAngles.total_bend_count,
-      angles: `${stepBendAngles.min_angle_deg}°–${stepBendAngles.max_angle_deg}°`,
-      radii: `${stepBendAngles.min_radius_mm}–${stepBendAngles.max_radius_mm}mm`,
-      hasAcute: stepBendAngles.has_acute_bends,
-      hasObtuse: stepBendAngles.has_obtuse_bends,
-    });
-  }
-  
-  console.log('🔧 Bend Analysis:', { bendCount: actualBendCount, isLikelyBent, bendConfidence, bendComplexity });
 
-  // Map backend process type to frontend format
+  const bendData = extractBendData(backendData);
+
   const processMap: Record<string, string> = {
     'sheet_metal': 'sheet-metal',
     'cnc_milling': 'cnc-milling',
     'cnc_turning': 'cnc-turning',
+    'assembly': 'manual-quote',
   };
   const recommendedProcess = processMap[backendData.process_type] || 'cnc-milling';
-
-  // === USE BACKEND CLASSIFICATION CONFIDENCE ===
-  // The Python backend runs sophisticated multi-tier classification
-  // (advanced thickness, bend detection, CNC guards, ML ensemble) and returns
-  // a well-calibrated confidence score. Use it directly instead of recalculating.
-  const backendConfidence = advancedMetrics.classification_confidence;
   const sheetMetalScore = backendData.sheet_metal_score || 0;
-  let processConfidence: number;
-  
-  if (typeof backendConfidence === 'number' && backendConfidence > 0) {
-    processConfidence = backendConfidence;
-  } else {
-    // Fallback: approximate confidence from sheet metal score (legacy paths only)
-    if (recommendedProcess === 'sheet-metal') {
-      processConfidence = thicknessConfidence > 0.6 
-        ? Math.min(0.95, (sheetMetalScore / 100) * 0.7 + thicknessConfidence * 0.3)
-        : Math.min(0.85, sheetMetalScore / 100);
-    } else {
-      processConfidence = Math.min(0.90, (100 - sheetMetalScore) / 100);
-    }
-  }
 
-  // === USE BACKEND REASONING ===
-  // The classification engine provides detailed reasoning; forward it.
-  const backendReasoning = advancedMetrics.reasoning;
-  let processReasoning = '';
-  if (typeof backendReasoning === 'string' && backendReasoning.length > 0) {
-    processReasoning = backendReasoning;
-  } else if (detectedThickness && thicknessConfidence > 0.6) {
-    processReasoning = `Detected ${detectedThickness.toFixed(2)}mm wall thickness using ray-casting (${(thicknessConfidence * 100).toFixed(0)}% confidence)`;
-  } else if (recommendedProcess === 'sheet-metal') {
-    processReasoning = `Sheet metal characteristics detected (score: ${sheetMetalScore.toFixed(0)}/100)`;
-  } else {
-    processReasoning = `CNC characteristics detected (solid part or varying thickness)`;
-  }
+  const processConfidence = resolveProcessConfidence(
+    advancedMetrics.classification_confidence,
+    recommendedProcess, thicknessConfidence, sheetMetalScore,
+  );
+  const processReasoning = resolveProcessReasoning(
+    advancedMetrics.reasoning,
+    detectedThickness, thicknessConfidence, recommendedProcess, sheetMetalScore,
+  );
 
-  // Warning if bbox approximation used
   let thicknessWarning: string | undefined;
   if (thicknessMethod === 'bbox_approximation' && thicknessConfidence < 0.7) {
     thicknessWarning = 'Using bounding box approximation. Actual wall thickness may differ for bent sheet metal parts.';
   }
 
-  // Sanity check: Prevent absurd volumes from corrupting pricing
-  // Reasonable part volumes: 1 mm³ to 10,000,000 mm³ (10 liters)
-  let volumeMm3 = (backendData.volume || 0) * 1000; // Convert cm³ to mm³
-  const bboxVolume = boundingBox.x * boundingBox.y * boundingBox.z;
-  
-  if (volumeMm3 > bboxVolume * 2 || volumeMm3 > 10000000 || volumeMm3 < 0.001) {
-    console.warn(`⚠️ Suspicious volume detected: ${volumeMm3.toFixed(0)} mm³ (bbox: ${bboxVolume.toFixed(0)} mm³)`);
-    console.warn(`   Using estimated volume from bounding box instead`);
-    volumeMm3 = bboxVolume * 0.6; // Estimate 60% fill for typical parts
-  }
-  
-  // === ENTERPRISE COMPLEXITY CALCULATION ===
-  // Use backend complexity if available, otherwise calculate from features
-  let complexity: 'simple' | 'moderate' | 'complex' = 'simple';
-  
-  if (backendData.complexity && ['simple', 'moderate', 'complex'].includes(backendData.complexity)) {
-    complexity = backendData.complexity;
-    console.log(`✅ Using backend complexity: ${complexity} (score: ${backendData.complexity_score || 'N/A'})`);
-  } else {
-    // Fallback: Calculate complexity from primitive features
-    const holeCount = backendData.primitive_features?.holes || 0;
-    const pocketCount = backendData.primitive_features?.pockets || 0;
-    const faceCount = backendData.primitive_features?.faces || 0;
-    
-    let complexityScore = 0;
-    
-    // Feature-based scoring
-    if (holeCount > 15) complexityScore += 30;
-    else if (holeCount > 8) complexityScore += 20;
-    else if (holeCount > 3) complexityScore += 10;
-    
-    if (pocketCount > 8) complexityScore += 25;
-    else if (pocketCount > 4) complexityScore += 15;
-    else if (pocketCount > 1) complexityScore += 8;
-    
-    // Triangle/face complexity
-    if (faceCount > 10000) complexityScore += 20;
-    else if (faceCount > 5000) complexityScore += 12;
-    else if (faceCount > 2000) complexityScore += 6;
-    
-    // Bend complexity for sheet metal
-    if (recommendedProcess === 'sheet-metal' && bendCount > 0) {
-      if (bendCount > 5) complexityScore += 25;
-      else if (bendCount > 2) complexityScore += 15;
-      else complexityScore += 8;
-    }
-    
-    complexity = complexityScore >= 45 ? 'complex' : complexityScore >= 20 ? 'moderate' : 'simple';
-    console.log(`📊 Calculated complexity: ${complexity} (score: ${complexityScore})`);
-  }
-  
+  const volumeMm3 = sanitizeVolumeMm3(backendData.volume, boundingBox);
+  const complexity = resolveComplexity(backendData, recommendedProcess, bendData.bendCount);
+
+  return buildGeometryResult({
+    backendData, advancedMetrics, boundingBox, detectedThickness,
+    thicknessConfidence, thicknessMethod, thicknessWarning,
+    bendData, recommendedProcess, processConfidence, processReasoning,
+    sheetMetalScore, volumeMm3, complexity,
+  });
+}
+
+function buildGeometryResult(ctx: GeometryContext): any {
+  const { backendData, advancedMetrics, boundingBox, detectedThickness, thicknessConfidence, thicknessMethod, thicknessWarning } = ctx;
+  const { bendData, recommendedProcess, processConfidence, processReasoning, sheetMetalScore, volumeMm3, complexity } = ctx;
+  const { actualBendCount, bendConfidence, isLikelyBent, bendComplexity, stepBendAngles, hasStepBendData, bendCount } = bendData;
+
   return {
     volume: volumeMm3,
-    surfaceArea: (backendData.surface_area || 0) * 100, // Convert cm² to mm²
+    surfaceArea: (backendData.surface_area || 0) * 100,
     boundingBox,
-    complexity,  // Use our calculated complexity, not the fallback
+    complexity,
     estimatedMachiningTime: estimateMachiningTime(backendData),
     materialWeight: calculateMaterialWeight(backendData.volume || 0),
     recommendedProcess,
     processConfidence,
     processReasoning,
     sheetMetalScore,
-    
-    // Enterprise-level thickness detection metadata
+    // Assembly / manual-quote flags — propagate from backend
+    isAssembly: backendData.is_assembly === true,
+    requiresManualQuote: backendData.requires_manual_quote === true || recommendedProcess === 'manual-quote',
+    manualQuoteReason: backendData.manual_quote_reason || (recommendedProcess === 'manual-quote' ? 'Assembly or complex part requires manual quoting' : undefined),
+    needsReview: advancedMetrics.needs_review === true,
+    classificationMethod: advancedMetrics.classification_method || 'unknown',
+    machiningFeatureScore: advancedMetrics.machining_feature_score || 0,
+    faceClassification: advancedMetrics.face_classification || null,
     detectedWallThickness: detectedThickness,
     thicknessConfidence,
     thicknessDetectionMethod: thicknessMethod,
     thicknessWarning,
-    
-    // === DFM ANALYSIS METADATA FROM BACKEND ===
     dfmAnalysis: backendData.dfm_analysis ? {
       overallScore: backendData.dfm_analysis.overall_score || 100,
       rating: backendData.dfm_analysis.rating || 'excellent',
@@ -300,7 +420,6 @@ function transformBackendGeometry(backendData: any, fileName: string): any {
       recommendations: backendData.dfm_analysis.recommendations || [],
       costOptimizations: backendData.dfm_analysis.cost_optimization_opportunities || []
     } : undefined,
-    
     partCharacteristics: {
       isRotationalSymmetric: false,
       isThinWalled: detectedThickness ? detectedThickness < 3 : false,
@@ -308,18 +427,14 @@ function transformBackendGeometry(backendData: any, fileName: string): any {
       hasComplexFeatures: (backendData.primitive_features?.pockets || 0) > 5,
       aspectRatio: Math.max(boundingBox.x, boundingBox.y, boundingBox.z) / Math.min(boundingBox.x, boundingBox.y, boundingBox.z)
     },
-    
     advancedFeatures: {
       ribs: { count: 0, avgThickness: 2, minThickness: 2, thinRibCount: 0, deflectionRisk: 'low' as const },
       holes: extractHoleFeatures(backendData),
       bosses: { count: backendData.primitive_features?.bosses || 0, avgHeight: 5, maxAspectRatio: 2, requiresThreading: false, requiresReaming: false },
       fillets: {
         count: backendData.primitive_features?.fillets || 0,
-        avgRadius: 2,
-        minRadius: 1,
-        missingFilletCount: 0,
-        stressConcentrationRisk: 0,
-        blendRadiusCount: 0
+        avgRadius: 2, minRadius: 1, missingFilletCount: 0,
+        stressConcentrationRisk: 0, blendRadiusCount: 0
       },
       pockets: extractPocketFeatures(backendData),
       threads: extractThreadFeatures(backendData),
@@ -329,51 +444,19 @@ function transformBackendGeometry(backendData: any, fileName: string): any {
       toolAccess: { restrictedAreas: 0, requiresIndexing: false, requiresMultiAxisMachining: false, estimatedSetupCount: 1, axisCounts: { '3-axis': 1, '4-axis': 0, '5-axis': 0 }, specialFixturingNeeded: false },
       surfaceFinish: { estimatedRa: 3.2, criticalSurfaces: 0, requiresPolishing: false, requiresHoning: false }
     },
-    
-    // === SHEET METAL FEATURES FROM BACKEND BEND DETECTION ===
-    sheetMetalFeatures: {
+    sheetMetalFeatures: recommendedProcess === 'sheet-metal' ? {
       thickness: detectedThickness || Math.min(boundingBox.x, boundingBox.y, boundingBox.z),
-      flatArea: (backendData.surface_area || 0) * 100 * 0.5, // Approximate flat area
+      flatArea: (backendData.surface_area || 0) * 100 * 0.5,
       developedLength: 2 * (boundingBox.x + boundingBox.y) * (1 + bendCount * 0.05),
       perimeterLength: 2 * (boundingBox.x + boundingBox.y),
-      
-      // BEND DATA FROM BACKEND
       bendCount: actualBendCount,
-      bendAngles: hasStepBendData
-        ? stepBendAngles.bends.map((b: any) => b.angle_deg)
-        : (bendCount > 0 ? Array(Math.min(bendCount, 10)).fill(90) : []),
-      minBendRadius: hasStepBendData
-        ? stepBendAngles.min_radius_mm
-        : (detectedThickness || 2) * 1.0,
-      maxBendRadius: hasStepBendData
-        ? stepBendAngles.max_radius_mm
-        : (detectedThickness || 2) * 3.0,
+      bendAngles: resolveBendAngles(hasStepBendData, stepBendAngles, bendCount),
+      minBendRadius: hasStepBendData ? stepBendAngles.min_radius_mm : (detectedThickness || 2),
+      maxBendRadius: hasStepBendData ? stepBendAngles.max_radius_mm : (detectedThickness || 2) * 3,
       hasSharptBends: hasStepBendData
         ? stepBendAngles.has_acute_bends
         : (bendCount > 0 && (detectedThickness || 2) > 2),
-      
-      // Bend array for pricing engine (PricingStrategy reads .bends?.length and .bends?.some())
-      bends: hasStepBendData
-        ? stepBendAngles.bends.map((b: any) => ({
-            angle: b.angle_deg,
-            radius: b.radius_mm,
-            length: b.length_mm,
-            type: b.bend_type,
-            kFactor: b.k_factor,
-            bendDeduction: b.bend_deduction_mm,
-            isAcute: b.is_acute,
-            isObtuse: b.is_obtuse,
-          }))
-        : (bendCount > 0
-          ? Array.from({ length: Math.min(bendCount, 20) }, (_, i) => ({
-              angle: 90,
-              radius: (detectedThickness || 2) * 1.5,
-              length: Math.max(boundingBox.x, boundingBox.y) * 0.5,
-              index: i
-            }))
-          : []),
-      
-      // STEP bend extraction metadata
+      bends: resolveBendArray(hasStepBendData, stepBendAngles, bendCount, detectedThickness, boundingBox),
       stepBendData: hasStepBendData ? {
         totalBendLength: stepBendAngles.total_bend_length_mm,
         avgAngle: stepBendAngles.avg_angle_deg,
@@ -381,69 +464,45 @@ function transformBackendGeometry(backendData: any, fileName: string): any {
         sequenceComplexity: stepBendAngles.bend_sequence_complexity,
         confidence: stepBendAngles.confidence,
       } : undefined,
-      
-      // Cutting features (estimated)
       holeCount: backendData.primitive_features?.holes || 0,
       totalHoleDiameter: (backendData.primitive_features?.holes || 0) * Math.PI * 5,
       cornerCount: 4 + bendCount * 2,
       complexCuts: Math.floor(bendComplexity / 20),
       straightCutLength: 2 * (boundingBox.x + boundingBox.y),
       curvedCutLength: bendComplexity > 30 ? 50 : 0,
-      
-      // Forming features (inferred from bend analysis)
       hasHems: bendCount > 4,
       hasCountersinks: (backendData.primitive_features?.holes || 0) > 8,
       hasLouvers: bendCount > 6 && bendComplexity > 50,
       hasEmbossments: bendComplexity > 60,
       hasLances: bendComplexity > 70,
       flangeCount: Math.floor(bendCount / 2),
-      
-      // Manufacturing complexity
       hasSmallFeatures: (detectedThickness || 2) < 1.5,
       hasTightTolerance: bendCount > 5 && (detectedThickness || 2) < 2,
       requiresMultipleSetups: bendCount > 10,
       nestingEfficiency: Math.max(0.6, 0.85 - bendCount * 0.01),
-      
-      // Process recommendations (required by interface)
       recommendedCuttingMethod: 'laser' as const,
       recommendedBendingMethod: 'press-brake' as const,
-      estimatedCuttingTime: Math.max(1, 2 * (boundingBox.x + boundingBox.y) / 1000 * 0.5), // perimeter-based
-      estimatedFormingTime: Math.max(0.5, bendCount * 0.3), // per-bend time
-      
-      // Part classification
-      partType: bendCount > 4 ? 'complex-enclosure' : bendCount > 1 ? 'bracket' : 'flat-pattern' as 'flat-pattern' | 'simple-enclosure' | 'complex-enclosure' | 'bracket' | 'panel' | 'chassis' | 'housing' | 'cabinet',
-      complexity: bendCount > 8 ? 'complex' : bendCount > 3 ? 'moderate' : 'simple' as 'simple' | 'moderate' | 'complex' | 'very-complex',
-      
-      // Backend analysis info
-      bendConfidence: bendConfidence,
-      isLikelyBent: isLikelyBent
-    },
-    
+      estimatedCuttingTime: Math.max(1, 2 * (boundingBox.x + boundingBox.y) / 1000 * 0.5),
+      estimatedFormingTime: Math.max(0.5, bendCount * 0.3),
+      partType: resolveSmPartType(bendCount),
+      complexity: resolveSmComplexity(bendCount),
+      bendConfidence,
+      isLikelyBent,
+    } : undefined,
     recommendedSecondaryOps: [],
     dfmIssues: transformDFMIssues(backendData.dfm_analysis),
-    
-    // === FORWARD ADDITIONAL BACKEND DATA ===
-    // Grain direction analysis (sheet metal only)
     grainDirection: backendData.grain_direction ? {
       recommended: backendData.grain_direction.recommended,
       score: backendData.grain_direction.score,
       notes: backendData.grain_direction.notes || []
     } : undefined,
-    
-    // Nesting optimization (sheet metal only)
     nesting: backendData.nesting ? {
       partsPerSheet: backendData.nesting.parts_per_sheet,
       utilizationPct: backendData.nesting.utilization_pct,
       sheetSize: backendData.nesting.sheet_size
     } : undefined,
-    
-    // Validation results from backend
     validation: backendData.validation || undefined,
-    
-    // Numeric complexity score for fine-grained pricing
     complexityScore: backendData.complexity_score || 0,
-    
-    // Feature tags for quick lookups
     features: generateFeatureTags(backendData, recommendedProcess, bendCount, detectedThickness)
   };
 }
@@ -451,16 +510,15 @@ function transformBackendGeometry(backendData: any, fileName: string): any {
 /**
  * Transform backend DFM analysis to frontend dfmIssues format
  */
-function transformDFMIssues(dfmAnalysis: any): { severity: 'info' | 'warning' | 'critical'; issue: string; recommendation: string; potentialSavings?: number }[] {
-  if (!dfmAnalysis || !dfmAnalysis.issues) {
+function transformDFMIssues(dfmAnalysis: any): DFMIssueEntry[] {
+  if (!dfmAnalysis?.issues) {
     return [];
   }
 
-  const issues: { severity: 'info' | 'warning' | 'critical'; issue: string; recommendation: string; potentialSavings?: number }[] = [];
+  const issues: DFMIssueEntry[] = [];
 
   for (const issue of dfmAnalysis.issues) {
-    // Map backend severity to frontend severity
-    let severity: 'info' | 'warning' | 'critical' = 'info';
+    let severity: DFMSeverity = 'info';
     if (issue.severity === 'error' || issue.severity === 'critical') {
       severity = 'critical';
     } else if (issue.severity === 'warning') {
@@ -471,35 +529,25 @@ function transformDFMIssues(dfmAnalysis: any): { severity: 'info' | 'warning' | 
       severity,
       issue: issue.title || issue.description || 'Unknown issue',
       recommendation: issue.recommendation || '',
-      potentialSavings: issue.cost_impact === 'high' ? 50 : issue.cost_impact === 'medium' ? 25 : 10
+      potentialSavings: mapCostImpactToSavings(issue.cost_impact),
     });
   }
 
-  // Add recommendations as info-level issues
+  appendRecommendations(issues, dfmAnalysis);
+  return issues;
+}
+
+function appendRecommendations(issues: DFMIssueEntry[], dfmAnalysis: any): void {
   if (dfmAnalysis.recommendations) {
     for (const rec of dfmAnalysis.recommendations) {
-      issues.push({
-        severity: 'info',
-        issue: 'Optimization opportunity',
-        recommendation: rec
-      });
+      issues.push({ severity: 'info', issue: 'Optimization opportunity', recommendation: rec });
     }
   }
-
-  // Add cost optimization opportunities
   if (dfmAnalysis.cost_optimization_opportunities) {
     for (const opt of dfmAnalysis.cost_optimization_opportunities) {
-      issues.push({
-        severity: 'info',
-        issue: 'Cost optimization',
-        recommendation: opt,
-        potentialSavings: 15
-      });
+      issues.push({ severity: 'info', issue: 'Cost optimization', recommendation: opt, potentialSavings: 15 });
     }
   }
-
-  console.log(`📋 Transformed ${issues.length} DFM issues from backend analysis`);
-  return issues;
 }
 
 /**
@@ -679,12 +727,44 @@ function extractPocketFeatures(backendData: any): {
 }
 
 function estimateMachiningTime(data: any): number {
-  const volume = data.volume || 0;
+  const volume = data.volume || 0;  // cm³
+  const surfaceArea = data.surface_area || 0;  // cm²
   const holes = data.primitive_features?.holes || 0;
   const pockets = data.primitive_features?.pockets || 0;
-  
-  // Rough estimation: 0.5 min per cm³ + 1 min per hole + 3 min per pocket
-  return Math.max(5, volume * 0.5 + holes * 1 + pockets * 3);
+  const threads = data.primitive_features?.threads || 0;
+  const slots = data.primitive_features?.slots || 0;
+  const fillets = data.primitive_features?.fillets || 0;
+  const complexity = data.complexity || 'moderate';
+
+  // Base time: material removal rate ~2-5 cm³/min for aluminum
+  const volumeTime = volume * 0.5;
+
+  // Feature times (minutes)
+  const holeTime = holes * 1;             // drilling + deburring
+  const pocketTime = pockets * 3;         // roughing + finishing passes
+  const threadTime = threads * 2;         // tapping cycles
+  const slotTime = slots * 1.5;           // slotting operations
+  const filletTime = fillets * 0.3;       // finishing passes on radii
+
+  // Surface finishing based on surface area
+  const finishTime = surfaceArea * 0.05;
+
+  // Complexity multiplier for multi-axis, tight tolerances, etc.
+  const complexityMult = { simple: 0.8, moderate: 1, complex: 1.4 }[complexity] || 1;
+
+  const rawTime = (volumeTime + holeTime + pocketTime + threadTime + slotTime + filletTime + finishTime) * complexityMult;
+
+  // Setup time component (loading, fixturing, tool changes)
+  const setupComponent = 5;  // minimum 5 min for any CNC part
+
+  // Bounding box based floor: even a tiny CNC part needs minimum fixturing time
+  const bbox = data.bbox || {};
+  const bboxX = (bbox.max?.x || 0) - (bbox.min?.x || 0);
+  const bboxY = (bbox.max?.y || 0) - (bbox.min?.y || 0);
+  const bboxZ = (bbox.max?.z || 0) - (bbox.min?.z || 0);
+  const bboxVolumeFloor = (bboxX * bboxY * bboxZ) / 1000 * 0.1;  // rough floor from bbox
+
+  return Math.max(setupComponent, rawTime, bboxVolumeFloor);
 }
 
 function calculateMaterialWeight(volumeCm3: number): number {

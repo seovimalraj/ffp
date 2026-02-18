@@ -110,6 +110,8 @@ function normalizeProcessString(rawProcess: string | undefined | null): string {
     sheet_metal: "sheet-metal",
     cnc_milling: "cnc-milling",
     cnc_turning: "cnc-turning",
+    manual_quote: "manual-quote",
+    assembly: "manual-quote",
   };
 
   return processMap[process] || process || "cnc-milling";
@@ -281,6 +283,9 @@ export const calculateLeadTime = (
     part.process || part.geometry?.recommendedProcess,
   );
 
+  // Manual-quote parts (assemblies) get default lead time
+  if (processType === "manual-quote") return 7;
+
   const material = getMaterialForProcess(part.material, processType);
   if (!material) return 7;
 
@@ -313,6 +318,10 @@ const calculatePrice = (
   const processType = normalizeProcessString(
     part.process || part.geometry?.recommendedProcess,
   );
+
+  // Short-circuit for manual-quote parts — they should always show $0
+  // Assembly parts and other manual-quote parts must not go through CNC/SM pricing
+  if (processType === "manual-quote") return 0;
 
   // Get material based on process type
   const material = getMaterialByValue(part.material, processType);
@@ -554,6 +563,8 @@ export default function QuoteConfigPage() {
                   confidence: geometry.thicknessConfidence,
                   method: geometry.thicknessDetectionMethod,
                   sheetMetalScore: geometry.sheetMetalScore,
+                  isAssembly: geometry.isAssembly,
+                  needsReview: geometry.needsReview,
                 });
               } else {
                 const errorText = await analysisResponse.text();
@@ -576,6 +587,15 @@ export default function QuoteConfigPage() {
           }
 
           console.log(`Geometry analysis complete:`, geometry);
+
+          // Explicit assembly check — ensure assembly detection propagates
+          // even if client-side fallback was used
+          if (geometry?.isAssembly && geometry.recommendedProcess !== "manual-quote") {
+            console.log(`🔧 Assembly detected for ${file.name} — forcing manual-quote`);
+            geometry.recommendedProcess = "manual-quote";
+            geometry.requiresManualQuote = true;
+            geometry.manualQuoteReason = geometry.manualQuoteReason || "Assembly detected — multiple bodies require manual review";
+          }
 
           // Map recommendedProcess to process field
           const processMap: Record<string, string> = {
@@ -1013,7 +1033,8 @@ export default function QuoteConfigPage() {
               };
 
               // Recalculate Pricing Object
-              if (part.geometry) {
+              // Skip pricing for manual-quote parts (assemblies) — they must show $0
+              if (part.geometry && normalizedProcess !== "manual-quote") {
                 // CRITICAL: Use the already-normalized process, not the raw DB value
                 const processType = normalizedProcess;
                 const material = getMaterialForProcess(
@@ -1181,7 +1202,8 @@ export default function QuoteConfigPage() {
     }
 
     // Recalculate pricing if geometry exists
-    if (updatedPart.geometry) {
+    // Skip pricing for manual-quote parts (assemblies) — they must show $0
+    if (updatedPart.geometry && normalizeProcessString(updatedPart.process) !== "manual-quote") {
       // CRITICAL: Normalize process to prevent underscore-format mismatches
       const processType = normalizeProcessString(
         updatedPart.process || updatedPart.geometry?.recommendedProcess,

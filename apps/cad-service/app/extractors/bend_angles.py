@@ -85,6 +85,155 @@ class BendExtractionResult:
         }
 
 
+def _try_import_occ():
+    """Import OCC modules, returning None if not available."""
+    try:
+        from OCC.Core.TopExp import TopExp_Explorer, topexp
+        from OCC.Core.TopAbs import TopAbs_EDGE, TopAbs_FACE
+        from OCC.Core.TopoDS import topods
+        from OCC.Core.BRep import BRep_Tool
+        from OCC.Core.BRepAdaptor import BRepAdaptor_Surface, BRepAdaptor_Curve
+        from OCC.Core.GeomAbs import (
+            GeomAbs_Plane, GeomAbs_Cylinder, GeomAbs_Cone,
+            GeomAbs_Torus,
+        )
+        from OCC.Core.TopTools import TopTools_IndexedDataMapOfShapeListOfShape
+        from OCC.Core.gp import gp_Vec, gp_Pnt
+        from OCC.Core.BRepGProp import brepgprop
+        from OCC.Core.GProp import GProp_GProps
+        return {
+            'topexp': topexp, 'TopAbs_EDGE': TopAbs_EDGE, 'TopAbs_FACE': TopAbs_FACE,
+            'topods': topods, 'BRepAdaptor_Surface': BRepAdaptor_Surface,
+            'BRepAdaptor_Curve': BRepAdaptor_Curve,
+            'GeomAbs_Plane': GeomAbs_Plane, 'GeomAbs_Cylinder': GeomAbs_Cylinder,
+            'TopTools_IndexedDataMapOfShapeListOfShape': TopTools_IndexedDataMapOfShapeListOfShape,
+            'gp_Vec': gp_Vec, 'gp_Pnt': gp_Pnt,
+            'brepgprop': brepgprop, 'GProp_GProps': GProp_GProps,
+        }
+    except ImportError:
+        return None
+
+
+def _check_plane_plane_bend(surf1, surf2, edge, t, occ):
+    """Check if two planar faces form a bend at their shared edge."""
+    adaptor_curve_cls = occ['BRepAdaptor_Curve']
+    gprops_cls = occ['GProp_GProps']
+    gprop_linear = occ['brepgprop']
+    vec_cls, pnt_cls = occ['gp_Vec'], occ['gp_Pnt']
+
+    curve = adaptor_curve_cls(edge)
+    u_mid = (curve.FirstParameter() + curve.LastParameter()) / 2.0
+    mid_pt = curve.Value(u_mid)
+
+    n1 = _face_normal_at_point(surf1, mid_pt)
+    n2 = _face_normal_at_point(surf2, mid_pt)
+    if n1 is None or n2 is None:
+        return None
+
+    dihedral = _angle_between_normals(n1, n2)
+    if not (10.0 < dihedral < 170.0):
+        return None
+
+    angle_deg = 180.0 - dihedral
+    bend_radius = t * 0.5
+
+    props = gprops_cls()
+    gprop_linear.LinearProperties(edge, props)
+    edge_length = props.Mass()
+
+    bend_axis = (0.0, 0.0, 1.0)
+    tangent = vec_cls()
+    curve.D1(u_mid, pnt_cls(), tangent)
+    if tangent.Magnitude() > 1e-9:
+        tangent.Normalize()
+        bend_axis = (tangent.X(), tangent.Y(), tangent.Z())
+
+    bend_pos = (mid_pt.X(), mid_pt.Y(), mid_pt.Z())
+    return angle_deg, bend_radius, bend_axis, bend_pos, edge_length
+
+
+def _check_cylinder_plane_bend(surf1, surf2, s1_type, edge, occ):
+    """Check if a cylinder-plane face pair forms a bend."""
+    geom_cylinder = occ['GeomAbs_Cylinder']
+    gprops_cls = occ['GProp_GProps']
+    gprop_linear = occ['brepgprop']
+
+    cyl_surf = surf1 if s1_type == geom_cylinder else surf2
+    cylinder = cyl_surf.Cylinder()
+    bend_radius = cylinder.Radius()
+
+    cyl_axis = cylinder.Axis()
+    axis_dir = cyl_axis.Direction()
+    bend_axis = (axis_dir.X(), axis_dir.Y(), axis_dir.Z())
+
+    u1 = cyl_surf.FirstUParameter()
+    u2 = cyl_surf.LastUParameter()
+    angle_deg = math.degrees(abs(u2 - u1))
+
+    if not (10.0 < angle_deg < 180.0 and bend_radius < 50.0):
+        return None
+
+    props = gprops_cls()
+    gprop_linear.LinearProperties(edge, props)
+    edge_length = props.Mass()
+
+    loc = cylinder.Location()
+    bend_pos = (loc.X(), loc.Y(), loc.Z())
+    return angle_deg, bend_radius, bend_axis, bend_pos, edge_length
+
+
+def _check_cylinder_cylinder_bend(surf1, surf2, edge, occ):
+    """Check if two cylindrical faces form a U-bend / channel."""
+    gprops_cls = occ['GProp_GProps']
+    gprop_linear = occ['brepgprop']
+
+    cyl1 = surf1.Cylinder()
+    cyl2 = surf2.Cylinder()
+    r1, r2 = cyl1.Radius(), cyl2.Radius()
+
+    if abs(r1 - r2) >= 0.5 or r1 >= 50.0:
+        return None
+
+    bend_radius = (r1 + r2) / 2.0
+    angular_span = abs(surf1.LastUParameter() - surf1.FirstUParameter())
+    angle_deg = math.degrees(angular_span)
+
+    if not (10.0 < angle_deg < 180.0):
+        return None
+
+    axis_dir = cyl1.Axis().Direction()
+    bend_axis = (axis_dir.X(), axis_dir.Y(), axis_dir.Z())
+    loc = cyl1.Location()
+    bend_pos = (loc.X(), loc.Y(), loc.Z())
+
+    props = gprops_cls()
+    gprop_linear.LinearProperties(edge, props)
+    edge_length = props.Mass()
+    return angle_deg, bend_radius, bend_axis, bend_pos, edge_length
+
+
+def _build_bend_summary(bends: List[BendFeature], result: BendExtractionResult) -> BendExtractionResult:
+    """Populate result summary fields from a list of bends."""
+    if not bends:
+        return result
+    angles = [b.angle_deg for b in bends]
+    radii = [b.radius_mm for b in bends]
+    result.bends = bends
+    result.total_bend_count = len(bends)
+    result.min_angle_deg = min(angles)
+    result.max_angle_deg = max(angles)
+    result.avg_angle_deg = sum(angles) / len(angles)
+    result.min_radius_mm = min(radii)
+    result.max_radius_mm = max(radii)
+    result.total_bend_length_mm = sum(b.length_mm for b in bends)
+    result.has_acute_bends = any(b.is_acute for b in bends)
+    result.has_obtuse_bends = any(b.is_obtuse for b in bends)
+    result.has_hems = any(b.bend_type == "hem" for b in bends)
+    result.bend_sequence_complexity = _bend_sequence_complexity(bends)
+    result.confidence = min(0.98, 0.80 + len(bends) * 0.02)
+    return result
+
+
 def extract_bend_angles_from_shape(shape, thickness_mm: Optional[float] = None) -> BendExtractionResult:
     """
     Extract precise bend angles from a STEP B-Rep shape using pythonOCC.
@@ -107,199 +256,52 @@ def extract_bend_angles_from_shape(shape, thickness_mm: Optional[float] = None) 
         BendExtractionResult with all detected bends.
     """
     result = BendExtractionResult()
-
-    try:
-        from OCC.Core.TopExp import TopExp_Explorer
-        from OCC.Core.TopAbs import TopAbs_EDGE, TopAbs_FACE
-        from OCC.Core.TopoDS import topods
-        from OCC.Core.BRep import BRep_Tool
-        from OCC.Core.BRepAdaptor import BRepAdaptor_Surface, BRepAdaptor_Curve
-        from OCC.Core.GeomAbs import (
-            GeomAbs_Plane, GeomAbs_Cylinder, GeomAbs_Cone,
-            GeomAbs_Torus,
-        )
-        from OCC.Core.TopTools import TopTools_IndexedDataMapOfShapeListOfShape
-        from OCC.Core.gp import gp_Vec, gp_Pnt
-        from OCC.Core.BRepGProp import brepgprop
-        from OCC.Core.GProp import GProp_GProps
-    except ImportError:
+    occ = _try_import_occ()
+    if occ is None:
         logger.warning("pythonOCC not available – skipping STEP bend extraction")
         return result
 
-    # ------------------------------------------------------------------
-    # Step 1 – build edge → adjacent-faces map
-    # ------------------------------------------------------------------
-    edge_face_map = TopTools_IndexedDataMapOfShapeListOfShape()
-    topexp.MapShapesAndAncestors(shape, TopAbs_EDGE, TopAbs_FACE, edge_face_map)
+    edge_face_map = occ['TopTools_IndexedDataMapOfShapeListOfShape']()
+    occ['topexp'].MapShapesAndAncestors(shape, occ['TopAbs_EDGE'], occ['TopAbs_FACE'], edge_face_map)
 
     bends: List[BendFeature] = []
     bend_id = 0
-    t = thickness_mm or 1.0  # fallback for K-factor calc
+    t = thickness_mm or 1.0
 
-    # ------------------------------------------------------------------
-    # Step 2 – iterate all edges
-    # ------------------------------------------------------------------
     for edge_idx in range(1, edge_face_map.Size() + 1):
-        edge = topods.Edge(edge_face_map.FindKey(edge_idx))
+        edge = occ['topods'].Edge(edge_face_map.FindKey(edge_idx))
         face_list = edge_face_map.FindFromIndex(edge_idx)
 
-        # We need exactly two adjacent faces
-        if face_list.Size() != 2:
+        try:
+            face_items = list(face_list)
+        except Exception:
             continue
+        if len(face_items) != 2:
+            continue
+        face1 = occ['topods'].Face(face_items[0])
+        face2 = occ['topods'].Face(face_items[1])
 
-        face_iter = face_list.cbegin()
-        face1 = topods.Face(face_iter.Value())
-        face_iter.Next()
-        face2 = topods.Face(face_iter.Value())
-
-        surf1 = BRepAdaptor_Surface(face1)
-        surf2 = BRepAdaptor_Surface(face2)
-
+        surf1 = occ['BRepAdaptor_Surface'](face1)
+        surf2 = occ['BRepAdaptor_Surface'](face2)
         s1_type = surf1.GetType()
         s2_type = surf2.GetType()
 
-        # ------------------------------------------------------------------
-        # Step 3 – Identify bend candidates
-        # ------------------------------------------------------------------
-        # Case A: Cylindrical face between two planar faces → classic bend zone
-        #   The cylindrical face IS the bend radius.
-        # Case B: Two planar faces sharing a sharp edge → pressed / hemmed bend
-        # Case C: Cylinder + Plane → one side of a bend zone
-
-        bend_radius = 0.0
-        angle_deg = 0.0
-        bend_axis = (0.0, 0.0, 1.0)
-        bend_pos = (0.0, 0.0, 0.0)
-        is_bend = False
-
-        # ---- Case A: Plane-Plane sharp edge ----
-        if s1_type == GeomAbs_Plane and s2_type == GeomAbs_Plane:
-            try:
-                # Get normals at midpoint of shared edge
-                curve = BRepAdaptor_Curve(edge)
-                u_mid = (curve.FirstParameter() + curve.LastParameter()) / 2.0
-                mid_pt = curve.Value(u_mid)
-
-                n1 = _face_normal_at_point(surf1, mid_pt)
-                n2 = _face_normal_at_point(surf2, mid_pt)
-
-                if n1 is None or n2 is None:
-                    continue
-
-                dihedral = _angle_between_normals(n1, n2)
-
-                # Sheet metal bends: dihedral between 10° and 170°
-                if 10.0 < dihedral < 170.0:
-                    angle_deg = 180.0 - dihedral  # Bend angle = supplement of dihedral
-                    bend_radius = t * 0.5  # Assume tight bend = half thickness
-                    is_bend = True
-
-                    # Edge length = bend line length
-                    props = GProp_GProps()
-                    brepgprop.LinearProperties(edge, props)
-                    edge_length = props.Mass()
-
-                    # Bend axis ≈ edge tangent at mid
-                    tangent = gp_Vec()
-                    curve.D1(u_mid, gp_Pnt(), tangent)
-                    if tangent.Magnitude() > 1e-9:
-                        tangent.Normalize()
-                        bend_axis = (tangent.X(), tangent.Y(), tangent.Z())
-
-                    bend_pos = (mid_pt.X(), mid_pt.Y(), mid_pt.Z())
-            except Exception as exc:
-                logger.debug("Plane-plane bend check failed: %s", exc)
-                continue
-
-        # ---- Case B: one Cylinder + one Plane ----
-        elif (s1_type == GeomAbs_Cylinder and s2_type == GeomAbs_Plane) or \
-             (s1_type == GeomAbs_Plane and s2_type == GeomAbs_Cylinder):
-            try:
-                cyl_surf = surf1 if s1_type == GeomAbs_Cylinder else surf2
-                pln_surf = surf2 if s1_type == GeomAbs_Cylinder else surf1
-
-                cylinder = cyl_surf.Cylinder()
-                bend_radius = cylinder.Radius()
-
-                cyl_axis = cylinder.Axis()
-                axis_dir = cyl_axis.Direction()
-                bend_axis = (axis_dir.X(), axis_dir.Y(), axis_dir.Z())
-
-                # Compute angular span of cylinder face
-                u1 = cyl_surf.FirstUParameter()
-                u2 = cyl_surf.LastUParameter()
-                angular_span = abs(u2 - u1)
-
-                angle_deg = math.degrees(angular_span)
-
-                # Filter: sheet metal bends are typically 10-180°
-                if 10.0 < angle_deg < 180.0 and bend_radius < 50.0:
-                    is_bend = True
-
-                    props = GProp_GProps()
-                    brepgprop.LinearProperties(edge, props)
-                    edge_length = props.Mass()  # noqa: F841 – used below
-
-                    loc = cylinder.Location()
-                    bend_pos = (loc.X(), loc.Y(), loc.Z())
-                else:
-                    continue
-            except Exception as exc:
-                logger.debug("Cylinder-plane bend check failed: %s", exc)
-                continue
-
-        # ---- Case C: two Cylinders meeting (U-bend / channel) ----
-        elif s1_type == GeomAbs_Cylinder and s2_type == GeomAbs_Cylinder:
-            try:
-                cyl1 = surf1.Cylinder()
-                cyl2 = surf2.Cylinder()
-                r1 = cyl1.Radius()
-                r2 = cyl2.Radius()
-
-                if abs(r1 - r2) < 0.5 and r1 < 50.0:
-                    # Similar radii → could be opposite sides of a U-bend
-                    bend_radius = (r1 + r2) / 2.0
-                    angular_span = abs(surf1.LastUParameter() - surf1.FirstUParameter())
-                    angle_deg = math.degrees(angular_span)
-                    if 10.0 < angle_deg < 180.0:
-                        is_bend = True
-                        axis_dir = cyl1.Axis().Direction()
-                        bend_axis = (axis_dir.X(), axis_dir.Y(), axis_dir.Z())
-                        loc = cyl1.Location()
-                        bend_pos = (loc.X(), loc.Y(), loc.Z())
-
-                        props = GProp_GProps()
-                        brepgprop.LinearProperties(edge, props)
-                        edge_length = props.Mass()
-            except Exception as exc:
-                logger.debug("Cylinder-cylinder bend check failed: %s", exc)
-                continue
-        else:
+        bend_data = _process_edge_pair(surf1, surf2, s1_type, s2_type, edge, t, occ)
+        if bend_data is None:
             continue
 
-        if not is_bend:
+        angle_deg, bend_radius, bend_axis, bend_pos, edge_length = bend_data
+
+        # Validate edge length – ignore micro edges
+        if edge_length < 1.0:
             continue
 
-        # Validate edge length (bend line) – ignore micro edges
-        try:
-            props = GProp_GProps()
-            brepgprop.LinearProperties(edge, props)
-            edge_length = props.Mass()
-        except Exception:
-            edge_length = 0.0
-
-        if edge_length < 1.0:  # < 1mm is noise
-            continue
-
-        # ------------------------------------------------------------------
-        # Step 4 – Classify bend type and calculate deduction
-        # ------------------------------------------------------------------
         bend_type = _classify_bend_type(angle_deg, bend_radius, t)
-        k_factor = _calculate_k_factor(bend_radius, t, angle_deg)
+        k_factor = _calculate_k_factor(bend_radius, t)
         bend_deduction = _bend_deduction(angle_deg, bend_radius, t, k_factor)
 
         bend_id += 1
-        bf = BendFeature(
+        bends.append(BendFeature(
             id=f"BEND-{bend_id:03d}",
             angle_deg=round(angle_deg, 2),
             radius_mm=round(bend_radius, 3),
@@ -311,33 +313,10 @@ def extract_bend_angles_from_shape(shape, thickness_mm: Optional[float] = None) 
             bend_deduction_mm=bend_deduction,
             is_acute=angle_deg < 88.0,
             is_obtuse=angle_deg > 92.0,
-        )
-        bends.append(bf)
+        ))
 
-    # ------------------------------------------------------------------
-    # De-duplicate (some OCC edge iterations visit nearly the same bend)
-    # ------------------------------------------------------------------
     bends = _deduplicate_bends(bends)
-
-    # ------------------------------------------------------------------
-    # Build summary
-    # ------------------------------------------------------------------
-    if bends:
-        angles = [b.angle_deg for b in bends]
-        radii = [b.radius_mm for b in bends]
-        result.bends = bends
-        result.total_bend_count = len(bends)
-        result.min_angle_deg = min(angles)
-        result.max_angle_deg = max(angles)
-        result.avg_angle_deg = sum(angles) / len(angles)
-        result.min_radius_mm = min(radii)
-        result.max_radius_mm = max(radii)
-        result.total_bend_length_mm = sum(b.length_mm for b in bends)
-        result.has_acute_bends = any(b.is_acute for b in bends)
-        result.has_obtuse_bends = any(b.is_obtuse for b in bends)
-        result.has_hems = any(b.bend_type == "hem" for b in bends)
-        result.bend_sequence_complexity = _bend_sequence_complexity(bends)
-        result.confidence = min(0.98, 0.80 + len(bends) * 0.02)
+    result = _build_bend_summary(bends, result)
 
     logger.info(
         "STEP bend extraction: %d bends (angles %.1f°–%.1f°, radii %.2f–%.2fmm)",
@@ -350,11 +329,43 @@ def extract_bend_angles_from_shape(shape, thickness_mm: Optional[float] = None) 
     return result
 
 
+def _process_edge_pair(surf1, surf2, s1_type, s2_type, edge, t, occ):
+    """Dispatch edge to the appropriate bend-check handler. Returns bend data tuple or None."""
+    from OCC.Core.GeomAbs import GeomAbs_Plane, GeomAbs_Cylinder
+
+    if s1_type == GeomAbs_Plane and s2_type == GeomAbs_Plane:
+        try:
+            return _check_plane_plane_bend(surf1, surf2, edge, t, occ)
+        except Exception as exc:
+            logger.debug("Plane-plane bend check failed: %s", exc)
+            return None
+
+    is_cyl_plane = (
+        (s1_type == GeomAbs_Cylinder and s2_type == GeomAbs_Plane)
+        or (s1_type == GeomAbs_Plane and s2_type == GeomAbs_Cylinder)
+    )
+    if is_cyl_plane:
+        try:
+            return _check_cylinder_plane_bend(surf1, surf2, s1_type, edge, occ)
+        except Exception as exc:
+            logger.debug("Cylinder-plane bend check failed: %s", exc)
+            return None
+
+    if s1_type == GeomAbs_Cylinder and s2_type == GeomAbs_Cylinder:
+        try:
+            return _check_cylinder_cylinder_bend(surf1, surf2, edge, occ)
+        except Exception as exc:
+            logger.debug("Cylinder-cylinder bend check failed: %s", exc)
+            return None
+
+    return None
+
+
 # ======================================================================
 # Internal helpers
 # ======================================================================
 
-def _face_normal_at_point(adaptor, point):
+def _face_normal_at_point(adaptor, _point):
     """Return outward normal of a planar face evaluated near *point*."""
     from OCC.Core.gp import gp_Pnt2d, gp_Vec, gp_Dir
     from OCC.Core.GeomAbs import GeomAbs_Plane
@@ -389,7 +400,7 @@ def _classify_bend_type(angle: float, radius: float, thickness: float) -> str:
     return "v-bend"
 
 
-def _calculate_k_factor(radius: float, thickness: float, angle: float) -> float:
+def _calculate_k_factor(radius: float, thickness: float, _angle: float = 0.0) -> float:
     """
     K-factor determines where the neutral axis sits within the bend.
     Typical range: 0.3–0.5.  Tight radii shift the neutral axis inward.

@@ -1,10 +1,12 @@
 from fastapi import APIRouter, HTTPException
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 from typing import Optional
 import hashlib
 import hmac
 import json
 import logging
+import math
 import os
 import traceback
 
@@ -32,11 +34,60 @@ from ..models import FeaturesJson, BBox, MassProps, HoleFeature, PocketFeature, 
 from ..core.geometry import GeometricMetrics, calculate_sheet_metal_score, calculate_advanced_metrics
 from ..core.bend_detection import AdvancedBendDetector
 from ..core.classification import ProcessClassifier
+from ..core.face_classification import classify_faces
 from ..dfm_analyzer import analyze_dfm, build_geometry_for_dfm
 from ..core.validation import validate_geometry
 from ..core.advanced_thickness_detection import enhanced_ray_casting_analysis
 
 router = APIRouter()
+
+
+def _safe_float(v: float):
+    """Return None for NaN/inf, otherwise the float."""
+    if math.isnan(v) or math.isinf(v):
+        return None
+    return v
+
+
+def _json_safe_numpy(obj):
+    """Handle numpy types, returning a JSON-safe Python native or None."""
+    try:
+        import numpy as np
+    except ImportError:
+        return None
+    if isinstance(obj, np.integer):
+        return int(obj)
+    if isinstance(obj, np.floating):
+        return _safe_float(float(obj))
+    if isinstance(obj, np.bool_):
+        return bool(obj)
+    if isinstance(obj, np.ndarray):
+        return obj.tolist()
+    return None
+
+
+def _json_safe(obj):
+    """Recursively sanitize a dict/list so it's JSON-serializable.
+    Converts numpy scalars to Python natives, replaces NaN/inf with None."""
+    if obj is None:
+        return None
+    if isinstance(obj, dict):
+        return {k: _json_safe(v) for k, v in obj.items()}
+    if isinstance(obj, (list, tuple)):
+        return [_json_safe(v) for v in obj]
+    if isinstance(obj, float):
+        return _safe_float(obj)
+    if isinstance(obj, (int, str, bool)):
+        return obj
+    result = _json_safe_numpy(obj)
+    if result is not None:
+        return result
+    # Fallback: try to convert to string
+    try:
+        return str(obj)
+    except Exception:
+        return None
+
 
 def _serialize_features(threads=None, slots=None, undercuts=None, fillets=None, holes=None, pockets=None):
     """Serialize detailed feature objects for frontend consumption."""
@@ -116,703 +167,688 @@ class AnalysisResponse(BaseModel):
     metrics: dict
     task_id: Optional[str] = None
 
+# ---------------------------------------------------------------------------
+# Helpers for analyze_file_path (extracted to reduce cognitive complexity)
+# ---------------------------------------------------------------------------
+
+def _calculate_thickness_confidence(detected_thickness, bbox_dims):
+    """Calculate thickness confidence from thickness-to-bbox ratio."""
+    if not detected_thickness or detected_thickness <= 0:
+        return 0.0
+    min_bbox_dim = min(bbox_dims) if bbox_dims else 0.1
+    ratio = detected_thickness / max(min_bbox_dim, 0.1)
+    if ratio < 0.3:
+        return 0.95
+    if ratio < 0.5:
+        return 0.80
+    if ratio < 0.7:
+        return 0.60
+    return 0.40
+
+
+def _log_thickness_analysis(analysis, label=""):
+    """Print thickness analysis diagnostics."""
+    tag = f" ({label})" if label else ""
+    print(f"🔬 Advanced Thickness Analysis{tag}:")
+    print(f"   Sheet thickness detected: {analysis.is_sheet_thickness}")
+    if analysis.detected_thickness:
+        print(f"   Thickness: {analysis.detected_thickness:.2f}mm")
+        print(f"   Uniform ratio: {analysis.uniform_ratio:.1%}")
+        if hasattr(analysis, 'thickness_to_size_ratio'):
+            print(f"   T/L ratio: {analysis.thickness_to_size_ratio:.1%}")
+        if hasattr(analysis, 'cluster_dominance'):
+            print(f"   Dominance: {analysis.cluster_dominance:.1f}x")
+        print(f"   Confidence: {analysis.confidence:.1%}")
+    print(f"   Reasoning: {analysis.reasoning}")
+
+
+def _extract_mesh_features(mesh):
+    """Extract features from STL mesh with per-feature error handling."""
+    results = {"threads": [], "undercuts": [], "fillets": [], "draft": []}
+    extractors = [
+        ("threads", lambda: extract_threads_from_mesh(mesh)),
+        ("undercuts", lambda: detect_undercuts_from_mesh(mesh)),
+        ("fillets", lambda: detect_fillets_from_mesh(mesh)),
+        ("draft", lambda: analyze_draft_from_mesh(mesh)),
+    ]
+    for name, fn in extractors:
+        try:
+            results[name] = fn()
+        except Exception as e:
+            print(f"⚠️ STL {name} extraction failed: {str(e)[:80]}")
+    return results
+
+
+def _try_extract_slots(shape, pockets):
+    """Extract slots from shape, falling back to pocket-based detection."""
+    slots = extract_slots_from_shape(shape)
+    return slots if slots else extract_slots_from_pockets(pockets)
+
+
+def _extract_step_additional_features(shape, holes, pockets):
+    """Extract threads, slots, undercuts, fillets, draft from STEP shape."""
+    results = {"threads": [], "slots": [], "undercuts": [], "fillets": [], "draft": []}
+    extractors = [
+        ("threads", lambda: extract_threads_from_shape(shape, holes)),
+        ("slots", lambda: _try_extract_slots(shape, pockets)),
+        ("undercuts", lambda: extract_undercuts_from_shape(shape)),
+        ("fillets", lambda: extract_fillets_from_shape(shape)),
+        ("draft", lambda: analyze_draft_from_shape(shape)),
+    ]
+    for name, fn in extractors:
+        try:
+            results[name] = fn()
+        except Exception as e:
+            print(f"⚠️ {name} extraction failed: {str(e)[:80]}")
+    print(f"🔧 Feature extraction: {len(holes)} holes, {len(pockets)} pockets, "
+          f"{len(results['threads'])} threads, {len(results['slots'])} slots, "
+          f"{len(results['undercuts'])} undercuts, {len(results['fillets'])} fillets, "
+          f"{len(results['draft'])} draft faces")
+    return results
+
+
+def _classify_process(bbox_dims, vol_mm3, area_mm2, detected_thickness,
+                      thickness_confidence, triangle_count, thickness_analysis,
+                      face_classification=None, **feature_counts):
+    """Run process classification and return formatted results."""
+    geom_metrics = GeometricMetrics(bbox_dims, vol_mm3, area_mm2)
+    classifier = ProcessClassifier(geom_metrics)
+    process_type, confidence, metadata = classifier.classify(
+        detected_thickness=detected_thickness,
+        thickness_confidence=thickness_confidence,
+        triangle_count=triangle_count,
+        thickness_analysis=thickness_analysis,
+        face_classification=face_classification,
+        **feature_counts,
+    )
+    process_type_str = process_type if process_type in ('sheet_metal', 'cnc_turning') else 'cnc_milling'
+
+    # Confidence calibration: flag low-confidence classifications for review
+    needs_review = confidence < 0.70
+    if needs_review:
+        logging.warning(
+            "LOW CONFIDENCE classification: %s at %.2f — flagged for review",
+            process_type_str, confidence,
+        )
+
+    advanced_metrics = {
+        'detected_thickness_mm': detected_thickness,
+        'thickness_confidence': thickness_confidence,
+        'thickness_detection_method': 'ray_casting_statistical',
+        'classification_confidence': confidence,
+        'needs_review': needs_review,
+        **metadata,
+    }
+    # Include face classification in advanced metrics for frontend
+    if face_classification is not None:
+        advanced_metrics['face_classification'] = face_classification.to_dict()
+    if 'bend_report' in metadata:
+        print(metadata['bend_report'])
+    return process_type_str, confidence, metadata, advanced_metrics
+
+
+def _score_triangle_complexity(count, is_step):
+    """Score complexity contribution from triangle/face count."""
+    thresholds = [(15000, 20), (8000, 12), (3000, 6)] if is_step else [(10000, 30), (5000, 20), (2000, 10)]
+    for limit, score in thresholds:
+        if count > limit:
+            return score
+    return 0
+
+
+def _score_feature_counts(hole_count, pocket_count):
+    """Score complexity from hole and pocket counts (STEP only)."""
+    score = 0
+    for count, thresholds in [
+        (hole_count, [(20, 35), (10, 25), (5, 15), (0, 8)]),
+        (pocket_count, [(10, 30), (5, 20), (2, 12), (0, 6)]),
+    ]:
+        for limit, pts in thresholds:
+            if count > limit:
+                score += pts
+                break
+    return score
+
+
+def _score_sheet_metal_bends(bend_count, bend_complexity_val, is_step):
+    """Score complexity from bend count and bend complexity for sheet metal."""
+    score = 0
+    bend_thresholds = [(6, 30 if is_step else 40),
+                       (3, 20 if is_step else 25),
+                       (1, 10 if is_step else 15)]
+    for limit, pts in bend_thresholds:
+        if bend_count > limit:
+            score += pts
+            break
+    cap = 15 if is_step else 20
+    divisor = 4 if is_step else 3
+    score += min(cap, int(bend_complexity_val) // divisor)
+    return score
+
+
+def _score_cnc_aspect_ratio(bbox_dims, is_step):
+    """Score complexity from aspect ratio for CNC parts."""
+    sorted_dims = sorted(bbox_dims)
+    if len(sorted_dims) != 3:
+        return 0
+    aspect = sorted_dims[2] / max(sorted_dims[0], 0.1)
+    high_score = 15 if is_step else 20
+    med_score = 8 if is_step else 10
+    if aspect > 10:
+        return high_score
+    if aspect > 5:
+        return med_score
+    return 0
+
+
+def _score_bend_and_shape(process_type_str, bend_count, bend_complexity_val,
+                          bbox_dims, is_step):
+    """Score complexity from bends (sheet metal) or aspect ratio (CNC)."""
+    if process_type_str == 'sheet_metal':
+        return _score_sheet_metal_bends(bend_count, bend_complexity_val, is_step)
+    return _score_cnc_aspect_ratio(bbox_dims, is_step)
+
+
+def _calculate_complexity(process_type_str, bend_analysis, bbox_dims,
+                          triangle_count, hole_count=0, pocket_count=0,
+                          is_step=False):
+    """Calculate enterprise complexity score and level."""
+    bend_count = bend_analysis.get('bend_count', 0)
+    bend_complexity_val = bend_analysis.get('complexity', 0)
+    score = 0
+    if is_step:
+        score += _score_feature_counts(hole_count, pocket_count)
+    score += _score_triangle_complexity(triangle_count, is_step)
+    score += _score_bend_and_shape(process_type_str, bend_count,
+                                   bend_complexity_val, bbox_dims, is_step)
+    if score >= 50:
+        return 'complex', score
+    if score >= 25:
+        return 'moderate', score
+    return 'simple', score
+
+
+def _compute_sheet_metal_extras(process_type_str, bbox_dims,
+                                classification_metadata, detected_thickness):
+    """Compute grain direction and nesting estimate for sheet metal parts."""
+    if process_type_str != 'sheet_metal':
+        return None, None
+
+    bend_axes = []
+    bend_analysis = classification_metadata.get('bend_analysis', {})
+    for b in bend_analysis.get('bends', []):
+        ax = b.get('axis')
+        if ax:
+            bend_axes.append(tuple(ax) if isinstance(ax, (list, tuple)) else (0, 0, 1))
+
+    flat_l = bbox_dims[2] if len(bbox_dims) == 3 else 0
+    flat_w = bbox_dims[1] if len(bbox_dims) >= 2 else 0
+    thickness = detected_thickness or (bbox_dims[0] if bbox_dims else 1.0)
+
+    grain_dir = analyze_grain_direction(
+        bend_axes=bend_axes, flat_length=flat_l, flat_width=flat_w,
+    )
+    nesting_est = estimate_nesting(
+        flat_length=flat_l, flat_width=flat_w, thickness=thickness,
+    )
+    return grain_dir, nesting_est
+
+
+def _validate_geometry_safe(bbox_dims, vol_mm3, area_mm2):
+    """Run geometry validation, returning None on failure."""
+    try:
+        return validate_geometry({
+            "boundingBox": {
+                "x": bbox_dims[2] if len(bbox_dims) == 3 else 0,
+                "y": bbox_dims[1] if len(bbox_dims) >= 2 else 0,
+                "z": bbox_dims[0] if len(bbox_dims) >= 1 else 0,
+            },
+            "volume": vol_mm3,
+            "surfaceArea": area_mm2,
+        })
+    except Exception as e:
+        print(f"⚠️ Geometry validation failed: {str(e)[:80]}")
+        return None
+
+
+def _run_dfm_safe(dfm_geometry, process_type_str, label=""):
+    """Run DFM analysis with error handling."""
+    try:
+        result = analyze_dfm(
+            geometry=dfm_geometry,
+            process_type=process_type_str,
+            material="aluminum",
+            tolerance="standard",
+        )
+        tag = f" ({label})" if label else ""
+        print(f"✅ DFM Analysis{tag} Complete:")
+        print(f"   Score: {result.get('overall_score', 0):.0f}/100")
+        print(f"   Rating: {result.get('rating', 'unknown')}")
+        if 'issues' in result:
+            print(f"   Issues: {len(result.get('issues', []))}")
+        if 'is_manufacturable' in result:
+            print(f"   Manufacturable: {result.get('is_manufacturable', True)}")
+        return result
+    except Exception as e:
+        print(f"⚠️ DFM Analysis failed: {str(e)[:100]}")
+        return {
+            "overall_score": 0,
+            "rating": "unknown",
+            "is_manufacturable": True,
+            "issues": [],
+            "error": str(e)[:200],
+        }
+
+
+def _attach_optional_metrics(metrics, grain_dir, nesting_est,
+                             step_bend_result=None):
+    """Attach optional grain direction, nesting, and bend data to metrics."""
+    if step_bend_result and step_bend_result.total_bend_count > 0:
+        metrics["step_bend_angles"] = step_bend_result.to_dict()
+    if grain_dir:
+        metrics["grain_direction"] = {
+            "recommended": grain_dir.recommended_direction,
+            "score": grain_dir.alignment_score,
+            "notes": grain_dir.notes,
+        }
+    if nesting_est:
+        metrics["nesting"] = {
+            "parts_per_sheet": nesting_est.parts_per_sheet,
+            "utilization_pct": nesting_est.utilization_pct,
+            "sheet_size": f"{nesting_est.sheet_width_mm}×{nesting_est.sheet_height_mm}mm",
+        }
+
+
+def _build_assembly_metrics(assembly_info):
+    """Build response dict for assembly files requiring manual quote."""
+    return {
+        "volume": 0,
+        "surface_area": 0,
+        "bbox": {"min": {"x": 0, "y": 0, "z": 0},
+                 "max": {"x": 0, "y": 0, "z": 0}},
+        "thickness": None,
+        "primitive_features": {
+            "holes": 0, "pockets": 0, "slots": 0, "faces": 0,
+            "threads": 0, "undercuts": 0, "fillets": 0,
+        },
+        "material_usage": None,
+        "process_type": "assembly",
+        "sheet_metal_score": 0,
+        "is_assembly": True,
+        "assembly_info": {
+            "solid_count": assembly_info.solid_count,
+            "compound_count": assembly_info.compound_count,
+            "shell_count": assembly_info.shell_count,
+            "reason": assembly_info.reason,
+        },
+        "requires_manual_quote": True,
+        "manual_quote_reason": assembly_info.reason,
+        "advanced_metrics": {},
+    }
+
+
+def _extract_occ_bbox(shape):
+    """Extract bounding box from STEP shape using OCC."""
+    from OCC.Core.Bnd import Bnd_Box
+    from OCC.Core.BRepBndLib import brepbndlib
+
+    box = Bnd_Box()
+    brepbndlib.Add(shape, box)
+
+    try:
+        coords = box.Get()
+        if coords and len(coords) == 6:
+            xmin, ymin, zmin, xmax, ymax, zmax = coords
+        else:
+            p_min, p_max = box.CornerMin(), box.CornerMax()
+            xmin, ymin, zmin = p_min.X(), p_min.Y(), p_min.Z()
+            xmax, ymax, zmax = p_max.X(), p_max.Y(), p_max.Z()
+    except Exception:
+        p_min, p_max = box.CornerMin(), box.CornerMax()
+        xmin, ymin, zmin = p_min.X(), p_min.Y(), p_min.Z()
+        xmax, ymax, zmax = p_max.X(), p_max.Y(), p_max.Z()
+
+    bbox_dims = sorted([xmax - xmin, ymax - ymin, zmax - zmin])
+    bbox_dict = {
+        "min": {"x": xmin, "y": ymin, "z": zmin},
+        "max": {"x": xmax, "y": ymax, "z": zmax},
+    }
+    return bbox_dict, bbox_dims
+
+
+def _detect_step_wall_thickness(shape, bbox_dims):
+    """Detect wall thickness from STEP shape by meshing to STL for ray-casting."""
+    actual_thickness = None
+    thickness_confidence = 0.0
+    triangle_count = 0
+    thickness_analysis = None
+
+    try:
+        from OCC.Core.BRepMesh import BRepMesh_IncrementalMesh
+        from OCC.Extend.DataExchange import write_stl_file
+        import tempfile
+
+        BRepMesh_IncrementalMesh(shape, 0.05, True, 0.1, True)
+        tmp_fd, tmp_path = tempfile.mkstemp(suffix='.stl')
+        os.close(tmp_fd)
+
+        try:
+            write_stl_file(shape, tmp_path, mode="binary",
+                           linear_deflection=0.05, angular_deflection=0.1)
+            temp_mesh = load_stl(tmp_path, scale=1.0)
+            triangle_count = int(temp_mesh.faces.shape[0])
+
+            mw = min_wall_mesh(temp_mesh, samples=8000, threshold_mm=10.0)
+            if mw.global_min_mm > 0:
+                actual_thickness = mw.global_min_mm
+                thickness_confidence = _calculate_thickness_confidence(
+                    actual_thickness, bbox_dims,
+                )
+                min_dim = min(bbox_dims) if bbox_dims else 0.1
+                ratio = actual_thickness / max(min_dim, 0.1)
+                print(f"✅ Detected wall thickness: {actual_thickness:.2f}mm "
+                      f"(bbox min: {min_dim:.2f}mm, ratio: {ratio:.1%}, "
+                      f"confidence: {thickness_confidence:.0%})")
+            else:
+                print("⚠️ Wall thickness detection returned 0")
+
+            if triangle_count > 0:
+                thickness_analysis = enhanced_ray_casting_analysis(
+                    temp_mesh, bbox_dims, samples=8000,
+                )
+                _log_thickness_analysis(thickness_analysis, "STEP")
+        finally:
+            if os.path.exists(tmp_path):
+                os.unlink(tmp_path)
+
+    except Exception as e:
+        print(f"⚠️ Wall thickness detection failed: {str(e)[:100]}")
+        print("   Using bbox approximation")
+        traceback.print_exc()
+
+    return actual_thickness, thickness_confidence, triangle_count, thickness_analysis
+
+
+# ---------------------------------------------------------------------------
+# Branch implementations
+# ---------------------------------------------------------------------------
+
+def _analyze_stl(file_path, scale):
+    """Analyze an STL file and return normalized metrics."""
+    mesh = load_stl(file_path, scale=scale)
+    vol_mm3, area_mm2 = mesh_mass_props(mesh)
+    bbox_min, bbox_max = mesh.bounds[0], mesh.bounds[1]
+    bbox_dims = sorted([
+        float(bbox_max[0] - bbox_min[0]),
+        float(bbox_max[1] - bbox_min[1]),
+        float(bbox_max[2] - bbox_min[2]),
+    ])
+
+    # Wall thickness detection
+    mw = min_wall_mesh(mesh, samples=8000, threshold_mm=10.0)
+    detected_thickness = mw.global_min_mm if mw.global_min_mm > 0 else None
+    thickness_confidence = _calculate_thickness_confidence(detected_thickness, bbox_dims)
+
+    # Advanced thickness analysis
+    thickness_analysis = enhanced_ray_casting_analysis(mesh, bbox_dims, samples=8000)
+    _log_thickness_analysis(thickness_analysis)
+
+    # Feature extraction
+    features = _extract_mesh_features(mesh)
+    face_count = int(mesh.faces.shape[0])
+
+    # Classification
+    process_type_str, _conf, metadata, advanced_metrics = _classify_process(
+        bbox_dims, vol_mm3, area_mm2,
+        detected_thickness=detected_thickness,
+        thickness_confidence=thickness_confidence,
+        triangle_count=face_count,
+        thickness_analysis=thickness_analysis,
+        thread_count=len(features['threads']),
+        undercut_count=len(features['undercuts']),
+        fillet_count=len(features['fillets']),
+    )
+
+    # Complexity
+    bend_analysis = metadata.get('bend_analysis', {})
+    complexity, complexity_score = _calculate_complexity(
+        process_type_str, bend_analysis, bbox_dims, face_count, is_step=False,
+    )
+
+    # Sheet metal extras
+    grain_dir, nesting_est = _compute_sheet_metal_extras(
+        process_type_str, bbox_dims, metadata, detected_thickness,
+    )
+
+    # Validation & DFM
+    validation = _validate_geometry_safe(bbox_dims, vol_mm3, area_mm2)
+    dfm_geometry = build_geometry_for_dfm(
+        bbox_dims=bbox_dims, volume_mm3=vol_mm3, surface_area_mm2=area_mm2,
+        holes=[], pockets=[], process_type=process_type_str,
+        thickness=detected_thickness,
+        bend_analysis=metadata.get('bend_analysis'),
+        complexity=complexity,
+        threads=features['threads'], slots=[],
+        undercuts=features['undercuts'], fillets=features['fillets'],
+        draft_analysis=features['draft'],
+        grain_direction=grain_dir, nesting=nesting_est,
+    )
+    dfm_result = _run_dfm_safe(dfm_geometry, process_type_str, "STL")
+
+    metrics = {
+        "volume": vol_mm3 / 1000.0,
+        "surface_area": area_mm2 / 100.0,
+        "bbox": {
+            "min": {"x": float(bbox_min[0]), "y": float(bbox_min[1]), "z": float(bbox_min[2])},
+            "max": {"x": float(bbox_max[0]), "y": float(bbox_max[1]), "z": float(bbox_max[2])},
+        },
+        "thickness": detected_thickness,
+        "primitive_features": {
+            "holes": 0, "pockets": 0, "slots": 0,
+            "threads": len(features['threads']),
+            "undercuts": len(features['undercuts']),
+            "fillets": len(features['fillets']),
+            "faces": face_count,
+        },
+        "feature_detail": _serialize_features(
+            threads=features['threads'],
+            undercuts=features['undercuts'],
+            fillets=features['fillets'],
+        ),
+        "material_usage": None,
+        "process_type": process_type_str,
+        "sheet_metal_score": metadata.get('sheet_metal_score', 0),
+        "complexity": complexity,
+        "complexity_score": complexity_score,
+        "advanced_metrics": advanced_metrics,
+        "dfm_analysis": dfm_result,
+        "validation": validation,
+    }
+    _attach_optional_metrics(metrics, grain_dir, nesting_est)
+    return metrics
+
+
+def _detect_assembly_early(shape) -> dict | None:
+    """Run assembly detection as the absolute first step.
+
+    Returns assembly metrics dict if assembly detected, else None.
+    This must be resilient — if it crashes we still continue analysis.
+    """
+    try:
+        assembly_info = count_solids_and_compounds(shape)
+        if assembly_info.is_assembly:
+            logging.warning(
+                "Assembly detected early: solids=%d compounds=%d shells=%d — %s",
+                assembly_info.solid_count,
+                assembly_info.compound_count,
+                assembly_info.shell_count,
+                assembly_info.reason,
+            )
+            return _build_assembly_metrics(assembly_info)
+    except Exception as exc:
+        logging.warning("Early assembly detection failed (continuing): %s", exc)
+    return None
+
+
+def _analyze_step(file_path):
+    """Analyze a STEP file and return normalized metrics."""
+    if not occ_available():
+        raise HTTPException(
+            status_code=400,
+            detail="STEP analysis requires pythonOCC; not available",
+        )
+    shape = load_step_shape(file_path)
+
+    # Assembly detection — FIRST, before anything else
+    assembly_result = _detect_assembly_early(shape)
+    if assembly_result is not None:
+        return assembly_result
+
+    vol_mm3, area_mm2 = shape_mass_props(shape)
+    bbox_dict, bbox_dims = _extract_occ_bbox(shape)
+
+    # Face type classification (BRepAdaptor — most reliable signal)
+    try:
+        face_result = classify_faces(shape, area_mm2)
+        logging.warning(
+            "Face classification: planes=%.0f%% cyl=%.0f%% freeform=%.0f%% "
+            "pairs=%d SM=%.0f CNC=%.0f → %s",
+            face_result.plane_ratio * 100,
+            face_result.cylinder_ratio * 100,
+            face_result.freeform_ratio * 100,
+            face_result.paired_plane_count,
+            face_result.sheet_metal_face_score,
+            face_result.cnc_face_score,
+            "sheet_metal" if face_result.is_likely_sheet_metal
+            else ("cnc" if face_result.is_likely_cnc else "uncertain"),
+        )
+    except Exception as exc:
+        logging.warning("Face classification failed (continuing): %s", exc)
+        face_result = None
+
+    # Wall thickness via meshing
+    actual_thickness, thickness_confidence, triangle_count, thickness_analysis = \
+        _detect_step_wall_thickness(shape, bbox_dims)
+
+    # Feature extraction (wrapped so one failure doesn't crash the whole analysis)
+    try:
+        holes = extract_holes_from_shape(shape)
+    except Exception as e:
+        logging.warning("Hole extraction failed: %s", str(e)[:120])
+        holes = []
+    try:
+        pockets = extract_pockets_from_shape(shape)
+    except Exception as e:
+        logging.warning("Pocket extraction failed: %s", str(e)[:120])
+        pockets = []
+    features = _extract_step_additional_features(shape, holes, pockets)
+
+    # Classification
+    process_type_str, _conf, metadata, advanced_metrics = _classify_process(
+        bbox_dims, vol_mm3, area_mm2,
+        detected_thickness=actual_thickness,
+        thickness_confidence=thickness_confidence,
+        triangle_count=triangle_count,
+        thickness_analysis=thickness_analysis,
+        face_classification=face_result,
+        hole_count=len(holes),
+        pocket_count=len(pockets),
+        thread_count=len(features['threads']),
+        undercut_count=len(features['undercuts']),
+        fillet_count=len(features['fillets']),
+        slot_count=len(features['slots']),
+    )
+
+    # STEP bend angle extraction
+    step_bend_result = _extract_step_bends(shape, actual_thickness)
+
+    # Complexity
+    bend_analysis = metadata.get('bend_analysis', {})
+    complexity, complexity_score = _calculate_complexity(
+        process_type_str, bend_analysis, bbox_dims, triangle_count,
+        hole_count=len(holes), pocket_count=len(pockets), is_step=True,
+    )
+
+    # Sheet metal extras
+    grain_dir, nesting_est = _compute_sheet_metal_extras(
+        process_type_str, bbox_dims, metadata, actual_thickness,
+    )
+
+    # Validation & DFM
+    validation = _validate_geometry_safe(bbox_dims, vol_mm3, area_mm2)
+    dfm_geometry = build_geometry_for_dfm(
+        bbox_dims=bbox_dims, volume_mm3=vol_mm3, surface_area_mm2=area_mm2,
+        holes=holes, pockets=pockets, process_type=process_type_str,
+        thickness=actual_thickness,
+        bend_analysis=bend_analysis,
+        complexity=complexity,
+        threads=features['threads'], slots=features['slots'],
+        undercuts=features['undercuts'], fillets=features['fillets'],
+        draft_analysis=features['draft'],
+        grain_direction=grain_dir, nesting=nesting_est,
+    )
+    dfm_result = _run_dfm_safe(dfm_geometry, process_type_str)
+
+    metrics = {
+        "volume": vol_mm3 / 1000.0,
+        "surface_area": area_mm2 / 100.0,
+        "bbox": bbox_dict,
+        "thickness": actual_thickness,
+        "primitive_features": {
+            "holes": len(holes),
+            "pockets": len(pockets),
+            "threads": len(features['threads']),
+            "slots": len(features['slots']),
+            "undercuts": len(features['undercuts']),
+            "fillets": len(features['fillets']),
+            "faces": triangle_count,
+        },
+        "feature_detail": _serialize_features(
+            threads=features['threads'],
+            slots=features['slots'],
+            undercuts=features['undercuts'],
+            fillets=features['fillets'],
+            holes=holes,
+            pockets=pockets,
+        ),
+        "material_usage": None,
+        "process_type": process_type_str,
+        "sheet_metal_score": metadata.get('sheet_metal_score', 0),
+        "complexity": complexity,
+        "complexity_score": complexity_score,
+        "advanced_metrics": advanced_metrics,
+        "dfm_analysis": dfm_result,
+        "validation": validation,
+    }
+    _attach_optional_metrics(metrics, grain_dir, nesting_est, step_bend_result)
+    return metrics
+
+
+def _extract_step_bends(shape, thickness_mm):
+    """Extract bend angles from STEP shape with error handling."""
+    try:
+        result = extract_bend_angles_from_shape(shape, thickness_mm=thickness_mm)
+        if result.total_bend_count > 0:
+            print(f"🔧 STEP Bend Extraction: {result.total_bend_count} bends "
+                  f"(angles {result.min_angle_deg:.1f}°–{result.max_angle_deg:.1f}°, "
+                  f"radii {result.min_radius_mm:.2f}–{result.max_radius_mm:.2f}mm)")
+        return result
+    except Exception as e:
+        print(f"⚠️ STEP bend angle extraction failed: {str(e)[:100]}")
+        return None
+
+
 def analyze_file_path(file_path: str, units_hint: Optional[str] = None) -> dict:
     """Analyze a CAD file (STEP/STL) and return normalized metrics.
     Returns a dict matching previous mock structure to limit integration changes.
     """
-    import os
     ext = os.path.splitext(file_path)[1].lower()
     scale = scale_to_mm(units_hint)
     if ext in (".stl",):
-        mesh = load_stl(file_path, scale=scale)
-        vol_mm3, area_mm2 = mesh_mass_props(mesh)
-        bbox_min = mesh.bounds[0]
-        bbox_max = mesh.bounds[1]
-        
-        # Calculate bounding box dimensions
-        bbox_dims = [
-            float(bbox_max[0] - bbox_min[0]),
-            float(bbox_max[1] - bbox_min[1]),
-            float(bbox_max[2] - bbox_min[2])
-        ]
-        bbox_dims.sort()
-        
-        # Advanced ray-casting for actual wall thickness detection
-        mw = min_wall_mesh(mesh, samples=8000, threshold_mm=10.0)
-        
-        # Calculate legacy thickness confidence based on detection quality
-        thickness_confidence = 0.0
-        detected_thickness = mw.global_min_mm if mw.global_min_mm > 0 else None
-        
-        if detected_thickness:
-            min_bbox_dim = min(bbox_dims)
-            thickness_to_bbox_ratio = detected_thickness / max(min_bbox_dim, 0.1)
-            
-            if thickness_to_bbox_ratio < 0.3:
-                thickness_confidence = 0.95
-            elif thickness_to_bbox_ratio < 0.5:
-                thickness_confidence = 0.80
-            elif thickness_to_bbox_ratio < 0.7:
-                thickness_confidence = 0.60
-            else:
-                thickness_confidence = 0.40
-        
-        # === ADVANCED THICKNESS ANALYSIS (PREFERRED) ===
-        # Use proper sheet metal detection with clustering and area-weighted analysis
-        thickness_analysis = enhanced_ray_casting_analysis(mesh, bbox_dims, samples=8000)
-        
-        print(f"🔬 Advanced Thickness Analysis:")
-        print(f"   Sheet thickness detected: {thickness_analysis.is_sheet_thickness}")
-        if thickness_analysis.detected_thickness:
-            print(f"   Thickness: {thickness_analysis.detected_thickness:.2f}mm")
-            print(f"   Uniform ratio: {thickness_analysis.uniform_ratio:.1%}")
-            print(f"   T/L ratio: {thickness_analysis.thickness_to_size_ratio:.1%}")
-            print(f"   Dominance: {thickness_analysis.cluster_dominance:.1f}x")
-            print(f"   Confidence: {thickness_analysis.confidence:.1%}")
-        print(f"   Reasoning: {thickness_analysis.reasoning}")
-        
-        # --- STL Feature Extraction (Move before classification for ML accuracy) ---
-        stl_threads = []
-        stl_undercuts = []
-        stl_fillets = []
-        stl_draft = []
-        try:
-            stl_threads = extract_threads_from_mesh(mesh)
-        except Exception as e:
-            print(f"⚠️ STL thread extraction failed: {str(e)[:80]}")
-        try:
-            stl_undercuts = detect_undercuts_from_mesh(mesh)
-        except Exception as e:
-            print(f"⚠️ STL undercut detection failed: {str(e)[:80]}")
-        try:
-            stl_fillets = detect_fillets_from_mesh(mesh)
-        except Exception as e:
-            print(f"⚠️ STL fillet detection failed: {str(e)[:80]}")
-        try:
-            stl_draft = analyze_draft_from_mesh(mesh)
-        except Exception as e:
-            print(f"⚠️ STL draft analysis failed: {str(e)[:80]}")
-
-        # === USE NEW CORE MODULES FOR CLEAN CLASSIFICATION ===
-        geom_metrics = GeometricMetrics(bbox_dims, vol_mm3, area_mm2)
-        classifier = ProcessClassifier(geom_metrics)
-        
-        # Classify with advanced thickness analysis + mesh-extracted features
-        process_type, confidence, classification_metadata = classifier.classify(
-            detected_thickness=detected_thickness,
-            thickness_confidence=thickness_confidence,
-            triangle_count=int(mesh.faces.shape[0]),
-            thickness_analysis=thickness_analysis,  # Pass advanced analysis
-            thread_count=len(stl_threads),
-            undercut_count=len(stl_undercuts),
-            fillet_count=len(stl_fillets),
-        )
-        
-        # Legacy format conversion
-        if process_type == 'sheet_metal':
-            process_type_str = 'sheet_metal'
-        elif process_type == 'cnc_turning':
-            process_type_str = 'cnc_turning'
-        else:
-            process_type_str = 'cnc_milling'
-        
-        # Build advanced metrics from classification
-        advanced_metrics_dict = {
-            'detected_thickness_mm': detected_thickness,
-            'thickness_confidence': thickness_confidence,
-            'thickness_detection_method': 'ray_casting_statistical',
-            'classification_confidence': confidence,
-            **classification_metadata
-        }
-        
-        # Log bend detection if found
-        if 'bend_report' in classification_metadata:
-            print(classification_metadata['bend_report'])
-        
-        # === ENTERPRISE COMPLEXITY CALCULATION ===
-        # Calculate complexity based on real geometric features
-        face_count = int(mesh.faces.shape[0])
-        bend_analysis = classification_metadata.get('bend_analysis', {})
-        bend_count = bend_analysis.get('bend_count', 0)
-        bend_complexity = bend_analysis.get('complexity', 0)
-        
-        # Complexity scoring for STL (no holes/pockets available from mesh)
-        # Based on: triangle count, bend count, aspect ratio, bend complexity
-        complexity_score = 0
-        
-        # Triangle complexity (mesh detail)
-        if face_count > 10000:
-            complexity_score += 30
-        elif face_count > 5000:
-            complexity_score += 20
-        elif face_count > 2000:
-            complexity_score += 10
-        
-        # Bend complexity for sheet metal
-        if process_type_str == 'sheet_metal':
-            if bend_count > 6:
-                complexity_score += 40
-            elif bend_count > 3:
-                complexity_score += 25
-            elif bend_count > 1:
-                complexity_score += 15
-            complexity_score += min(20, bend_complexity // 3)
-        else:
-            # CNC parts: aspect ratio and volume efficiency matter
-            bbox_dims.sort()
-            if len(bbox_dims) == 3:
-                aspect_ratio = bbox_dims[2] / max(bbox_dims[0], 0.1)
-                if aspect_ratio > 10:
-                    complexity_score += 20
-                elif aspect_ratio > 5:
-                    complexity_score += 10
-        
-        # Determine complexity level
-        if complexity_score >= 50:
-            complexity = 'complex'
-        elif complexity_score >= 25:
-            complexity = 'moderate'
-        else:
-            complexity = 'simple'
-        
-
-        # Sheet metal extras
-        grain_dir = None
-        nesting_est = None
-        if process_type_str == 'sheet_metal':
-            bend_axes = []
-            if 'bend_analysis' in classification_metadata:
-                ba = classification_metadata['bend_analysis']
-                for b in ba.get('bends', []):
-                    ax = b.get('axis')
-                    if ax:
-                        bend_axes.append(tuple(ax) if isinstance(ax, (list, tuple)) else (0, 0, 1))
-            grain_dir = analyze_grain_direction(
-                bend_axes=bend_axes,
-                flat_length=bbox_dims[2] if len(bbox_dims) == 3 else 0,
-                flat_width=bbox_dims[1] if len(bbox_dims) >= 2 else 0,
-            )
-            nesting_est = estimate_nesting(
-                flat_length=bbox_dims[2] if len(bbox_dims) == 3 else 0,
-                flat_width=bbox_dims[1] if len(bbox_dims) >= 2 else 0,
-                thickness=detected_thickness or bbox_dims[0] if bbox_dims else 1.0,
-            )
-
-        # --- Geometry Validation ---
-        validation_result = None
-        try:
-            validation_result = validate_geometry({
-                "boundingBox": {"x": bbox_dims[2] if len(bbox_dims) == 3 else 0,
-                                "y": bbox_dims[1] if len(bbox_dims) >= 2 else 0,
-                                "z": bbox_dims[0] if len(bbox_dims) >= 1 else 0},
-                "volume": vol_mm3,
-                "surfaceArea": area_mm2,
-            })
-        except Exception as e:
-            print(f"⚠️ Geometry validation failed: {str(e)[:80]}")
-
-        dfm_geometry = build_geometry_for_dfm(
-            bbox_dims=bbox_dims,
-            volume_mm3=vol_mm3,
-            surface_area_mm2=area_mm2,
-            holes=[],
-            pockets=[],
-            process_type=process_type_str,
-            thickness=detected_thickness,
-            bend_analysis=classification_metadata.get('bend_analysis'),
-            complexity=complexity,
-            threads=stl_threads,
-            slots=[],
-            undercuts=stl_undercuts,
-            fillets=stl_fillets,
-            draft_analysis=stl_draft,
-            grain_direction=grain_dir,
-            nesting=nesting_est,
-        )
-        
-        # Run DFM analysis
-        dfm_result = None
-        try:
-            dfm_result = analyze_dfm(
-                geometry=dfm_geometry,
-                process_type=process_type_str,
-                material="aluminum",
-                tolerance="standard"
-            )
-            print(f"✅ DFM Analysis (STL) Complete:")
-            print(f"   Score: {dfm_result.get('overall_score', 0):.0f}/100")
-            print(f"   Rating: {dfm_result.get('rating', 'unknown')}")
-        except Exception as e:
-            print(f"⚠️ DFM Analysis failed: {str(e)[:100]}")
-            dfm_result = {
-                "overall_score": 0,
-                "rating": "unknown",
-                "is_manufacturable": True,
-                "issues": [],
-                "error": str(e)[:200]
-            }
-        
-        metrics = {
-            "volume": vol_mm3 / 1000.0,  # convert to cm^3
-            "surface_area": area_mm2 / 100.0,  # to cm^2
-            "bbox": {"min": {"x": float(bbox_min[0]), "y": float(bbox_min[1]), "z": float(bbox_min[2])},
-                     "max": {"x": float(bbox_max[0]), "y": float(bbox_max[1]), "z": float(bbox_max[2])}},
-            "thickness": detected_thickness,
-            "primitive_features": {
-                "holes": 0,
-                "pockets": 0,
-                "slots": 0,
-                "threads": len(stl_threads),
-                "undercuts": len(stl_undercuts),
-                "fillets": len(stl_fillets),
-                "faces": face_count,
-            },
-            "feature_detail": _serialize_features(
-                threads=stl_threads,
-                undercuts=stl_undercuts,
-                fillets=stl_fillets,
-            ),
-            "material_usage": None,
-            "process_type": process_type_str,
-            "sheet_metal_score": classification_metadata.get('sheet_metal_score', 0),
-            "complexity": complexity,
-            "complexity_score": complexity_score,
-            "advanced_metrics": advanced_metrics_dict,
-            "dfm_analysis": dfm_result,
-            "validation": validation_result,
-        }
-        if grain_dir:
-            metrics["grain_direction"] = {
-                "recommended": grain_dir.recommended_direction,
-                "score": grain_dir.alignment_score,
-                "notes": grain_dir.notes,
-            }
-        if nesting_est:
-            metrics["nesting"] = {
-                "parts_per_sheet": nesting_est.parts_per_sheet,
-                "utilization_pct": nesting_est.utilization_pct,
-                "sheet_size": f"{nesting_est.sheet_width_mm}×{nesting_est.sheet_height_mm}mm",
-            }
-        return metrics
-    elif ext in (".step", ".stp"):
-        if not occ_available():
-            raise HTTPException(status_code=400, detail="STEP analysis requires pythonOCC; not available")
-        shape = load_step_shape(file_path)
-        
-        # === ASSEMBLY DETECTION ===
-        # Check if this is a multi-body assembly that requires manual quoting
-        assembly_info = count_solids_and_compounds(shape)
-        if assembly_info.is_assembly:
-            print(f"⚠️ {assembly_info.reason}")
-            # Return special metrics for assemblies
-            return {
-                "volume": 0,
-                "surface_area": 0,
-                "bbox": {"min": {"x": 0, "y": 0, "z": 0}, "max": {"x": 0, "y": 0, "z": 0}},
-                "thickness": None,
-                "primitive_features": {
-                    "holes": 0, "pockets": 0, "slots": 0, "faces": 0,
-                    "threads": 0, "undercuts": 0, "fillets": 0
-                },
-                "material_usage": None,
-                "process_type": "assembly",
-                "sheet_metal_score": 0,
-                "is_assembly": True,
-                "assembly_info": {
-                    "solid_count": assembly_info.solid_count,
-                    "compound_count": assembly_info.compound_count,
-                    "shell_count": assembly_info.shell_count,
-                    "reason": assembly_info.reason
-                },
-                "requires_manual_quote": True,
-                "manual_quote_reason": assembly_info.reason,
-                "advanced_metrics": {}
-            }
-        
-        vol_mm3, area_mm2 = shape_mass_props(shape)
-        
-        # BBox using OCC
-        from OCC.Core.Bnd import Bnd_Box
-        from OCC.Core.BRepBndLib import brepbndlib
-        box = Bnd_Box()
-        # Use new static method syntax (pythonocc-core 7.7.1+)
-        brepbndlib.Add(shape, box)
-        
-        # In 7.7.0, Get() might require variables by reference or return bounds differently
-        xmin, ymin, zmin, xmax, ymax, zmax = 0.0, 0.0, 0.0, 0.0, 0.0, 0.0
-        try:
-            # Try 7.7.1+ return style first
-            coords = box.Get()
-            if coords and len(coords) == 6:
-                xmin, ymin, zmin, xmax, ymax, zmax = coords
-            else:
-                # Handle 7.7.0 reference style or manual extraction
-                p_min = box.CornerMin()
-                p_max = box.CornerMax()
-                xmin, ymin, zmin = p_min.X(), p_min.Y(), p_min.Z()
-                xmax, ymax, zmax = p_max.X(), p_max.Y(), p_max.Z()
-        except:
-            p_min = box.CornerMin()
-            p_max = box.CornerMax()
-            xmin, ymin, zmin = p_min.X(), p_min.Y(), p_min.Z()
-            xmax, ymax, zmax = p_max.X(), p_max.Y(), p_max.Z()
-        
-        # Calculate bounding box dimensions
-        bbox_dims = [xmax - xmin, ymax - ymin, zmax - zmin]
-        bbox_dims.sort()
-        
-        # ENTERPRISE-LEVEL: Extract actual material thickness using advanced ray-casting
-        actual_thickness = None
-        thickness_confidence = 0.0
-        triangle_count = 0
-        
-        try:
-            from OCC.Core.BRepMesh import BRepMesh_IncrementalMesh
-            import tempfile
-            import os
-            
-            # Fine meshing for accurate wall thickness detection
-            BRepMesh_IncrementalMesh(shape, 0.05, True, 0.1, True)
-            
-            # Export to STL temporarily for trimesh analysis
-            from OCC.Extend.DataExchange import write_stl_file
-            tmp_stl_fd, tmp_stl_path = tempfile.mkstemp(suffix='.stl')
-            os.close(tmp_stl_fd)
-            
-            try:
-                write_stl_file(shape, tmp_stl_path, mode="binary", linear_deflection=0.05, angular_deflection=0.1)
-                temp_mesh = load_stl(tmp_stl_path, scale=1.0)
-                triangle_count = int(temp_mesh.faces.shape[0])
-                
-                # Advanced ray-casting with 8000 samples
-                mw = min_wall_mesh(temp_mesh, samples=8000, threshold_mm=10.0)
-                
-                if mw.global_min_mm > 0:
-                    actual_thickness = mw.global_min_mm
-                    
-                    # Calculate confidence based on thickness/bbox ratio
-                    min_bbox_dim = min(bbox_dims)
-                    thickness_to_bbox_ratio = actual_thickness / max(min_bbox_dim, 0.1)
-                    
-                    # High confidence for bent sheet metal signature
-                    if thickness_to_bbox_ratio < 0.3:
-                        thickness_confidence = 0.95
-                    elif thickness_to_bbox_ratio < 0.5:
-                        thickness_confidence = 0.80
-                    elif thickness_to_bbox_ratio < 0.7:
-                        thickness_confidence = 0.60
-                    else:
-                        thickness_confidence = 0.40
-                    
-                    print(f"✅ Detected wall thickness: {actual_thickness:.2f}mm "
-                          f"(bbox min: {min_bbox_dim:.2f}mm, ratio: {thickness_to_bbox_ratio:.1%}, "
-                          f"confidence: {thickness_confidence:.0%})")
-                else:
-                    print("⚠️ Wall thickness detection returned 0")
-                
-                # === ADVANCED THICKNESS ANALYSIS ===
-                if triangle_count > 0:
-                    thickness_analysis = enhanced_ray_casting_analysis(temp_mesh, bbox_dims, samples=8000)
-                    print(f"🔬 Advanced Thickness Analysis (STEP):")
-                    print(f"   Sheet thickness: {thickness_analysis.is_sheet_thickness}")
-                    if thickness_analysis.detected_thickness:
-                        print(f"   Thickness: {thickness_analysis.detected_thickness:.2f}mm")
-                        print(f"   Uniform ratio: {thickness_analysis.uniform_ratio:.1%}")
-                        print(f"   Reasoning: {thickness_analysis.reasoning}")
-                else:
-                    thickness_analysis = None
-                    
-            finally:
-                if os.path.exists(tmp_stl_path):
-                    os.unlink(tmp_stl_path)
-                    
-        except Exception as e:
-            print(f"⚠️ Wall thickness detection failed: {str(e)[:100]}")
-            print("   Using bbox approximation")
-            traceback.print_exc()
-            thickness_analysis = None
-        
-        # === EXTRACT FEATURES BEFORE CLASSIFICATION ===
-        # Feature counts improve ML-assisted classification accuracy
-        holes = extract_holes_from_shape(shape)
-        pockets = extract_pockets_from_shape(shape)
-
-        threads = []
-        slots = []
-        undercuts = []
-        fillets = []
-        draft_results = []
-        try:
-            threads = extract_threads_from_shape(shape, holes)
-        except Exception as e:
-            print(f"⚠️ Thread extraction failed: {str(e)[:80]}")
-        try:
-            slots = extract_slots_from_shape(shape)
-            if not slots:
-                slots = extract_slots_from_pockets(pockets)
-        except Exception as e:
-            print(f"⚠️ Slot extraction failed: {str(e)[:80]}")
-        try:
-            undercuts = extract_undercuts_from_shape(shape)
-        except Exception as e:
-            print(f"⚠️ Undercut detection failed: {str(e)[:80]}")
-        try:
-            fillets = extract_fillets_from_shape(shape)
-        except Exception as e:
-            print(f"⚠️ Fillet detection failed: {str(e)[:80]}")
-        try:
-            draft_results = analyze_draft_from_shape(shape)
-        except Exception as e:
-            print(f"⚠️ Draft analysis failed: {str(e)[:80]}")
-
-        print(f"🔧 Feature extraction: {len(holes)} holes, {len(pockets)} pockets, "
-              f"{len(threads)} threads, {len(slots)} slots, {len(undercuts)} undercuts, "
-              f"{len(fillets)} fillets, {len(draft_results)} draft faces")
-
-        # === USE NEW CORE MODULES FOR CLEAN CLASSIFICATION ===
-        geom_metrics = GeometricMetrics(bbox_dims, vol_mm3, area_mm2)
-        classifier = ProcessClassifier(geom_metrics)
-        
-        # Classify with advanced thickness analysis + feature counts for ML
-        process_type, confidence, classification_metadata = classifier.classify(
-            detected_thickness=actual_thickness,
-            thickness_confidence=thickness_confidence,
-            triangle_count=triangle_count,
-            thickness_analysis=thickness_analysis,
-            hole_count=len(holes),
-            pocket_count=len(pockets),
-            thread_count=len(threads),
-            undercut_count=len(undercuts),
-            fillet_count=len(fillets),
-            slot_count=len(slots),
-        )
-        
-        # Legacy format conversion
-        if process_type == 'sheet_metal':
-            process_type_str = 'sheet_metal'
-        elif process_type == 'cnc_turning':
-            process_type_str = 'cnc_turning'
-        else:
-            process_type_str = 'cnc_milling'
-        
-        # Build advanced metrics
-        advanced_metrics_dict = {
-            'detected_thickness_mm': actual_thickness,
-            'thickness_confidence': thickness_confidence,
-            'thickness_detection_method': 'ray_casting_statistical',
-            'classification_confidence': confidence,
-            **classification_metadata
-        }
-        
-        # Log bend detection if found
-        if 'bend_report' in classification_metadata:
-            print(classification_metadata['bend_report'])
-
-        # === STEP BEND ANGLE EXTRACTION ===
-        step_bend_result = None
-        try:
-            step_bend_result = extract_bend_angles_from_shape(
-                shape, thickness_mm=actual_thickness
-            )
-            if step_bend_result.total_bend_count > 0:
-                print(f"🔧 STEP Bend Extraction: {step_bend_result.total_bend_count} bends "
-                      f"(angles {step_bend_result.min_angle_deg:.1f}°–{step_bend_result.max_angle_deg:.1f}°, "
-                      f"radii {step_bend_result.min_radius_mm:.2f}–{step_bend_result.max_radius_mm:.2f}mm)")
-        except Exception as e:
-            print(f"⚠️ STEP bend angle extraction failed: {str(e)[:100]}")
-        
-        # === ENTERPRISE COMPLEXITY CALCULATION FOR STEP FILES ===
-        # Based on actual extracted features: holes, pockets, triangles, bends
-        hole_count = len(holes)
-        pocket_count = len(pockets)
-        bend_analysis = classification_metadata.get('bend_analysis', {})
-        bend_count = bend_analysis.get('bend_count', 0)
-        bend_complexity = bend_analysis.get('complexity', 0)
-        
-        complexity_score = 0
-        
-        # Feature-based complexity (STEP has actual feature extraction)
-        if hole_count > 20:
-            complexity_score += 35
-        elif hole_count > 10:
-            complexity_score += 25
-        elif hole_count > 5:
-            complexity_score += 15
-        elif hole_count > 0:
-            complexity_score += 8
-        
-        if pocket_count > 10:
-            complexity_score += 30
-        elif pocket_count > 5:
-            complexity_score += 20
-        elif pocket_count > 2:
-            complexity_score += 12
-        elif pocket_count > 0:
-            complexity_score += 6
-        
-        # Triangle/face complexity
-        if triangle_count > 15000:
-            complexity_score += 20
-        elif triangle_count > 8000:
-            complexity_score += 12
-        elif triangle_count > 3000:
-            complexity_score += 6
-        
-        # Sheet metal specific: bends add complexity
-        if process_type_str == 'sheet_metal':
-            if bend_count > 6:
-                complexity_score += 30
-            elif bend_count > 3:
-                complexity_score += 20
-            elif bend_count > 1:
-                complexity_score += 10
-            complexity_score += min(15, bend_complexity // 4)
-        else:
-            # CNC: aspect ratio adds to complexity
-            sorted_dims = sorted(bbox_dims)
-            if len(sorted_dims) == 3:
-                aspect_ratio = sorted_dims[2] / max(sorted_dims[0], 0.1)
-                if aspect_ratio > 10:
-                    complexity_score += 15
-                elif aspect_ratio > 5:
-                    complexity_score += 8
-        
-        # Determine complexity level
-        if complexity_score >= 50:
-            complexity = 'complex'
-        elif complexity_score >= 25:
-            complexity = 'moderate'
-        else:
-            complexity = 'simple'
-        
-        # === DFM ANALYSIS ===
-        # Sheet metal extras
-        step_grain_dir = None
-        step_nesting_est = None
-        if process_type_str == 'sheet_metal':
-            bend_axes = []
-            if bend_analysis:
-                for b in bend_analysis.get('bends', []):
-                    ax = b.get('axis')
-                    if ax:
-                        bend_axes.append(tuple(ax) if isinstance(ax, (list, tuple)) else (0, 0, 1))
-            step_grain_dir = analyze_grain_direction(
-                bend_axes=bend_axes,
-                flat_length=bbox_dims[2] if len(bbox_dims) == 3 else 0,
-                flat_width=bbox_dims[1] if len(bbox_dims) >= 2 else 0,
-            )
-            step_nesting_est = estimate_nesting(
-                flat_length=bbox_dims[2] if len(bbox_dims) == 3 else 0,
-                flat_width=bbox_dims[1] if len(bbox_dims) >= 2 else 0,
-                thickness=actual_thickness or bbox_dims[0] if bbox_dims else 1.0,
-            )
-
-        # --- Geometry Validation ---
-        step_validation = None
-        try:
-            step_validation = validate_geometry({
-                "boundingBox": {"x": bbox_dims[2] if len(bbox_dims) == 3 else 0,
-                                "y": bbox_dims[1] if len(bbox_dims) >= 2 else 0,
-                                "z": bbox_dims[0] if len(bbox_dims) >= 1 else 0},
-                "volume": vol_mm3,
-                "surfaceArea": area_mm2,
-            })
-        except Exception as e:
-            print(f"⚠️ Geometry validation failed: {str(e)[:80]}")
-
-        # Build geometry structure for DFM analysis
-        dfm_geometry = build_geometry_for_dfm(
-            bbox_dims=bbox_dims,
-            volume_mm3=vol_mm3,
-            surface_area_mm2=area_mm2,
-            holes=holes,
-            pockets=pockets,
-            process_type=process_type_str,
-            thickness=actual_thickness,
-            bend_analysis=bend_analysis,
-            complexity=complexity,
-            threads=threads,
-            slots=slots,
-            undercuts=undercuts,
-            fillets=fillets,
-            draft_analysis=draft_results,
-            grain_direction=step_grain_dir,
-            nesting=step_nesting_est,
-        )
-        
-        # Run DFM analysis
-        dfm_result = None
-        try:
-            dfm_result = analyze_dfm(
-                geometry=dfm_geometry,
-                process_type=process_type_str,
-                material="aluminum",  # Default material
-                tolerance="standard"
-            )
-            print(f"✅ DFM Analysis Complete:")
-            print(f"   Score: {dfm_result.get('overall_score', 0):.0f}/100")
-            print(f"   Rating: {dfm_result.get('rating', 'unknown')}")
-            print(f"   Issues: {len(dfm_result.get('issues', []))}")
-            print(f"   Manufacturable: {dfm_result.get('is_manufacturable', True)}")
-        except Exception as e:
-            print(f"⚠️ DFM Analysis failed: {str(e)[:100]}")
-            dfm_result = {
-                "overall_score": 0,
-                "rating": "unknown",
-                "is_manufacturable": True,
-                "issues": [],
-                "error": str(e)[:200]
-            }
-        
-        metrics = {
-            "volume": vol_mm3 / 1000.0,
-            "surface_area": area_mm2 / 100.0,
-            "bbox": {"min": {"x": xmin, "y": ymin, "z": zmin}, "max": {"x": xmax, "y": ymax, "z": zmax}},
-            "thickness": actual_thickness,
-            "primitive_features": {
-                "holes": hole_count,
-                "pockets": pocket_count,
-                "threads": len(threads),
-                "slots": len(slots),
-                "undercuts": len(undercuts),
-                "fillets": len(fillets),
-                "faces": triangle_count,
-            },
-            "feature_detail": _serialize_features(
-                threads=threads,
-                slots=slots,
-                undercuts=undercuts,
-                fillets=fillets,
-                holes=holes,
-                pockets=pockets,
-            ),
-            "material_usage": None,
-            "process_type": process_type_str,
-            "sheet_metal_score": classification_metadata.get('sheet_metal_score', 0),
-            "complexity": complexity,
-            "complexity_score": complexity_score,
-            "advanced_metrics": advanced_metrics_dict,
-            "dfm_analysis": dfm_result,
-            "validation": step_validation,
-        }
-        # Attach STEP bend angle data if available
-        if step_bend_result and step_bend_result.total_bend_count > 0:
-            metrics["step_bend_angles"] = step_bend_result.to_dict()
-        if step_grain_dir:
-            metrics["grain_direction"] = {
-                "recommended": step_grain_dir.recommended_direction,
-                "score": step_grain_dir.alignment_score,
-                "notes": step_grain_dir.notes,
-            }
-        if step_nesting_est:
-            metrics["nesting"] = {
-                "parts_per_sheet": step_nesting_est.parts_per_sheet,
-                "utilization_pct": step_nesting_est.utilization_pct,
-                "sheet_size": f"{step_nesting_est.sheet_width_mm}×{step_nesting_est.sheet_height_mm}mm",
-            }
-        return metrics
-    else:
-        raise HTTPException(status_code=400, detail="Unsupported CAD format. Use STEP or STL.")
+        return _analyze_stl(file_path, scale)
+    if ext in (".step", ".stp"):
+        return _analyze_step(file_path)
+    raise HTTPException(status_code=400, detail="Unsupported CAD format. Use STEP or STL.")
 
 def calculate_stock_size(bbox: dict, thickness: Optional[float] = None) -> dict:
     """Calculate required stock material size."""
@@ -892,16 +928,124 @@ def get_analysis_result(task_id: str):
     else:
         raise HTTPException(status_code=202, detail="Analysis in progress")
 
-@router.post("/sync", response_model=AnalysisResponse)
+@router.post("/sync")
 def analyze_cad_file_sync(request: AnalysisRequest):
     """Synchronous analysis for immediate results (smaller files)."""
-    try:
-        local_path = request.file_path
-        if not local_path and request.file_url:
+    logging.warning("Sync analysis request: file_id=%s, file_path=%s, file_url=%s",
+                    request.file_id, request.file_path, request.file_url)
+    local_path = request.file_path
+    if not local_path and request.file_url:
+        try:
             local_path = download_to_temp(request.file_url)
-        if not local_path:
-            raise HTTPException(status_code=400, detail="file_path or file_url is required")
+        except Exception as dl_err:
+            logging.error("Download failed for %s: %s", request.file_url, dl_err)
+            traceback.print_exc()
+            raise HTTPException(status_code=400, detail=f"File download failed: {str(dl_err)[:300]}")
+    if not local_path:
+        raise HTTPException(status_code=400, detail="file_path or file_url is required")
+    try:
         metrics = analyze_file_path(local_path, request.units_hint)
-        return {"file_id": request.file_id, "metrics": metrics}
+        # Sanitize metrics to ensure JSON serializability (handles numpy types, NaN, inf)
+        safe_metrics = _json_safe(metrics)
+        return JSONResponse(content={"file_id": request.file_id, "metrics": safe_metrics})
+    except HTTPException:
+        raise
     except Exception as e:
-        raise HTTPException(status_code=400, detail=str(e))
+        # Log the full traceback so real errors are visible in Docker logs
+        logging.error("Analysis failed for file_id=%s: %s", request.file_id, str(e))
+        traceback.print_exc()
+
+        # Last-resort assembly detection: if analysis crashed but we can
+        # still load and check the shape, return assembly info instead of 500
+        try:
+            ext = os.path.splitext(local_path)[1].lower()
+            if ext in ('.step', '.stp') and occ_available():
+                shape = load_step_shape(local_path)
+                assembly_result = _detect_assembly_early(shape)
+                if assembly_result is not None:
+                    logging.warning(
+                        "Analysis crashed but assembly detected — returning assembly metrics"
+                    )
+                    safe_metrics = _json_safe(assembly_result)
+                    return JSONResponse(
+                        content={"file_id": request.file_id, "metrics": safe_metrics}
+                    )
+        except Exception:
+            pass  # Last resort failed — fall through to original error
+
+        raise HTTPException(status_code=500, detail=f"Analysis failed: {str(e)[:500]}")
+
+
+# ---------------------------------------------------------------------------
+# Feedback & retraining endpoints (Phase 6: Confidence calibration)
+# ---------------------------------------------------------------------------
+
+class FeedbackRequest(BaseModel):
+    """Request body for classification feedback."""
+    file_id: str
+    confirmed_process: str  # 'sheet_metal' | 'cnc_milling' | 'cnc_turning'
+    original_process: Optional[str] = None
+    original_confidence: Optional[float] = None
+    features: Optional[dict] = None  # feature vector from original analysis
+
+
+@router.post("/feedback")
+def submit_classification_feedback(request: FeedbackRequest):
+    """Record a user-confirmed classification for ML retraining.
+
+    Called when a user manually overrides the auto-detected process type.
+    This data is stored and used to improve the ML classifier over time.
+    """
+    if request.confirmed_process not in ('sheet_metal', 'cnc_milling', 'cnc_turning'):
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid process type: {request.confirmed_process}. "
+                   f"Must be 'sheet_metal', 'cnc_milling', or 'cnc_turning'.",
+        )
+
+    try:
+        from ..core.ml_classifier import MLProcessClassifier
+        classifier = MLProcessClassifier()
+        features = request.features or {}
+        classifier.record_feedback(features, request.confirmed_process)
+        logging.warning(
+            "Classification feedback recorded: file_id=%s, "
+            "original=%s (%.2f) → confirmed=%s",
+            request.file_id,
+            request.original_process or "unknown",
+            request.original_confidence or 0.0,
+            request.confirmed_process,
+        )
+        return {"status": "ok", "message": "Feedback recorded for ML retraining"}
+    except Exception as e:
+        logging.error("Failed to record feedback: %s", e)
+        raise HTTPException(status_code=500, detail=f"Feedback recording failed: {str(e)[:200]}")
+
+
+@router.post("/retrain")
+def trigger_ml_retrain():
+    """Trigger ML model retraining with accumulated feedback data.
+
+    Should be called periodically (e.g., weekly cron) or by an admin.
+    Requires at least 50 feedback samples to retrain.
+    """
+    try:
+        from ..core.ml_classifier import MLProcessClassifier, _FEEDBACK_PATH
+        if not _FEEDBACK_PATH.exists():
+            return {"status": "skipped", "message": "No feedback data available yet"}
+
+        # Count feedback samples
+        with open(_FEEDBACK_PATH) as f:
+            sample_count = sum(1 for _ in f)
+
+        classifier = MLProcessClassifier()
+        classifier.retrain_with_feedback(min_samples=50)
+        logging.warning("ML retrain triggered with %d feedback samples", sample_count)
+        return {
+            "status": "ok",
+            "message": f"Retrained with {sample_count} feedback samples",
+            "sample_count": sample_count,
+        }
+    except Exception as e:
+        logging.error("ML retrain failed: %s", e)
+        raise HTTPException(status_code=500, detail=f"Retrain failed: {str(e)[:200]}")

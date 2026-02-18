@@ -119,7 +119,7 @@ const authOptions: NextAuthOptions = {
           }
 
           const user = await res.json();
-          if (user && user.id) {
+          if (user?.id) {
             return {
               id: user.id,
               email: user.email,
@@ -171,7 +171,7 @@ const authOptions: NextAuthOptions = {
       }
 
       // Return previous token if the access token has not expired yet
-      if (Date.now() < (token.accessTokenExpires as number)) {
+      if (Date.now() < token.accessTokenExpires) {
         return token;
       }
 
@@ -190,12 +190,12 @@ const authOptions: NextAuthOptions = {
       console.log(session, token, "<---");
 
       if (session.user && token) {
-        session.user.id = token.id as string;
-        session.user.role = token.role as string;
-        session.user.verified = token.verified as boolean;
-        session.user.organizationId = token.organizationId as string;
+        session.user.id = token.id;
+        session.user.role = token.role;
+        session.user.verified = token.verified;
+        session.user.organizationId = token.organizationId;
         // Include access token in session for API calls
-        session.accessToken = token.accessToken as string;
+        session.accessToken = token.accessToken;
       }
       return session;
     },
