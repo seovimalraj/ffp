@@ -65,7 +65,8 @@ class AdvancedThicknessDetector:
     
     # Sheet metal criteria
     MIN_UNIFORM_RATIO = 0.35  # 35% of surface must show thickness
-    MAX_THICKNESS_TO_SIZE = 0.03  # 3% for clear sheet metal
+    MAX_THICKNESS_TO_SIZE = 0.10  # 10% for clear sheet metal (handles bent/smaller parts)
+    MAX_THICKNESS_TO_SIZE_STRICT = 0.04  # 4% for high confidence
     MIN_CLUSTER_DOMINANCE = 2.0  # 2x second cluster
     
     def __init__(self, bbox_dims: List[float], surface_area_mm2: float):
@@ -79,6 +80,8 @@ class AdvancedThicknessDetector:
         self.bbox_dims = sorted(bbox_dims)
         self.surface_area = surface_area_mm2
         self.max_dimension = self.bbox_dims[2]
+        self.mid_dimension = self.bbox_dims[1]  # Second largest dimension
+        self.min_dimension = self.bbox_dims[0]  # Smallest (likely thickness)
         
     def analyze_from_mesh_distances(self, 
                                     sample_distances: List[float],
@@ -124,7 +127,10 @@ class AdvancedThicknessDetector:
         
         # Calculate metrics
         uniform_ratio = dominant.support_area / self.surface_area
-        thickness_to_size = dominant.thickness / self.max_dimension
+        # IMPROVED: Use mid_dimension for T/L ratio instead of max_dimension
+        # This gives better results for smaller sheets where T/max can be too high
+        reference_dimension = self.mid_dimension if self.mid_dimension > 0 else self.max_dimension
+        thickness_to_size = dominant.thickness / reference_dimension
         
         cluster_dominance = 1.0
         if len(clusters) > 1:
@@ -197,7 +203,9 @@ class AdvancedThicknessDetector:
         
         # Calculate metrics
         uniform_ratio = dominant.support_area / self.surface_area
-        thickness_to_size = dominant.thickness / self.max_dimension
+        # IMPROVED: Use mid_dimension for T/L ratio instead of max_dimension
+        reference_dimension = self.mid_dimension if self.mid_dimension > 0 else self.max_dimension
+        thickness_to_size = dominant.thickness / reference_dimension
         
         cluster_dominance = 1.0
         if len(clusters) > 1:
@@ -325,14 +333,16 @@ class AdvancedThicknessDetector:
             reasons.append(f"LOW uniform ratio ({uniform_ratio:.1%})")
         
         # Criterion 2: Thinness (T/L ratio)
-        if thickness_to_size <= 0.02:
+        # IMPROVED: More lenient thresholds based on mid_dimension reference
+        # and to better handle smaller sheets and bent parts
+        if thickness_to_size <= 0.04:
             confidence += 0.20
             reasons.append(f"very thin (T/L={thickness_to_size:.1%})")
-        elif thickness_to_size <= self.MAX_THICKNESS_TO_SIZE:
-            confidence += 0.10
+        elif thickness_to_size <= self.MAX_THICKNESS_TO_SIZE:  # 10%
+            confidence += 0.12
             reasons.append(f"thin (T/L={thickness_to_size:.1%})")
-        elif thickness_to_size <= 0.05:
-            confidence += 0.00
+        elif thickness_to_size <= 0.15:
+            confidence += 0.03
             reasons.append(f"moderately thin (T/L={thickness_to_size:.1%})")
         else:
             confidence -= 0.15
