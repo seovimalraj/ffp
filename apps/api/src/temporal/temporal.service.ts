@@ -20,11 +20,11 @@ export class TemporalService implements OnModuleInit {
   private async connectWithRetry(attempt = 1): Promise<void> {
     const address = this.configService.get<string>(
       'TEMPORAL_ADDRESS',
-      this.configService.get<string>('TEMPORAL_URL', 'localhost:7233'),
+      this.configService.get<string>('temporal.address', 'localhost:7233'),
     );
     const namespace = this.configService.get<string>(
       'TEMPORAL_NAMESPACE',
-      this.configService.get<string>('TEMPORAL_NAMESPACE', 'default'),
+      this.configService.get<string>('temporal.namespace', 'default'),
     );
 
     try {
