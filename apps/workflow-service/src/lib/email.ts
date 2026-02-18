@@ -1,7 +1,10 @@
 import nodemailer from "nodemailer";
 import { config } from "../config.js";
 import { logger } from "./logger.js";
-import { WelcomeTemplate } from "../constants/email-templates/welcome-email.template.js";
+import {
+  WelcomeTemplate,
+  TechnicalSupportTemplate,
+} from "../constants/email-templates/index.js";
 import { renderEmail } from "./render-email.js";
 import { getOrderDocumentTemplate } from "../constants/email-templates/order-document.template.js";
 
@@ -30,7 +33,7 @@ export interface SendEmailDetails {
   text?: string;
   html?: string;
   name?: string;
-  type?: "welcome" | "general" | "document";
+  type?: "welcome" | "general" | "document" | "tech-support";
   attachments?: AttachmentType[];
   metadata?: Record<string, string>;
 }
@@ -48,18 +51,33 @@ export const sendEmail = async ({
   try {
     let finalHtml = html;
 
-    if (type && type === "welcome") {
-      const mjml = WelcomeTemplate(name);
-      finalHtml = renderEmail(mjml);
-    }
+    if (type) {
+      let mjml: string | undefined;
 
-    if (type && type === "document") {
-      const mjml = getOrderDocumentTemplate(
-        metadata?.orderId || "",
-        metadata?.username || "",
-      );
+      switch (type) {
+        case "welcome":
+          mjml = WelcomeTemplate(name);
+          break;
+        case "document":
+          mjml = getOrderDocumentTemplate(
+            metadata?.orderId || "",
+            metadata?.username || "",
+          );
+          break;
+        case "tech-support":
+          mjml = TechnicalSupportTemplate(
+            metadata?.username || "",
+            metadata?.userEmail || "",
+            metadata?.phoneNumber || "",
+            metadata?.quoteId || metadata?.orderId || "",
+            metadata?.quoteCode || "",
+          );
+          break;
+      }
 
-      finalHtml = renderEmail(mjml);
+      if (mjml) {
+        finalHtml = renderEmail(mjml);
+      }
     }
 
     const mailOptions = {

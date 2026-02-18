@@ -218,6 +218,7 @@ export class AuthController {
       } catch (err) {
         this.logger.error({ err }, 'Failed to send OTP via Temporal');
       }
+
       return {
         id: user.id,
         email: user.email,
