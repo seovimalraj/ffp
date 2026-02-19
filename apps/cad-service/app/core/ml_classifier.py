@@ -933,6 +933,31 @@ _FEEDBACK_PATH = _MODEL_DIR / "feedback_log.jsonl"
 _MODEL_VERSION = "1.0.0"
 
 _cached_model = None
+_classifier_instance = None  # Singleton instance
+
+
+def get_ml_classifier() -> "MLProcessClassifier":
+    """Get the singleton ML classifier instance (fast, no training)."""
+    global _classifier_instance
+    if _classifier_instance is None:
+        _classifier_instance = MLProcessClassifier()
+    return _classifier_instance
+
+
+def pretrain_ml_classifier() -> bool:
+    """Pre-train the ML classifier (call once at startup or via admin endpoint).
+    
+    Returns True if training succeeded, False otherwise.
+    """
+    try:
+        clf = get_ml_classifier()
+        if clf.is_ready:
+            return True
+        clf._train_model()
+        return clf.is_ready
+    except Exception as exc:
+        logger.error("ML pre-training failed: %s", exc)
+        return False
 
 
 class MLProcessClassifier:
@@ -941,10 +966,11 @@ class MLProcessClassifier:
     def __init__(self):
         self.model = None
         self.is_ready = False
-        self._load_or_train()
+        self._load_cached_only()  # Never train during init
 
     # ------------------------------------------------------------------
-    def _load_or_train(self):
+    def _load_cached_only(self):
+        """Load cached model only - never train during analysis to avoid timeouts."""
         global _cached_model
         if _cached_model is not None:
             self.model = _cached_model
@@ -963,13 +989,9 @@ class MLProcessClassifier:
             except Exception as exc:
                 logger.warning("Failed loading cached model: %s", exc)
 
-        # Train on synthetic data
-        try:
-            self._train_model()
-        except ImportError:
-            logger.warning("scikit-learn not available – ML classification disabled")
-        except Exception as exc:
-            logger.error("ML model training failed: %s", exc)
+        # Don't train here - just mark as not ready
+        # Training should be done via pretrain_ml_classifier() at startup
+        logger.info("ML classifier not available (no cached model). Run pretrain_ml_classifier() to enable.")
 
     # ------------------------------------------------------------------
     def _train_model(self):

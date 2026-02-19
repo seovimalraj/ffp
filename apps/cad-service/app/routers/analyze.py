@@ -1480,8 +1480,8 @@ def submit_classification_feedback(request: FeedbackRequest):
         )
 
     try:
-        from ..core.ml_classifier import MLProcessClassifier
-        classifier = MLProcessClassifier()
+        from ..core.ml_classifier import get_ml_classifier
+        classifier = get_ml_classifier()
         features = request.features or {}
         classifier.record_feedback(features, request.confirmed_process)
         logging.warning(
@@ -1506,7 +1506,7 @@ def trigger_ml_retrain():
     Requires at least 50 feedback samples to retrain.
     """
     try:
-        from ..core.ml_classifier import MLProcessClassifier, _FEEDBACK_PATH
+        from ..core.ml_classifier import get_ml_classifier, _FEEDBACK_PATH
         if not _FEEDBACK_PATH.exists():
             return {"status": "skipped", "message": "No feedback data available yet"}
 
@@ -1514,7 +1514,7 @@ def trigger_ml_retrain():
         with open(_FEEDBACK_PATH) as f:
             sample_count = sum(1 for _ in f)
 
-        classifier = MLProcessClassifier()
+        classifier = get_ml_classifier()
         classifier.retrain_with_feedback(min_samples=50)
         logging.warning("ML retrain triggered with %d feedback samples", sample_count)
         return {
@@ -1525,3 +1525,29 @@ def trigger_ml_retrain():
     except Exception as e:
         logging.error("ML retrain failed: %s", e)
         raise HTTPException(status_code=500, detail=f"Retrain failed: {str(e)[:200]}")
+
+
+@router.post("/pretrain")
+def trigger_ml_pretrain():
+    """Manually trigger ML model pre-training.
+
+    Can be called by admin to force training if the cached model is missing.
+    This is a blocking operation that takes ~20 seconds.
+    """
+    try:
+        from ..core.ml_classifier import pretrain_ml_classifier, get_ml_classifier
+        
+        # Check if already trained
+        clf = get_ml_classifier()
+        if clf.is_ready:
+            return {"status": "ok", "message": "ML classifier already trained and ready"}
+        
+        # Train now
+        success = pretrain_ml_classifier()
+        if success:
+            return {"status": "ok", "message": "ML classifier trained successfully"}
+        else:
+            return {"status": "error", "message": "ML classifier training failed"}
+    except Exception as e:
+        logging.error("ML pretrain failed: %s", e)
+        raise HTTPException(status_code=500, detail=f"Pretrain failed: {str(e)[:200]}")
