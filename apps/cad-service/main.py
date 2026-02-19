@@ -293,7 +293,7 @@ async def validate_cad_file(request: DFMAnalysisRequest) -> List[DFMCheck]:
 
     # File type validation
     file_extension = request.file_id.split('.')[-1].lower() if '.' in request.file_id else ''
-    supported_formats = ['step', 'stp', 'iges', 'igs', 'stl', 'obj']
+    supported_formats = ['step', 'stp', 'iges', 'igs', 'stl', 'obj', 'dxf']
 
     if file_extension in supported_formats:
         checks.append(DFMCheck(**{

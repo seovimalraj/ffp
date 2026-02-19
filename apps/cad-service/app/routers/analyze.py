@@ -327,6 +327,7 @@ def _classify_process(bbox_dims, vol_mm3, area_mm2, detected_thickness,
                       bends=None, undercuts=None, draft_analysis=None,
                       slots=None, threads=None,  # GAP FIX: Add slots and threads
                       material='default',
+                      mesh=None,  # For mesh-based bend detection on STL
                       **feature_counts):
     """Run process classification and return formatted results.
     
@@ -334,6 +335,9 @@ def _classify_process(bbox_dims, vol_mm3, area_mm2, detected_thickness,
     (hole depth ratio, pocket depth, fillet radius, thickness uniformity,
     bend radius analysis, undercut severity, draft angle detection,
     slot geometry, thread pitch analysis).
+    
+    For STL files, pass the mesh object for enhanced bend detection
+    using normal clustering and triangle dihedral angle analysis.
     """
     geom_metrics = GeometricMetrics(bbox_dims, vol_mm3, area_mm2)
     classifier = ProcessClassifier(geom_metrics)
@@ -369,6 +373,7 @@ def _classify_process(bbox_dims, vol_mm3, area_mm2, detected_thickness,
         slots=slots,
         threads=threads,
         material=material,
+        mesh=mesh,  # For mesh-based bend detection
         **feature_counts,
     )
     
@@ -727,6 +732,228 @@ def _detect_step_wall_thickness(shape, bbox_dims):
 # Branch implementations
 # ---------------------------------------------------------------------------
 
+def _analyze_dxf(file_path: str, scale: float, material: str = 'default') -> dict:
+    """Analyze a DXF file and return normalized metrics.
+    
+    DXF files are 2D profile drawings used for laser/plasma/water jet cutting.
+    They are ALWAYS sheet metal parts - no classification needed.
+    
+    Args:
+        file_path: Path to DXF file
+        scale: Scale factor for units conversion
+        material: Material type for sheet metal
+    """
+    import ezdxf
+    
+    try:
+        doc = ezdxf.readfile(file_path)
+    except Exception as e:
+        raise HTTPException(
+            status_code=400, 
+            detail=f"Failed to parse DXF file: {str(e)[:200]}"
+        )
+    
+    # Extract entities from modelspace
+    msp = doc.modelspace()
+    
+    # Calculate bounding box from all entities
+    min_x, min_y, max_x, max_y = float('inf'), float('inf'), float('-inf'), float('-inf')
+    perimeter_length = 0.0
+    hole_count = 0
+    pierce_count = 0
+    entity_count = 0
+    
+    for entity in msp:
+        entity_count += 1
+        try:
+            etype = entity.dxftype()
+            
+            if etype == 'LINE':
+                x1, y1, _ = entity.dxf.start
+                x2, y2, _ = entity.dxf.end
+                min_x, min_y = min(min_x, x1, x2), min(min_y, y1, y2)
+                max_x, max_y = max(max_x, x1, x2), max(max_y, y1, y2)
+                perimeter_length += ((x2 - x1)**2 + (y2 - y1)**2) ** 0.5
+                pierce_count += 1
+                
+            elif etype == 'CIRCLE':
+                cx, cy, _ = entity.dxf.center
+                r = entity.dxf.radius
+                min_x, min_y = min(min_x, cx - r), min(min_y, cy - r)
+                max_x, max_y = max(max_x, cx + r), max(max_y, cy + r)
+                perimeter_length += 2 * 3.14159 * r
+                hole_count += 1
+                pierce_count += 1
+                
+            elif etype == 'ARC':
+                cx, cy, _ = entity.dxf.center
+                r = entity.dxf.radius
+                min_x, min_y = min(min_x, cx - r), min(min_y, cy - r)
+                max_x, max_y = max(max_x, cx + r), max(max_y, cy + r)
+                # Arc length = r * angle_in_radians
+                start_angle = entity.dxf.start_angle * 3.14159 / 180
+                end_angle = entity.dxf.end_angle * 3.14159 / 180
+                arc_angle = abs(end_angle - start_angle)
+                perimeter_length += r * arc_angle
+                pierce_count += 1
+                
+            elif etype in ('LWPOLYLINE', 'POLYLINE'):
+                # Get points from polyline
+                if hasattr(entity, 'get_points'):
+                    points = list(entity.get_points())
+                    for pt in points:
+                        x, y = pt[0], pt[1]
+                        min_x, min_y = min(min_x, x), min(min_y, y)
+                        max_x, max_y = max(max_x, x), max(max_y, y)
+                    # Calculate perimeter
+                    for i in range(len(points) - 1):
+                        dx = points[i+1][0] - points[i][0]
+                        dy = points[i+1][1] - points[i][1]
+                        perimeter_length += (dx**2 + dy**2) ** 0.5
+                    pierce_count += 1
+                    # Check if closed (potential hole)
+                    if getattr(entity.dxf, 'flags', 0) & 1:  # Closed flag
+                        hole_count += 1
+                        
+            elif etype == 'SPLINE':
+                # Approximate spline bbox from control points
+                if hasattr(entity, 'control_points'):
+                    for pt in entity.control_points:
+                        min_x, min_y = min(min_x, pt[0]), min(min_y, pt[1])
+                        max_x, max_y = max(max_x, pt[0]), max(max_y, pt[1])
+                pierce_count += 1
+                
+        except Exception:
+            continue
+    
+    # Apply scale
+    min_x *= scale
+    min_y *= scale
+    max_x *= scale
+    max_y *= scale
+    perimeter_length *= scale
+    
+    # Handle empty or invalid DXF
+    if min_x == float('inf') or entity_count == 0:
+        raise HTTPException(
+            status_code=400,
+            detail="DXF file contains no valid geometry"
+        )
+    
+    width = max_x - min_x
+    height = max_y - min_y
+    
+    # DXF files have no Z dimension - use material thickness estimate
+    # Default to common sheet metal thickness (1.5mm)
+    # In production, this would come from the frontend/user
+    default_thickness = 1.5
+    
+    flat_area = width * height  # mm²
+    
+    # Build sheet metal features for DXF
+    sheet_metal_features = {
+        'flatArea': flat_area,
+        'perimeterLength': perimeter_length,
+        'holeCount': hole_count,
+        'pierceCount': pierce_count,
+        'bendCount': 0,  # DXF is flat - no bends
+        'complexity': 'simple' if hole_count < 5 and perimeter_length < 500 else 'moderate',
+        'nestingEfficiency': 0.78,  # Default nesting estimate
+        'recommendedCuttingMethod': 'laser',
+        'thickness': default_thickness,
+        'partType': 'flat-pattern',
+        'estimatedCuttingTime': perimeter_length / 80.0,  # ~80mm/s laser speed
+    }
+    
+    # DYNAMIC CONFIDENCE based on profile quality
+    # Base confidence: DXF is designed for 2D profiles (flat patterns)
+    base_confidence = 0.90
+    
+    # Boost confidence for valid geometry characteristics
+    if perimeter_length > 10 and flat_area > 100:
+        # Has reasonable perimeter and area - likely a valid profile
+        base_confidence += 0.04
+    
+    if hole_count > 0:
+        # Has holes - typical of sheet metal parts
+        base_confidence += 0.02
+    
+    if width > 10 and height > 10 and width < 3000 and height < 3000:
+        # Reasonable dimensions for sheet metal (10mm to 3m)
+        base_confidence += 0.02
+    
+    # Reduce confidence for unusual characteristics
+    if entity_count < 3:
+        # Very few entities - might be incomplete
+        base_confidence -= 0.10
+    
+    if flat_area < 100:
+        # Very small area - might be a fragment
+        base_confidence -= 0.05
+    
+    # Clamp to reasonable range
+    classification_confidence = min(0.98, max(0.75, base_confidence))
+    
+    # Build response - DXF is ALWAYS sheet_metal
+    return {
+        'volume': flat_area * default_thickness,  # mm³
+        'surfaceArea': flat_area * 2 + perimeter_length * default_thickness,  # mm²
+        'boundingBox': {
+            'x': round(width, 2),
+            'y': round(height, 2),
+            'z': round(default_thickness, 2),
+            'min': {'x': round(min_x, 2), 'y': round(min_y, 2), 'z': 0.0},
+            'max': {'x': round(max_x, 2), 'y': round(max_y, 2), 'z': round(default_thickness, 2)},
+        },
+        'triangles': 0,  # No mesh for DXF
+        'complexity': sheet_metal_features['complexity'],
+        'complexity_score': 0.3 if sheet_metal_features['complexity'] == 'simple' else 0.5,
+        
+        # DXF is ALWAYS sheet metal - confidence based on profile quality
+        'recommended_process': 'sheet_metal',
+        'classification_confidence': classification_confidence,
+        'classification_method': 'dxf_auto_sheet_metal',
+        
+        # Sheet metal features
+        'sheetMetalFeatures': sheet_metal_features,
+        'thickness': default_thickness,
+        'thickness_confidence': 0.5,  # Unknown actual thickness
+        
+        # Minimal feature data
+        'holes': [],
+        'pockets': [],
+        'threads': [],
+        'undercuts': [],
+        'fillets': [],
+        'thinWalls': {'minThickness': default_thickness, 'risk': 'low', 'count': 0},
+        'grainDirection': None,
+        'nestingEfficiency': 0.78,
+        
+        # Metadata
+        'loader': 'ezdxf',
+        'source_format': 'dxf',
+        'is_2d_profile': True,
+        
+        # DFM checks for DXF
+        'dfmChecks': [
+            {
+                'id': 'file_format',
+                'status': 'passed',
+                'title': 'DXF Format',
+                'message': f'2D profile with {entity_count} entities, {hole_count} holes',
+                'severity': 'info',
+            },
+            {
+                'id': 'cutting_path',
+                'status': 'passed',
+                'title': 'Cutting Path',
+                'message': f'Total cut length: {perimeter_length:.1f}mm, {pierce_count} pierces',
+                'severity': 'info',
+            },
+        ],
+    }
+
+
 def _analyze_stl(file_path, scale, material: str = 'default'):
     """Analyze an STL file and return normalized metrics.
     
@@ -767,6 +994,8 @@ def _analyze_stl(file_path, scale, material: str = 'default'):
         triangle_count=face_count,
         thickness_analysis=thickness_analysis,
         material=material,
+        # Pass mesh for advanced bend detection
+        mesh=mesh,
         # Pass full feature objects for advanced analysis
         holes=features['holes'],
         pockets=features['pockets'],
@@ -1067,7 +1296,7 @@ def _extract_step_bends(shape, thickness_mm):
 
 def analyze_file_path(file_path: str, units_hint: Optional[str] = None, 
                       material: Optional[str] = None) -> dict:
-    """Analyze a CAD file (STEP/STL) and return normalized metrics.
+    """Analyze a CAD file (STEP/STL/DXF) and return normalized metrics.
     Returns a dict matching previous mock structure to limit integration changes.
     
     Args:
@@ -1083,7 +1312,9 @@ def analyze_file_path(file_path: str, units_hint: Optional[str] = None,
         return _analyze_stl(file_path, scale, material=material_type)
     if ext in (".step", ".stp"):
         return _analyze_step(file_path, material=material_type)
-    raise HTTPException(status_code=400, detail="Unsupported CAD format. Use STEP or STL.")
+    if ext in (".dxf",):
+        return _analyze_dxf(file_path, scale, material=material_type)
+    raise HTTPException(status_code=400, detail="Unsupported CAD format. Use STEP, STL, or DXF.")
 
 def calculate_stock_size(bbox: dict, thickness: Optional[float] = None) -> dict:
     """Calculate required stock material size."""
