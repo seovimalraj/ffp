@@ -3844,12 +3844,17 @@ function generateDefaultSheetMetalFeatures(
   const bbox = geometry.boundingBox;
   const dims = [bbox.x, bbox.y, bbox.z].sort((a, b) => a - b);
 
-  // Priority: 1) explicit material thickness, 2) detected wall thickness from backend, 3) bbox min dim
+  // Priority: 1) explicit material thickness, 2) detected wall thickness from backend (if valid),
+  // 3) dominant_pair_thickness from face classification, 4) bbox min dim
   let thickness: number;
   if (materialThickness > 0 && materialThickness <= 25) {
     thickness = materialThickness;
-  } else if (geometry.detectedWallThickness && geometry.detectedWallThickness > 0) {
+  } else if (geometry.detectedWallThickness && geometry.detectedWallThickness >= 0.3 && geometry.detectedWallThickness <= 25) {
+    // Only use detected thickness if it's a valid sheet metal range (0.3mm to 25mm)
     thickness = geometry.detectedWallThickness;
+  } else if ((geometry as any).faceClassification?.dominant_pair_thickness >= 0.3) {
+    // Fallback: use dominant planar pair thickness from face classification
+    thickness = (geometry as any).faceClassification.dominant_pair_thickness;
   } else {
     thickness = Math.min(dims[0], 8); // Cap at 8mm (aligned with backend max)
   }
@@ -4863,6 +4868,17 @@ function shouldRequestManualQuote(
 }
 
 function isSheetMetalCandidate(geometry: GeometryData): boolean {
+  // FIRST: If backend already classified as sheet-metal with good confidence, trust it
+  // This takes priority over thickness validation, since bent parts may have
+  // invalid thickness readings but correct process classification
+  if (
+    geometry.recommendedProcess === "sheet-metal" &&
+    geometry.processConfidence !== undefined &&
+    geometry.processConfidence >= 0.6
+  ) {
+    return true;
+  }
+
   const dims = [
     geometry.boundingBox.x,
     geometry.boundingBox.y,
@@ -4872,23 +4888,18 @@ function isSheetMetalCandidate(geometry: GeometryData): boolean {
   // Prefer actual ray-cast wall thickness from backend over bbox min dimension.
   // For bent sheet metal parts (brackets, enclosures), the bbox minimum dimension
   // is NOT the wall thickness — it's the overall depth of the bent form.
-  const thickness = geometry.detectedWallThickness && geometry.detectedWallThickness > 0
-    ? geometry.detectedWallThickness
-    : dims[0];
+  // Use faceClassification.dominant_pair_thickness if available
+  let thickness = dims[0];
+  if (geometry.detectedWallThickness && geometry.detectedWallThickness >= 0.3) {
+    thickness = geometry.detectedWallThickness;
+  } else if ((geometry as any).faceClassification?.dominant_pair_thickness >= 0.3) {
+    thickness = (geometry as any).faceClassification.dominant_pair_thickness;
+  }
   const longest = dims[2];
 
   // Sheet metal typically 0.3mm to 10mm thick (generous range to avoid false rejections)
   if (thickness < 0.3 || thickness > 10) return false;
   if (longest > SIZE_LIMITS.max) return false;
-
-  // If backend already classified as sheet-metal with good confidence, trust it
-  if (
-    geometry.recommendedProcess === "sheet-metal" &&
-    geometry.processConfidence !== undefined &&
-    geometry.processConfidence >= 0.6
-  ) {
-    return true;
-  }
 
   // For bbox-only analysis, check aspect ratio (thin relative to area)
   const aspectRatio = longest / Math.max(thickness, 0.1);

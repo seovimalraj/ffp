@@ -910,9 +910,15 @@ def _analyze_dxf(file_path: str, scale: float, material: str = 'default') -> dic
         'complexity_score': 0.3 if sheet_metal_features['complexity'] == 'simple' else 0.5,
         
         # DXF is ALWAYS sheet metal - confidence based on profile quality
-        'recommended_process': 'sheet_metal',
+        'process_type': 'sheet_metal',
+        'sheet_metal_score': 95,  # High score for DXF files (always sheet metal)
         'classification_confidence': classification_confidence,
         'classification_method': 'dxf_auto_sheet_metal',
+        'advanced_metrics': {
+            'detected_thickness_mm': default_thickness,
+            'thickness_confidence': 0.5,
+            'classification_confidence': classification_confidence,
+        },
         
         # Sheet metal features
         'sheetMetalFeatures': sheet_metal_features,

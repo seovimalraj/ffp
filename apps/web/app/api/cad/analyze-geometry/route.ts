@@ -344,9 +344,21 @@ function transformBackendGeometry(backendData: any, _fileName: string): any {
   };
 
   const advancedMetrics = backendData.advanced_metrics || {};
-  const detectedThickness = advancedMetrics.detected_thickness_mm || backendData.thickness;
-  const thicknessConfidence = advancedMetrics.thickness_confidence || 0.5;
-  const thicknessMethod = advancedMetrics.thickness_detection_method || 'bbox_approximation';
+  const faceClassification = advancedMetrics.face_classification || {};
+  
+  // Resolve thickness: prefer ray-casting, fallback to face-pair analysis, then bbox
+  let detectedThickness = advancedMetrics.detected_thickness_mm || backendData.thickness;
+  let thicknessMethod = advancedMetrics.thickness_detection_method || 'bbox_approximation';
+  
+  // If detected thickness is invalid (<0.3mm), use dominant_pair_thickness from face classification
+  const dominantPairThickness = faceClassification.dominant_pair_thickness;
+  if ((!detectedThickness || detectedThickness < 0.3) && dominantPairThickness && dominantPairThickness >= 0.3 && dominantPairThickness <= 25) {
+    detectedThickness = dominantPairThickness;
+    thicknessMethod = 'face_pair_analysis';
+    console.log(`⚠️ Using dominant_pair_thickness (${dominantPairThickness}mm) as fallback for invalid ray-cast result`);
+  }
+  
+  const thicknessConfidence = advancedMetrics.thickness_confidence || (detectedThickness && detectedThickness >= 0.3 ? 0.7 : 0.5);
 
   const bendData = extractBendData(backendData);
 
