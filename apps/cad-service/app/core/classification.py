@@ -26,7 +26,7 @@ from typing import Any, Dict, Tuple, Optional, List
 from .geometry import GeometricMetrics, calculate_sheet_metal_score, calculate_advanced_metrics
 from .bend_detection import AdvancedBendDetector
 from .advanced_thickness_detection import ThicknessAnalysisResult
-from .ml_classifier import MLProcessClassifier, build_feature_vector, MLClassificationResult
+from .ml_classifier import MLProcessClassifier, build_feature_vector, MLClassificationResult, get_ml_classifier
 from .face_classification import FaceClassificationResult
 from .feature_analysis import (
     compute_feature_signals, 
@@ -79,10 +79,10 @@ class ProcessClassifier:
         self.sheet_metal_score = calculate_sheet_metal_score(metrics)
         self.advanced_metrics = calculate_advanced_metrics(metrics)
         
-        # Lazily initialize the ML classifier (singleton)
+        # Lazily initialize the ML classifier (singleton, no training)
         if ProcessClassifier._ml_classifier is None:
             try:
-                ProcessClassifier._ml_classifier = MLProcessClassifier()
+                ProcessClassifier._ml_classifier = get_ml_classifier()
             except Exception as exc:
                 logger.warning("Could not initialize ML classifier: %s", exc)
     
