@@ -4826,7 +4826,7 @@ function checkCNCConstraints(
   if (geometry.complexity === "complex" && material.machinabilityFactor > 2.5) {
     return { requiresManualQuote: true, reason: "Complex geometry with difficult-to-machine material" };
   }
-  if (geometry.estimatedMachiningTime > 1200) {
+  if (geometry.estimatedMachiningTime > 3600) {
     return { requiresManualQuote: true, reason: "Machining time exceeds standard production capacity" };
   }
   return null;
@@ -4857,7 +4857,7 @@ function shouldRequestManualQuote(
     return { requiresManualQuote: true, reason: "Geometry not suitable for sheet metal manufacturing" };
   }
 
-  if (geometry.complexity === "complex" && process.type !== "injection-molding") {
+  if (geometry.complexity === "complex" && process.type !== "injection-molding" && process.type !== "sheet-metal") {
     const surfaceToVolumeRatio = geometry.surfaceArea / (volumeCm3 * 10);
     if (surfaceToVolumeRatio > 50) {
       return { requiresManualQuote: true, reason: "Complex internal features may require multi-axis or EDM" };

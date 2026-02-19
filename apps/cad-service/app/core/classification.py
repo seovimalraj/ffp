@@ -731,8 +731,14 @@ class ProcessClassifier:
         if face_result.is_likely_sheet_metal and sm_score >= 70:
             # NEW: Aspect ratio guard for blocky shapes
             # Cube-like shapes (AR < 3) with min_dim > 4mm are not sheet metal
+            # EXCEPTION: If dominant_pair_thickness is within sheet metal range
+            # (e.g., folded bracket), the bbox min_dim is NOT the sheet thickness
             min_dim = self.metrics.min_dim or 10.0
-            if aspect_ratio < 3.0 and min_dim > 4.0:
+            has_valid_sheet_thickness = (
+                face_result.dominant_pair_thickness is not None
+                and 0.3 <= face_result.dominant_pair_thickness <= 8.0
+            )
+            if aspect_ratio < 3.0 and min_dim > 4.0 and not has_valid_sheet_thickness:
                 logger.info(
                     "Face classification says sheet metal (%.0f) but "
                     "blocky shape (AR=%.1f, min_dim=%.1fmm) — deferring to other tiers.",
@@ -1115,6 +1121,19 @@ class ProcessClassifier:
                 fc.cnc_face_score, fc.sheet_metal_face_score,
             )
             return None
+
+        # Guard 2b: Face classification says NOT sheet metal AND no paired planes
+        # This catches machining parts that have edge-detected "bends" (from holes, chamfers)
+        # but no actual sheet metal characteristics
+        if fc is not None and not fc.is_likely_sheet_metal and fc.dominant_pair_thickness is None:
+            # Additional check: if cylinder ratio is high (>25%), likely has drilled holes
+            if fc.cylinder_ratio > 0.25:
+                logger.info(
+                    "Bend detection suppressed: face classification says NOT sheet metal "
+                    "and no paired planes (cyl_ratio=%.1f%%, SM=%.0f, CNC=%.0f)",
+                    fc.cylinder_ratio * 100, fc.sheet_metal_face_score, fc.cnc_face_score,
+                )
+                return None
 
         # Guard 3: Solid block with high volume efficiency
         # FIX: STEP-extracted bends are reliable even with high volume efficiency
