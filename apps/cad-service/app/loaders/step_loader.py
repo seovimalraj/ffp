@@ -26,16 +26,23 @@ def count_solids_and_compounds(shape) -> AssemblyInfo:
     Count the number of solid bodies and compounds in a shape.
     Used to detect assemblies which require manual quoting.
     
+    Enhanced detection:
+    - Multiple solids = assembly
+    - Multiple compounds = assembly  
+    - Multiple shells with no solids = assembly (sheet metal assembly)
+    - Single solid with multiple disjoint volumes = assembly
+    
     Returns:
         AssemblyInfo with counts and assembly detection result
     """
     try:
         from OCC.Core.TopExp import TopExp_Explorer
-        from OCC.Core.TopAbs import TopAbs_SOLID, TopAbs_COMPOUND, TopAbs_SHELL
+        from OCC.Core.TopAbs import TopAbs_SOLID, TopAbs_COMPOUND, TopAbs_SHELL, TopAbs_FACE
         
         solid_count = 0
         compound_count = 0
         shell_count = 0
+        face_count = 0
         
         # Count solids
         solid_explorer = TopExp_Explorer(shape, TopAbs_SOLID)
@@ -54,11 +61,18 @@ def count_solids_and_compounds(shape) -> AssemblyInfo:
         while shell_explorer.More():
             shell_count += 1
             shell_explorer.Next()
+            
+        # Count faces for complexity estimation
+        face_explorer = TopExp_Explorer(shape, TopAbs_FACE)
+        while face_explorer.More():
+            face_count += 1
+            face_explorer.Next()
         
         # Determine if this is an assembly
         is_assembly = False
         reason = "Single part detected"
         
+        # Primary checks: multiple bodies
         if solid_count > 1:
             is_assembly = True
             reason = f"Assembly detected: {solid_count} solid bodies found"
@@ -67,7 +81,12 @@ def count_solids_and_compounds(shape) -> AssemblyInfo:
             reason = f"Assembly detected: {compound_count} compound shapes found"
         elif solid_count == 0 and shell_count > 1:
             is_assembly = True
-            reason = f"Assembly detected: {shell_count} shell bodies found"
+            reason = f"Assembly detected: {shell_count} shell bodies found (sheet metal assembly)"
+        # Secondary check: compound with 0 solids but many shells/faces
+        # This catches assemblies where each component is a shell rather than solid
+        elif compound_count == 1 and solid_count == 0 and shell_count > 3:
+            is_assembly = True
+            reason = f"Assembly detected: compound with {shell_count} shells (multi-part)"
         
         return AssemblyInfo(
             is_assembly=is_assembly,

@@ -17,8 +17,8 @@ from ..utils.download import download_to_temp
 from ..utils.units import scale_to_mm
 from ..loaders.step_loader import occ_available, load_step_shape, shape_mass_props, count_solids_and_compounds
 from ..loaders.stl_loader import load_stl, mesh_mass_props
-from ..extractors.holes import extract_holes_from_shape
-from ..extractors.pockets import extract_pockets_from_shape
+from ..extractors.holes import extract_holes_from_shape, extract_holes_from_mesh
+from ..extractors.pockets import extract_pockets_from_shape, extract_pockets_from_mesh
 from ..extractors.min_wall import min_wall_mesh
 from ..extractors.threads import extract_threads_from_shape, extract_threads_from_mesh
 from ..extractors.slots import extract_slots_from_shape, extract_slots_from_pockets
@@ -28,6 +28,10 @@ from ..extractors.draft_angles import analyze_draft_from_shape, analyze_draft_fr
 from ..extractors.grain_direction import analyze_grain_direction
 from ..extractors.nesting import estimate_nesting
 from ..extractors.bend_angles import extract_bend_angles_from_shape
+from ..extractors.bosses import extract_bosses_from_shape, extract_bosses_from_mesh
+from ..extractors.ribs import extract_ribs_from_shape, extract_ribs_from_mesh
+from ..extractors.surface_finish import extract_surface_finish_from_shape, extract_surface_finish_from_mesh
+from ..extractors.tolerances import extract_tolerance_from_shape, extract_tolerance_from_mesh
 from ..models import FeaturesJson, BBox, MassProps, HoleFeature, PocketFeature, MinWallData
 
 # Import new core modules for clean architecture
@@ -35,6 +39,9 @@ from ..core.geometry import GeometricMetrics, calculate_sheet_metal_score, calcu
 from ..core.bend_detection import AdvancedBendDetector
 from ..core.classification import ProcessClassifier
 from ..core.face_classification import classify_faces
+from ..core.machining_complexity import analyze_machining_complexity, analyze_machining_complexity_from_mesh
+from ..core.assembly_analysis import analyze_multi_body_assembly, get_per_body_classifications
+from ..core.process_detection import analyze_weldment, analyze_casting_origin
 from ..dfm_analyzer import analyze_dfm, build_geometry_for_dfm
 from ..core.validation import validate_geometry
 from ..core.advanced_thickness_detection import enhanced_ray_casting_analysis
@@ -161,6 +168,7 @@ class AnalysisRequest(BaseModel):
     units_hint: Optional[str] = None
     org_id: Optional[str] = None
     webhook_url: Optional[str] = None
+    material: Optional[str] = None  # e.g. "steel", "aluminum", "stainless", "copper", "brass", "titanium"
 
 class AnalysisResponse(BaseModel):
     file_id: str
@@ -204,18 +212,30 @@ def _log_thickness_analysis(analysis, label=""):
 
 def _extract_mesh_features(mesh):
     """Extract features from STL mesh with per-feature error handling."""
-    results = {"threads": [], "undercuts": [], "fillets": [], "draft": []}
+    results = {
+        "threads": [], "undercuts": [], "fillets": [], "draft": [],
+        "holes": [], "pockets": [], "bosses": [], "ribs": []
+    }
     extractors = [
         ("threads", lambda: extract_threads_from_mesh(mesh)),
         ("undercuts", lambda: detect_undercuts_from_mesh(mesh)),
         ("fillets", lambda: detect_fillets_from_mesh(mesh)),
         ("draft", lambda: analyze_draft_from_mesh(mesh)),
+        ("holes", lambda: extract_holes_from_mesh(mesh)),
+        ("pockets", lambda: extract_pockets_from_mesh(mesh)),
+        ("bosses", lambda: extract_bosses_from_mesh(mesh)),
+        ("ribs", lambda: extract_ribs_from_mesh(mesh)),
     ]
     for name, fn in extractors:
         try:
             results[name] = fn()
         except Exception as e:
             print(f"⚠️ STL {name} extraction failed: {str(e)[:80]}")
+    
+    # Log mesh feature extraction summary
+    print(f"🔧 STL feature extraction: {len(results['holes'])} holes, "
+          f"{len(results['pockets'])} pockets, {len(results['bosses'])} bosses, "
+          f"{len(results['ribs'])} ribs, {len(results['threads'])} threads")
     return results
 
 
@@ -226,14 +246,22 @@ def _try_extract_slots(shape, pockets):
 
 
 def _extract_step_additional_features(shape, holes, pockets):
-    """Extract threads, slots, undercuts, fillets, draft from STEP shape."""
-    results = {"threads": [], "slots": [], "undercuts": [], "fillets": [], "draft": []}
+    """Extract threads, slots, undercuts, fillets, draft, bosses, ribs from STEP shape."""
+    results = {
+        "threads": [], "slots": [], "undercuts": [], 
+        "fillets": [], "draft": [], "bosses": [], "ribs": [],
+        "surface_finish": None, "tolerances": None,
+    }
     extractors = [
         ("threads", lambda: extract_threads_from_shape(shape, holes)),
         ("slots", lambda: _try_extract_slots(shape, pockets)),
         ("undercuts", lambda: extract_undercuts_from_shape(shape)),
         ("fillets", lambda: extract_fillets_from_shape(shape)),
         ("draft", lambda: analyze_draft_from_shape(shape)),
+        ("bosses", lambda: extract_bosses_from_shape(shape)),
+        ("ribs", lambda: extract_ribs_from_shape(shape)),
+        ("surface_finish", lambda: extract_surface_finish_from_shape(shape)),
+        ("tolerances", lambda: extract_tolerance_from_shape(shape, holes, pockets)),
     ]
     for name, fn in extractors:
         try:
@@ -243,25 +271,126 @@ def _extract_step_additional_features(shape, holes, pockets):
     print(f"🔧 Feature extraction: {len(holes)} holes, {len(pockets)} pockets, "
           f"{len(results['threads'])} threads, {len(results['slots'])} slots, "
           f"{len(results['undercuts'])} undercuts, {len(results['fillets'])} fillets, "
-          f"{len(results['draft'])} draft faces")
+          f"{len(results['draft'])} draft faces, {len(results['bosses'])} bosses, "
+          f"{len(results['ribs'])} ribs")
+    return results
+
+
+def _extract_advanced_process_analysis(shape, holes, pockets, undercuts, face_result, body_count):
+    """Extract machining complexity, weldment, and casting analysis."""
+    results = {
+        "machining_complexity": None,
+        "weldment_analysis": None,
+        "casting_analysis": None,
+        "assembly_analysis": None,
+    }
+    
+    try:
+        results["machining_complexity"] = analyze_machining_complexity(
+            shape, holes=holes, pockets=pockets, undercuts=undercuts,
+            face_classification=face_result
+        )
+    except Exception as e:
+        print(f"⚠️ Machining complexity analysis failed: {str(e)[:80]}")
+    
+    try:
+        results["weldment_analysis"] = analyze_weldment(
+            shape, body_count=body_count, face_classification=face_result
+        )
+    except Exception as e:
+        print(f"⚠️ Weldment analysis failed: {str(e)[:80]}")
+    
+    try:
+        from ..loaders.step_loader import shape_mass_props
+        vol, area = shape_mass_props(shape)
+        results["casting_analysis"] = analyze_casting_origin(
+            shape, holes=holes, pockets=pockets, 
+            face_classification=face_result,
+            volume_mm3=vol, surface_area_mm2=area
+        )
+    except Exception as e:
+        print(f"⚠️ Casting analysis failed: {str(e)[:80]}")
+    
+    if body_count > 1:
+        try:
+            results["assembly_analysis"] = analyze_multi_body_assembly(shape)
+        except Exception as e:
+            print(f"⚠️ Assembly analysis failed: {str(e)[:80]}")
+    
     return results
 
 
 def _classify_process(bbox_dims, vol_mm3, area_mm2, detected_thickness,
                       thickness_confidence, triangle_count, thickness_analysis,
-                      face_classification=None, **feature_counts):
-    """Run process classification and return formatted results."""
+                      face_classification=None, 
+                      holes=None, pockets=None, fillets=None,
+                      bends=None, undercuts=None, draft_analysis=None,
+                      slots=None, threads=None,  # GAP FIX: Add slots and threads
+                      material='default',
+                      mesh=None,  # For mesh-based bend detection on STL
+                      **feature_counts):
+    """Run process classification and return formatted results.
+    
+    ENHANCED: Now passes full feature objects for advanced analysis
+    (hole depth ratio, pocket depth, fillet radius, thickness uniformity,
+    bend radius analysis, undercut severity, draft angle detection,
+    slot geometry, thread pitch analysis).
+    
+    For STL files, pass the mesh object for enhanced bend detection
+    using normal clustering and triangle dihedral angle analysis.
+    """
     geom_metrics = GeometricMetrics(bbox_dims, vol_mm3, area_mm2)
     classifier = ProcessClassifier(geom_metrics)
+    
+    # Extract paired plane distances from face classification if available
+    # GAP FIX: Pass ALL pair distances, not just dominant
+    paired_plane_distances = []
+    if face_classification is not None:
+        # Use all paired plane distances for better thickness uniformity analysis
+        if hasattr(face_classification, 'paired_plane_distances'):
+            paired_plane_distances = getattr(face_classification, 'paired_plane_distances', [])
+        elif hasattr(face_classification, 'dominant_pair_thickness'):
+            # Fallback to dominant thickness if full list not available
+            if face_classification.dominant_pair_thickness is not None:
+                paired_plane_distances = [face_classification.dominant_pair_thickness]
+    
     process_type, confidence, metadata = classifier.classify(
         detected_thickness=detected_thickness,
         thickness_confidence=thickness_confidence,
         triangle_count=triangle_count,
         thickness_analysis=thickness_analysis,
         face_classification=face_classification,
+        # Pass full feature objects for advanced analysis
+        holes=holes,
+        pockets=pockets,
+        fillets=fillets,
+        paired_plane_distances=paired_plane_distances,
+        # NEW: Pass bends, undercuts, and draft analysis (GAP 4, 9, 13)
+        bends=bends,
+        undercuts=undercuts,
+        draft_analysis=draft_analysis,
+        # GAP FIX: Pass slots and threads for geometry/pitch analysis
+        slots=slots,
+        threads=threads,
+        material=material,
+        mesh=mesh,  # For mesh-based bend detection
         **feature_counts,
     )
-    process_type_str = process_type if process_type in ('sheet_metal', 'cnc_turning') else 'cnc_milling'
+    
+    # CRITICAL FIX: Support all extended process types, not just sheet_metal/cnc_turning
+    # Valid process types from ML classifier
+    VALID_PROCESS_TYPES = {
+        'sheet_metal', 'cnc_milling', 'cnc_turning', 'cnc_turn_mill', 'cnc_5axis',
+        'injection_molding', 'die_casting', 'sand_casting', 'investment_casting',
+        '3d_printing', 'weldment', 'assembly'
+    }
+    
+    if process_type in VALID_PROCESS_TYPES:
+        process_type_str = process_type
+    else:
+        # Fallback for unknown types
+        process_type_str = 'cnc_milling'
+        logging.warning("Unknown process type '%s' from classifier, defaulting to cnc_milling", process_type)
 
     # Confidence calibration: flag low-confidence classifications for review
     needs_review = confidence < 0.70
@@ -297,11 +426,16 @@ def _score_triangle_complexity(count, is_step):
 
 
 def _score_feature_counts(hole_count, pocket_count):
-    """Score complexity from hole and pocket counts (STEP only)."""
+    """Score complexity from hole and pocket counts (STEP only).
+    
+    Thresholds:
+    - Holes: >20 (very complex), >10 (complex), >5 (moderate), >2 (some), else 0
+    - Pockets: >10 (very complex), >5 (complex), >2 (moderate), else 0
+    """
     score = 0
     for count, thresholds in [
-        (hole_count, [(20, 35), (10, 25), (5, 15), (0, 8)]),
-        (pocket_count, [(10, 30), (5, 20), (2, 12), (0, 6)]),
+        (hole_count, [(20, 25), (10, 15), (5, 8), (2, 4)]),
+        (pocket_count, [(10, 20), (5, 12), (2, 6)]),
     ]:
         for limit, pts in thresholds:
             if count > limit:
@@ -459,13 +593,36 @@ def _attach_optional_metrics(metrics, grain_dir, nesting_est,
         }
 
 
-def _build_assembly_metrics(assembly_info):
-    """Build response dict for assembly files requiring manual quote."""
+def _build_assembly_metrics(assembly_info, shape=None):
+    """Build response dict for assembly files requiring manual quote.
+    
+    If shape is provided, computes aggregate volume/area for all bodies.
+    """
+    volume = 0.0
+    surface_area = 0.0
+    bbox_min = {"x": 0, "y": 0, "z": 0}
+    bbox_max = {"x": 0, "y": 0, "z": 0}
+    
+    # Try to compute aggregate geometry if shape available
+    if shape is not None:
+        try:
+            from ..loaders.step_loader import shape_mass_props
+            vol_mm3, area_mm2 = shape_mass_props(shape)
+            volume = vol_mm3 / 1000.0  # Convert to cm³
+            surface_area = area_mm2 / 100.0  # Convert to cm²
+            
+            # Get bounding box
+            bbox_min_arr, bbox_max_arr = _extract_occ_bbox(shape)
+            if bbox_min_arr is not None and bbox_max_arr is not None:
+                bbox_min = {"x": float(bbox_min_arr[0]), "y": float(bbox_min_arr[1]), "z": float(bbox_min_arr[2])}
+                bbox_max = {"x": float(bbox_max_arr[0]), "y": float(bbox_max_arr[1]), "z": float(bbox_max_arr[2])}
+        except Exception as e:
+            logging.warning("Could not compute assembly geometry: %s", e)
+    
     return {
-        "volume": 0,
-        "surface_area": 0,
-        "bbox": {"min": {"x": 0, "y": 0, "z": 0},
-                 "max": {"x": 0, "y": 0, "z": 0}},
+        "volume": volume,
+        "surface_area": surface_area,
+        "bbox": {"min": bbox_min, "max": bbox_max},
         "thickness": None,
         "primitive_features": {
             "holes": 0, "pockets": 0, "slots": 0, "faces": 0,
@@ -484,6 +641,8 @@ def _build_assembly_metrics(assembly_info):
         "requires_manual_quote": True,
         "manual_quote_reason": assembly_info.reason,
         "advanced_metrics": {},
+        "complexity": "complex",  # Assemblies are complex by default
+        "complexity_score": 50,
     }
 
 
@@ -573,8 +732,236 @@ def _detect_step_wall_thickness(shape, bbox_dims):
 # Branch implementations
 # ---------------------------------------------------------------------------
 
-def _analyze_stl(file_path, scale):
-    """Analyze an STL file and return normalized metrics."""
+def _analyze_dxf(file_path: str, scale: float, material: str = 'default') -> dict:
+    """Analyze a DXF file and return normalized metrics.
+    
+    DXF files are 2D profile drawings used for laser/plasma/water jet cutting.
+    They are ALWAYS sheet metal parts - no classification needed.
+    
+    Args:
+        file_path: Path to DXF file
+        scale: Scale factor for units conversion
+        material: Material type for sheet metal
+    """
+    import ezdxf
+    
+    try:
+        doc = ezdxf.readfile(file_path)
+    except Exception as e:
+        raise HTTPException(
+            status_code=400, 
+            detail=f"Failed to parse DXF file: {str(e)[:200]}"
+        )
+    
+    # Extract entities from modelspace
+    msp = doc.modelspace()
+    
+    # Calculate bounding box from all entities
+    min_x, min_y, max_x, max_y = float('inf'), float('inf'), float('-inf'), float('-inf')
+    perimeter_length = 0.0
+    hole_count = 0
+    pierce_count = 0
+    entity_count = 0
+    
+    for entity in msp:
+        entity_count += 1
+        try:
+            etype = entity.dxftype()
+            
+            if etype == 'LINE':
+                x1, y1, _ = entity.dxf.start
+                x2, y2, _ = entity.dxf.end
+                min_x, min_y = min(min_x, x1, x2), min(min_y, y1, y2)
+                max_x, max_y = max(max_x, x1, x2), max(max_y, y1, y2)
+                perimeter_length += ((x2 - x1)**2 + (y2 - y1)**2) ** 0.5
+                pierce_count += 1
+                
+            elif etype == 'CIRCLE':
+                cx, cy, _ = entity.dxf.center
+                r = entity.dxf.radius
+                min_x, min_y = min(min_x, cx - r), min(min_y, cy - r)
+                max_x, max_y = max(max_x, cx + r), max(max_y, cy + r)
+                perimeter_length += 2 * 3.14159 * r
+                hole_count += 1
+                pierce_count += 1
+                
+            elif etype == 'ARC':
+                cx, cy, _ = entity.dxf.center
+                r = entity.dxf.radius
+                min_x, min_y = min(min_x, cx - r), min(min_y, cy - r)
+                max_x, max_y = max(max_x, cx + r), max(max_y, cy + r)
+                # Arc length = r * angle_in_radians
+                start_angle = entity.dxf.start_angle * 3.14159 / 180
+                end_angle = entity.dxf.end_angle * 3.14159 / 180
+                arc_angle = abs(end_angle - start_angle)
+                perimeter_length += r * arc_angle
+                pierce_count += 1
+                
+            elif etype in ('LWPOLYLINE', 'POLYLINE'):
+                # Get points from polyline
+                if hasattr(entity, 'get_points'):
+                    points = list(entity.get_points())
+                    for pt in points:
+                        x, y = pt[0], pt[1]
+                        min_x, min_y = min(min_x, x), min(min_y, y)
+                        max_x, max_y = max(max_x, x), max(max_y, y)
+                    # Calculate perimeter
+                    for i in range(len(points) - 1):
+                        dx = points[i+1][0] - points[i][0]
+                        dy = points[i+1][1] - points[i][1]
+                        perimeter_length += (dx**2 + dy**2) ** 0.5
+                    pierce_count += 1
+                    # Check if closed (potential hole)
+                    if getattr(entity.dxf, 'flags', 0) & 1:  # Closed flag
+                        hole_count += 1
+                        
+            elif etype == 'SPLINE':
+                # Approximate spline bbox from control points
+                if hasattr(entity, 'control_points'):
+                    for pt in entity.control_points:
+                        min_x, min_y = min(min_x, pt[0]), min(min_y, pt[1])
+                        max_x, max_y = max(max_x, pt[0]), max(max_y, pt[1])
+                pierce_count += 1
+                
+        except Exception:
+            continue
+    
+    # Apply scale
+    min_x *= scale
+    min_y *= scale
+    max_x *= scale
+    max_y *= scale
+    perimeter_length *= scale
+    
+    # Handle empty or invalid DXF
+    if min_x == float('inf') or entity_count == 0:
+        raise HTTPException(
+            status_code=400,
+            detail="DXF file contains no valid geometry"
+        )
+    
+    width = max_x - min_x
+    height = max_y - min_y
+    
+    # DXF files have no Z dimension - use material thickness estimate
+    # Default to common sheet metal thickness (1.5mm)
+    # In production, this would come from the frontend/user
+    default_thickness = 1.5
+    
+    flat_area = width * height  # mm²
+    
+    # Build sheet metal features for DXF
+    sheet_metal_features = {
+        'flatArea': flat_area,
+        'perimeterLength': perimeter_length,
+        'holeCount': hole_count,
+        'pierceCount': pierce_count,
+        'bendCount': 0,  # DXF is flat - no bends
+        'complexity': 'simple' if hole_count < 5 and perimeter_length < 500 else 'moderate',
+        'nestingEfficiency': 0.78,  # Default nesting estimate
+        'recommendedCuttingMethod': 'laser',
+        'thickness': default_thickness,
+        'partType': 'flat-pattern',
+        'estimatedCuttingTime': perimeter_length / 80.0,  # ~80mm/s laser speed
+    }
+    
+    # DYNAMIC CONFIDENCE based on profile quality
+    # Base confidence: DXF is designed for 2D profiles (flat patterns)
+    base_confidence = 0.90
+    
+    # Boost confidence for valid geometry characteristics
+    if perimeter_length > 10 and flat_area > 100:
+        # Has reasonable perimeter and area - likely a valid profile
+        base_confidence += 0.04
+    
+    if hole_count > 0:
+        # Has holes - typical of sheet metal parts
+        base_confidence += 0.02
+    
+    if width > 10 and height > 10 and width < 3000 and height < 3000:
+        # Reasonable dimensions for sheet metal (10mm to 3m)
+        base_confidence += 0.02
+    
+    # Reduce confidence for unusual characteristics
+    if entity_count < 3:
+        # Very few entities - might be incomplete
+        base_confidence -= 0.10
+    
+    if flat_area < 100:
+        # Very small area - might be a fragment
+        base_confidence -= 0.05
+    
+    # Clamp to reasonable range
+    classification_confidence = min(0.98, max(0.75, base_confidence))
+    
+    # Build response - DXF is ALWAYS sheet_metal
+    return {
+        'volume': flat_area * default_thickness,  # mm³
+        'surfaceArea': flat_area * 2 + perimeter_length * default_thickness,  # mm²
+        'boundingBox': {
+            'x': round(width, 2),
+            'y': round(height, 2),
+            'z': round(default_thickness, 2),
+            'min': {'x': round(min_x, 2), 'y': round(min_y, 2), 'z': 0.0},
+            'max': {'x': round(max_x, 2), 'y': round(max_y, 2), 'z': round(default_thickness, 2)},
+        },
+        'triangles': 0,  # No mesh for DXF
+        'complexity': sheet_metal_features['complexity'],
+        'complexity_score': 0.3 if sheet_metal_features['complexity'] == 'simple' else 0.5,
+        
+        # DXF is ALWAYS sheet metal - confidence based on profile quality
+        'recommended_process': 'sheet_metal',
+        'classification_confidence': classification_confidence,
+        'classification_method': 'dxf_auto_sheet_metal',
+        
+        # Sheet metal features
+        'sheetMetalFeatures': sheet_metal_features,
+        'thickness': default_thickness,
+        'thickness_confidence': 0.5,  # Unknown actual thickness
+        
+        # Minimal feature data
+        'holes': [],
+        'pockets': [],
+        'threads': [],
+        'undercuts': [],
+        'fillets': [],
+        'thinWalls': {'minThickness': default_thickness, 'risk': 'low', 'count': 0},
+        'grainDirection': None,
+        'nestingEfficiency': 0.78,
+        
+        # Metadata
+        'loader': 'ezdxf',
+        'source_format': 'dxf',
+        'is_2d_profile': True,
+        
+        # DFM checks for DXF
+        'dfmChecks': [
+            {
+                'id': 'file_format',
+                'status': 'passed',
+                'title': 'DXF Format',
+                'message': f'2D profile with {entity_count} entities, {hole_count} holes',
+                'severity': 'info',
+            },
+            {
+                'id': 'cutting_path',
+                'status': 'passed',
+                'title': 'Cutting Path',
+                'message': f'Total cut length: {perimeter_length:.1f}mm, {pierce_count} pierces',
+                'severity': 'info',
+            },
+        ],
+    }
+
+
+def _analyze_stl(file_path, scale, material: str = 'default'):
+    """Analyze an STL file and return normalized metrics.
+    
+    Args:
+        file_path: Path to STL file
+        scale: Scale factor for units conversion
+        material: Material type for classification thresholds
+    """
     mesh = load_stl(file_path, scale=scale)
     vol_mm3, area_mm2 = mesh_mass_props(mesh)
     bbox_min, bbox_max = mesh.bounds[0], mesh.bounds[1]
@@ -597,16 +984,39 @@ def _analyze_stl(file_path, scale):
     features = _extract_mesh_features(mesh)
     face_count = int(mesh.faces.shape[0])
 
-    # Classification
+    # Classification - pass ALL extracted features for full analysis
+    # Note: STL doesn't have face_classification (requires BRep), so extended
+    # process detection (weldment, casting, 5-axis) will be limited
     process_type_str, _conf, metadata, advanced_metrics = _classify_process(
         bbox_dims, vol_mm3, area_mm2,
         detected_thickness=detected_thickness,
         thickness_confidence=thickness_confidence,
         triangle_count=face_count,
         thickness_analysis=thickness_analysis,
+        material=material,
+        # Pass mesh for advanced bend detection
+        mesh=mesh,
+        # Pass full feature objects for advanced analysis
+        holes=features['holes'],
+        pockets=features['pockets'],
+        fillets=features['fillets'],
+        undercuts=features['undercuts'],
+        draft_analysis=features['draft'],
+        # Threads and slots
+        threads=features['threads'],
+        slots=[],  # STL mesh doesn't have slot extraction yet
+        # Pass counts
+        hole_count=len(features['holes']),
+        pocket_count=len(features['pockets']),
         thread_count=len(features['threads']),
         undercut_count=len(features['undercuts']),
         fillet_count=len(features['fillets']),
+        slot_count=0,
+        boss_count=len(features['bosses']),
+        rib_count=len(features['ribs']),
+        # STL doesn't support these advanced analyses (require BRep)
+        # surface_finish_analysis, tolerance_analysis, machining_complexity,
+        # casting_analysis, weldment_analysis are left as None (defaults)
     )
 
     # Complexity
@@ -620,11 +1030,11 @@ def _analyze_stl(file_path, scale):
         process_type_str, bbox_dims, metadata, detected_thickness,
     )
 
-    # Validation & DFM
+    # Validation & DFM - pass actual extracted features
     validation = _validate_geometry_safe(bbox_dims, vol_mm3, area_mm2)
     dfm_geometry = build_geometry_for_dfm(
         bbox_dims=bbox_dims, volume_mm3=vol_mm3, surface_area_mm2=area_mm2,
-        holes=[], pockets=[], process_type=process_type_str,
+        holes=features['holes'], pockets=features['pockets'], process_type=process_type_str,
         thickness=detected_thickness,
         bend_analysis=metadata.get('bend_analysis'),
         complexity=complexity,
@@ -644,16 +1054,22 @@ def _analyze_stl(file_path, scale):
         },
         "thickness": detected_thickness,
         "primitive_features": {
-            "holes": 0, "pockets": 0, "slots": 0,
+            "holes": len(features['holes']),
+            "pockets": len(features['pockets']),
+            "slots": 0,
             "threads": len(features['threads']),
             "undercuts": len(features['undercuts']),
             "fillets": len(features['fillets']),
+            "bosses": len(features['bosses']),
+            "ribs": len(features['ribs']),
             "faces": face_count,
         },
         "feature_detail": _serialize_features(
             threads=features['threads'],
             undercuts=features['undercuts'],
             fillets=features['fillets'],
+            holes=features['holes'],
+            pockets=features['pockets'],
         ),
         "material_usage": None,
         "process_type": process_type_str,
@@ -684,14 +1100,19 @@ def _detect_assembly_early(shape) -> dict | None:
                 assembly_info.shell_count,
                 assembly_info.reason,
             )
-            return _build_assembly_metrics(assembly_info)
+            return _build_assembly_metrics(assembly_info, shape=shape)
     except Exception as exc:
         logging.warning("Early assembly detection failed (continuing): %s", exc)
     return None
 
 
-def _analyze_step(file_path):
-    """Analyze a STEP file and return normalized metrics."""
+def _analyze_step(file_path, material: str = 'default'):
+    """Analyze a STEP file and return normalized metrics.
+    
+    Args:
+        file_path: Path to STEP file
+        material: Material type for classification thresholds
+    """
     if not occ_available():
         raise HTTPException(
             status_code=400,
@@ -742,8 +1163,22 @@ def _analyze_step(file_path):
         logging.warning("Pocket extraction failed: %s", str(e)[:120])
         pockets = []
     features = _extract_step_additional_features(shape, holes, pockets)
+    
+    # NEW: Extract bends BEFORE classification (GAP 4)
+    # This allows bend radius analysis to inform classification
+    step_bend_result = _extract_step_bends(shape, actual_thickness)
+    bends_list = []
+    if step_bend_result is not None and hasattr(step_bend_result, 'bends'):
+        bends_list = step_bend_result.bends
 
-    # Classification
+    # NEW: Extract advanced process analysis (machining complexity, weldment, casting)
+    body_count_info = count_solids_and_compounds(shape)
+    body_count = getattr(body_count_info, 'solid_count', 1) if body_count_info else 1
+    advanced_process = _extract_advanced_process_analysis(
+        shape, holes, pockets, features['undercuts'], face_result, body_count
+    )
+
+    # Classification - pass full feature objects for enhanced analysis
     process_type_str, _conf, metadata, advanced_metrics = _classify_process(
         bbox_dims, vol_mm3, area_mm2,
         detected_thickness=actual_thickness,
@@ -751,16 +1186,37 @@ def _analyze_step(file_path):
         triangle_count=triangle_count,
         thickness_analysis=thickness_analysis,
         face_classification=face_result,
+        # Pass full feature objects
+        holes=holes,
+        pockets=pockets,
+        fillets=features['fillets'],
+        # Pass bends, undercuts, and draft analysis
+        bends=bends_list,
+        undercuts=features['undercuts'],
+        draft_analysis=features['draft'],
+        # Pass slots and threads for geometry/pitch analysis
+        slots=features['slots'],
+        threads=features['threads'],
+        material=material,
+        # Pass counts for backward compatibility
         hole_count=len(holes),
         pocket_count=len(pockets),
         thread_count=len(features['threads']),
         undercut_count=len(features['undercuts']),
         fillet_count=len(features['fillets']),
         slot_count=len(features['slots']),
+        boss_count=len(features['bosses']),
+        rib_count=len(features['ribs']),
+        # NEW: Pass extended analysis results
+        surface_finish_analysis=features.get('surface_finish'),
+        tolerance_analysis=features.get('tolerances'),
+        machining_complexity=advanced_process.get('machining_complexity'),
+        casting_analysis=advanced_process.get('casting_analysis'),
+        weldment_analysis=advanced_process.get('weldment_analysis'),
+        body_count=body_count,
     )
 
-    # STEP bend angle extraction
-    step_bend_result = _extract_step_bends(shape, actual_thickness)
+    # Complexity (step_bend_result already extracted above)
 
     # Complexity
     bend_analysis = metadata.get('bend_analysis', {})
@@ -838,17 +1294,27 @@ def _extract_step_bends(shape, thickness_mm):
         return None
 
 
-def analyze_file_path(file_path: str, units_hint: Optional[str] = None) -> dict:
-    """Analyze a CAD file (STEP/STL) and return normalized metrics.
+def analyze_file_path(file_path: str, units_hint: Optional[str] = None, 
+                      material: Optional[str] = None) -> dict:
+    """Analyze a CAD file (STEP/STL/DXF) and return normalized metrics.
     Returns a dict matching previous mock structure to limit integration changes.
+    
+    Args:
+        file_path: Path to the CAD file
+        units_hint: Unit hint for STL files (e.g. "mm", "inch")
+        material: Material type for thickness classification
+                  (e.g. "steel", "aluminum", "stainless", "copper", "brass", "titanium")
     """
     ext = os.path.splitext(file_path)[1].lower()
     scale = scale_to_mm(units_hint)
+    material_type = material or 'default'
     if ext in (".stl",):
-        return _analyze_stl(file_path, scale)
+        return _analyze_stl(file_path, scale, material=material_type)
     if ext in (".step", ".stp"):
-        return _analyze_step(file_path)
-    raise HTTPException(status_code=400, detail="Unsupported CAD format. Use STEP or STL.")
+        return _analyze_step(file_path, material=material_type)
+    if ext in (".dxf",):
+        return _analyze_dxf(file_path, scale, material=material_type)
+    raise HTTPException(status_code=400, detail="Unsupported CAD format. Use STEP, STL, or DXF.")
 
 def calculate_stock_size(bbox: dict, thickness: Optional[float] = None) -> dict:
     """Calculate required stock material size."""
@@ -870,7 +1336,9 @@ def calculate_stock_size(bbox: dict, thickness: Optional[float] = None) -> dict:
         }
 
 @celery_app.task
-def analyze_file(file_id: str, file_path: str, units_hint: Optional[str] = None, file_url: Optional[str] = None, org_id: Optional[str] = None, webhook_url: Optional[str] = None):
+def analyze_file(file_id: str, file_path: str, units_hint: Optional[str] = None, 
+                 file_url: Optional[str] = None, org_id: Optional[str] = None, 
+                 webhook_url: Optional[str] = None, material: Optional[str] = None):
     try:
         local_path = file_path
         if not local_path and file_url:
@@ -878,7 +1346,7 @@ def analyze_file(file_id: str, file_path: str, units_hint: Optional[str] = None,
         if not local_path:
             raise ValueError("file_path or file_url is required")
 
-        metrics = analyze_file_path(local_path, units_hint)
+        metrics = analyze_file_path(local_path, units_hint, material=material)
         # Fire-and-forget webhook if provided
         if webhook_url:
             try:
@@ -908,7 +1376,10 @@ def analyze_file(file_id: str, file_path: str, units_hint: Optional[str] = None,
 @router.post("/", response_model=AnalysisResponse)
 def analyze_cad_file(request: AnalysisRequest):
     # Queue the analysis task
-    task = analyze_file.delay(request.file_id, request.file_path or "", request.units_hint, request.file_url, request.org_id, request.webhook_url)
+    task = analyze_file.delay(
+        request.file_id, request.file_path or "", request.units_hint, 
+        request.file_url, request.org_id, request.webhook_url, request.material
+    )
     
     return {
         "file_id": request.file_id,
@@ -996,11 +1467,16 @@ def submit_classification_feedback(request: FeedbackRequest):
     Called when a user manually overrides the auto-detected process type.
     This data is stored and used to improve the ML classifier over time.
     """
-    if request.confirmed_process not in ('sheet_metal', 'cnc_milling', 'cnc_turning'):
+    valid_feedback_types = {
+        'sheet_metal', 'cnc_milling', 'cnc_turning', 'cnc_turn_mill', 'cnc_5axis',
+        'injection_molding', 'die_casting', 'sand_casting', 'investment_casting',
+        '3d_printing', 'weldment'
+    }
+    if request.confirmed_process not in valid_feedback_types:
         raise HTTPException(
             status_code=400,
             detail=f"Invalid process type: {request.confirmed_process}. "
-                   f"Must be 'sheet_metal', 'cnc_milling', or 'cnc_turning'.",
+                   f"Must be one of: {', '.join(sorted(valid_feedback_types))}",
         )
 
     try:

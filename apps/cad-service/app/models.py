@@ -3,7 +3,7 @@ from dataclasses import dataclass, field
 from typing import List, Literal, Tuple, Optional, Dict, Any
 
 
-HoleType = Literal["through", "blind"]
+HoleType = Literal["through", "blind", "countersink", "counterbore"]
 
 
 @dataclass
@@ -26,6 +26,10 @@ class PocketFeature:
     depth_mm: float
     mouth_area_mm2: float
     aspect_ratio: float
+    # Enhanced fields for classification
+    step_count: int = 1  # Number of depth levels (multi-step = CNC)
+    corner_radius_mm: float = 0.0  # Tool radius at corners (R3-R6mm = CNC)
+    is_through: bool = False  # Through pocket vs blind (through = more sheet-metal-like)
 
 
 @dataclass
@@ -75,6 +79,9 @@ class FilletFeature:
     radius_mm: float  # Radius for fillet, leg size for chamfer
     length_mm: float  # Edge length
     edge_id: Optional[int] = None
+    # Enhanced classification
+    is_tool_radius: bool = False  # True if R3-R6mm (CNC tool radius)
+    is_bend_relief: bool = False  # True if ≤R2mm on sheet metal context
 
 
 @dataclass

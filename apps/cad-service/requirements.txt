@@ -13,6 +13,9 @@ pythonocc-core==7.7.2
 # STL File Processing
 numpy-stl==3.1.1
 
+# DXF File Processing
+ezdxf==1.1.4
+
 # DFM Analysis dependencies - numpy and trimesh for ray-casting thickness detection
 numpy==1.24.3
 trimesh==4.0.5

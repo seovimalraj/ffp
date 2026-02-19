@@ -115,7 +115,11 @@ def _try_import_occ():
 
 
 def _check_plane_plane_bend(surf1, surf2, edge, t, occ):
-    """Check if two planar faces form a bend at their shared edge."""
+    """Check if two planar faces form a bend at their shared edge.
+    
+    This detects sharp bends (no radius) where two planes meet at an angle.
+    Common in laser-cut and welded assemblies, or CAD models with no bend radius.
+    """
     adaptor_curve_cls = occ['BRepAdaptor_Curve']
     gprops_cls = occ['GProp_GProps']
     gprop_linear = occ['brepgprop']
@@ -131,11 +135,16 @@ def _check_plane_plane_bend(surf1, surf2, edge, t, occ):
         return None
 
     dihedral = _angle_between_normals(n1, n2)
-    if not (10.0 < dihedral < 170.0):
+    
+    # FIX: Detect bends from 5° to 175° (handles near-parallel cases better)
+    # A 90° bend has dihedral = 90° → angle_deg = 90°
+    # A 45° bend has dihedral = 45° → angle_deg = 135° (obtuse)
+    # A 135° bend has dihedral = 135° → angle_deg = 45° (acute)
+    if not (5.0 < dihedral < 175.0):
         return None
 
     angle_deg = 180.0 - dihedral
-    bend_radius = t * 0.5
+    bend_radius = t * 0.5  # Assume small radius for sharp bends
 
     props = gprops_cls()
     gprop_linear.LinearProperties(edge, props)
@@ -153,7 +162,11 @@ def _check_plane_plane_bend(surf1, surf2, edge, t, occ):
 
 
 def _check_cylinder_plane_bend(surf1, surf2, s1_type, edge, occ):
-    """Check if a cylinder-plane face pair forms a bend."""
+    """Check if a cylinder-plane face pair forms a bend.
+    
+    In sheet metal, the cylinder represents the bend zone (curved region).
+    The U parameter range of the cylinder gives the angular span of the bend.
+    """
     geom_cylinder = occ['GeomAbs_Cylinder']
     gprops_cls = occ['GProp_GProps']
     gprop_linear = occ['brepgprop']
@@ -169,8 +182,12 @@ def _check_cylinder_plane_bend(surf1, surf2, s1_type, edge, occ):
     u1 = cyl_surf.FirstUParameter()
     u2 = cyl_surf.LastUParameter()
     angle_deg = math.degrees(abs(u2 - u1))
-
-    if not (10.0 < angle_deg < 180.0 and bend_radius < 50.0):
+    
+    # FIX: Relax constraints - allow larger bend radii and smaller angles
+    # bend_radius up to 100mm for heavy gauge materials
+    # angle as low as 5° (very slight bends)
+    if not (5.0 < angle_deg < 180.0 and bend_radius < 100.0):
+        logger.debug("BEND: Cylinder-plane rejected: angle=%.1f°, radius=%.2fmm", angle_deg, bend_radius)
         return None
 
     props = gprops_cls()
@@ -183,22 +200,29 @@ def _check_cylinder_plane_bend(surf1, surf2, s1_type, edge, occ):
 
 
 def _check_cylinder_cylinder_bend(surf1, surf2, edge, occ):
-    """Check if two cylindrical faces form a U-bend / channel."""
+    """Check if two cylindrical faces form a U-bend / channel.
+    
+    Two adjacent cylindrical faces with similar radii indicate a continuous
+    bend zone (common in formed U-channels and rolled sections).
+    """
     gprops_cls = occ['GProp_GProps']
     gprop_linear = occ['brepgprop']
 
     cyl1 = surf1.Cylinder()
     cyl2 = surf2.Cylinder()
     r1, r2 = cyl1.Radius(), cyl2.Radius()
-
-    if abs(r1 - r2) >= 0.5 or r1 >= 50.0:
+    
+    # FIX: Relax constraints
+    # - Radii can differ by up to 2mm (inner vs outer radius)
+    # - Allow radii up to 100mm
+    if abs(r1 - r2) >= 2.0 or r1 >= 100.0:
         return None
 
     bend_radius = (r1 + r2) / 2.0
     angular_span = abs(surf1.LastUParameter() - surf1.FirstUParameter())
     angle_deg = math.degrees(angular_span)
 
-    if not (10.0 < angle_deg < 180.0):
+    if not (5.0 < angle_deg < 180.0):
         return None
 
     axis_dir = cyl1.Axis().Direction()
@@ -267,17 +291,39 @@ def extract_bend_angles_from_shape(shape, thickness_mm: Optional[float] = None) 
     bends: List[BendFeature] = []
     bend_id = 0
     t = thickness_mm or 1.0
+    
+    # Statistics for debugging
+    total_edges = edge_face_map.Size()
+    edges_with_2_faces = 0
+    plane_plane_pairs = 0
+    cyl_plane_pairs = 0
+    cyl_cyl_pairs = 0
+    other_pairs = 0
+    
+    logger.debug("BEND: Processing %d edges for bend detection", total_edges)
 
     for edge_idx in range(1, edge_face_map.Size() + 1):
         edge = occ['topods'].Edge(edge_face_map.FindKey(edge_idx))
         face_list = edge_face_map.FindFromIndex(edge_idx)
 
+        # FIX: TopTools_ListOfShape requires proper OCC iteration, not list()
+        # Use iterator to extract faces from the list
         try:
-            face_items = list(face_list)
-        except Exception:
+            from OCC.Core.TopTools import TopTools_ListIteratorOfListOfShape
+            face_items = []
+            it = TopTools_ListIteratorOfListOfShape(face_list)
+            while it.More():
+                face_items.append(it.Value())
+                it.Next()
+        except Exception as exc:
+            logger.debug("BEND: Failed to iterate face list for edge %d: %s", edge_idx, exc)
             continue
+            
         if len(face_items) != 2:
             continue
+        
+        edges_with_2_faces += 1
+            
         face1 = occ['topods'].Face(face_items[0])
         face2 = occ['topods'].Face(face_items[1])
 
@@ -285,10 +331,34 @@ def extract_bend_angles_from_shape(shape, thickness_mm: Optional[float] = None) 
         surf2 = occ['BRepAdaptor_Surface'](face2)
         s1_type = surf1.GetType()
         s2_type = surf2.GetType()
+        
+        # Count face type combinations (extended for advanced detection)
+        from OCC.Core.GeomAbs import GeomAbs_Plane, GeomAbs_Cylinder, GeomAbs_Cone, GeomAbs_Torus
+        type_names = {
+            GeomAbs_Plane: 'Plane', 
+            GeomAbs_Cylinder: 'Cylinder',
+            GeomAbs_Cone: 'Cone',
+            GeomAbs_Torus: 'Torus',
+        }
+        s1_name = type_names.get(s1_type, f'Other({s1_type})')
+        s2_name = type_names.get(s2_type, f'Other({s2_type})')
+        
+        if s1_type == GeomAbs_Plane and s2_type == GeomAbs_Plane:
+            plane_plane_pairs += 1
+        elif (s1_type == GeomAbs_Cylinder and s2_type == GeomAbs_Plane) or \
+             (s1_type == GeomAbs_Plane and s2_type == GeomAbs_Cylinder):
+            cyl_plane_pairs += 1
+        elif s1_type == GeomAbs_Cylinder and s2_type == GeomAbs_Cylinder:
+            cyl_cyl_pairs += 1
+        else:
+            # Count cone and torus pairs in 'other' but they're now processed
+            other_pairs += 1
 
         bend_data = _process_edge_pair(surf1, surf2, s1_type, s2_type, edge, t, occ)
         if bend_data is None:
             continue
+        
+        logger.debug("BEND: Found %s-%s pair with bend angle %.1f°", s1_name, s2_name, bend_data[0])
 
         angle_deg, bend_radius, bend_axis, bend_pos, edge_length = bend_data
 
@@ -317,6 +387,12 @@ def extract_bend_angles_from_shape(shape, thickness_mm: Optional[float] = None) 
 
     bends = _deduplicate_bends(bends)
     result = _build_bend_summary(bends, result)
+    
+    # Log edge pair statistics for debugging
+    logger.debug(
+        "BEND: Edge stats - total=%d, with_2_faces=%d, plane-plane=%d, cyl-plane=%d, cyl-cyl=%d, other=%d",
+        total_edges, edges_with_2_faces, plane_plane_pairs, cyl_plane_pairs, cyl_cyl_pairs, other_pairs
+    )
 
     logger.info(
         "STEP bend extraction: %d bends (angles %.1f°–%.1f°, radii %.2f–%.2fmm)",
@@ -331,7 +407,7 @@ def extract_bend_angles_from_shape(shape, thickness_mm: Optional[float] = None) 
 
 def _process_edge_pair(surf1, surf2, s1_type, s2_type, edge, t, occ):
     """Dispatch edge to the appropriate bend-check handler. Returns bend data tuple or None."""
-    from OCC.Core.GeomAbs import GeomAbs_Plane, GeomAbs_Cylinder
+    from OCC.Core.GeomAbs import GeomAbs_Plane, GeomAbs_Cylinder, GeomAbs_Cone, GeomAbs_Torus
 
     if s1_type == GeomAbs_Plane and s2_type == GeomAbs_Plane:
         try:
@@ -358,7 +434,231 @@ def _process_edge_pair(surf1, surf2, s1_type, s2_type, edge, t, occ):
             logger.debug("Cylinder-cylinder bend check failed: %s", exc)
             return None
 
+    # ADVANCED: Conical face handling (tapered/flared sheet metal bends)
+    # Cones appear in funnel-shaped parts, tapered transitions, and flared edges
+    is_cone_plane = (
+        (s1_type == GeomAbs_Cone and s2_type == GeomAbs_Plane)
+        or (s1_type == GeomAbs_Plane and s2_type == GeomAbs_Cone)
+    )
+    if is_cone_plane:
+        try:
+            return _check_cone_plane_bend(surf1, surf2, s1_type, edge, t, occ)
+        except Exception as exc:
+            logger.debug("Cone-plane bend check failed: %s", exc)
+            return None
+    
+    is_cone_cyl = (
+        (s1_type == GeomAbs_Cone and s2_type == GeomAbs_Cylinder)
+        or (s1_type == GeomAbs_Cylinder and s2_type == GeomAbs_Cone)
+    )
+    if is_cone_cyl:
+        try:
+            return _check_cone_cylinder_bend(surf1, surf2, s1_type, edge, t, occ)
+        except Exception as exc:
+            logger.debug("Cone-cylinder bend check failed: %s", exc)
+            return None
+    
+    # ADVANCED: Toroidal face handling (complex curved bends like corners)
+    # Tori appear in rolled edges, ball corners, and compound curves
+    is_torus_plane = (
+        (s1_type == GeomAbs_Torus and s2_type == GeomAbs_Plane)
+        or (s1_type == GeomAbs_Plane and s2_type == GeomAbs_Torus)
+    )
+    if is_torus_plane:
+        try:
+            return _check_torus_plane_bend(surf1, surf2, s1_type, edge, t, occ)
+        except Exception as exc:
+            logger.debug("Torus-plane bend check failed: %s", exc)
+            return None
+    
+    is_torus_cyl = (
+        (s1_type == GeomAbs_Torus and s2_type == GeomAbs_Cylinder)
+        or (s1_type == GeomAbs_Cylinder and s2_type == GeomAbs_Torus)
+    )
+    if is_torus_cyl:
+        try:
+            return _check_torus_cylinder_bend(surf1, surf2, s1_type, edge, t, occ)
+        except Exception as exc:
+            logger.debug("Torus-cylinder bend check failed: %s", exc)
+            return None
+
     return None
+
+
+def _check_cone_plane_bend(surf1, surf2, s1_type, edge, t, occ):
+    """Check if a cone-plane face pair forms a tapered bend.
+    
+    Conical faces in sheet metal represent tapered transitions like
+    funnels, reducers, or flared edges. The semi-angle of the cone
+    determines the taper angle.
+    """
+    from OCC.Core.GeomAbs import GeomAbs_Cone
+    gprops_cls = occ['GProp_GProps']
+    gprop_linear = occ['brepgprop']
+    
+    cone_surf = surf1 if s1_type == GeomAbs_Cone else surf2
+    cone = cone_surf.Cone()
+    
+    # Cone semi-angle (half-angle of the cone)
+    semi_angle_rad = cone.SemiAngle()
+    semi_angle_deg = math.degrees(abs(semi_angle_rad))
+    
+    # For sheet metal, taper angles are typically small (5-45 degrees)
+    if not (2.0 < semi_angle_deg < 60.0):
+        return None
+    
+    # The bend angle is related to how the cone meets the plane
+    # For a cone transitioning to a flat, the bend angle is close to 90° ± semi_angle
+    bend_angle = 90.0 - semi_angle_deg
+    if bend_angle < 5 or bend_angle > 175:
+        return None
+    
+    # Use cone parameters for bend properties
+    apex = cone.Apex()
+    bend_radius = t * 0.5  # Approximate - cones have variable radius
+    
+    axis_dir = cone.Axis().Direction()
+    bend_axis = (axis_dir.X(), axis_dir.Y(), axis_dir.Z())
+    bend_pos = (apex.X(), apex.Y(), apex.Z())
+    
+    props = gprops_cls()
+    gprop_linear.LinearProperties(edge, props)
+    edge_length = props.Mass()
+    
+    return bend_angle, bend_radius, bend_axis, bend_pos, edge_length
+
+
+def _check_cone_cylinder_bend(surf1, surf2, s1_type, edge, t, occ):
+    """Check if a cone-cylinder pair forms a transitional bend.
+    
+    This occurs when a tapered section connects to a cylindrical section,
+    common in reducers and tapered tubes.
+    """
+    from OCC.Core.GeomAbs import GeomAbs_Cone, GeomAbs_Cylinder
+    gprops_cls = occ['GProp_GProps']
+    gprop_linear = occ['brepgprop']
+    
+    cone_surf = surf1 if s1_type == GeomAbs_Cone else surf2
+    cyl_surf = surf2 if s1_type == GeomAbs_Cone else surf1
+    
+    cone = cone_surf.Cone()
+    cylinder = cyl_surf.Cylinder()
+    
+    semi_angle_rad = cone.SemiAngle()
+    semi_angle_deg = math.degrees(abs(semi_angle_rad))
+    
+    # The bend angle is approximately the cone's semi-angle
+    bend_angle = semi_angle_deg
+    if not (5.0 < bend_angle < 85.0):
+        return None
+    
+    bend_radius = cylinder.Radius()
+    
+    axis_dir = cylinder.Axis().Direction()
+    bend_axis = (axis_dir.X(), axis_dir.Y(), axis_dir.Z())
+    loc = cylinder.Location()
+    bend_pos = (loc.X(), loc.Y(), loc.Z())
+    
+    props = gprops_cls()
+    gprop_linear.LinearProperties(edge, props)
+    edge_length = props.Mass()
+    
+    return bend_angle, bend_radius, bend_axis, bend_pos, edge_length
+
+
+def _check_torus_plane_bend(surf1, surf2, s1_type, edge, t, occ):
+    """Check if a torus-plane pair forms a rolled edge or corner bend.
+    
+    Toroidal surfaces in sheet metal represent rolled edges, ball corners,
+    or compound curved bends. The torus minor radius relates to bend radius.
+    """
+    from OCC.Core.GeomAbs import GeomAbs_Torus
+    gprops_cls = occ['GProp_GProps']
+    gprop_linear = occ['brepgprop']
+    
+    torus_surf = surf1 if s1_type == GeomAbs_Torus else surf2
+    torus = torus_surf.Torus()
+    
+    # Minor radius is the tube radius (bend radius)
+    minor_radius = torus.MinorRadius()
+    major_radius = torus.MajorRadius()
+    
+    # For sheet metal, minor radius should be reasonable
+    if minor_radius < 0.1 or minor_radius > 50.0:
+        return None
+    
+    # Estimate bend angle from torus arc span
+    u1 = torus_surf.FirstUParameter()
+    u2 = torus_surf.LastUParameter()
+    arc_angle_deg = math.degrees(abs(u2 - u1))
+    
+    # Bend angle is the arc span
+    bend_angle = arc_angle_deg
+    if not (5.0 < bend_angle < 180.0):
+        return None
+    
+    bend_radius = minor_radius
+    
+    axis = torus.Axis()
+    axis_dir = axis.Direction()
+    bend_axis = (axis_dir.X(), axis_dir.Y(), axis_dir.Z())
+    loc = torus.Location()
+    bend_pos = (loc.X(), loc.Y(), loc.Z())
+    
+    props = gprops_cls()
+    gprop_linear.LinearProperties(edge, props)
+    edge_length = props.Mass()
+    
+    return bend_angle, bend_radius, bend_axis, bend_pos, edge_length
+
+
+def _check_torus_cylinder_bend(surf1, surf2, s1_type, edge, t, occ):
+    """Check if a torus-cylinder pair forms a transition bend.
+    
+    This occurs at the junction between a plain bend and a rolled corner,
+    or when a cylinder meets a curved transition zone.
+    """
+    from OCC.Core.GeomAbs import GeomAbs_Torus, GeomAbs_Cylinder
+    gprops_cls = occ['GProp_GProps']
+    gprop_linear = occ['brepgprop']
+    
+    torus_surf = surf1 if s1_type == GeomAbs_Torus else surf2
+    cyl_surf = surf2 if s1_type == GeomAbs_Torus else surf1
+    
+    torus = torus_surf.Torus()
+    cylinder = cyl_surf.Cylinder()
+    
+    minor_radius = torus.MinorRadius()
+    
+    # Minor radius should match cylinder radius approximately
+    cyl_radius = cylinder.Radius()
+    radius_diff = abs(minor_radius - cyl_radius)
+    
+    if radius_diff > max(minor_radius, cyl_radius) * 0.5:
+        # Radii too different - not a smooth transition
+        return None
+    
+    # Estimate bend angle from torus arc
+    u1 = torus_surf.FirstUParameter()
+    u2 = torus_surf.LastUParameter()
+    arc_angle_deg = math.degrees(abs(u2 - u1))
+    
+    bend_angle = arc_angle_deg
+    if not (5.0 < bend_angle < 180.0):
+        return None
+    
+    bend_radius = (minor_radius + cyl_radius) / 2
+    
+    axis_dir = cylinder.Axis().Direction()
+    bend_axis = (axis_dir.X(), axis_dir.Y(), axis_dir.Z())
+    loc = cylinder.Location()
+    bend_pos = (loc.X(), loc.Y(), loc.Z())
+    
+    props = gprops_cls()
+    gprop_linear.LinearProperties(edge, props)
+    edge_length = props.Mass()
+    
+    return bend_angle, bend_radius, bend_axis, bend_pos, edge_length
 
 
 # ======================================================================
@@ -400,32 +700,258 @@ def _classify_bend_type(angle: float, radius: float, thickness: float) -> str:
     return "v-bend"
 
 
-def _calculate_k_factor(radius: float, thickness: float, _angle: float = 0.0) -> float:
+# Material-specific K-factor lookup tables
+# K-factor depends on material type, temper, and bend radius/thickness ratio
+# Source: Machinery's Handbook, SME forming guidelines
+MATERIAL_K_FACTORS = {
+    "aluminum": {
+        # Aluminum alloys - softer materials have lower K-factor
+        "soft": {  # 1100, 3003, 5052-O
+            "tight": 0.33,    # R/T < 1
+            "normal": 0.38,   # 1 <= R/T < 2
+            "loose": 0.42,    # 2 <= R/T < 3
+            "open": 0.45,     # R/T >= 3
+        },
+        "half_hard": {  # 5052-H32, 6061-T4
+            "tight": 0.35,
+            "normal": 0.40,
+            "loose": 0.44,
+            "open": 0.48,
+        },
+        "hard": {  # 6061-T6, 7075
+            "tight": 0.38,
+            "normal": 0.42,
+            "loose": 0.46,
+            "open": 0.50,
+        },
+    },
+    "steel": {
+        # Mild steel and HSLA
+        "soft": {  # A36, CR1008
+            "tight": 0.35,
+            "normal": 0.40,
+            "loose": 0.44,
+            "open": 0.48,
+        },
+        "half_hard": {  # A569, HSLA
+            "tight": 0.38,
+            "normal": 0.42,
+            "loose": 0.46,
+            "open": 0.50,
+        },
+        "hard": {  # A606, Spring steel
+            "tight": 0.40,
+            "normal": 0.44,
+            "loose": 0.48,
+            "open": 0.50,
+        },
+    },
+    "stainless": {
+        # Stainless steels work-harden significantly
+        "soft": {  # 304 annealed, 316 annealed
+            "tight": 0.38,
+            "normal": 0.42,
+            "loose": 0.46,
+            "open": 0.50,
+        },
+        "half_hard": {  # 301, 304 1/4H
+            "tight": 0.40,
+            "normal": 0.44,
+            "loose": 0.48,
+            "open": 0.50,
+        },
+        "hard": {  # 301 FH, 17-7PH
+            "tight": 0.42,
+            "normal": 0.46,
+            "loose": 0.50,
+            "open": 0.50,
+        },
+    },
+    "copper": {
+        "soft": {
+            "tight": 0.30,
+            "normal": 0.35,
+            "loose": 0.40,
+            "open": 0.44,
+        },
+        "hard": {
+            "tight": 0.35,
+            "normal": 0.40,
+            "loose": 0.44,
+            "open": 0.48,
+        },
+    },
+    "brass": {
+        "soft": {
+            "tight": 0.32,
+            "normal": 0.38,
+            "loose": 0.42,
+            "open": 0.46,
+        },
+        "hard": {
+            "tight": 0.38,
+            "normal": 0.42,
+            "loose": 0.46,
+            "open": 0.50,
+        },
+    },
+    "default": {
+        # Generic fallback
+        "soft": {"tight": 0.33, "normal": 0.40, "loose": 0.44, "open": 0.48},
+        "half_hard": {"tight": 0.38, "normal": 0.42, "loose": 0.46, "open": 0.50},
+        "hard": {"tight": 0.40, "normal": 0.44, "loose": 0.48, "open": 0.50},
+    },
+}
+
+
+def _get_rt_category(ratio: float) -> str:
+    """Categorize R/T ratio for K-factor lookup."""
+    if ratio < 1.0:
+        return "tight"
+    elif ratio < 2.0:
+        return "normal"
+    elif ratio < 3.0:
+        return "loose"
+    else:
+        return "open"
+
+
+def _calculate_k_factor(
+    radius: float, 
+    thickness: float, 
+    _angle: float = 0.0,
+    material: str = "default",
+    temper: str = "half_hard"
+) -> float:
     """
+    Calculate K-factor based on material, temper, and bend geometry.
+    
     K-factor determines where the neutral axis sits within the bend.
-    Typical range: 0.3–0.5.  Tight radii shift the neutral axis inward.
+    Typical range: 0.3–0.5. Tight radii shift the neutral axis inward.
+    Harder materials and tighter bends have lower K-factors.
+    
+    Args:
+        radius: Inner bend radius in mm
+        thickness: Material thickness in mm
+        _angle: Bend angle (not currently used, reserved for future)
+        material: Material type ('aluminum', 'steel', 'stainless', 'copper', 'brass')
+        temper: Material temper ('soft', 'half_hard', 'hard')
+        
+    Returns:
+        K-factor value (typically 0.30-0.50)
     """
     if thickness <= 0:
-        return 0.44
+        return 0.44  # Default fallback
+    
     ratio = radius / thickness
-    if ratio < 1.0:
-        return 0.33
-    if ratio < 2.0:
-        return 0.40
-    if ratio < 3.0:
-        return 0.44
-    return 0.50
+    rt_category = _get_rt_category(ratio)
+    
+    # Get material-specific K-factor table
+    material_lower = material.lower() if material else "default"
+    if material_lower not in MATERIAL_K_FACTORS:
+        material_lower = "default"
+    
+    material_table = MATERIAL_K_FACTORS[material_lower]
+    
+    # Get temper-specific values
+    temper_lower = temper.lower() if temper else "half_hard"
+    if temper_lower not in material_table:
+        # Find closest match
+        if "half_hard" in material_table:
+            temper_lower = "half_hard"
+        elif "soft" in material_table:
+            temper_lower = "soft"
+        else:
+            temper_lower = list(material_table.keys())[0]
+    
+    temper_table = material_table[temper_lower]
+    
+    return temper_table.get(rt_category, 0.44)
+
+
+def calculate_bend_allowance(
+    angle_deg: float, 
+    radius: float, 
+    thickness: float,
+    k_factor: Optional[float] = None,
+    material: str = "default",
+    temper: str = "half_hard"
+) -> float:
+    """
+    Calculate bend allowance (BA) - the arc length of the neutral axis.
+    
+    BA = (π × angle_deg / 180) × (radius + K × thickness)
+    
+    This is the material added to flat pattern to account for stretching
+    during the bend process.
+    
+    Args:
+        angle_deg: Bend angle in degrees
+        radius: Inner bend radius in mm
+        thickness: Material thickness in mm
+        k_factor: Override K-factor (if None, calculated from material/temper)
+        material: Material type for K-factor lookup
+        temper: Material temper for K-factor lookup
+        
+    Returns:
+        Bend allowance in mm
+    """
+    if k_factor is None:
+        k_factor = _calculate_k_factor(radius, thickness, angle_deg, material, temper)
+    
+    a_rad = math.radians(angle_deg)
+    ba = a_rad * (radius + k_factor * thickness)
+    return ba
+
+
+def calculate_outside_setback(
+    angle_deg: float, 
+    radius: float, 
+    thickness: float
+) -> float:
+    """
+    Calculate outside setback (OSSB) for a bend.
+    
+    OSSB = (R + T) × tan(angle/2)
+    
+    This is the distance from the bend tangent point to the apex
+    of the bend on the outside surface.
+    
+    Args:
+        angle_deg: Bend angle in degrees
+        radius: Inner bend radius in mm
+        thickness: Material thickness in mm
+        
+    Returns:
+        Outside setback in mm
+    """
+    a_rad = math.radians(angle_deg)
+    if abs(math.cos(a_rad / 2.0)) < 1e-9:
+        return 0.0
+    return (radius + thickness) * math.tan(a_rad / 2.0)
 
 
 def _bend_deduction(angle_deg: float, radius: float, thickness: float, k_factor: float) -> float:
     """
     Bend Deduction (BD) = 2 × (R + T) × tan(A/2)  −  Bend Allowance
-    Bend Allowance (BA) = A_rad × (R + K × T)
+    
+    This is the amount to subtract from the flat pattern leg lengths
+    to account for the bend.
+    
+    For a 90° bend: BD = 2 × OSSB - BA
+    
+    Args:
+        angle_deg: Bend angle in degrees
+        radius: Inner bend radius in mm
+        thickness: Material thickness in mm
+        k_factor: K-factor for neutral axis position
+        
+    Returns:
+        Bend deduction in mm (always >= 0)
     """
-    a_rad = math.radians(angle_deg)
-    ba = a_rad * (radius + k_factor * thickness)
-    outside_setback = 2.0 * (radius + thickness) * math.tan(a_rad / 2.0) if abs(math.cos(a_rad / 2.0)) > 1e-9 else 0.0
-    bd = outside_setback - ba
+    ba = calculate_bend_allowance(angle_deg, radius, thickness, k_factor)
+    ossb = calculate_outside_setback(angle_deg, radius, thickness)
+    bd = 2.0 * ossb - ba
     return max(0.0, bd)
 
 

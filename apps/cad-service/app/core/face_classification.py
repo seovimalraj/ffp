@@ -83,6 +83,40 @@ class PlanarPairInfo:
 
 
 @dataclass
+class PlanarFaceInfo:
+    """Info about a single planar face for downstream analysis."""
+    area: float  # mm²
+    normal: Tuple[float, float, float]  # unit normal vector
+    z_level: float  # Z coordinate of plane (for step detection)
+    
+    def to_dict(self) -> dict:
+        return {
+            "area": round(self.area, 2),
+            "normal": tuple(round(v, 4) for v in self.normal),
+            "z_level": round(self.z_level, 3),
+        }
+
+
+@dataclass
+class CylindricalFaceInfo:
+    """Info about a single cylindrical face for boss/hole detection."""
+    radius: float  # mm
+    area: float  # mm²
+    height: float  # mm (estimated from area and radius)
+    axis: Tuple[float, float, float]  # cylinder axis direction
+    is_internal: bool  # True if concave (hole), False if convex (boss)
+    
+    def to_dict(self) -> dict:
+        return {
+            "radius": round(self.radius, 3),
+            "area": round(self.area, 2),
+            "height": round(self.height, 2),
+            "axis": tuple(round(v, 4) for v in self.axis),
+            "is_internal": self.is_internal,
+        }
+
+
+@dataclass
 class FaceClassificationResult:
     """Complete result of BRepAdaptor face-type analysis."""
 
@@ -91,7 +125,7 @@ class FaceClassificationResult:
     # Derived ratios (0-1)
     plane_ratio: float  # fraction of faces that are planar
     cylinder_ratio: float  # fraction that are cylindrical (holes/fillets)
-    freeform_ratio: float  # fraction that are BSpline/Bezier/Revolution
+    freeform_ratio: float  # fraction that are BSpline/Bezier (NOT revolution)
     mixed_ratio: float  # 1 - plane_ratio  (cone+sphere+torus+…)
 
     # Area-weighted variants (more meaningful than simple counts)
@@ -111,12 +145,23 @@ class FaceClassificationResult:
 
     reasoning: str
 
+    # Fields with defaults must come after fields without defaults
+    revolution_ratio: float = 0.0  # GAP FIX: separate revolution for turning detection
+    paired_plane_distances: List[float] = field(default_factory=list)  # GAP FIX: All pair distances
+    
+    # NEW: Raw face data for downstream analysis (GAP 5, 6)
+    planar_faces_info: List[PlanarFaceInfo] = field(default_factory=list)
+    cylindrical_faces_info: List[CylindricalFaceInfo] = field(default_factory=list)
+    planar_face_z_levels: List[float] = field(default_factory=list)  # For surface step detection
+    total_edge_count: int = 0  # For edge sharpness analysis
+
     def to_dict(self) -> dict:
         return {
             "histogram": self.histogram.to_dict(),
             "plane_ratio": round(self.plane_ratio, 4),
             "cylinder_ratio": round(self.cylinder_ratio, 4),
             "freeform_ratio": round(self.freeform_ratio, 4),
+            "revolution_ratio": round(self.revolution_ratio, 4),  # GAP FIX: add to dict
             "mixed_ratio": round(self.mixed_ratio, 4),
             "plane_area_ratio": round(self.plane_area_ratio, 4),
             "cylinder_area_ratio": round(self.cylinder_area_ratio, 4),
@@ -132,6 +177,11 @@ class FaceClassificationResult:
             "cnc_face_score": round(self.cnc_face_score, 1),
             "sheet_metal_face_score": round(self.sheet_metal_face_score, 1),
             "reasoning": self.reasoning,
+            # NEW: Raw face data counts (full data available via attributes)
+            "planar_faces_count": len(self.planar_faces_info),
+            "cylindrical_faces_count": len(self.cylindrical_faces_info),
+            "planar_z_level_count": len(self.planar_face_z_levels),
+            "total_edge_count": self.total_edge_count,
         }
 
 
@@ -249,12 +299,15 @@ def _normals_parallel(n1, n2, tol_deg: float = 5.0) -> bool:
 def _find_paired_planes(
     planar_faces: List[dict],
     min_area: float = 100.0,
+    max_sheet_distance: float = 10.0,
 ) -> List[PlanarPairInfo]:
     """Find pairs of approximately parallel planar faces at uniform distances.
 
     Args:
         planar_faces: list of dicts with keys ``normal``, ``d``, ``area``, ``face``.
         min_area: minimum face area (mm²) to consider.
+        max_sheet_distance: maximum distance (mm) to consider as sheet metal thickness.
+            Reduced from 50mm to 10mm to avoid false positives on machined blocks.
 
     Returns:
         list of PlanarPairInfo for detected pairs.
@@ -274,8 +327,9 @@ def _find_paired_planes(
             if not _normals_parallel(f1["normal"], f2["normal"]):
                 continue
             dist = abs(f1["d"] - f2["d"])
-            # Distance must be positive and reasonable (0.1 – 50 mm for sheet metal)
-            if 0.1 <= dist <= 50.0 and dist < best_dist:
+            # Distance must be positive and in sheet metal range (0.1 – 10 mm)
+            # Reduced from 50mm to avoid false positives on machined plates/blocks
+            if 0.1 <= dist <= max_sheet_distance and dist < best_dist:
                 # Check area similarity — paired faces should be roughly the same size
                 area_ratio = min(f1["area"], f2["area"]) / max(f1["area"], f2["area"])
                 if area_ratio > 0.3:
@@ -312,7 +366,7 @@ def classify_faces(shape, total_surface_area: float = 0.0) -> FaceClassification
 
     Returns:
         FaceClassificationResult with histogram, ratios, paired-plane info,
-        and classification hints.
+        raw face data for downstream analysis, and classification hints.
     """
     occ = _try_import_brep_adaptor()
     if occ is None:
@@ -322,6 +376,11 @@ def classify_faces(shape, total_surface_area: float = 0.0) -> FaceClassification
 
     histogram = FaceTypeHistogram()
     planar_faces: List[dict] = []
+    
+    # NEW: Collect face info for downstream analysis (GAP 5, 6)
+    planar_faces_info: List[PlanarFaceInfo] = []
+    cylindrical_faces_info: List[CylindricalFaceInfo] = []
+    planar_z_levels: List[float] = []
 
     # Per-type area accumulators
     area_by_type: Dict[str, float] = {
@@ -344,6 +403,7 @@ def classify_faces(shape, total_surface_area: float = 0.0) -> FaceClassification
     while exp.More():
         face = exp.Current()
         exp.Next()
+        adaptor = None
         try:
             adaptor = occ["BRepAdaptor_Surface"](face)
             stype = adaptor.GetType()
@@ -367,6 +427,84 @@ def classify_faces(shape, total_surface_area: float = 0.0) -> FaceClassification
                 planar_faces.append(
                     {"normal": normal, "d": d, "area": area, "face": face}
                 )
+                # NEW: Extract Z-level for surface step detection (GAP 2)
+                # If Z-normal (pointing up/down), use the d value as Z-level
+                if abs(normal[2]) > 0.9:  # Z-perpendicular face
+                    z_level = d if normal[2] > 0 else -d
+                    planar_z_levels.append(z_level)
+                # Store PlanarFaceInfo for rib analysis
+                planar_faces_info.append(PlanarFaceInfo(
+                    area=area,
+                    normal=normal,
+                    z_level=d,
+                ))
+        
+        # NEW: Collect cylindrical face info for boss detection (GAP 6)
+        elif field == "cylinder" and adaptor is not None:
+            try:
+                cyl = adaptor.Cylinder()
+                radius = cyl.Radius()
+                axis_dir = cyl.Axis().Direction()
+                axis = (axis_dir.X(), axis_dir.Y(), axis_dir.Z())
+                # Estimate height from area: A = 2*pi*r*h => h = A / (2*pi*r)
+                height = area / (2 * 3.14159 * radius) if radius > 0.01 else 0.0
+                
+                # GAP FIX: Better internal/external detection using normal orientation
+                # For internal cylinders (holes), the face normal points toward the axis (concave)
+                # For external cylinders (bosses), the face normal points away (convex)
+                is_internal = True  # Default to internal (conservative)
+                try:
+                    from OCC.Core.BRepGProp import brepgprop_SurfaceProperties
+                    from OCC.Core.GProp import GProp_GProps
+                    from OCC.Core.BRep import BRep_Tool
+                    from OCC.Core.GeomLProp import GeomLProp_SLProps
+                    
+                    # Get the surface and check normal at mid-parameter
+                    surface = BRep_Tool.Surface(face)
+                    u_mid = (adaptor.FirstUParameter() + adaptor.LastUParameter()) / 2
+                    v_mid = (adaptor.FirstVParameter() + adaptor.LastVParameter()) / 2
+                    props = GeomLProp_SLProps(surface, u_mid, v_mid, 1, 1e-6)
+                    if props.IsNormalDefined():
+                        normal = props.Normal()
+                        # Get point on surface
+                        pnt = adaptor.Value(u_mid, v_mid)
+                        # Vector from axis to point
+                        axis_loc = cyl.Axis().Location()
+                        to_point = (pnt.X() - axis_loc.X(), pnt.Y() - axis_loc.Y(), pnt.Z() - axis_loc.Z())
+                        # Project out axis component to get radial direction
+                        dot_axis = to_point[0]*axis[0] + to_point[1]*axis[1] + to_point[2]*axis[2]
+                        radial = (to_point[0] - dot_axis*axis[0], 
+                                  to_point[1] - dot_axis*axis[1], 
+                                  to_point[2] - dot_axis*axis[2])
+                        # Dot product of normal with radial direction
+                        # External: normal points outward (same direction as radial)
+                        # Internal: normal points inward (opposite to radial)
+                        normal_dot_radial = (normal.X()*radial[0] + normal.Y()*radial[1] + normal.Z()*radial[2])
+                        is_internal = normal_dot_radial < 0  # Inward normal = hole
+                except Exception:
+                    # Fallback to old heuristic if normal check fails
+                    is_internal = radius < 20.0 and height < radius * 5
+                
+                cylindrical_faces_info.append(CylindricalFaceInfo(
+                    radius=radius,
+                    area=area,
+                    height=height,
+                    axis=axis,
+                    is_internal=is_internal,
+                ))
+            except Exception:
+                pass  # Skip if cylinder extraction fails
+
+    # NEW: Count total edges (GAP 3)
+    total_edge_count = 0
+    try:
+        from OCC.Core.TopAbs import TopAbs_EDGE
+        edge_exp = occ["TopExp_Explorer"](shape, TopAbs_EDGE)
+        while edge_exp.More():
+            total_edge_count += 1
+            edge_exp.Next()
+    except Exception:
+        pass  # Edge counting failed, leave at 0
 
     total_area = total_surface_area if total_surface_area > 0 else total_computed_area
     if total_area <= 0:
@@ -377,8 +515,10 @@ def classify_faces(shape, total_surface_area: float = 0.0) -> FaceClassification
     # Ratios
     plane_ratio = histogram.plane / total_faces
     cylinder_ratio = histogram.cylinder / total_faces
-    freeform_count = histogram.bezier + histogram.bspline + histogram.revolution
+    # GAP FIX: Separate revolution from freeform - revolution indicates TURNING, not freeform CNC
+    freeform_count = histogram.bezier + histogram.bspline  # Revolution removed!
     freeform_ratio = freeform_count / total_faces
+    revolution_ratio = histogram.revolution / total_faces  # New: for turning detection
     mixed_ratio = 1.0 - plane_ratio
 
     plane_area_ratio = area_by_type["plane"] / total_area
@@ -390,7 +530,10 @@ def classify_faces(shape, total_surface_area: float = 0.0) -> FaceClassification
 
     # Dominant pair thickness
     dominant_thickness: Optional[float] = None
+    all_pair_distances: List[float] = []  # GAP FIX: Store all distances
     if pairs:
+        # Collect all pair distances
+        all_pair_distances = [round(p.distance, 2) for p in pairs]
         # Pick thickness with most paired area
         thickness_areas: Dict[float, float] = {}
         for p in pairs:
@@ -401,12 +544,13 @@ def classify_faces(shape, total_surface_area: float = 0.0) -> FaceClassification
         dominant_thickness = max(thickness_areas, key=thickness_areas.get)  # type: ignore[arg-type]
 
     # Score calculation
-    sm_score, cnc_score, reasoning_parts = _compute_scores(
+    sm_score, cnc_score, turning_score, reasoning_parts = _compute_scores(
         plane_ratio,
         plane_area_ratio,
         cylinder_ratio,
         cylinder_area_ratio,
         freeform_ratio,
+        revolution_ratio,  # GAP FIX: pass revolution_ratio
         histogram,
         len(pairs),
         paired_area,
@@ -437,17 +581,24 @@ def classify_faces(shape, total_surface_area: float = 0.0) -> FaceClassification
         plane_ratio=plane_ratio,
         cylinder_ratio=cylinder_ratio,
         freeform_ratio=freeform_ratio,
+        revolution_ratio=revolution_ratio,  # GAP FIX: add revolution_ratio for turning
         mixed_ratio=mixed_ratio,
         plane_area_ratio=plane_area_ratio,
         cylinder_area_ratio=cylinder_area_ratio,
         paired_plane_count=len(pairs),
         paired_plane_area=paired_area,
         dominant_pair_thickness=dominant_thickness,
+        paired_plane_distances=all_pair_distances,  # GAP FIX: pass all distances
         is_likely_sheet_metal=is_sm,
         is_likely_cnc=is_cnc,
         cnc_face_score=cnc_score,
         sheet_metal_face_score=sm_score,
         reasoning=reasoning,
+        # NEW: Raw face data for downstream analysis (GAP 5, 6, 2, 3)
+        planar_faces_info=planar_faces_info,
+        cylindrical_faces_info=cylindrical_faces_info,
+        planar_face_z_levels=sorted(set(round(z, 2) for z in planar_z_levels)),  # Deduplicated Z-levels
+        total_edge_count=total_edge_count,
     )
 
 
@@ -462,29 +613,35 @@ def _compute_scores(
     cylinder_ratio: float,
     cylinder_area_ratio: float,
     freeform_ratio: float,
+    revolution_ratio: float,  # GAP FIX: separate revolution for turning
     histogram: FaceTypeHistogram,
     pair_count: int,
     paired_area: float,
     total_area: float,
     dominant_thickness: Optional[float],
-) -> Tuple[float, float, List[str]]:
-    """Compute sheet-metal and CNC scores from face distribution.
+) -> Tuple[float, float, float, List[str]]:
+    """Compute sheet-metal, CNC, and turning scores from face distribution.
 
-    Returns (sm_score, cnc_score, reasoning_parts).
+    Returns (sm_score, cnc_score, turning_score, reasoning_parts).
     """
     sm = 0.0
     cnc = 0.0
+    turning = 0.0  # GAP FIX: New turning score
     reasons: List[str] = []
 
     # --- Plane ratio ---
+    # IMPROVED: High plane ratio alone is not sufficient for sheet metal classification.
+    # Precision machined blocks also have high plane ratios (6 sides = all planes).
+    # We reduce the bonus for high plane ratio and rely more on paired-plane analysis
+    # and thickness detection to distinguish sheet metal from machined blocks.
     if plane_ratio >= 0.85:
-        sm += 30
+        sm += 20  # Reduced from 30 - machined blocks also have high plane ratio
         reasons.append(f"very high plane ratio ({plane_ratio:.0%})")
     elif plane_ratio >= 0.70:
-        sm += 20
+        sm += 15  # Reduced from 20
         reasons.append(f"high plane ratio ({plane_ratio:.0%})")
     elif plane_ratio >= 0.50:
-        sm += 10
+        sm += 8
     else:
         cnc += 15
         reasons.append(f"low plane ratio ({plane_ratio:.0%})")
@@ -498,17 +655,33 @@ def _compute_scores(
         cnc += 10
 
     # --- Cylinder ratio (holes, fillets, bosses) ---
+    # IMPROVED: Consider cylinder area ratio to distinguish small holes (sheet metal)
+    # from large cylindrical features (CNC machined bosses, turned features).
+    # Small holes in sheet metal have many cylinder faces but low total cylinder AREA.
+    cylinder_area_is_small = cylinder_area_ratio < 0.10
+    
     if cylinder_ratio >= 0.25:
-        cnc += 25
-        reasons.append(f"many cylindrical faces ({cylinder_ratio:.0%})")
+        if cylinder_area_is_small:
+            # Many small cylinders (likely punched/laser holes in sheet metal)
+            cnc += 8
+            sm += 10
+            reasons.append(f"many small cylindrical faces ({cylinder_ratio:.0%}, area {cylinder_area_ratio:.0%}) - likely holes")
+        else:
+            # Large cylindrical features (CNC bosses, turned sections)
+            cnc += 25
+            reasons.append(f"many cylindrical faces with significant area ({cylinder_ratio:.0%})")
     elif cylinder_ratio >= 0.15:
-        cnc += 15
+        if cylinder_area_is_small:
+            cnc += 5
+            sm += 5
+        else:
+            cnc += 15
     elif cylinder_ratio >= 0.05:
         cnc += 5
     else:
         sm += 5
 
-    # --- Freeform surfaces (BSpline, Bezier, Revolution) ---
+    # --- Freeform surfaces (BSpline, Bezier - NOT revolution) ---
     if freeform_ratio >= 0.15:
         cnc += 20
         reasons.append(f"freeform surfaces ({freeform_ratio:.0%})")
@@ -516,6 +689,15 @@ def _compute_scores(
         cnc += 10
     else:
         sm += 5
+
+    # GAP FIX: Revolution surfaces indicate TURNING, not freeform CNC milling
+    if revolution_ratio >= 0.20:
+        turning += 35
+        reasons.append(f"revolution surfaces ({revolution_ratio:.0%}) indicate turning")
+    elif revolution_ratio >= 0.10:
+        turning += 20
+    elif revolution_ratio >= 0.05:
+        turning += 10
 
     # --- Cone faces (chamfers, tapers) ---
     if histogram.cone >= 4:
@@ -545,13 +727,20 @@ def _compute_scores(
         sm += 8
 
     # --- Dominant pair thickness (sheet metal gauge) ---
+    # IMPROVED: Give more weight to standard sheet metal gauges (0.5-6mm)
+    # and penalize thicknesses that are borderline or outside the range.
     if dominant_thickness is not None:
-        if 0.4 <= dominant_thickness <= 8.0:
-            sm += 10
-            reasons.append(f"dominant pair thickness {dominant_thickness:.2f}mm in sheet range")
+        if 0.4 <= dominant_thickness <= 4.0:
+            # Standard sheet metal gauge range - strong signal
+            sm += 18
+            reasons.append(f"dominant pair thickness {dominant_thickness:.2f}mm in standard sheet gauge")
+        elif 4.0 < dominant_thickness <= 8.0:
+            # Thick sheet/plate - moderate signal
+            sm += 8
+            reasons.append(f"dominant pair thickness {dominant_thickness:.2f}mm in thick sheet range")
         elif dominant_thickness > 8.0:
-            cnc += 10
-            reasons.append(f"thick pairs ({dominant_thickness:.1f}mm) suggest CNC")
+            cnc += 15
+            reasons.append(f"thick pairs ({dominant_thickness:.1f}mm) suggest CNC machined plate")
 
     # --- Total face count heuristic ---
     # CNC parts tend to have many more faces than sheet metal
@@ -561,7 +750,7 @@ def _compute_scores(
     elif total < 30 and plane_ratio > 0.7:
         sm += 5
 
-    return sm, cnc, reasons
+    return sm, cnc, turning, reasons
 
 
 def _empty_result(reason: str) -> FaceClassificationResult:
@@ -571,12 +760,14 @@ def _empty_result(reason: str) -> FaceClassificationResult:
         plane_ratio=0.0,
         cylinder_ratio=0.0,
         freeform_ratio=0.0,
+        revolution_ratio=0.0,  # GAP FIX: add revolution_ratio
         mixed_ratio=1.0,
         plane_area_ratio=0.0,
         cylinder_area_ratio=0.0,
         paired_plane_count=0,
         paired_plane_area=0.0,
         dominant_pair_thickness=None,
+        paired_plane_distances=[],  # GAP FIX: add empty list
         is_likely_sheet_metal=False,
         is_likely_cnc=False,
         cnc_face_score=0.0,

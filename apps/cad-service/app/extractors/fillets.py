@@ -78,6 +78,10 @@ def _try_detect_fillet(face, surf, idx, fid, occ):
 
     Uses BRepAdaptor_Surface.GetType() for robust detection when available,
     falling back to Geom_ToroidalSurface.DownCast().
+    
+    Also classifies fillet by radius:
+    - R3-R6mm: Typical CNC tool radius (is_tool_radius=True)
+    - ≤R2mm: Sheet metal bend relief (is_bend_relief=True)
     """
     minor_r = None
 
@@ -106,12 +110,22 @@ def _try_detect_fillet(face, surf, idx, fid, occ):
     # length ≈ area / (π × minor_r) for a quarter-round fillet
     length = area / max(math.pi * minor_r * 1e3 * 0.5, 0.01)
 
+    radius_mm = float(minor_r * 1e3)  # m -> mm
+    
+    # Classify fillet by radius
+    # R3-R6mm: Typical CNC tool radius (ball end mills, corner radius)
+    # ≤R2mm: Sheet metal bend relief or edge break
+    is_tool_radius = 3.0 <= radius_mm <= 6.0
+    is_bend_relief = radius_mm <= 2.0
+
     return FilletFeature(
         id=f"FL-{idx:03d}",
         feature_type="fillet",
-        radius_mm=float(minor_r * 1e3),  # m -> mm
+        radius_mm=radius_mm,
         length_mm=float(length),
         edge_id=fid,
+        is_tool_radius=is_tool_radius,
+        is_bend_relief=is_bend_relief,
     )
 
 

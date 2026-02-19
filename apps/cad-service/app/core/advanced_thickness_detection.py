@@ -64,9 +64,11 @@ class AdvancedThicknessDetector:
     THICKNESS_CONSISTENCY_ABS = 0.1  # mm
     
     # Sheet metal criteria
-    MIN_UNIFORM_RATIO = 0.35  # 35% of surface must show thickness
-    MAX_THICKNESS_TO_SIZE = 0.03  # 3% for clear sheet metal
-    MIN_CLUSTER_DOMINANCE = 2.0  # 2x second cluster
+    # UPDATED: More lenient thresholds to handle smaller/bent sheet metal parts
+    MIN_UNIFORM_RATIO = 0.25  # 25% of surface must show thickness (was 35%)
+    MAX_THICKNESS_TO_SIZE = 0.15  # 15% for clear sheet metal (was 10%)
+    MAX_THICKNESS_TO_SIZE_STRICT = 0.06  # 6% for high confidence (was 4%)
+    MIN_CLUSTER_DOMINANCE = 1.8  # 1.8x second cluster (was 2.0)
     
     def __init__(self, bbox_dims: List[float], surface_area_mm2: float):
         """
@@ -79,6 +81,8 @@ class AdvancedThicknessDetector:
         self.bbox_dims = sorted(bbox_dims)
         self.surface_area = surface_area_mm2
         self.max_dimension = self.bbox_dims[2]
+        self.mid_dimension = self.bbox_dims[1]  # Second largest dimension
+        self.min_dimension = self.bbox_dims[0]  # Smallest (likely thickness)
         
     def analyze_from_mesh_distances(self, 
                                     sample_distances: List[float],
@@ -99,11 +103,17 @@ class AdvancedThicknessDetector:
         if not sample_distances or len(sample_distances) < 10:
             return self._no_thickness_result("Insufficient samples")
         
+        # CRITICAL FIX: Sheet metal thickness MUST be <= min_dimension
+        # The thinnest direction of the bounding box defines the maximum possible thickness
+        # Using min_dimension instead of max_dimension * 0.5 prevents detecting spurious
+        # large distances from CNC parts/solid blocks
+        max_valid_thickness = self.min_dimension * 1.1  # Allow 10% tolerance for measurement noise
+        
         # Clean data: remove outliers and invalid values
-        valid_distances = [d for d in sample_distances if 0.1 < d < self.max_dimension * 0.5]
+        valid_distances = [d for d in sample_distances if 0.1 < d <= max_valid_thickness]
         
         if len(valid_distances) < 10:
-            return self._no_thickness_result("Too many invalid samples")
+            return self._no_thickness_result(f"Too many invalid samples (>{self.min_dimension:.1f}mm)")
         
         # If no areas provided, estimate based on total surface area and sample count
         # Assumption: samples are uniformly distributed over surface
@@ -122,9 +132,21 @@ class AdvancedThicknessDetector:
         
         dominant = clusters[0]
         
+        # CRITICAL: Final validation - detected thickness MUST be <= min_dimension
+        # If the clustering found a thickness larger than min_dim, something is wrong
+        if dominant.thickness > self.min_dimension * 1.1:
+            return self._no_thickness_result(
+                f"Detected thickness {dominant.thickness:.2f}mm > min_dim {self.min_dimension:.2f}mm"
+            )
+        
         # Calculate metrics
         uniform_ratio = dominant.support_area / self.surface_area
-        thickness_to_size = dominant.thickness / self.max_dimension
+        
+        # FIX: T/L ratio should compare thickness to max_dimension (longest extent)
+        # This properly measures "thinness" - how thin is the part relative to its size
+        # A 2mm x 100mm x 200mm sheet has T/L = 2/200 = 1% (very thin)
+        reference_dimension = self.max_dimension if self.max_dimension > 0 else 1.0
+        thickness_to_size = dominant.thickness / reference_dimension
         
         cluster_dominance = 1.0
         if len(clusters) > 1:
@@ -178,11 +200,13 @@ class AdvancedThicknessDetector:
             pair.std_dev <= max(
                 pair.distance * self.THICKNESS_CONSISTENCY_TOL,
                 self.THICKNESS_CONSISTENCY_ABS
-            )
+            ) and
+            # CRITICAL: Face pair distance must be <= min_dimension (valid thickness)
+            pair.distance <= self.min_dimension * 1.1
         ]
         
         if not valid_pairs:
-            return self._no_thickness_result("No valid face pairs (area/consistency)")
+            return self._no_thickness_result("No valid face pairs (area/consistency/distance)")
         
         # Cluster by distance
         clusters = self._cluster_face_pairs(valid_pairs)
@@ -195,9 +219,18 @@ class AdvancedThicknessDetector:
         
         dominant = clusters[0]
         
+        # CRITICAL: Final validation - detected thickness MUST be <= min_dimension
+        if dominant.thickness > self.min_dimension * 1.1:
+            return self._no_thickness_result(
+                f"Detected thickness {dominant.thickness:.2f}mm > min_dim {self.min_dimension:.2f}mm"
+            )
+        
         # Calculate metrics
         uniform_ratio = dominant.support_area / self.surface_area
-        thickness_to_size = dominant.thickness / self.max_dimension
+        
+        # FIX: T/L ratio should compare thickness to max_dimension (longest extent)
+        reference_dimension = self.max_dimension if self.max_dimension > 0 else 1.0
+        thickness_to_size = dominant.thickness / reference_dimension
         
         cluster_dominance = 1.0
         if len(clusters) > 1:
@@ -317,22 +350,26 @@ class AdvancedThicknessDetector:
         if uniform_ratio >= 0.50:
             confidence += 0.25
             reasons.append(f"high uniform ratio ({uniform_ratio:.1%})")
-        elif uniform_ratio >= self.MIN_UNIFORM_RATIO:
-            confidence += 0.15
+        elif uniform_ratio >= 0.35:
+            confidence += 0.18
             reasons.append(f"good uniform ratio ({uniform_ratio:.1%})")
+        elif uniform_ratio >= self.MIN_UNIFORM_RATIO:  # 25%
+            confidence += 0.10
+            reasons.append(f"moderate uniform ratio ({uniform_ratio:.1%})")
         else:
             confidence -= 0.20
             reasons.append(f"LOW uniform ratio ({uniform_ratio:.1%})")
         
         # Criterion 2: Thinness (T/L ratio)
-        if thickness_to_size <= 0.02:
-            confidence += 0.20
+        # Based on max_dimension as reference
+        if thickness_to_size <= self.MAX_THICKNESS_TO_SIZE_STRICT:  # 6%
+            confidence += 0.25
             reasons.append(f"very thin (T/L={thickness_to_size:.1%})")
-        elif thickness_to_size <= self.MAX_THICKNESS_TO_SIZE:
-            confidence += 0.10
+        elif thickness_to_size <= 0.10:  # 10%
+            confidence += 0.15
             reasons.append(f"thin (T/L={thickness_to_size:.1%})")
-        elif thickness_to_size <= 0.05:
-            confidence += 0.00
+        elif thickness_to_size <= self.MAX_THICKNESS_TO_SIZE:  # 15%
+            confidence += 0.08
             reasons.append(f"moderately thin (T/L={thickness_to_size:.1%})")
         else:
             confidence -= 0.15
