@@ -994,6 +994,29 @@ class ProcessClassifier:
         mf_score = self._machining_feature_score
         min_dim = self.metrics.min_dim or 10.0
         
+        # NEW: Guard against misclassifying CNC parts with thin internal walls
+        # When face classification shows thick dominant_pair_thickness (>= 8mm),
+        # the ray-cast thin wall detection is likely finding walls between machined
+        # features, NOT the actual plate thickness. Override to CNC.
+        fc = self._face_classification
+        if fc is not None and fc.dominant_pair_thickness is not None:
+            if fc.dominant_pair_thickness >= 8.0:
+                # Face classification found paired planes at 8mm+ apart
+                # This is a thick machined plate, not sheet metal
+                # The thin wall detection found thin features between cylinders/pockets
+                logger.info(
+                    "Legacy thickness rejected: dominant_pair_thickness=%.1fmm "
+                    "(thick plate), detected %.1fmm is internal wall",
+                    fc.dominant_pair_thickness, detected_thickness,
+                )
+                metadata['classification_method'] = 'cnc_thick_plate_override'
+                metadata['reasoning'] = (
+                    f"THICKNESS-DETECTED: {detected_thickness:.2f}mm internal wall "
+                    f"but dominant_pair_thickness {fc.dominant_pair_thickness:.1f}mm "
+                    f"indicates CNC machined plate"
+                )
+                return ('cnc_milling', 0.85, metadata)
+        
         # NEW: Early rejection of cube-like shapes
         # Parts with AR < 3 and min_dim > 4mm should not be sheet metal
         # unless they have clear bend evidence
