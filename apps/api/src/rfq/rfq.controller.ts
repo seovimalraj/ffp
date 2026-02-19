@@ -100,6 +100,29 @@ export class RfqController {
     };
   }
 
+  @Get(':rfqId/tech-support/exist')
+  @Roles(RoleNames.Customer)
+  async checkTechSupportExist(@Param('rfqId') rfqId: string) {
+    const client = this.supbaseService.getClient();
+
+    const { count, error } = await client
+      .from(Tables.TechnicalSupportRequest)
+      .select('*', { count: 'exact', head: true })
+      .eq('quote_id', rfqId)
+      .not('status', 'in', '(pending,inprogress)');
+
+    if (error) {
+      this.logger.error({ error, rfqId }, 'Tech support check failed');
+      throw new InternalServerErrorException(
+        'Failed to check technical support status',
+      );
+    }
+
+    return {
+      exists: (count ?? 0) > 0,
+    };
+  }
+
   @Get('admin/all')
   @Roles(RoleNames.Admin)
   async getAdminRfqs(
