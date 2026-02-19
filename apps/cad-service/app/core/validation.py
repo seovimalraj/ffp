@@ -102,11 +102,11 @@ class GeometryValidator:
     
     def _validate_required_fields(self, geometry: Dict, result: ValidationResult):
         """Check that all required fields are present"""
+        # Note: recommendedProcess is computed by classification, not input validation
         required_fields = [
             "boundingBox",
             "volume",
             "surfaceArea",
-            "recommendedProcess"
         ]
         
         for field in required_fields:
