@@ -61,6 +61,7 @@ import {
   InputOTPSlot,
 } from "@/components/ui/input-otp";
 import "react-phone-number-input/style.css";
+import Footer from "@/components/ui/footer";
 
 interface UploadedFileData {
   file: File;
@@ -972,23 +973,7 @@ export default function InstantQuotePage() {
         </section>
 
         {/* Footer Area - Minimal */}
-        <footer className="border-t border-slate-100 pt-8 mt-12 text-center text-slate-400 text-sm">
-          <div className="flex justify-center gap-6 mb-4">
-            <Link href="#" className="hover:text-blue-600 transition-colors">
-              Privacy
-            </Link>
-            <Link href="#" className="hover:text-blue-600 transition-colors">
-              Terms
-            </Link>
-            <Link href="#" className="hover:text-blue-600 transition-colors">
-              Support
-            </Link>
-          </div>
-          <p>
-            © {new Date().getFullYear()} Frigate Engineering Services. Secure &
-            Confidential.
-          </p>
-        </footer>
+        <Footer />
       </main>
 
       {/* Auth Modal - Preserves functionality, updates style */}

@@ -8,6 +8,7 @@ import { SessionProvider } from "next-auth/react";
 import type { Session } from "next-auth";
 import { PermissionsProvider } from "@/providers/permissions-provider";
 import { PayPalScriptProvider } from "@paypal/react-paypal-js";
+import { TooltipProvider } from "@/components/ui/tool-tip";
 
 /**
  * Step 13: React Query Configuration
@@ -52,7 +53,9 @@ export default function Providers({
       <PermissionsProvider>
         <QueryClientProvider client={queryClient}>
           <ThemeProvider defaultTheme="light" attribute="class">
-            <SidebarProvider>{children}</SidebarProvider>
+            <TooltipProvider>
+              <SidebarProvider>{children}</SidebarProvider>
+            </TooltipProvider>
           </ThemeProvider>
         </QueryClientProvider>
       </PermissionsProvider>

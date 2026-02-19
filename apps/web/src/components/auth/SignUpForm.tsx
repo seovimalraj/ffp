@@ -21,6 +21,7 @@ import PhoneInput from "react-phone-number-input";
 import "react-phone-number-input/style.css";
 import { isValidPhone } from "@/lib/validation/phone-validation";
 import { CountryCode } from "@/lib/validation/postcode-types";
+import { isBannedEmail } from "../../../utils/check-disposable-email";
 
 export function SignUpForm() {
   const [showPassword, setShowPassword] = useState(false);
@@ -48,6 +49,8 @@ export function SignUpForm() {
     if (!email) return "Email is required";
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     if (!emailRegex.test(email)) return "Please enter a valid email address";
+    if (isBannedEmail(email))
+      return "Registration requires a verified organizational email. Disposable and public email domains are blocked.";
     return "";
   };
 

@@ -103,12 +103,15 @@ export class AuthController {
         organizationId: user.organization_id || null,
       });
 
+      console.log(user);
+
       const result = {
         id: user.id,
         email: user.email,
         name: user.full_name || user.name || user.email,
         role: user.role,
         verified: user.verified,
+        phone: user.phone,
         organizationId: user.organization_id || null,
         accessToken: accessToken,
         refreshToken: refreshToken,
@@ -224,6 +227,7 @@ export class AuthController {
         email: user.email,
         name: user.full_name || user.name || user.email,
         role: user.role,
+        phone: user.phone,
         organizationId: user.organization_id || null,
         accessToken: accessToken,
         refreshToken: refreshToken,
@@ -315,6 +319,8 @@ export class AuthController {
         email: user.email,
         name: user.full_name || user.name || user.email,
         role: user.role || 'customer',
+        verfied: user.verfied,
+        phone: user.phone,
         organizationId: user.organization_id || null,
         accessToken: accessToken,
         refreshToken: refreshToken,
@@ -403,7 +409,6 @@ export class AuthController {
 
       return { success: true, message: 'Account verified successfully' };
     } catch (error) {
-      console.log(error);
       this.logger.error({ error }, 'Failed to verify OTP');
 
       // Re-throw if it's already an HttpException, otherwise send 500

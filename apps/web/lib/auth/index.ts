@@ -126,6 +126,7 @@ const authOptions: NextAuthOptions = {
               name: user.name,
               role: user.role,
               verified: user.verified,
+              phone: user.phone,
               organizationId: user.organizationId || user.organization_id,
               accessToken: user.accessToken,
               refreshToken: user.refreshToken,
@@ -162,6 +163,8 @@ const authOptions: NextAuthOptions = {
           name: user.name,
           role: (user as any).role,
           verified: (user as any).verified,
+          phone: user.phone,
+
           organizationId:
             (user as any).organizationId || (user as any).organization_id,
           accessToken: (user as any).accessToken,
@@ -194,6 +197,7 @@ const authOptions: NextAuthOptions = {
         session.user.role = token.role;
         session.user.verified = token.verified;
         session.user.organizationId = token.organizationId;
+        session.user.phone = token.phone;
         // Include access token in session for API calls
         session.accessToken = token.accessToken;
       }

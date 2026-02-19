@@ -5,7 +5,6 @@ export async function setRlsContext(
   userId: string,
   isAdmin = false,
 ) {
-  console.log('here');
   await supabase.rpc('set_config', {
     key: 'request.user_id',
     value: userId,
