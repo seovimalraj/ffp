@@ -4,6 +4,11 @@ import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { useRouter, useParams } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import {
+  Tooltip,
+  TooltipTrigger,
+  TooltipContent,
+} from "@/components/ui/tool-tip";
+import {
   Package,
   ArrowRight,
   Loader2,
@@ -23,6 +28,7 @@ import {
   Truck,
   X,
   ChevronDown,
+  Headphones,
 } from "lucide-react";
 import { FloatingActions } from "@/components/ui/floating-actions";
 import { analyzeCADFile } from "../../../lib/cad-analysis";
@@ -51,6 +57,7 @@ import {
   formatCurrencyFixed,
   LEAD_TIME_SHORT,
   processParts,
+  cn,
 } from "@/lib/utils";
 import { notify } from "@/lib/toast";
 import Link from "next/link";
@@ -75,6 +82,8 @@ import ManualQuoteModal from "../../quote-config/components/manual-quote-modal";
 import { ManualExceededModal } from "../components/manual-exceeded-modal";
 import { ManualQuoteWarningModal } from "../components/manual-quote-warning-modal";
 import { SuggestionProvider } from "@/components/store/suggestion-store";
+import Footer from "@/components/ui/footer";
+import TechnicalSupportModal from "../components/technical-support-modal";
 
 /**
  * Normalize process string from database/API to clean format.
@@ -451,6 +460,10 @@ export default function QuoteConfigPage() {
   const [archivedParts, setArchivedParts] = useState<PartConfig[]>([]);
   const [showArchiveModal, setShowArchiveModal] = useState(false);
   const [showManualQuoteModal, setShowManualQuoteModal] = useState(false);
+  const [showTechnicalSupportModal, setShowTechnicalSupportModal] =
+    useState(false);
+  const [showIdleTooltip, setShowIdleTooltip] = useState(false);
+  const [supportRequestExists, setSupportRequestExists] = useState(false);
   const [isManualQuote, setIsManualQuote] = useState(false);
   // Bulk selection state
   const [selectedParts, setSelectedParts] = useState<Set<string>>(new Set());
@@ -462,6 +475,44 @@ export default function QuoteConfigPage() {
   const [showManualExceededModal, setShowManualExceededModal] = useState(false);
   const [showManualWarningModal, setShowManualWarningModal] = useState(false);
   const partsContainerRef = useRef<HTMLDivElement>(null);
+  const idleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Show the tooltip after 1 minute of no user activity
+  useEffect(() => {
+    const IDLE_MS = 60_000;
+
+    const resetTimer = () => {
+      setShowIdleTooltip(false);
+      if (idleTimerRef.current) clearTimeout(idleTimerRef.current);
+      idleTimerRef.current = setTimeout(() => {
+        // Only show if the modal isn't already open and no request exists
+        if (!supportRequestExists) {
+          setShowTechnicalSupportModal((open) => {
+            if (!open) setShowIdleTooltip(true);
+            return open;
+          });
+        }
+      }, IDLE_MS);
+    };
+
+    const events = [
+      "mousemove",
+      "mousedown",
+      "keydown",
+      "scroll",
+      "touchstart",
+    ];
+    events.forEach((e) =>
+      window.addEventListener(e, resetTimer, { passive: true }),
+    );
+
+    resetTimer(); // kick off on mount
+
+    return () => {
+      events.forEach((e) => window.removeEventListener(e, resetTimer));
+      if (idleTimerRef.current) clearTimeout(idleTimerRef.current);
+    };
+  }, [supportRequestExists]);
 
   const manualParts = useMemo(
     () => parts.filter((p) => p.process === "manual-quote"),
@@ -500,6 +551,8 @@ export default function QuoteConfigPage() {
   const session = useSession();
 
   const { upload } = useFileUpload();
+
+  console.log(session, "<--session");
 
   // Dropzone callback for drag and drop
   const onDropFiles = useCallback(
@@ -590,11 +643,18 @@ export default function QuoteConfigPage() {
 
           // Explicit assembly check — ensure assembly detection propagates
           // even if client-side fallback was used
-          if (geometry?.isAssembly && geometry.recommendedProcess !== "manual-quote") {
-            console.log(`🔧 Assembly detected for ${file.name} — forcing manual-quote`);
+          if (
+            geometry?.isAssembly &&
+            geometry.recommendedProcess !== "manual-quote"
+          ) {
+            console.log(
+              `🔧 Assembly detected for ${file.name} — forcing manual-quote`,
+            );
             geometry.recommendedProcess = "manual-quote";
             geometry.requiresManualQuote = true;
-            geometry.manualQuoteReason = geometry.manualQuoteReason || "Assembly detected — multiple bodies require manual review";
+            geometry.manualQuoteReason =
+              geometry.manualQuoteReason ||
+              "Assembly detected — multiple bodies require manual review";
           }
 
           // Map recommendedProcess to process field
@@ -1125,6 +1185,19 @@ export default function QuoteConfigPage() {
             setRfq(currentRfq);
             setParts(processedParts.filter((p) => !p.is_archived));
             setArchivedParts(processedParts.filter((p) => p.is_archived));
+
+            // Check if technical support request exists
+            try {
+              const supportCheck = await apiClient.get(
+                `/rfq/${quoteId}/tech-support/exist`,
+              );
+              setSupportRequestExists(supportCheck.data.exists);
+            } catch (supportError) {
+              console.error(
+                "Failed to check support request existence:",
+                supportError,
+              );
+            }
           } else {
             throw new Error("Invalid API response");
           }
@@ -1203,7 +1276,10 @@ export default function QuoteConfigPage() {
 
     // Recalculate pricing if geometry exists
     // Skip pricing for manual-quote parts (assemblies) — they must show $0
-    if (updatedPart.geometry && normalizeProcessString(updatedPart.process) !== "manual-quote") {
+    if (
+      updatedPart.geometry &&
+      normalizeProcessString(updatedPart.process) !== "manual-quote"
+    ) {
       // CRITICAL: Normalize process to prevent underscore-format mismatches
       const processType = normalizeProcessString(
         updatedPart.process || updatedPart.geometry?.recommendedProcess,
@@ -1743,18 +1819,62 @@ export default function QuoteConfigPage() {
             )}
           </div>
 
-          <Button
-            className="bg-gray-300 hover:bg-gray-400 text-black hover:text-white transition-colors relative flex-shrink-0 text-sm md:text-base"
-            onClick={() => setShowArchiveModal(true)}
-          >
-            <Archive className="size-4 md:mr-2" />
-            <span className="hidden md:inline">Archive</span>
-            {archivedParts.length > 0 && (
-              <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs font-bold rounded-full h-5 w-5 flex items-center justify-center">
-                {archivedParts.length}
-              </span>
-            )}
-          </Button>
+          <div className="flex items-center gap-x-2">
+            <Tooltip
+              open={showIdleTooltip ? true : undefined}
+              defaultOpen={false}
+            >
+              <TooltipTrigger asChild>
+                <div className="flex-shrink-0">
+                  <Button
+                    className="bg-indigo-600 hover:bg-indigo-700 text-white transition-colors relative flex-shrink-0 text-sm md:text-base shadow-sm disabled:bg-indigo-400"
+                    onClick={() => {
+                      if (supportRequestExists) return;
+                      setShowIdleTooltip(false);
+                      setShowTechnicalSupportModal(true);
+                    }}
+                    disabled={supportRequestExists}
+                  >
+                    <img
+                      src="\icons\costumer-service.png"
+                      className="size-4 md:mr-2"
+                    />
+                    <span className="hidden md:inline">
+                      {supportRequestExists
+                        ? "Support Requested"
+                        : "Technical Support"}
+                    </span>
+                  </Button>
+                </div>
+              </TooltipTrigger>
+              <TooltipContent
+                side="bottom"
+                sideOffset={8}
+                className={cn(
+                  "max-w-[220px] text-center text-xs leading-relaxed text-white rounded-xl px-3 py-2 shadow-lg",
+                  supportRequestExists
+                    ? "bg-slate-800 border-slate-700"
+                    : "bg-indigo-700 border-indigo-600",
+                )}
+              >
+                {supportRequestExists
+                  ? "A technical support request has already been submitted for this quote."
+                  : "Stuck with your quote? Click here to request technical support from our team 👋"}
+              </TooltipContent>
+            </Tooltip>
+            <Button
+              className="bg-gray-300 hover:bg-gray-400 text-black hover:text-white transition-colors relative flex-shrink-0 text-sm md:text-base"
+              onClick={() => setShowArchiveModal(true)}
+            >
+              <Archive className="size-4 md:mr-2" />
+              <span className="hidden md:inline">Archive</span>
+              {archivedParts.length > 0 && (
+                <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs font-bold rounded-full h-5 w-5 flex items-center justify-center">
+                  {archivedParts.length}
+                </span>
+              )}
+            </Button>
+          </div>
         </div>
 
         <div className="flex flex-col lg:flex-row max-w-[1440px] mx-auto">
@@ -2023,23 +2143,7 @@ export default function QuoteConfigPage() {
         </div>
 
         {/* Footer Area - Minimal */}
-        <footer className="border-t pb-10 border-slate-100 pt-8 mt-12 text-center text-slate-400 text-sm">
-          <div className="flex justify-center gap-6 mb-4">
-            <Link href="#" className="hover:text-blue-600 transition-colors">
-              Privacy
-            </Link>
-            <Link href="#" className="hover:text-blue-600 transition-colors">
-              Terms
-            </Link>
-            <Link href="#" className="hover:text-blue-600 transition-colors">
-              Support
-            </Link>
-          </div>
-          <p>
-            © {new Date().getFullYear()} Frigate Engineering Services. Secure &
-            Confidential.
-          </p>
-        </footer>
+        <Footer />
 
         <ManualExceededModal
           isOpen={
@@ -2099,6 +2203,14 @@ export default function QuoteConfigPage() {
           onRedirectToQuotes={() => router.push("/portal/quotes")}
           onRedirectToCheckout={() => router.push(`/checkout/${quoteId}`)}
           showCheckout={rfq.status === "pending approval"}
+        />
+
+        <TechnicalSupportModal
+          isOpen={showTechnicalSupportModal}
+          onClose={() => setShowTechnicalSupportModal(false)}
+          rfqId={rfq.id}
+          rfqCode={rfq.rfq_code}
+          onSuccess={() => setSupportRequestExists(true)}
         />
 
         {/* Suggestion Sidebar */}
