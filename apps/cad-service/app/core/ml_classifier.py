@@ -148,59 +148,184 @@ class MLClassificationResult:
 # ---------------------------------------------------------------------------
 
 def _append_new_features(row: List[float], process_type: str, bend_count: int, thickness: float) -> None:
-    """Append the new feature values (GAP 7) to a synthetic training row.
+    """Append the new feature values (GAP 7 + extended) to a synthetic training row.
     
-    New features: rib_count, boss_count, chamfer_count, counterbore_count,
-    countersink_count, surface_step_count, hole_pattern_count, bend_radius_ratio,
-    edge_sharpness_ratio, face_revolution_count, draft_angle_avg, undercut_major_count
+    Adds features 35-64 (indices): rib_count through body_count (30 features total)
     """
     import random
     
+    # ===== Features 35-46: General machining feature analysis =====
     if process_type == "sheet_metal":
         row.extend([
-            0,                              # rib_count (none in sheet metal)
-            0,                              # boss_count (none)
-            random.randint(0, 2),           # chamfer_count (few)
-            0,                              # counterbore_count (rare)
-            0,                              # countersink_count (rare)
-            random.randint(1, 3),           # surface_step_count (few steps)
+            0,                              # rib_count
+            0,                              # boss_count
+            random.randint(0, 2),           # chamfer_count
+            0,                              # counterbore_count
+            0,                              # countersink_count
+            random.randint(1, 3),           # surface_step_count
             random.randint(0, 2),           # hole_pattern_count
-            random.uniform(1.0, 3.0) if bend_count > 0 else 0,  # bend_radius_ratio (typical 1-3x thickness)
-            random.uniform(0.5, 0.9),       # edge_sharpness_ratio (many sharp edges)
-            0,                              # face_revolution_count (none)
-            0.0,                            # draft_angle_avg (none)
-            0,                              # undercut_major_count (none)
+            random.uniform(1.0, 3.0) if bend_count > 0 else 0,  # bend_radius_ratio
+            random.uniform(0.5, 0.9),       # edge_sharpness_ratio
+            0,                              # face_revolution_count
+            0.0,                            # draft_angle_avg
+            0,                              # undercut_major_count
         ])
     elif process_type == "cnc_milling":
         row.extend([
             random.randint(0, 5),           # rib_count
             random.randint(0, 8),           # boss_count
-            random.randint(2, 15),          # chamfer_count (many)
+            random.randint(2, 15),          # chamfer_count
             random.randint(0, 6),           # counterbore_count
             random.randint(0, 4),           # countersink_count
-            random.randint(2, 10),          # surface_step_count (many levels)
+            random.randint(2, 10),          # surface_step_count
             random.randint(1, 5),           # hole_pattern_count
-            0.0,                            # bend_radius_ratio (no bends)
-            random.uniform(0.1, 0.5),       # edge_sharpness_ratio (fewer sharp, more filleted)
-            random.randint(0, 2),           # face_revolution_count (few)
-            random.uniform(0, 3),           # draft_angle_avg (some draft for tooling)
+            0.0,                            # bend_radius_ratio
+            random.uniform(0.1, 0.5),       # edge_sharpness_ratio
+            random.randint(0, 2),           # face_revolution_count
+            random.uniform(0, 3),           # draft_angle_avg
             random.randint(0, 2),           # undercut_major_count
         ])
-    else:  # cnc_turning
+    elif process_type == "cnc_turning":
         row.extend([
-            0,                              # rib_count
-            random.randint(1, 6),           # boss_count (common in turned parts)
-            random.randint(2, 10),          # chamfer_count
-            random.randint(0, 3),           # counterbore_count
-            random.randint(0, 2),           # countersink_count
-            random.randint(1, 4),           # surface_step_count
-            random.randint(0, 2),           # hole_pattern_count
-            0.0,                            # bend_radius_ratio (no bends)
-            random.uniform(0.1, 0.4),       # edge_sharpness_ratio (rounded edges)
-            random.randint(4, 15),          # face_revolution_count (many - key signal)
-            0.0,                            # draft_angle_avg
-            0,                              # undercut_major_count
+            0, random.randint(1, 6), random.randint(2, 10), random.randint(0, 3),
+            random.randint(0, 2), random.randint(1, 4), random.randint(0, 2),
+            0.0, random.uniform(0.1, 0.4), random.randint(4, 15), 0.0, 0,
         ])
+    elif process_type == "cnc_turn_mill":
+        row.extend([
+            0, random.randint(1, 8), random.randint(3, 12), random.randint(1, 5),
+            random.randint(0, 3), random.randint(2, 6), random.randint(1, 3),
+            0.0, random.uniform(0.15, 0.45), random.randint(3, 12), 0.0, 0,
+        ])
+    elif process_type == "cnc_5axis":
+        row.extend([
+            random.randint(0, 6), random.randint(0, 10), random.randint(3, 15),
+            random.randint(1, 6), random.randint(0, 4), random.randint(3, 12),
+            random.randint(1, 4), 0.0, random.uniform(0.1, 0.4), random.randint(0, 4),
+            random.uniform(0, 5), random.randint(2, 8),  # Major undercuts!
+        ])
+    elif process_type == "die_casting":
+        row.extend([
+            random.randint(2, 10), random.randint(1, 6), random.randint(0, 4),
+            0, 0, random.randint(0, 3), 0,
+            0.0, random.uniform(0.2, 0.5), 0,
+            random.uniform(1.5, 5.0), 0,  # Draft angles!
+        ])
+    elif process_type == "injection_molding":
+        row.extend([
+            random.randint(3, 15), random.randint(2, 12), random.randint(0, 3),
+            0, 0, random.randint(0, 2), 0,
+            0.0, random.uniform(0.25, 0.55), 0,
+            random.uniform(1.0, 4.0), 0,  # Draft angles
+        ])
+    elif process_type == "sand_casting":
+        row.extend([
+            random.randint(1, 6), random.randint(0, 4), random.randint(0, 2),
+            0, 0, random.randint(0, 2), 0,
+            0.0, random.uniform(0.3, 0.6), 0,
+            random.uniform(2.0, 8.0), 0,
+        ])
+    elif process_type == "investment_casting":
+        row.extend([
+            random.randint(0, 4), random.randint(0, 6), random.randint(0, 3),
+            0, 0, random.randint(0, 3), 0,
+            0.0, random.uniform(0.25, 0.55), 0,
+            random.uniform(0.5, 3.0), random.randint(0, 3),
+        ])
+    elif process_type == "3d_printing":
+        row.extend([
+            random.randint(0, 8), random.randint(0, 5), random.randint(0, 2),
+            0, 0, random.randint(0, 4), 0,
+            0.0, random.uniform(0.15, 0.45), 0,
+            0.0, random.randint(0, 5),  # Undercuts OK in 3DP
+        ])
+    elif process_type == "weldment":
+        row.extend([
+            0, 0, random.randint(1, 6), 0, 0, random.randint(0, 3), 0,
+            0.0, random.uniform(0.4, 0.8), 0, 0.0, 0,
+        ])
+    else:  # fallback
+        row.extend([0] * 12)
+    
+    # ===== Features 47-49: Surface finish features =====
+    if process_type in ("cnc_milling", "cnc_turning", "cnc_turn_mill", "cnc_5axis"):
+        row.extend([
+            random.uniform(0.4, 6.3),       # min_ra_required
+            random.randint(2, 20),          # precision_face_count
+            random.uniform(20, 80),         # finish_complexity_score
+        ])
+    elif process_type == "sheet_metal":
+        row.extend([random.uniform(1.6, 6.3), random.randint(0, 4), random.uniform(5, 30)])
+    elif process_type in ("die_casting", "injection_molding"):
+        row.extend([random.uniform(0.8, 3.2), random.randint(1, 8), random.uniform(15, 50)])
+    elif process_type in ("sand_casting", "investment_casting"):
+        row.extend([random.uniform(3.2, 12.5), random.randint(0, 4), random.uniform(10, 40)])
+    elif process_type == "3d_printing":
+        row.extend([random.uniform(6.3, 25.0), random.randint(0, 3), random.uniform(5, 25)])
+    else:
+        row.extend([6.3, 0, 10.0])
+    
+    # ===== Features 50-53: Tolerance features =====
+    if process_type in ("cnc_milling", "cnc_5axis"):
+        row.extend([
+            random.uniform(0.01, 0.15),     # tightest_tolerance_mm
+            random.randint(2, 15),          # precision_feature_count
+            random.randint(1, 6),           # datum_count
+            random.uniform(30, 90),         # tolerance_complexity
+        ])
+    elif process_type in ("cnc_turning", "cnc_turn_mill"):
+        row.extend([
+            random.uniform(0.005, 0.08), random.randint(3, 12),
+            random.randint(1, 4), random.uniform(35, 85),
+        ])
+    elif process_type == "sheet_metal":
+        row.extend([random.uniform(0.1, 0.5), random.randint(0, 4), random.randint(0, 2), random.uniform(10, 40)])
+    elif process_type in ("die_casting", "injection_molding"):
+        row.extend([random.uniform(0.05, 0.3), random.randint(1, 8), random.randint(0, 3), random.uniform(20, 55)])
+    else:
+        row.extend([random.uniform(0.2, 1.0), random.randint(0, 3), random.randint(0, 2), random.uniform(5, 30)])
+    
+    # ===== Features 54-59: Machining complexity features =====
+    if process_type == "cnc_5axis":
+        row.extend([
+            1.0, random.choice([0.0, 1.0]), 0.0,  # requires_5axis, requires_4axis, is_turn_mill
+            random.randint(4, 6), random.randint(2, 5), random.uniform(60, 95),
+        ])
+    elif process_type == "cnc_turn_mill":
+        row.extend([
+            0.0, random.choice([0.0, 1.0]), 1.0,  # Turn-mill flag
+            random.randint(2, 4), random.randint(2, 4), random.uniform(45, 75),
+        ])
+    elif process_type == "cnc_milling":
+        row.extend([
+            0.0, random.choice([0.0, 1.0]), 0.0,
+            random.randint(1, 4), random.randint(1, 4), random.uniform(30, 70),
+        ])
+    elif process_type == "cnc_turning":
+        row.extend([
+            0.0, 0.0, 0.0, 2, random.randint(1, 2), random.uniform(20, 50),
+        ])
+    else:  # Non-machined processes
+        row.extend([0.0, 0.0, 0.0, 1, 0, random.uniform(5, 25)])
+    
+    # ===== Features 60-64: Process detection features =====
+    if process_type in ("die_casting", "sand_casting", "investment_casting"):
+        row.extend([
+            1.0, random.uniform(0.6, 0.95),  # is_likely_cast, casting_confidence
+            0.0, 0, 1,                       # is_weldment, weld_joint_count, body_count
+        ])
+    elif process_type == "injection_molding":
+        row.extend([0.0, 0.0, 0.0, 0, 1])
+    elif process_type == "weldment":
+        row.extend([
+            0.0, 0.0, 1.0,                   # is_weldment = 1
+            random.randint(2, 12),           # weld_joint_count
+            random.randint(2, 15),           # body_count (multiple bodies)
+        ])
+    elif process_type == "3d_printing":
+        row.extend([0.0, 0.0, 0.0, 0, 1])
+    else:  # CNC and sheet metal
+        row.extend([0.0, 0.0, 0.0, 0, 1])
 
 
 def _generate_synthetic_dataset(n_per_class: int = 500) -> Tuple[List[List[float]], List[int]]:
@@ -480,6 +605,320 @@ def _generate_synthetic_dataset(n_per_class: int = 500) -> Tuple[List[List[float
         _append_new_features(row, "cnc_turning", 0, diameter)
         X.append(row)
         y.append(LABEL_MAP["cnc_turning"])
+
+    # --- CNC TURN-MILL (turned part with cross features) ---
+    n_turn_mill = n_per_class // 2
+    for _ in range(n_turn_mill):
+        diameter = random.uniform(15, 100)
+        length = random.uniform(diameter * 0.8, diameter * 4)
+        min_d = diameter
+        mid_d = diameter * random.uniform(0.90, 1.10)  # Slight XY asymmetry for D-cuts
+        max_d = length
+        vol = math.pi * (diameter / 2) ** 2 * length * random.uniform(0.4, 0.8)
+        sa = 2 * math.pi * (diameter / 2) * length + 2 * math.pi * (diameter / 2) ** 2
+        aspect = max_d / max(min_d, 0.1)
+        vol_eff = vol / (min_d * mid_d * max_d + 1e-9)
+        sa_vol = sa / max(vol / 1000, 1e-9)
+        cross_holes = random.randint(1, 6)  # Cross-drilled holes key indicator
+        slots = random.randint(0, 3)
+        sms = random.uniform(5, 25)
+
+        row = [
+            vol, sa, min_d, mid_d, max_d, aspect, vol_eff, sa_vol,
+            random.uniform(5, 50), random.uniform(0.2, 0.5),
+            random.uniform(0.3, 0.9),
+            0, 0, 0,
+            sms,
+            random.uniform(0.05, 0.25),
+            cross_holes + random.randint(0, 10), random.randint(0, 4), random.randint(0, 6),
+            random.randint(0, 2), random.randint(0, 5), slots,
+            random.randint(800, 25000),
+            random.uniform(0.1, 0.35), random.uniform(0.5, 2.5),
+            random.uniform(0.15, 0.5), random.uniform(0.15, 0.5),
+            random.uniform(0.35, 0.75),
+            random.uniform(0.15, 0.45),   # plane_ratio
+            random.uniform(0.35, 0.70),   # cylinder_ratio (high - turned body)
+            random.uniform(0.0, 0.12),    # freeform_ratio
+            random.randint(0, 3),
+            random.uniform(8, 50),
+            random.uniform(50, 80),
+            random.uniform(8, 30),
+        ]
+        _append_new_features(row, "cnc_turn_mill", 0, diameter)
+        X.append(row)
+        y.append(LABEL_MAP["cnc_turn_mill"])
+
+    # --- CNC 5-AXIS (complex undercuts, multi-direction access) ---
+    n_5axis = n_per_class // 2
+    for _ in range(n_5axis):
+        min_d = random.uniform(15, 80)
+        mid_d = random.uniform(min_d, min_d * 2.5)
+        max_d = random.uniform(mid_d, mid_d * 2)
+        vol = min_d * mid_d * max_d * random.uniform(0.25, 0.65)
+        sa = 2 * (min_d * mid_d + mid_d * max_d + min_d * max_d) * random.uniform(0.8, 1.3)
+        aspect = max_d / max(min_d, 0.1)
+        vol_eff = vol / (min_d * mid_d * max_d + 1e-9)
+        sa_vol = sa / max(vol / 1000, 1e-9)
+        undercut_count = random.randint(2, 8)  # Key 5-axis indicator
+        sms = random.uniform(5, 30)
+
+        row = [
+            vol, sa, min_d, mid_d, max_d, aspect, vol_eff, sa_vol,
+            random.uniform(8, 60), random.uniform(0.2, 0.5),
+            random.uniform(0.4, 0.9),
+            0, 0, 0,
+            sms,
+            random.uniform(0.1, 0.6),
+            random.randint(2, 25), random.randint(3, 15), random.randint(0, 6),
+            undercut_count, random.randint(3, 12), random.randint(0, 5),
+            random.randint(3000, 60000),
+            random.uniform(0.05, 0.30), random.uniform(0.5, 2.0),
+            random.uniform(0.1, 0.45), random.uniform(0.1, 0.45),
+            random.uniform(0.5, 0.85),
+            random.uniform(0.20, 0.55),   # plane_ratio
+            random.uniform(0.20, 0.50),   # cylinder_ratio
+            random.uniform(0.10, 0.35),   # freeform_ratio (higher - complex surfaces)
+            random.randint(0, 3),
+            random.uniform(10, 60),
+            random.uniform(60, 95),
+            random.uniform(5, 25),
+        ]
+        _append_new_features(row, "cnc_5axis", 0, min_d)
+        X.append(row)
+        y.append(LABEL_MAP["cnc_5axis"])
+
+    # --- DIE CASTING (draft angles, uniform walls, smooth surfaces) ---
+    n_die_cast = n_per_class // 3
+    for _ in range(n_die_cast):
+        min_d = random.uniform(8, 60)
+        mid_d = random.uniform(min_d * 1.5, min_d * 4)
+        max_d = random.uniform(mid_d, mid_d * 2)
+        vol = min_d * mid_d * max_d * random.uniform(0.35, 0.70)
+        sa = 2 * (min_d * mid_d + mid_d * max_d + min_d * max_d) * random.uniform(0.9, 1.4)
+        aspect = max_d / max(min_d, 0.1)
+        vol_eff = vol / (min_d * mid_d * max_d + 1e-9)
+        sa_vol = sa / max(vol / 1000, 1e-9)
+        sms = random.uniform(10, 45)  # Can look like sheet metal due to thin walls
+
+        row = [
+            vol, sa, min_d, mid_d, max_d, aspect, vol_eff, sa_vol,
+            random.uniform(2, 12), random.uniform(0.3, 0.7),  # Uniform wall thickness
+            random.uniform(0.4, 0.9),
+            0, 0, 0,
+            sms,
+            random.uniform(0.2, 0.7),
+            random.randint(0, 10), random.randint(0, 4), 0,  # Few holes, minimal threads
+            0, random.randint(4, 15), 0,  # Many fillets (typical for casting)
+            random.randint(2000, 40000),
+            random.uniform(0.15, 0.45), random.uniform(0.8, 2.5),
+            random.uniform(0.2, 0.55), random.uniform(0.2, 0.55),
+            random.uniform(0.4, 0.75),
+            random.uniform(0.25, 0.55),
+            random.uniform(0.15, 0.40),
+            random.uniform(0.08, 0.25),   # Some freeform for draft
+            random.randint(0, 3),
+            random.uniform(5, 20),
+            random.uniform(35, 65),
+            random.uniform(20, 50),
+        ]
+        _append_new_features(row, "die_casting", 0, min_d)
+        X.append(row)
+        y.append(LABEL_MAP["die_casting"])
+
+    # --- INJECTION MOLDING (thin uniform walls, draft, ribs, bosses) ---
+    n_injection = n_per_class // 3
+    for _ in range(n_injection):
+        wall_t = random.uniform(1.5, 4.0)  # Typical injection molding wall
+        min_d = wall_t
+        mid_d = random.uniform(30, 200)
+        max_d = random.uniform(mid_d, mid_d * 2.5)
+        # Box-like enclosures have lower vol efficiency
+        vol = min_d * mid_d * max_d * random.uniform(0.15, 0.45)
+        sa = 2 * (min_d * mid_d + mid_d * max_d + min_d * max_d) * random.uniform(1.0, 1.8)
+        aspect = max_d / max(min_d, 0.1)
+        vol_eff = vol / (min_d * mid_d * max_d + 1e-9)
+        sa_vol = sa / max(vol / 1000, 1e-9)
+        sms = random.uniform(30, 65)  # Thin walls look like sheet metal
+
+        row = [
+            vol, sa, min_d, mid_d, max_d, aspect, vol_eff, sa_vol,
+            wall_t, random.uniform(0.6, 0.9),  # Uniform wall thickness
+            random.uniform(0.7, 1.0),
+            0, 0, 0,
+            sms,
+            random.uniform(0.3, 0.8),
+            random.randint(0, 8), random.randint(0, 3), 0,
+            0, random.randint(6, 20), 0,  # Many fillets
+            random.randint(5000, 80000),
+            random.uniform(0.20, 0.50), random.uniform(1.0, 3.0),
+            random.uniform(0.25, 0.60), random.uniform(0.25, 0.60),
+            random.uniform(0.25, 0.55),
+            random.uniform(0.35, 0.65),
+            random.uniform(0.10, 0.30),
+            random.uniform(0.05, 0.20),
+            random.randint(2, 8),
+            random.uniform(1.5, 5.0),
+            random.uniform(25, 55),
+            random.uniform(35, 70),
+        ]
+        _append_new_features(row, "injection_molding", 0, wall_t)
+        X.append(row)
+        y.append(LABEL_MAP["injection_molding"])
+
+    # --- WELDMENT (multi-body with weld joints) ---
+    n_weldment = n_per_class // 4
+    for _ in range(n_weldment):
+        min_d = random.uniform(15, 80)
+        mid_d = random.uniform(min_d * 2, min_d * 8)
+        max_d = random.uniform(mid_d, mid_d * 3)
+        # Weldments are typically structural frames - lower vol efficiency
+        vol = min_d * mid_d * max_d * random.uniform(0.05, 0.25)
+        sa = 2 * (min_d * mid_d + mid_d * max_d + min_d * max_d) * random.uniform(0.6, 1.2)
+        aspect = max_d / max(min_d, 0.1)
+        vol_eff = vol / (min_d * mid_d * max_d + 1e-9)
+        sa_vol = sa / max(vol / 1000, 1e-9)
+        sms = random.uniform(10, 45)
+
+        row = [
+            vol, sa, min_d, mid_d, max_d, aspect, vol_eff, sa_vol,
+            random.uniform(2, 15), random.uniform(0.2, 0.6),
+            random.uniform(0.3, 0.8),
+            0, 0, 0,
+            sms,
+            random.uniform(0.3, 0.8),
+            random.randint(0, 12), random.randint(0, 2), 0,
+            0, random.randint(0, 4), 0,
+            random.randint(1000, 20000),
+            random.uniform(0.05, 0.25), random.uniform(0.5, 2.0),
+            random.uniform(0.1, 0.4), random.uniform(0.1, 0.4),
+            random.uniform(0.2, 0.5),
+            random.uniform(0.45, 0.75),  # High plane ratio (structural members)
+            random.uniform(0.05, 0.25),
+            random.uniform(0.0, 0.10),
+            random.randint(3, 12),  # Multiple paired planes (multiple parts)
+            random.uniform(2, 15),
+            random.uniform(20, 50),
+            random.uniform(25, 55),
+        ]
+        _append_new_features(row, "weldment", 0, min_d)
+        X.append(row)
+        y.append(LABEL_MAP["weldment"])
+
+    # --- SAND CASTING (larger parts, lower precision, thicker sections) ---
+    n_sand_cast = n_per_class // 4
+    for _ in range(n_sand_cast):
+        min_d = random.uniform(20, 150)
+        mid_d = random.uniform(min_d, min_d * 3)
+        max_d = random.uniform(mid_d, mid_d * 2.5)
+        # Sand castings are typically larger, thicker
+        vol = min_d * mid_d * max_d * random.uniform(0.35, 0.75)
+        sa = 2 * (min_d * mid_d + mid_d * max_d + min_d * max_d) * random.uniform(0.8, 1.3)
+        aspect = max_d / max(min_d, 0.1)
+        vol_eff = vol / (min_d * mid_d * max_d + 1e-9)
+        sa_vol = sa / max(vol / 1000, 1e-9)
+        sms = random.uniform(3, 20)  # Thick sections, low SMS
+
+        row = [
+            vol, sa, min_d, mid_d, max_d, aspect, vol_eff, sa_vol,
+            random.uniform(8, 40), random.uniform(0.3, 0.7),  # Thick walls
+            random.uniform(0.4, 0.8),
+            0, 0, 0,
+            sms,
+            random.uniform(0.3, 0.8),
+            random.randint(0, 6), random.randint(0, 3), 0,
+            0, random.randint(2, 10), 0,
+            random.randint(1500, 30000),
+            random.uniform(0.2, 0.55), random.uniform(0.6, 2.0),
+            random.uniform(0.25, 0.6), random.uniform(0.25, 0.6),
+            random.uniform(0.4, 0.75),
+            random.uniform(0.25, 0.55),
+            random.uniform(0.15, 0.40),
+            random.uniform(0.05, 0.20),
+            random.randint(0, 4),
+            random.uniform(8, 40),
+            random.uniform(30, 60),
+            random.uniform(25, 55),
+        ]
+        _append_new_features(row, "sand_casting", 0, min_d)
+        X.append(row)
+        y.append(LABEL_MAP["sand_casting"])
+
+    # --- INVESTMENT CASTING (complex shapes, thin sections, fine detail) ---
+    n_invest_cast = n_per_class // 4
+    for _ in range(n_invest_cast):
+        min_d = random.uniform(5, 50)
+        mid_d = random.uniform(min_d, min_d * 2.5)
+        max_d = random.uniform(mid_d, mid_d * 2)
+        vol = min_d * mid_d * max_d * random.uniform(0.25, 0.60)
+        sa = 2 * (min_d * mid_d + mid_d * max_d + min_d * max_d) * random.uniform(1.0, 1.6)
+        aspect = max_d / max(min_d, 0.1)
+        vol_eff = vol / (min_d * mid_d * max_d + 1e-9)
+        sa_vol = sa / max(vol / 1000, 1e-9)
+        sms = random.uniform(8, 35)
+
+        row = [
+            vol, sa, min_d, mid_d, max_d, aspect, vol_eff, sa_vol,
+            random.uniform(2, 15), random.uniform(0.4, 0.8),
+            random.uniform(0.5, 0.95),
+            0, 0, 0,
+            sms,
+            random.uniform(0.25, 0.7),
+            random.randint(0, 8), random.randint(0, 4), 0,
+            random.randint(0, 4), random.randint(4, 15), 0,  # Some undercuts OK
+            random.randint(2000, 35000),
+            random.uniform(0.15, 0.45), random.uniform(0.7, 2.2),
+            random.uniform(0.15, 0.50), random.uniform(0.15, 0.50),
+            random.uniform(0.45, 0.80),
+            random.uniform(0.20, 0.50),
+            random.uniform(0.15, 0.40),
+            random.uniform(0.10, 0.30),  # Higher freeform for complex shapes
+            random.randint(0, 4),
+            random.uniform(2, 15),
+            random.uniform(40, 75),
+            random.uniform(15, 45),
+        ]
+        _append_new_features(row, "investment_casting", 0, min_d)
+        X.append(row)
+        y.append(LABEL_MAP["investment_casting"])
+
+    # --- 3D PRINTING (organic shapes, lattices, overhangs, low vol efficiency) ---
+    n_3dp = n_per_class // 3
+    for _ in range(n_3dp):
+        min_d = random.uniform(5, 80)
+        mid_d = random.uniform(min_d, min_d * 2.5)
+        max_d = random.uniform(mid_d, mid_d * 2)
+        # 3D printed parts often have organic/lattice shapes - low vol efficiency
+        vol = min_d * mid_d * max_d * random.uniform(0.10, 0.45)
+        sa = 2 * (min_d * mid_d + mid_d * max_d + min_d * max_d) * random.uniform(1.2, 2.5)
+        aspect = max_d / max(min_d, 0.1)
+        vol_eff = vol / (min_d * mid_d * max_d + 1e-9)
+        sa_vol = sa / max(vol / 1000, 1e-9)
+        sms = random.uniform(5, 35)
+
+        row = [
+            vol, sa, min_d, mid_d, max_d, aspect, vol_eff, sa_vol,
+            random.uniform(1, 12), random.uniform(0.3, 0.8),
+            random.uniform(0.4, 0.95),
+            0, 0, 0,
+            sms,
+            random.uniform(0.1, 0.5),
+            random.randint(0, 5), random.randint(0, 2), 0,  # Few traditional features
+            random.randint(0, 6), random.randint(1, 8), 0,  # Overhangs/undercuts OK
+            random.randint(3000, 80000),  # Can have high face count (organic)
+            random.uniform(0.08, 0.35), random.uniform(1.0, 3.5),
+            random.uniform(0.1, 0.40), random.uniform(0.1, 0.40),
+            random.uniform(0.3, 0.70),
+            random.uniform(0.10, 0.35),
+            random.uniform(0.05, 0.25),
+            random.uniform(0.25, 0.60),  # High freeform ratio (organic shapes)
+            random.randint(0, 3),
+            random.uniform(1, 12),
+            random.uniform(20, 55),
+            random.uniform(30, 65),
+        ]
+        _append_new_features(row, "3d_printing", 0, min_d)
+        X.append(row)
+        y.append(LABEL_MAP["3d_printing"])
 
     return X, y
 

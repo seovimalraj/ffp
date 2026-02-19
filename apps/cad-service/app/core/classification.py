@@ -161,6 +161,18 @@ class ProcessClassifier:
         self._undercuts = undercuts or []
         self._draft_analysis = draft_analysis
         
+        # Store hole features for turn-mill cross-hole detection (GAP FIX: was missing)
+        self._hole_features = holes or []
+        self._pocket_features = pockets or []
+        self._fillet_features = fillets or []
+        self._slot_features = slots or []
+        self._thread_features = threads or []
+        
+        # FIX: Store STEP-extracted bends for accurate bend detection
+        # STEP bends are extracted from BRep face pairs and are more reliable
+        # than heuristic-based detection (which relies on volume efficiency)
+        self._step_bends = bends or []
+        
         # NEW: Store extended analysis results for ML and advanced classification
         self._surface_finish_analysis = surface_finish_analysis
         self._tolerance_analysis = tolerance_analysis
@@ -313,7 +325,27 @@ class ProcessClassifier:
         if result is not None:
             return result
 
-        # 7) Enhanced score / default CNC + ML ensemble
+        # 7) WELDMENT detection (multi-body with weld joints)
+        result = self._try_weldment_classification(metadata)
+        if result is not None:
+            return result
+
+        # 8) CASTING detection (draft angles, uniform walls, casting indicators)
+        result = self._try_casting_classification(metadata)
+        if result is not None:
+            return result
+
+        # 9) 5-AXIS detection (undercuts, multi-direction access)
+        result = self._try_5axis_classification(metadata)
+        if result is not None:
+            return result
+
+        # 10) TURN-MILL detection (turned part with cross-drilled holes)
+        result = self._try_turn_mill_classification(metadata, holes=None)
+        if result is not None:
+            return result
+
+        # 11) Enhanced score / default CNC + ML ensemble
         return self._classify_by_score_and_ml(
             bend_analysis, metadata,
             detected_thickness=detected_thickness,
@@ -332,7 +364,12 @@ class ProcessClassifier:
     # ------------------------------------------------------------------
 
     def _run_bend_detection(self, detected_thickness, thickness_confidence, triangle_count):
-        """Run advanced bend detection and return (detector, analysis)."""
+        """Run advanced bend detection and return (detector, analysis).
+        
+        FIX: When STEP-extracted bends are available, use them to OVERRIDE
+        the heuristic bend count. STEP bends are extracted from BRep topology
+        and accurately detect 2-side bends, L-brackets, U-channels etc.
+        """
         bend_detector = AdvancedBendDetector(
             [self.metrics.min_dim, self.metrics.mid_dim, self.metrics.max_dim],
             self.metrics.volume_mm3,
@@ -343,6 +380,31 @@ class ProcessClassifier:
             thickness_confidence=thickness_confidence,
             triangle_count=triangle_count,
         )
+        
+        # FIX: Override heuristic bend count with STEP-extracted bends
+        # STEP bends are far more reliable for detecting 2-side bends, channels, etc.
+        step_bends = getattr(self, '_step_bends', [])
+        if step_bends and len(step_bends) > 0:
+            step_bend_count = len(step_bends)
+            
+            # STEP bends override heuristic if they found bends the heuristic missed
+            # OR if heuristic found more (possible false positives)
+            if step_bend_count >= 1:
+                # Always trust STEP bend count when available
+                bend_analysis.is_likely_bent = True
+                bend_analysis.bend_count = max(bend_analysis.bend_count, step_bend_count)
+                bend_analysis.confidence = max(bend_analysis.confidence, 0.85)
+                
+                # Extract bend angles from STEP data
+                step_angles = [getattr(b, 'angle_deg', 90.0) for b in step_bends]
+                if step_angles:
+                    bend_analysis.bend_angles = step_angles
+                
+                logger.info(
+                    "STEP bends override: %d bends detected from BRep (heuristic: %d)",
+                    step_bend_count, bend_analysis.bend_count
+                )
+        
         return bend_detector, bend_analysis
 
     def _analyze_draft_compatibility(self) -> Dict[str, Any]:
@@ -665,69 +727,78 @@ class ProcessClassifier:
                 )
                 return None
             
-            # NEW: Override to CNC if feature analysis strongly indicates CNC
-            if feature_cnc_score >= 70:
-                logger.info(
-                    "Face classification says sheet metal (%.0f) but "
-                    "feature analysis score %.0f — CNC override.",
-                    sm_score, feature_cnc_score,
-                )
-                metadata['classification_method'] = 'face_type_cnc_feature_override'
-                metadata['reasoning'] = (
-                    f"FACE-TYPE says sheet metal but feature analysis "
-                    f"indicates CNC (score={feature_cnc_score:.0f})"
-                )
-                return ('cnc_milling', 0.82, metadata)
-            
-            # NEW: Override to CNC if multiple distinct thicknesses
-            if has_varying_thickness:
-                logger.info(
-                    "Face classification says sheet metal (%.0f) but "
-                    "multiple thickness variations — CNC override.",
-                    sm_score,
-                )
-                metadata['classification_method'] = 'face_type_cnc_thickness_override'
-                metadata['reasoning'] = (
-                    f"FACE-TYPE says sheet metal but varying thicknesses "
-                    f"indicate CNC machining (pockets/steps)"
-                )
-                return ('cnc_milling', 0.80, metadata)
-            
-            # NEW: Override to CNC if tool-radius fillets present
-            if has_tool_radius_fillets:
-                logger.info(
-                    "Face classification says sheet metal (%.0f) but "
-                    "tool-radius fillets present — CNC override.",
-                    sm_score,
-                )
-                metadata['classification_method'] = 'face_type_cnc_fillet_override'
-                metadata['reasoning'] = (
-                    f"FACE-TYPE says sheet metal but R3-R6mm fillets "
-                    f"indicate CNC machining"
-                )
-                return ('cnc_milling', 0.78, metadata)
-
-            # Override to CNC if volume efficiency is very high (solid block)
-            # BUT: flat sheets with high aspect ratio should NOT be overridden
-            # A flat sheet has high vol_eff by design - it fills its bbox
-            min_dim = self.metrics.min_dim or 10.0
-            is_flat_sheet_profile = (
-                aspect_ratio >= 8.0 and
-                min_dim <= SHEET_METAL_MAX_THICKNESS
+            # FIX: Check if part has bends - if so, DO NOT override to CNC
+            # Bent parts are sheet metal even if they have some CNC-like features
+            has_actual_bends = (
+                bend_analysis.is_likely_bent and 
+                bend_analysis.bend_count >= 1
             )
             
-            if self.metrics.volume_efficiency > 0.80 and aspect_ratio < 4 and not is_flat_sheet_profile:
-                logger.info(
-                    "Face classification says sheet metal (%.0f) but "
-                    "solid block (vol_eff=%.2f, AR=%.1f) — CNC override.",
-                    sm_score, self.metrics.volume_efficiency, aspect_ratio,
+            # Only apply CNC overrides if there are NO actual bends
+            if not has_actual_bends:
+                # Override to CNC if feature analysis strongly indicates CNC
+                if feature_cnc_score >= 70:
+                    logger.info(
+                        "Face classification says sheet metal (%.0f) but "
+                        "feature analysis score %.0f — CNC override.",
+                        sm_score, feature_cnc_score,
+                    )
+                    metadata['classification_method'] = 'face_type_cnc_feature_override'
+                    metadata['reasoning'] = (
+                        f"FACE-TYPE says sheet metal but feature analysis "
+                        f"indicates CNC (score={feature_cnc_score:.0f})"
+                    )
+                    return ('cnc_milling', 0.82, metadata)
+                
+                # Override to CNC if multiple distinct thicknesses
+                if has_varying_thickness:
+                    logger.info(
+                        "Face classification says sheet metal (%.0f) but "
+                        "multiple thickness variations — CNC override.",
+                        sm_score,
+                    )
+                    metadata['classification_method'] = 'face_type_cnc_thickness_override'
+                    metadata['reasoning'] = (
+                        f"FACE-TYPE says sheet metal but varying thicknesses "
+                        f"indicate CNC machining (pockets/steps)"
+                    )
+                    return ('cnc_milling', 0.80, metadata)
+                
+                # Override to CNC if tool-radius fillets present
+                if has_tool_radius_fillets:
+                    logger.info(
+                        "Face classification says sheet metal (%.0f) but "
+                        "tool-radius fillets present — CNC override.",
+                        sm_score,
+                    )
+                    metadata['classification_method'] = 'face_type_cnc_fillet_override'
+                    metadata['reasoning'] = (
+                        f"FACE-TYPE says sheet metal but R3-R6mm fillets "
+                        f"indicate CNC machining"
+                    )
+                    return ('cnc_milling', 0.78, metadata)
+
+                # Override to CNC if volume efficiency is very high (solid block)
+                # BUT: flat sheets with high aspect ratio should NOT be overridden
+                # A flat sheet has high vol_eff by design - it fills its bbox
+                min_dim = self.metrics.min_dim or 10.0
+                is_flat_sheet_profile = (
+                    aspect_ratio >= 8.0 and
+                    min_dim <= SHEET_METAL_MAX_THICKNESS
                 )
-                metadata['classification_method'] = 'face_type_cnc_solid_override'
-                metadata['reasoning'] = (
-                    f"FACE-TYPE says sheet metal but solid block "
-                    f"(vol_eff={self.metrics.volume_efficiency:.2f})"
-                )
-                return ('cnc_milling', 0.82, metadata)
+                
+                if self.metrics.volume_efficiency > 0.80 and aspect_ratio < 4 and not is_flat_sheet_profile:
+                    logger.info(
+                        "Face classification says sheet metal (%.0f) but "
+                        "solid block (vol_eff=%.2f, AR=%.1f) — CNC override.",
+                        sm_score, self.metrics.volume_efficiency, aspect_ratio,
+                    )
+                    metadata['classification_method'] = 'face_type_cnc_solid_override'
+                    metadata['reasoning'] = (
+                        f"FACE-TYPE says sheet metal but solid block "
+                        f"(vol_eff={self.metrics.volume_efficiency:.2f})"
+                    )
+                    return ('cnc_milling', 0.82, metadata)
 
             confidence = min(0.93, 0.78 + sm_score / 1000)
             if bend_analysis.is_likely_bent:
@@ -1006,31 +1077,53 @@ class ProcessClassifier:
             return None
 
         # Guard 3: Solid block with high volume efficiency
+        # FIX: STEP-extracted bends are reliable even with high volume efficiency
+        # A U-channel (2 bends) can have vol_eff > 0.65 but is still sheet metal
+        has_step_bends = len(getattr(self, '_step_bends', [])) > 0
         if self.metrics.volume_efficiency > 0.65:
-            # Only allow if bends are very strong evidence
-            if bend_analysis.bend_count < 4 or bend_analysis.confidence < 0.7:
+            # For STEP bends, allow 2+ bends with high confidence
+            # For heuristic bends, require 4+ bends (more false positives)
+            if has_step_bends:
+                min_bends_required = 1  # STEP bends are reliable
+                min_confidence = 0.60
+            else:
+                min_bends_required = 4  # Heuristic bends need more evidence
+                min_confidence = 0.70
+            
+            if bend_analysis.bend_count < min_bends_required or bend_analysis.confidence < min_confidence:
                 logger.info(
                     "Bend detection suppressed: high volume efficiency %.2f "
-                    "with only %d bends (conf=%.2f)",
+                    "with only %d bends (conf=%.2f, step_bends=%s)",
                     self.metrics.volume_efficiency,
                     bend_analysis.bend_count,
                     bend_analysis.confidence,
+                    has_step_bends,
                 )
                 return None
 
         # Guard 4: No thin wall detected — require stricter evidence
+        # FIX: STEP-extracted bends are reliable even without thickness detection
         has_thin_wall = (
             metadata.get('detected_thickness') is not None
             and 0.3 <= metadata['detected_thickness'] <= 10.0
         )
         if not has_thin_wall:
-            # Without wall thickness evidence, require ≥3 bends with high confidence
-            if bend_analysis.bend_count < 3 or bend_analysis.confidence < 0.65:
+            # STEP bends: allow ≥2 bends (reliable)
+            # Heuristic bends: require ≥3 bends with higher confidence
+            if has_step_bends:
+                min_bends_required = 2
+                min_confidence = 0.55
+            else:
+                min_bends_required = 3
+                min_confidence = 0.65
+            
+            if bend_analysis.bend_count < min_bends_required or bend_analysis.confidence < min_confidence:
                 logger.info(
                     "Bend detection suppressed: no thin wall detected and "
-                    "only %d bends (conf=%.2f)",
+                    "only %d bends (conf=%.2f, step_bends=%s)",
                     bend_analysis.bend_count,
                     bend_analysis.confidence,
+                    has_step_bends,
                 )
                 return None
 
@@ -1256,6 +1349,186 @@ class ProcessClassifier:
                 'classification_method': 'geometry_dcut_shaft',
                 'reasoning': 'D-cut/keyed shaft geometry (elongated with slight XY asymmetry)',
             })
+        
+        return None
+
+    def _try_weldment_classification(self, metadata):
+        """Tier 7: Weldment detection using weldment_analysis results.
+        
+        Identifies welded assemblies vs assemblies requiring manual quote.
+        """
+        if not hasattr(self, '_weldment_analysis') or self._weldment_analysis is None:
+            return None
+            
+        weldment = self._weldment_analysis
+        
+        # Check if weldment analysis indicates a welded structure
+        is_weldment = getattr(weldment, 'is_weldment', False)
+        weld_joint_count = getattr(weldment, 'joint_count', 0)  # Correct attr name
+        weld_confidence = getattr(weldment, 'confidence', 0.0)
+        
+        if is_weldment and weld_joint_count > 0 and weld_confidence >= 0.6:
+            logger.info(
+                "WELDMENT detected: %d joints, confidence=%.2f",
+                weld_joint_count, weld_confidence
+            )
+            return ('weldment', weld_confidence, {
+                **metadata,
+                'classification_method': 'weldment_analysis',
+                'reasoning': f"Welded structure with {weld_joint_count} weld joints detected",
+                'weld_joint_count': weld_joint_count,
+            })
+        
+        return None
+
+    def _try_casting_classification(self, metadata):
+        """Tier 8: Casting detection using casting_analysis results.
+        
+        Identifies die-cast, sand-cast, or investment-cast parts.
+        """
+        if not hasattr(self, '_casting_analysis') or self._casting_analysis is None:
+            return None
+            
+        casting = self._casting_analysis
+        
+        # Check casting indicators
+        is_likely_cast = getattr(casting, 'is_likely_cast', False)
+        casting_confidence = getattr(casting, 'confidence', 0.0)
+        casting_process = getattr(casting, 'recommended_casting_process', None)  # Correct attr name
+        
+        # Also check draft analysis for injection molding indicators
+        draft_compat = getattr(self, '_draft_compatibility', {})
+        injection_candidate = draft_compat.get('injection_molding_candidate', False)
+        
+        if is_likely_cast and casting_confidence >= 0.65:
+            # Determine specific casting type - compare with enum value
+            if casting_process is not None:
+                cp_value = casting_process.value if hasattr(casting_process, 'value') else str(casting_process)
+            else:
+                cp_value = ''
+                
+            if cp_value == 'die_casting':
+                process_type = 'die_casting'
+            elif cp_value == 'investment_casting':
+                process_type = 'investment_casting'
+            elif cp_value == 'sand_casting':
+                process_type = 'sand_casting'
+            else:
+                process_type = 'die_casting'  # Default to die casting
+                
+            logger.info(
+                "CASTING detected: process=%s, confidence=%.2f",
+                process_type, casting_confidence
+            )
+            return (process_type, casting_confidence, {
+                **metadata,
+                'classification_method': 'casting_analysis',
+                'reasoning': f"Casting indicators detected: {process_type}",
+            })
+        
+        # Check for injection molding (plastic parts)
+        if injection_candidate and draft_compat.get('avg_draft_angle', 0) >= 1.0:
+            logger.info("INJECTION MOLDING candidate detected")
+            return ('injection_molding', 0.75, {
+                **metadata,
+                'classification_method': 'draft_analysis_injection',
+                'reasoning': "Part has proper draft angles suitable for injection molding",
+            })
+        
+        return None
+
+    def _try_5axis_classification(self, metadata):
+        """Tier 9: 5-axis machining detection.
+        
+        Identifies parts requiring 5-axis machining due to undercuts or multi-direction access.
+        """
+        # Check machining complexity analysis
+        if hasattr(self, '_machining_complexity_analysis') and self._machining_complexity_analysis is not None:
+            mc = self._machining_complexity_analysis
+            requires_5axis = getattr(mc, 'requires_5axis', False)
+            access_direction_count = getattr(mc, 'access_direction_count', 1)
+            
+            if requires_5axis or access_direction_count > 3:
+                logger.info(
+                    "5-AXIS required: access_directions=%d, requires_5axis=%s",
+                    access_direction_count, requires_5axis
+                )
+                return ('cnc_5axis', 0.85, {
+                    **metadata,
+                    'classification_method': '5axis_complexity',
+                    'reasoning': f"Multi-axis machining required ({access_direction_count} access directions)",
+                })
+        
+        # Fallback: check undercuts
+        undercut_count = self._feature_counts.get('undercut_count', 0)
+        if undercut_count >= 2:
+            logger.info("5-AXIS suggested due to %d undercuts", undercut_count)
+            return ('cnc_5axis', 0.75, {
+                **metadata,
+                'classification_method': '5axis_undercuts',
+                'reasoning': f"Multiple undercuts ({undercut_count}) suggest 5-axis machining",
+            })
+        
+        return None
+
+    def _try_turn_mill_classification(self, metadata, holes=None):
+        """Tier 10: Turn-mill detection.
+        
+        Identifies turned parts with cross-drilled holes or milling features.
+        """
+        # Check machining complexity analysis
+        if hasattr(self, '_machining_complexity_analysis') and self._machining_complexity_analysis is not None:
+            mc = self._machining_complexity_analysis
+            is_turn_mill = getattr(mc, 'is_turn_mill', False)
+            
+            if is_turn_mill:
+                logger.info("TURN-MILL detected from machining complexity analysis")
+                return ('cnc_turn_mill', 0.85, {
+                    **metadata,
+                    'classification_method': 'turn_mill_analysis',
+                    'reasoning': "Turn-mill hybrid: turning with live tooling required",
+                })
+        
+        # Check face classification for turning characteristics + cross holes
+        fc = self._face_classification
+        if fc is not None:
+            revolution_ratio = getattr(fc, 'revolution_ratio', 0.0)
+            cylinder_ratio = fc.cylinder_ratio
+            
+            # High revolution/cylinder ratio indicates turning base
+            is_turning_base = (revolution_ratio > 0.3 or cylinder_ratio > 0.4)
+            
+            if is_turning_base:
+                # Check for cross-drilled holes (holes not aligned with rotation axis)
+                cross_holes = 0
+                slot_count = self._feature_counts.get('slot_count', 0)
+                pocket_count = self._feature_counts.get('pocket_count', 0)
+                
+                # Use stored hole features if available
+                if hasattr(self, '_hole_features') and self._hole_features:
+                    for hole in self._hole_features:
+                        hole_axis = getattr(hole, 'axis', None)
+                        if hole_axis and len(hole_axis) >= 3:
+                            z_component = abs(hole_axis[2])
+                            if z_component < 0.5:  # Perpendicular to Z
+                                cross_holes += 1
+                
+                # Turn-mill if turned part has milling features
+                if cross_holes > 0 or slot_count > 0 or pocket_count > 0:
+                    milling_features = []
+                    if cross_holes > 0:
+                        milling_features.append(f"{cross_holes} cross-holes")
+                    if slot_count > 0:
+                        milling_features.append(f"{slot_count} slots")
+                    if pocket_count > 0:
+                        milling_features.append(f"{pocket_count} pockets")
+                    
+                    logger.info("TURN-MILL detected: turning base with %s", milling_features)
+                    return ('cnc_turn_mill', 0.80, {
+                        **metadata,
+                        'classification_method': 'turn_mill_features',
+                        'reasoning': f"Turned part with milling features: {', '.join(milling_features)}",
+                    })
         
         return None
 

@@ -371,7 +371,21 @@ def _classify_process(bbox_dims, vol_mm3, area_mm2, detected_thickness,
         material=material,
         **feature_counts,
     )
-    process_type_str = process_type if process_type in ('sheet_metal', 'cnc_turning') else 'cnc_milling'
+    
+    # CRITICAL FIX: Support all extended process types, not just sheet_metal/cnc_turning
+    # Valid process types from ML classifier
+    VALID_PROCESS_TYPES = {
+        'sheet_metal', 'cnc_milling', 'cnc_turning', 'cnc_turn_mill', 'cnc_5axis',
+        'injection_molding', 'die_casting', 'sand_casting', 'investment_casting',
+        '3d_printing', 'weldment', 'assembly'
+    }
+    
+    if process_type in VALID_PROCESS_TYPES:
+        process_type_str = process_type
+    else:
+        # Fallback for unknown types
+        process_type_str = 'cnc_milling'
+        logging.warning("Unknown process type '%s' from classifier, defaulting to cnc_milling", process_type)
 
     # Confidence calibration: flag low-confidence classifications for review
     needs_review = confidence < 0.70
@@ -407,11 +421,16 @@ def _score_triangle_complexity(count, is_step):
 
 
 def _score_feature_counts(hole_count, pocket_count):
-    """Score complexity from hole and pocket counts (STEP only)."""
+    """Score complexity from hole and pocket counts (STEP only).
+    
+    Thresholds:
+    - Holes: >20 (very complex), >10 (complex), >5 (moderate), >2 (some), else 0
+    - Pockets: >10 (very complex), >5 (complex), >2 (moderate), else 0
+    """
     score = 0
     for count, thresholds in [
-        (hole_count, [(20, 35), (10, 25), (5, 15), (0, 8)]),
-        (pocket_count, [(10, 30), (5, 20), (2, 12), (0, 6)]),
+        (hole_count, [(20, 25), (10, 15), (5, 8), (2, 4)]),
+        (pocket_count, [(10, 20), (5, 12), (2, 6)]),
     ]:
         for limit, pts in thresholds:
             if count > limit:
@@ -569,13 +588,36 @@ def _attach_optional_metrics(metrics, grain_dir, nesting_est,
         }
 
 
-def _build_assembly_metrics(assembly_info):
-    """Build response dict for assembly files requiring manual quote."""
+def _build_assembly_metrics(assembly_info, shape=None):
+    """Build response dict for assembly files requiring manual quote.
+    
+    If shape is provided, computes aggregate volume/area for all bodies.
+    """
+    volume = 0.0
+    surface_area = 0.0
+    bbox_min = {"x": 0, "y": 0, "z": 0}
+    bbox_max = {"x": 0, "y": 0, "z": 0}
+    
+    # Try to compute aggregate geometry if shape available
+    if shape is not None:
+        try:
+            from ..loaders.step_loader import shape_mass_props
+            vol_mm3, area_mm2 = shape_mass_props(shape)
+            volume = vol_mm3 / 1000.0  # Convert to cm³
+            surface_area = area_mm2 / 100.0  # Convert to cm²
+            
+            # Get bounding box
+            bbox_min_arr, bbox_max_arr = _extract_occ_bbox(shape)
+            if bbox_min_arr is not None and bbox_max_arr is not None:
+                bbox_min = {"x": float(bbox_min_arr[0]), "y": float(bbox_min_arr[1]), "z": float(bbox_min_arr[2])}
+                bbox_max = {"x": float(bbox_max_arr[0]), "y": float(bbox_max_arr[1]), "z": float(bbox_max_arr[2])}
+        except Exception as e:
+            logging.warning("Could not compute assembly geometry: %s", e)
+    
     return {
-        "volume": 0,
-        "surface_area": 0,
-        "bbox": {"min": {"x": 0, "y": 0, "z": 0},
-                 "max": {"x": 0, "y": 0, "z": 0}},
+        "volume": volume,
+        "surface_area": surface_area,
+        "bbox": {"min": bbox_min, "max": bbox_max},
         "thickness": None,
         "primitive_features": {
             "holes": 0, "pockets": 0, "slots": 0, "faces": 0,
@@ -594,6 +636,8 @@ def _build_assembly_metrics(assembly_info):
         "requires_manual_quote": True,
         "manual_quote_reason": assembly_info.reason,
         "advanced_metrics": {},
+        "complexity": "complex",  # Assemblies are complex by default
+        "complexity_score": 50,
     }
 
 
@@ -713,7 +757,9 @@ def _analyze_stl(file_path, scale, material: str = 'default'):
     features = _extract_mesh_features(mesh)
     face_count = int(mesh.faces.shape[0])
 
-    # Classification
+    # Classification - pass ALL extracted features for full analysis
+    # Note: STL doesn't have face_classification (requires BRep), so extended
+    # process detection (weldment, casting, 5-axis) will be limited
     process_type_str, _conf, metadata, advanced_metrics = _classify_process(
         bbox_dims, vol_mm3, area_mm2,
         detected_thickness=detected_thickness,
@@ -721,12 +767,27 @@ def _analyze_stl(file_path, scale, material: str = 'default'):
         triangle_count=face_count,
         thickness_analysis=thickness_analysis,
         material=material,
+        # Pass full feature objects for advanced analysis
+        holes=features['holes'],
+        pockets=features['pockets'],
+        fillets=features['fillets'],
+        undercuts=features['undercuts'],
+        draft_analysis=features['draft'],
+        # Threads and slots
+        threads=features['threads'],
+        slots=[],  # STL mesh doesn't have slot extraction yet
+        # Pass counts
+        hole_count=len(features['holes']),
+        pocket_count=len(features['pockets']),
         thread_count=len(features['threads']),
         undercut_count=len(features['undercuts']),
         fillet_count=len(features['fillets']),
-        # GAP FIX: Pass threads and slots for geometry analysis
-        threads=features['threads'],
-        slots=[],  # STL mesh doesn't have slot extraction yet
+        slot_count=0,
+        boss_count=len(features['bosses']),
+        rib_count=len(features['ribs']),
+        # STL doesn't support these advanced analyses (require BRep)
+        # surface_finish_analysis, tolerance_analysis, machining_complexity,
+        # casting_analysis, weldment_analysis are left as None (defaults)
     )
 
     # Complexity
@@ -740,11 +801,11 @@ def _analyze_stl(file_path, scale, material: str = 'default'):
         process_type_str, bbox_dims, metadata, detected_thickness,
     )
 
-    # Validation & DFM
+    # Validation & DFM - pass actual extracted features
     validation = _validate_geometry_safe(bbox_dims, vol_mm3, area_mm2)
     dfm_geometry = build_geometry_for_dfm(
         bbox_dims=bbox_dims, volume_mm3=vol_mm3, surface_area_mm2=area_mm2,
-        holes=[], pockets=[], process_type=process_type_str,
+        holes=features['holes'], pockets=features['pockets'], process_type=process_type_str,
         thickness=detected_thickness,
         bend_analysis=metadata.get('bend_analysis'),
         complexity=complexity,
@@ -764,16 +825,22 @@ def _analyze_stl(file_path, scale, material: str = 'default'):
         },
         "thickness": detected_thickness,
         "primitive_features": {
-            "holes": 0, "pockets": 0, "slots": 0,
+            "holes": len(features['holes']),
+            "pockets": len(features['pockets']),
+            "slots": 0,
             "threads": len(features['threads']),
             "undercuts": len(features['undercuts']),
             "fillets": len(features['fillets']),
+            "bosses": len(features['bosses']),
+            "ribs": len(features['ribs']),
             "faces": face_count,
         },
         "feature_detail": _serialize_features(
             threads=features['threads'],
             undercuts=features['undercuts'],
             fillets=features['fillets'],
+            holes=features['holes'],
+            pockets=features['pockets'],
         ),
         "material_usage": None,
         "process_type": process_type_str,
@@ -804,7 +871,7 @@ def _detect_assembly_early(shape) -> dict | None:
                 assembly_info.shell_count,
                 assembly_info.reason,
             )
-            return _build_assembly_metrics(assembly_info)
+            return _build_assembly_metrics(assembly_info, shape=shape)
     except Exception as exc:
         logging.warning("Early assembly detection failed (continuing): %s", exc)
     return None
@@ -1169,11 +1236,16 @@ def submit_classification_feedback(request: FeedbackRequest):
     Called when a user manually overrides the auto-detected process type.
     This data is stored and used to improve the ML classifier over time.
     """
-    if request.confirmed_process not in ('sheet_metal', 'cnc_milling', 'cnc_turning'):
+    valid_feedback_types = {
+        'sheet_metal', 'cnc_milling', 'cnc_turning', 'cnc_turn_mill', 'cnc_5axis',
+        'injection_molding', 'die_casting', 'sand_casting', 'investment_casting',
+        '3d_printing', 'weldment'
+    }
+    if request.confirmed_process not in valid_feedback_types:
         raise HTTPException(
             status_code=400,
             detail=f"Invalid process type: {request.confirmed_process}. "
-                   f"Must be 'sheet_metal', 'cnc_milling', or 'cnc_turning'.",
+                   f"Must be one of: {', '.join(sorted(valid_feedback_types))}",
         )
 
     try:

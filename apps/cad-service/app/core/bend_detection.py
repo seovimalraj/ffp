@@ -212,16 +212,27 @@ class AdvancedBendDetector:
         indicators: List[Dict], bend_count: int,
         bend_angles: List[float], bend_regions: List[Dict]
     ) -> tuple:
-        """METHOD 4: Dimension ratio analysis (U-bracket, L-bracket patterns)."""
+        """METHOD 4: Dimension ratio analysis (U-bracket, L-bracket patterns).
+        
+        FIX: Relaxed thresholds to detect 2-bend parts (channels, simple brackets)
+        that have moderate aspect ratios and volume efficiencies.
+        """
         aspect_ratio = self.max_dim / max(self.min_dim, 0.1)
         mid_to_max_ratio = self.mid_dim / self.max_dim if self.max_dim > 0 else 0
+        min_to_mid_ratio = self.min_dim / self.mid_dim if self.mid_dim > 0 else 0
         
-        if aspect_ratio > 15 and 0.3 < mid_to_max_ratio < 0.7 and is_hollow:
+        # U-bracket detection (2 bends) - relaxed thresholds
+        # A U-channel can have moderate aspect ratio (8+) and doesn't need to be fully hollow
+        # Key: thin profile (min_dim small), moderate hollowness
+        if (aspect_ratio >= 8 and 
+            0.15 < mid_to_max_ratio < 0.8 and 
+            (is_hollow or self.volume_efficiency < 0.55) and
+            self.min_dim <= 8):
             indicators.append({
                 'method': 'u_bracket_pattern',
-                'confidence': 0.75,
+                'confidence': 0.80 if is_hollow else 0.70,
                 'pattern': 'U-shape',
-                'evidence': f"U-bracket geometry detected (AR: {aspect_ratio:.1f})"
+                'evidence': f"U-bracket/channel geometry (AR: {aspect_ratio:.1f}, vol_eff: {self.volume_efficiency:.2f})"
             })
             bend_count = max(bend_count, 2)
             bend_angles.extend([90.0, 90.0])
@@ -230,19 +241,27 @@ class AdvancedBendDetector:
                 'bend_line_1': 'along_length',
                 'bend_line_2': 'along_length_opposite'
             })
-        elif aspect_ratio > 10 and mid_to_max_ratio < 0.4 and self.min_dim < 6:
-            indicators.append({
-                'method': 'l_bracket_pattern',
-                'confidence': 0.7,
-                'pattern': 'L-shape',
-                'evidence': "L-bracket geometry detected"
-            })
-            bend_count = max(bend_count, 1)
-            bend_angles.append(90.0)
-            bend_regions.append({
-                'type': 'L-bracket',
-                'bend_line': 'along_length'
-            })
+        
+        # L-bracket detection (1 bend) - relaxed thresholds
+        # An L-bracket has thin profile and moderate aspect ratio
+        elif (aspect_ratio >= 5 and 
+              self.min_dim <= 8 and 
+              (is_hollow or self.volume_efficiency < 0.7)):
+            # Additional check: mid dimension should be significant 
+            # (not just a flat sheet turned 90 degrees)
+            if mid_to_max_ratio >= 0.15:
+                indicators.append({
+                    'method': 'l_bracket_pattern',
+                    'confidence': 0.70,
+                    'pattern': 'L-shape',
+                    'evidence': f"L-bracket geometry (AR: {aspect_ratio:.1f})"
+                })
+                bend_count = max(bend_count, 1)
+                bend_angles.append(90.0)
+                bend_regions.append({
+                    'type': 'L-bracket',
+                    'bend_line': 'along_length'
+                })
 
         return bend_count, bend_angles, bend_regions
 
