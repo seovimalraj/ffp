@@ -3670,7 +3670,7 @@ export const CUTTING_METHODS: Record<string, CuttingMethodConfig> = {
     costPerMeter: 0.8,
     speedMmPerMin: 3000,
     setupCost: 45,
-    minThickness: 0.5,
+    minThickness: 0.3, // Allow thin sheet metal (0.3mm minimum)
     maxThickness: 20,
     materialCompatibility: [
       "steel",
@@ -3694,7 +3694,7 @@ export const CUTTING_METHODS: Record<string, CuttingMethodConfig> = {
     costPerMeter: 1.2,
     speedMmPerMin: 800,
     setupCost: 60,
-    minThickness: 0.5,
+    minThickness: 0.3, // Waterjet can cut thin stock
     maxThickness: 150,
     materialCompatibility: [
       "steel",
@@ -3709,13 +3709,13 @@ export const CUTTING_METHODS: Record<string, CuttingMethodConfig> = {
     costPerMeter: 0.4,
     speedMmPerMin: 5000,
     setupCost: 50,
-    minThickness: 0.5,
+    minThickness: 0.3, // Turret punch can handle thin stock
     maxThickness: 6,
     materialCompatibility: ["steel", "stainless", "aluminum"],
   },
 };
 
-const SIZE_LIMITS = { min: 0.5, max: 700 };
+const SIZE_LIMITS = { min: 0.3, max: 700 }; // min 0.3mm for thin sheet metal
 
 // Lead time type price multipliers (applied to final price)
 const leadTimePriceMultipliers = {
@@ -3814,7 +3814,7 @@ const ADVANCED_PRICING = {
 const CNC_CONSTRAINTS = {
   minWallThickness: 0.5, // mm
   minFeatureSize: 0.8, // mm
-  maxAspectRatio: 20, // length:diameter for deep holes/pockets
+  maxAspectRatio: 50, // length:width for flat plates (increased from 20 for thin plate parts)
   minHoleDepth: 0.5, // mm
   maxPartVolume: 500000, // cm3 (500L)
 };
@@ -4484,7 +4484,7 @@ function checkSheetMetalFeasibility(
     };
   }
 
-  if (bendCount > 30) {
+  if (bendCount > 300) {
     return {
       isFeasible: false,
       reason: `Excessive bend count (${bendCount} bends) exceeds standard fabrication capacity. Please request manual quote.`,
@@ -4802,10 +4802,10 @@ type ManualQuoteResult = { requiresManualQuote: boolean; reason?: string };
 
 function checkSizeConstraints(dims: number[]): ManualQuoteResult | null {
   if (dims.some((d) => d < SIZE_LIMITS.min)) {
-    return { requiresManualQuote: true, reason: "Part too small for standard CNC (min 0.5mm)" };
+    return { requiresManualQuote: true, reason: `Part too small for manufacturing (min ${SIZE_LIMITS.min}mm)` };
   }
   if (dims.some((d) => d > SIZE_LIMITS.max)) {
-    return { requiresManualQuote: true, reason: "Part exceeds CNC envelope (max 700mm)" };
+    return { requiresManualQuote: true, reason: `Part exceeds equipment capacity (max ${SIZE_LIMITS.max}mm)` };
   }
   return null;
 }
