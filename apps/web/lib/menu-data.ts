@@ -101,10 +101,10 @@ export const menuSections: MenuSection[] = [
         slug: "inspection",
         route: "/supplier/capacity/inspection",
         icon: BadgeCheck,
-      }
+      },
     ],
   },
-    {
+  {
     title: "RFQ & Procurement",
     slug: "rfq-procurement",
     icon: FileQuestion,
