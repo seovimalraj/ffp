@@ -39,17 +39,20 @@ logger = logging.getLogger(__name__)
 
 # Sheet metal thickness range (standard gauges) - default for steel
 SHEET_METAL_MIN_THICKNESS = 0.4  # mm (approx 26 gauge)
-SHEET_METAL_MAX_THICKNESS = 8.0  # mm (approx 3/16" or thicker plate)
+SHEET_METAL_MAX_THICKNESS = 6.0  # mm (practical limit for press brake forming)
 
 # Material-specific thickness ranges
+# MAX THICKNESS LIMITS: Industry standard for practical sheet metal forming
+# - Above these limits, parts require plate bending equipment (not standard press brakes)
+# - Most sheet metal shops consider 6mm the practical limit
 MATERIAL_THICKNESS_RANGES = {
     'steel': (0.4, 6.0),       # Cold-rolled steel: 26 gauge to ~6mm
     'stainless': (0.4, 6.0),   # Stainless steel: similar to steel
-    'aluminum': (0.5, 10.0),   # Aluminum: can go thicker as "sheet"
-    'copper': (0.3, 4.0),      # Copper: typically thinner
+    'aluminum': (0.5, 6.0),    # Aluminum: 6mm max (was 10mm) - practical forming limit
+    'copper': (0.3, 4.0),      # Copper: typically thinner gauge
     'brass': (0.3, 4.0),       # Brass: similar to copper
     'titanium': (0.5, 6.0),    # Titanium: similar to steel
-    'default': (0.4, 8.0),     # Default range
+    'default': (0.4, 6.0),     # Default range (was 8mm, reduced to 6mm)
 }
 
 
@@ -116,7 +119,8 @@ class ProcessClassifier:
                 body_count: int = 1,
                 boss_count: int = 0,
                 rib_count: int = 0,
-                material: str = 'default') -> Tuple[str, float, Dict[str, Any]]:
+                material: str = 'default',
+                mesh: Optional[Any] = None) -> Tuple[str, float, Dict[str, Any]]:
         """
         Advanced classification using proper sheet metal thickness detection.
 
@@ -258,7 +262,7 @@ class ProcessClassifier:
             }
 
         bend_detector, bend_analysis = self._run_bend_detection(
-            detected_thickness, thickness_confidence, triangle_count,
+            detected_thickness, thickness_confidence, triangle_count, mesh=mesh,
         )
         metadata['bend_analysis'] = {
             'is_likely_bent': bend_analysis.is_likely_bent,
@@ -363,23 +367,37 @@ class ProcessClassifier:
     # Classification helpers (each handles one tier)
     # ------------------------------------------------------------------
 
-    def _run_bend_detection(self, detected_thickness, thickness_confidence, triangle_count):
+    def _run_bend_detection(self, detected_thickness, thickness_confidence, triangle_count, 
+                              mesh=None):
         """Run advanced bend detection and return (detector, analysis).
         
         FIX: When STEP-extracted bends are available, use them to OVERRIDE
         the heuristic bend count. STEP bends are extracted from BRep topology
         and accurately detect 2-side bends, L-brackets, U-channels etc.
+        
+        For STL files, when a mesh object is provided, use enhanced mesh-based
+        analysis with normal clustering and triangle dihedral angles.
         """
         bend_detector = AdvancedBendDetector(
             [self.metrics.min_dim, self.metrics.mid_dim, self.metrics.max_dim],
             self.metrics.volume_mm3,
             self.metrics.surface_area_mm2,
         )
-        bend_analysis = bend_detector.analyze_bends(
-            detected_thickness=detected_thickness,
-            thickness_confidence=thickness_confidence,
-            triangle_count=triangle_count,
-        )
+        
+        # For STL/mesh files, use enhanced mesh-based analysis
+        if mesh is not None:
+            bend_analysis = bend_detector.analyze_with_mesh(
+                mesh=mesh,
+                detected_thickness=detected_thickness,
+                thickness_confidence=thickness_confidence,
+                triangle_count=triangle_count,
+            )
+        else:
+            bend_analysis = bend_detector.analyze_bends(
+                detected_thickness=detected_thickness,
+                thickness_confidence=thickness_confidence,
+                triangle_count=triangle_count,
+            )
         
         # FIX: Override heuristic bend count with STEP-extracted bends
         # STEP bends are far more reliable for detecting 2-side bends, channels, etc.
@@ -711,6 +729,17 @@ class ProcessClassifier:
 
         # Strong sheet metal signal from faces
         if face_result.is_likely_sheet_metal and sm_score >= 70:
+            # NEW: Aspect ratio guard for blocky shapes
+            # Cube-like shapes (AR < 3) with min_dim > 4mm are not sheet metal
+            min_dim = self.metrics.min_dim or 10.0
+            if aspect_ratio < 3.0 and min_dim > 4.0:
+                logger.info(
+                    "Face classification says sheet metal (%.0f) but "
+                    "blocky shape (AR=%.1f, min_dim=%.1fmm) — deferring to other tiers.",
+                    sm_score, aspect_ratio, min_dim,
+                )
+                return None
+            
             # GAP 10 FIX: Use adaptive threshold for machining feature override
             # Override to CNC (defer) if machining features are very strong
             has_strong_cnc_features = (
@@ -959,7 +988,18 @@ class ProcessClassifier:
         mf_score = self._machining_feature_score
         min_dim = self.metrics.min_dim or 10.0
         
+        # NEW: Early rejection of cube-like shapes
+        # Parts with AR < 3 and min_dim > 4mm should not be sheet metal
+        # unless they have clear bend evidence
+        if aspect_ratio < 3.0 and min_dim > 4.0 and not bend_analysis.is_likely_bent:
+            logger.info(
+                "Legacy thickness rejected: cube-like shape (AR=%.1f, min_dim=%.1fmm)",
+                aspect_ratio, min_dim,
+            )
+            return None  # Defer to other tiers
+        
         # Check for flat sheet profile (high AR + thin = flat sheet)
+        is_flat_sheet_profile = aspect_ratio >= 8.0 and min_dim <= SHEET_METAL_MAX_THICKNESS
         is_flat_sheet_profile = aspect_ratio >= 8.0 and min_dim <= SHEET_METAL_MAX_THICKNESS
 
         # GAP 10 FIX: Same logic as _advanced_sheet_or_cnc_guard
