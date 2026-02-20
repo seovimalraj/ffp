@@ -685,6 +685,7 @@ class ProcessClassifier:
         the face classifier is highly confident (score >= 70).
         
         ENHANCED: Now uses feature analysis signals to guard against false positives.
+        Also includes early CNC override for turned parts (high cylinder area).
 
         Returns classification result or None to continue cascade.
         """
@@ -694,6 +695,56 @@ class ProcessClassifier:
         sm_score = face_result.sheet_metal_face_score
         cnc_score = face_result.cnc_face_score
         mf_score = self._machining_feature_score
+        
+        # EARLY GUARD: CNC Turned Parts Detection
+        # Turned parts have high cylinder_area_ratio (cylindrical surfaces dominate)
+        # This must fire BEFORE confidence checks because turned parts may have
+        # low cnc_face_score due to planar end faces but still be clearly CNC.
+        cyl_area_ratio = getattr(face_result, 'cylinder_area_ratio', 0.0) or 0.0
+        cyl_ratio = getattr(face_result, 'cylinder_ratio', 0.0) or 0.0
+        cone_count = face_result.histogram.get('cone', 0) if face_result.histogram else 0
+        
+        # Check 1: High cylindrical surface area (>45%) indicates turning
+        if cyl_area_ratio > 0.45:
+            metadata['classification_method'] = 'face_type_cnc_turned_override'
+            metadata['reasoning'] = (
+                f"FACE-TYPE ANALYSIS: cylinder_area_ratio {cyl_area_ratio:.1%} "
+                f"indicates CNC turned part (SM={sm_score:.0f}, CNC={cnc_score:.0f})"
+            )
+            logger.info(
+                "Face classification early override: cylinder_area_ratio %.1f%% - turned part",
+                cyl_area_ratio * 100,
+            )
+            return ('cnc_milling', 0.85, metadata)
+        
+        # Check 2: Moderate cylinder ratio with chamfers (cone faces) = turning
+        if cyl_ratio > 0.40 and cone_count >= 2:
+            metadata['classification_method'] = 'face_type_cnc_turned_chamfered_override'
+            metadata['reasoning'] = (
+                f"FACE-TYPE ANALYSIS: cylinder_ratio {cyl_ratio:.1%} with "
+                f"{cone_count} cone faces (chamfers) indicates CNC turning "
+                f"(SM={sm_score:.0f}, CNC={cnc_score:.0f})"
+            )
+            logger.info(
+                "Face classification early override: cylinder_ratio %.1f%% with %d chamfers",
+                cyl_ratio * 100, cone_count,
+            )
+            return ('cnc_milling', 0.85, metadata)
+        
+        # Check 3: Face classification strongly favors CNC (score gap > 15)
+        is_likely_cnc = getattr(face_result, 'is_likely_cnc', False)
+        is_likely_sm = getattr(face_result, 'is_likely_sheet_metal', False)
+        if is_likely_cnc and not is_likely_sm and cnc_score > sm_score + 15:
+            metadata['classification_method'] = 'face_type_cnc_score_override'
+            metadata['reasoning'] = (
+                f"FACE-TYPE ANALYSIS: CNC score {cnc_score:.0f} >> SM score {sm_score:.0f}, "
+                f"is_likely_cnc=True, face classification strongly indicates CNC"
+            )
+            logger.info(
+                "Face classification early override: CNC score %d > SM %d + 15",
+                cnc_score, sm_score,
+            )
+            return ('cnc_milling', 0.85, metadata)
         
         # NEW: Get feature signals for additional validation
         feature_cnc_score = 50  # neutral default
@@ -914,6 +965,61 @@ class ProcessClassifier:
         """Handle confirmed sheet-thickness with CNC guard."""
         mf_score = self._machining_feature_score
 
+        # GUARD: CNC Turned Parts Detection
+        # Turned parts have high cylinder_area_ratio (cylindrical surfaces dominate)
+        # They often have thin wall gaps between stepped cylinders that ray-casting
+        # incorrectly interprets as sheet metal thickness.
+        fc = self._face_classification
+        if fc is not None:
+            # Check 1: High cylindrical surface area (>45%) indicates turning
+            cyl_area_ratio = getattr(fc, 'cylinder_area_ratio', 0.0) or 0.0
+            if cyl_area_ratio > 0.45:
+                metadata['classification_method'] = 'cnc_turned_part_override'
+                metadata['reasoning'] = (
+                    f"THICKNESS ANALYSIS detected sheet but cylinder_area_ratio "
+                    f"{cyl_area_ratio:.1%} indicates CNC turned part"
+                )
+                logger.info(
+                    "Advanced thickness rejected: high cylinder_area_ratio %.1f%% - turned part",
+                    cyl_area_ratio * 100,
+                )
+                return ('cnc_milling', 0.85, metadata)
+            
+            # Check 2: Face classification says CNC with good confidence
+            cnc_score = getattr(fc, 'cnc_face_score', 0) or 0
+            sm_score = getattr(fc, 'sheet_metal_face_score', 0) or 0
+            is_likely_cnc = getattr(fc, 'is_likely_cnc', False)
+            is_likely_sm = getattr(fc, 'is_likely_sheet_metal', False)
+            
+            # CNC when face classification strongly favors CNC
+            if is_likely_cnc and not is_likely_sm and cnc_score > sm_score + 15:
+                metadata['classification_method'] = 'cnc_face_classification_override'
+                metadata['reasoning'] = (
+                    f"THICKNESS ANALYSIS detected sheet but face classification "
+                    f"CNC={cnc_score} vs SM={sm_score}, is_likely_cnc=True"
+                )
+                logger.info(
+                    "Advanced thickness rejected: face classification CNC %d > SM %d",
+                    cnc_score, sm_score,
+                )
+                return ('cnc_milling', 0.85, metadata)
+            
+            # Check 3: High cylinder_ratio (many cylindrical faces) with cones (chamfers)
+            cyl_ratio = getattr(fc, 'cylinder_ratio', 0.0) or 0.0
+            cone_count = fc.histogram.get('cone', 0) if fc.histogram else 0
+            if cyl_ratio > 0.40 and cone_count >= 2:
+                # Many cylinders + cones = turned part with chamfers
+                metadata['classification_method'] = 'cnc_turned_chamfered_override'
+                metadata['reasoning'] = (
+                    f"THICKNESS ANALYSIS detected sheet but cylinder_ratio "
+                    f"{cyl_ratio:.1%} with {cone_count} cone faces (chamfers) indicates turning"
+                )
+                logger.info(
+                    "Advanced thickness rejected: cylinder_ratio %.1f%% with %d chamfers",
+                    cyl_ratio * 100, cone_count,
+                )
+                return ('cnc_milling', 0.85, metadata)
+
         # GAP 10 FIX: Require higher threshold and specific feature types
         # Old threshold (50) was too aggressive - tapped holes in sheet metal  
         # could trigger CNC override incorrectly
@@ -999,11 +1105,9 @@ class ProcessClassifier:
         # the ray-cast thin wall detection is likely finding walls between machined
         # features, NOT the actual plate thickness. Override to CNC.
         fc = self._face_classification
-        if fc is not None and fc.dominant_pair_thickness is not None:
-            if fc.dominant_pair_thickness >= 8.0:
-                # Face classification found paired planes at 8mm+ apart
-                # This is a thick machined plate, not sheet metal
-                # The thin wall detection found thin features between cylinders/pockets
+        if fc is not None:
+            # Guard 1: Thick plate override
+            if fc.dominant_pair_thickness is not None and fc.dominant_pair_thickness >= 8.0:
                 logger.info(
                     "Legacy thickness rejected: dominant_pair_thickness=%.1fmm "
                     "(thick plate), detected %.1fmm is internal wall",
@@ -1014,6 +1118,53 @@ class ProcessClassifier:
                     f"THICKNESS-DETECTED: {detected_thickness:.2f}mm internal wall "
                     f"but dominant_pair_thickness {fc.dominant_pair_thickness:.1f}mm "
                     f"indicates CNC machined plate"
+                )
+                return ('cnc_milling', 0.85, metadata)
+            
+            # Guard 2: High cylindrical surface area indicates turning
+            cyl_area_ratio = getattr(fc, 'cylinder_area_ratio', 0.0) or 0.0
+            if cyl_area_ratio > 0.45:
+                logger.info(
+                    "Legacy thickness rejected: cylinder_area_ratio %.1f%% - turned part",
+                    cyl_area_ratio * 100,
+                )
+                metadata['classification_method'] = 'cnc_turned_part_override'
+                metadata['reasoning'] = (
+                    f"THICKNESS-DETECTED: {detected_thickness:.2f}mm but "
+                    f"cylinder_area_ratio {cyl_area_ratio:.1%} indicates CNC turned part"
+                )
+                return ('cnc_milling', 0.85, metadata)
+            
+            # Guard 3: Face classification strongly favors CNC
+            cnc_score = getattr(fc, 'cnc_face_score', 0) or 0
+            sm_score = getattr(fc, 'sheet_metal_face_score', 0) or 0
+            is_likely_cnc = getattr(fc, 'is_likely_cnc', False)
+            is_likely_sm = getattr(fc, 'is_likely_sheet_metal', False)
+            
+            if is_likely_cnc and not is_likely_sm and cnc_score > sm_score + 15:
+                logger.info(
+                    "Legacy thickness rejected: face classification CNC %d > SM %d",
+                    cnc_score, sm_score,
+                )
+                metadata['classification_method'] = 'cnc_face_classification_override'
+                metadata['reasoning'] = (
+                    f"THICKNESS-DETECTED: {detected_thickness:.2f}mm but face "
+                    f"classification CNC={cnc_score} vs SM={sm_score} indicates CNC"
+                )
+                return ('cnc_milling', 0.85, metadata)
+            
+            # Guard 4: High cylinder_ratio with cone faces (chamfers) = turning
+            cyl_ratio = getattr(fc, 'cylinder_ratio', 0.0) or 0.0
+            cone_count = fc.histogram.get('cone', 0) if fc.histogram else 0
+            if cyl_ratio > 0.40 and cone_count >= 2:
+                logger.info(
+                    "Legacy thickness rejected: cylinder_ratio %.1f%% with %d chamfers",
+                    cyl_ratio * 100, cone_count,
+                )
+                metadata['classification_method'] = 'cnc_turned_chamfered_override'
+                metadata['reasoning'] = (
+                    f"THICKNESS-DETECTED: {detected_thickness:.2f}mm but "
+                    f"cylinder_ratio {cyl_ratio:.1%} with {cone_count} chamfers indicates turning"
                 )
                 return ('cnc_milling', 0.85, metadata)
         
