@@ -1029,7 +1029,7 @@ class AdvancedDFMAnalyzer:
         - Slot aspect ratio (depth/width)
         - Corner radius requirements for closed slots
         """
-        slots_data = advanced_features.get("slots", {})
+        slots_data = advanced_features.get("slots") or {}
         total_slots = slots_data.get("totalCount", 0)
         if total_slots == 0:
             return
@@ -1103,7 +1103,7 @@ class AdvancedDFMAnalyzer:
         - External vs internal threading requirements
         - Non-standard thread pitches
         """
-        threads_data = advanced_features.get("threads", {})
+        threads_data = advanced_features.get("threads") or {}
         total_threads = threads_data.get("totalCount", 0)
         if total_threads == 0:
             return
