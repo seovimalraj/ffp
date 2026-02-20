@@ -150,6 +150,245 @@ def test_ambiguous_thin_cnc_part():
         f"Expected sheet_metal or cnc_milling for borderline case, got {process_type}"
     print(f"✅ PASSED: Borderline case classified as {process_type} (acceptable)")
 
+
+def test_cnc_turned_part_high_cylinder_area():
+    """Test CNC turned part with high cylinder_area_ratio is correctly identified"""
+    print("\n=== Test 6: CNC Turned Part (High Cylinder Area Ratio) ===")
+    from app.core.face_classification import FaceClassificationResult
+    
+    metrics = GeometricMetrics(
+        bbox_dims=[166.0, 65.0, 65.0],  # Turned part envelope
+        volume_mm3=338300,
+        surface_area_mm2=54034
+    )
+    
+    # Face classification for turned part - high cylinder area
+    fc = FaceClassificationResult(
+        histogram={'plane': 18, 'cylinder': 4, 'cone': 0, 'torus': 4, 'total': 26},
+        plane_ratio=0.69,
+        cylinder_ratio=0.15,
+        freeform_ratio=0.0,
+        mixed_ratio=0.31,
+        plane_area_ratio=0.15,
+        cylinder_area_ratio=0.82,  # Very high - indicates turning
+        paired_plane_count=4,
+        paired_plane_area=4364,
+        dominant_pair_thickness=6.0,
+        is_likely_sheet_metal=False,
+        is_likely_cnc=False,
+        cnc_face_score=35,
+        sheet_metal_face_score=41,
+        reasoning="Turned cylindrical part"
+    )
+    
+    classifier = ProcessClassifier(metrics)
+    process_type, confidence, metadata = classifier.classify(
+        face_classification=fc,
+        detected_thickness=0.81,  # Thin wall detected between cylinders
+        thickness_confidence=0.95
+    )
+    
+    print(f"Classification: {process_type}")
+    print(f"Confidence: {confidence:.2%}")
+    print(f"Method: {metadata.get('classification_method', 'N/A')}")
+    print(f"Reasoning: {metadata.get('reasoning', 'N/A')}")
+    
+    assert process_type == 'cnc_milling', \
+        f"Expected cnc_milling for turned part, got {process_type}"
+    assert 'turned' in metadata.get('classification_method', '').lower() or \
+           'cylinder' in metadata.get('reasoning', '').lower(), \
+        "Should mention turning/cylinder in classification"
+    print("✅ PASSED: CNC turned part correctly identified via cylinder_area_ratio")
+
+
+def test_cnc_part_with_chamfers():
+    """Test CNC turned part with chamfers (cone faces)"""
+    print("\n=== Test 7: CNC Turned Part with Chamfers ===")
+    from app.core.face_classification import FaceClassificationResult
+    
+    metrics = GeometricMetrics(
+        bbox_dims=[30.0, 34.0, 77.0],
+        volume_mm3=32655,
+        surface_area_mm2=12738
+    )
+    
+    # Face classification with high cylinder_ratio and cone faces
+    fc = FaceClassificationResult(
+        histogram={'plane': 47, 'cylinder': 11, 'cone': 9, 'torus': 0, 'total': 67},
+        plane_ratio=0.70,
+        cylinder_ratio=0.16,
+        freeform_ratio=0.0,
+        mixed_ratio=0.30,
+        plane_area_ratio=0.23,
+        cylinder_area_ratio=0.46,  # Moderate cylinder area
+        paired_plane_count=0,
+        paired_plane_area=0,
+        dominant_pair_thickness=None,
+        is_likely_sheet_metal=False,
+        is_likely_cnc=False,
+        cnc_face_score=35,
+        sheet_metal_face_score=20,
+        reasoning="High plane ratio with cone chamfers"
+    )
+    
+    classifier = ProcessClassifier(metrics)
+    process_type, confidence, metadata = classifier.classify(
+        face_classification=fc,
+        detected_thickness=2e-6,  # Near-zero detected thickness (surface gap)
+        thickness_confidence=0.95
+    )
+    
+    print(f"Classification: {process_type}")
+    print(f"Confidence: {confidence:.2%}")
+    print(f"Method: {metadata.get('classification_method', 'N/A')}")
+    print(f"Reasoning: {metadata.get('reasoning', 'N/A')}")
+    
+    assert process_type == 'cnc_milling', \
+        f"Expected cnc_milling for part with chamfers, got {process_type}"
+    print("✅ PASSED: CNC part with chamfers correctly identified")
+
+
+def test_cnc_turn_mill_part():
+    """Test CNC turn+mill part with many cylindrical faces"""
+    print("\n=== Test 8: CNC Turn-Mill Part (High Cylinder Ratio) ===")
+    from app.core.face_classification import FaceClassificationResult
+    
+    metrics = GeometricMetrics(
+        bbox_dims=[63.0, 22.0, 63.0],
+        volume_mm3=22024,
+        surface_area_mm2=13694
+    )
+    
+    # Face classification for turn-mill part
+    fc = FaceClassificationResult(
+        histogram={'plane': 34, 'cylinder': 31, 'cone': 0, 'torus': 4, 'total': 69},
+        plane_ratio=0.49,
+        cylinder_ratio=0.45,  # High cylinder ratio
+        freeform_ratio=0.0,
+        mixed_ratio=0.51,
+        plane_area_ratio=0.44,
+        cylinder_area_ratio=0.53,
+        paired_plane_count=2,
+        paired_plane_area=4508,
+        dominant_pair_thickness=3.0,
+        is_likely_sheet_metal=False,
+        is_likely_cnc=True,  # Face classification says CNC
+        cnc_face_score=60,
+        sheet_metal_face_score=41,
+        reasoning="High cylinder ratio, CNC likely"
+    )
+    
+    classifier = ProcessClassifier(metrics)
+    process_type, confidence, metadata = classifier.classify(
+        face_classification=fc,
+        detected_thickness=0.57,
+        thickness_confidence=0.95
+    )
+    
+    print(f"Classification: {process_type}")
+    print(f"Confidence: {confidence:.2%}")
+    print(f"Method: {metadata.get('classification_method', 'N/A')}")
+    print(f"Reasoning: {metadata.get('reasoning', 'N/A')}")
+    
+    assert process_type == 'cnc_milling', \
+        f"Expected cnc_milling for turn-mill part, got {process_type}"
+    print("✅ PASSED: CNC turn-mill part correctly identified")
+
+
+def test_cnc_face_classification_override():
+    """Test that face classification CNC score overrides thickness detection"""
+    print("\n=== Test 9: Face Classification CNC Override ===")
+    from app.core.face_classification import FaceClassificationResult
+    
+    metrics = GeometricMetrics(
+        bbox_dims=[43.7, 10.1, 60.2],
+        volume_mm3=6003,
+        surface_area_mm2=3984
+    )
+    
+    # Face classification strongly favors CNC
+    fc = FaceClassificationResult(
+        histogram={'plane': 19, 'cylinder': 65, 'cone': 4, 'torus': 57, 'bspline': 16, 'total': 162},
+        plane_ratio=0.12,
+        cylinder_ratio=0.40,  # High cylinder ratio
+        freeform_ratio=0.10,
+        mixed_ratio=0.88,
+        plane_area_ratio=0.55,
+        cylinder_area_ratio=0.27,
+        paired_plane_count=1,
+        paired_plane_area=1392,
+        dominant_pair_thickness=4.2,
+        is_likely_sheet_metal=False,
+        is_likely_cnc=True,
+        cnc_face_score=80,  # Much higher than sheet metal
+        sheet_metal_face_score=26,
+        reasoning="Low plane ratio, high cylinder content"
+    )
+    
+    classifier = ProcessClassifier(metrics)
+    process_type, confidence, metadata = classifier.classify(
+        face_classification=fc,
+        detected_thickness=0.42,
+        thickness_confidence=0.95
+    )
+    
+    print(f"Classification: {process_type}")
+    print(f"Confidence: {confidence:.2%}")
+    print(f"Method: {metadata.get('classification_method', 'N/A')}")
+    print(f"Reasoning: {metadata.get('reasoning', 'N/A')}")
+    
+    assert process_type == 'cnc_milling', \
+        f"Expected cnc_milling when face classification strongly favors CNC, got {process_type}"
+    print("✅ PASSED: Face classification CNC override works correctly")
+
+
+def test_high_cylinder_count_part():
+    """Test part with 579 cylindrical faces (many holes)"""
+    print("\n=== Test 10: Part with Many Cylindrical Faces (579 holes) ===")
+    from app.core.face_classification import FaceClassificationResult
+    
+    metrics = GeometricMetrics(
+        bbox_dims=[52.0, 52.0, 33.0],
+        volume_mm3=20583,
+        surface_area_mm2=7537
+    )
+    
+    # Part with massive number of cylindrical faces (holes)
+    fc = FaceClassificationResult(
+        histogram={'plane': 4, 'cylinder': 579, 'cone': 1, 'total': 584},
+        plane_ratio=0.007,  # Very low plane ratio
+        cylinder_ratio=0.99,  # Dominated by cylinders
+        freeform_ratio=0.0,
+        mixed_ratio=0.993,
+        plane_area_ratio=0.53,
+        cylinder_area_ratio=0.47,  # Significant cylinder area
+        paired_plane_count=2,
+        paired_plane_area=4012,
+        dominant_pair_thickness=6.48,
+        is_likely_sheet_metal=False,
+        is_likely_cnc=True,
+        cnc_face_score=58,
+        sheet_metal_face_score=38,
+        reasoning="Very high cylinder ratio - many holes"
+    )
+    
+    classifier = ProcessClassifier(metrics)
+    process_type, confidence, metadata = classifier.classify(
+        face_classification=fc,
+        detected_thickness=0.50,
+        thickness_confidence=0.95
+    )
+    
+    print(f"Classification: {process_type}")
+    print(f"Confidence: {confidence:.2%}")
+    print(f"Method: {metadata.get('classification_method', 'N/A')}")
+    print(f"Reasoning: {metadata.get('reasoning', 'N/A')}")
+    
+    assert process_type == 'cnc_milling', \
+        f"Expected cnc_milling for part with many cylinders, got {process_type}"
+    print("✅ PASSED: Part with many cylindrical faces correctly identified as CNC")
+
+
 if __name__ == "__main__":
     print("="*60)
     print("TESTING IMPROVED PART CLASSIFICATION")
@@ -162,6 +401,11 @@ if __name__ == "__main__":
         test_sheet_metal_flat_plate()
         test_sheet_metal_bent_bracket()
         test_ambiguous_thin_cnc_part()
+        test_cnc_turned_part_high_cylinder_area()
+        test_cnc_part_with_chamfers()
+        test_cnc_turn_mill_part()
+        test_cnc_face_classification_override()
+        test_high_cylinder_count_part()
         
         print("\n" + "="*60)
         print("✅ ALL TESTS PASSED!")
@@ -172,6 +416,9 @@ if __name__ == "__main__":
         print("3. Sheet metal requires low volume efficiency (<0.5)")
         print("4. Thickness detection no longer sole determinant")
         print("5. Multiple factors considered: thickness + volume + bends")
+        print("6. CNC turned parts detected via cylinder_area_ratio > 0.45")
+        print("7. Face classification CNC score overrides thickness detection")
+        print("8. Parts with chamfers (cone faces) + cylinders = CNC turning")
         
     except AssertionError as e:
         print(f"\n❌ TEST FAILED: {e}")
@@ -183,3 +430,5 @@ if __name__ == "__main__":
         traceback.print_exc()
         import sys
         sys.exit(1)
+
+
