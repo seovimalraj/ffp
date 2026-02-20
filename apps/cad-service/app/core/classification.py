@@ -702,7 +702,7 @@ class ProcessClassifier:
         # low cnc_face_score due to planar end faces but still be clearly CNC.
         cyl_area_ratio = getattr(face_result, 'cylinder_area_ratio', 0.0) or 0.0
         cyl_ratio = getattr(face_result, 'cylinder_ratio', 0.0) or 0.0
-        cone_count = face_result.histogram.get('cone', 0) if face_result.histogram else 0
+        cone_count = face_result.histogram.cone if face_result.histogram else 0
         
         # Check 1: High cylindrical surface area (>45%) indicates turning
         if cyl_area_ratio > 0.45:
@@ -1006,7 +1006,7 @@ class ProcessClassifier:
             
             # Check 3: High cylinder_ratio (many cylindrical faces) with cones (chamfers)
             cyl_ratio = getattr(fc, 'cylinder_ratio', 0.0) or 0.0
-            cone_count = fc.histogram.get('cone', 0) if fc.histogram else 0
+            cone_count = fc.histogram.cone if fc.histogram else 0
             if cyl_ratio > 0.40 and cone_count >= 2:
                 # Many cylinders + cones = turned part with chamfers
                 metadata['classification_method'] = 'cnc_turned_chamfered_override'
@@ -1155,7 +1155,7 @@ class ProcessClassifier:
             
             # Guard 4: High cylinder_ratio with cone faces (chamfers) = turning
             cyl_ratio = getattr(fc, 'cylinder_ratio', 0.0) or 0.0
-            cone_count = fc.histogram.get('cone', 0) if fc.histogram else 0
+            cone_count = fc.histogram.cone if fc.histogram else 0
             if cyl_ratio > 0.40 and cone_count >= 2:
                 logger.info(
                     "Legacy thickness rejected: cylinder_ratio %.1f%% with %d chamfers",

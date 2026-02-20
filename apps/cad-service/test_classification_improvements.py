@@ -4,6 +4,7 @@ Tests that CNC machining parts with thin features are correctly identified.
 """
 from app.core.geometry import GeometricMetrics, calculate_sheet_metal_score
 from app.core.classification import ProcessClassifier
+from app.core.face_classification import FaceClassificationResult, FaceTypeHistogram
 
 def test_solid_cnc_block():
     """Test that solid block is classified as CNC milling"""
@@ -154,7 +155,6 @@ def test_ambiguous_thin_cnc_part():
 def test_cnc_turned_part_high_cylinder_area():
     """Test CNC turned part with high cylinder_area_ratio is correctly identified"""
     print("\n=== Test 6: CNC Turned Part (High Cylinder Area Ratio) ===")
-    from app.core.face_classification import FaceClassificationResult
     
     metrics = GeometricMetrics(
         bbox_dims=[166.0, 65.0, 65.0],  # Turned part envelope
@@ -164,7 +164,7 @@ def test_cnc_turned_part_high_cylinder_area():
     
     # Face classification for turned part - high cylinder area
     fc = FaceClassificationResult(
-        histogram={'plane': 18, 'cylinder': 4, 'cone': 0, 'torus': 4, 'total': 26},
+        histogram=FaceTypeHistogram(plane=18, cylinder=4, cone=0, torus=4),
         plane_ratio=0.69,
         cylinder_ratio=0.15,
         freeform_ratio=0.0,
@@ -204,7 +204,6 @@ def test_cnc_turned_part_high_cylinder_area():
 def test_cnc_part_with_chamfers():
     """Test CNC turned part with chamfers (cone faces)"""
     print("\n=== Test 7: CNC Turned Part with Chamfers ===")
-    from app.core.face_classification import FaceClassificationResult
     
     metrics = GeometricMetrics(
         bbox_dims=[30.0, 34.0, 77.0],
@@ -214,7 +213,7 @@ def test_cnc_part_with_chamfers():
     
     # Face classification with high cylinder_ratio and cone faces
     fc = FaceClassificationResult(
-        histogram={'plane': 47, 'cylinder': 11, 'cone': 9, 'torus': 0, 'total': 67},
+        histogram=FaceTypeHistogram(plane=47, cylinder=11, cone=9, torus=0),
         plane_ratio=0.70,
         cylinder_ratio=0.16,
         freeform_ratio=0.0,
@@ -251,7 +250,6 @@ def test_cnc_part_with_chamfers():
 def test_cnc_turn_mill_part():
     """Test CNC turn+mill part with many cylindrical faces"""
     print("\n=== Test 8: CNC Turn-Mill Part (High Cylinder Ratio) ===")
-    from app.core.face_classification import FaceClassificationResult
     
     metrics = GeometricMetrics(
         bbox_dims=[63.0, 22.0, 63.0],
@@ -261,7 +259,7 @@ def test_cnc_turn_mill_part():
     
     # Face classification for turn-mill part
     fc = FaceClassificationResult(
-        histogram={'plane': 34, 'cylinder': 31, 'cone': 0, 'torus': 4, 'total': 69},
+        histogram=FaceTypeHistogram(plane=34, cylinder=31, cone=0, torus=4),
         plane_ratio=0.49,
         cylinder_ratio=0.45,  # High cylinder ratio
         freeform_ratio=0.0,
@@ -298,7 +296,6 @@ def test_cnc_turn_mill_part():
 def test_cnc_face_classification_override():
     """Test that face classification CNC score overrides thickness detection"""
     print("\n=== Test 9: Face Classification CNC Override ===")
-    from app.core.face_classification import FaceClassificationResult
     
     metrics = GeometricMetrics(
         bbox_dims=[43.7, 10.1, 60.2],
@@ -308,7 +305,7 @@ def test_cnc_face_classification_override():
     
     # Face classification strongly favors CNC
     fc = FaceClassificationResult(
-        histogram={'plane': 19, 'cylinder': 65, 'cone': 4, 'torus': 57, 'bspline': 16, 'total': 162},
+        histogram=FaceTypeHistogram(plane=19, cylinder=65, cone=4, torus=57, bspline=16),
         plane_ratio=0.12,
         cylinder_ratio=0.40,  # High cylinder ratio
         freeform_ratio=0.10,
@@ -345,7 +342,6 @@ def test_cnc_face_classification_override():
 def test_high_cylinder_count_part():
     """Test part with 579 cylindrical faces (many holes)"""
     print("\n=== Test 10: Part with Many Cylindrical Faces (579 holes) ===")
-    from app.core.face_classification import FaceClassificationResult
     
     metrics = GeometricMetrics(
         bbox_dims=[52.0, 52.0, 33.0],
@@ -355,7 +351,7 @@ def test_high_cylinder_count_part():
     
     # Part with massive number of cylindrical faces (holes)
     fc = FaceClassificationResult(
-        histogram={'plane': 4, 'cylinder': 579, 'cone': 1, 'total': 584},
+        histogram=FaceTypeHistogram(plane=4, cylinder=579, cone=1),
         plane_ratio=0.007,  # Very low plane ratio
         cylinder_ratio=0.99,  # Dominated by cylinders
         freeform_ratio=0.0,
