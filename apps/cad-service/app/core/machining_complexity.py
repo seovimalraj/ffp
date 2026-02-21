@@ -11,7 +11,7 @@ Detects machining requirements including:
 
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import List, Optional, Tuple, Set
+from typing import List, Optional, Tuple, Set, Dict
 import math
 
 
@@ -515,6 +515,167 @@ def analyze_machining_complexity(
     )
 
 
+def analyze_tool_accessibility(
+    mesh,
+    feature_locations: Optional[List[Tuple[float, float, float]]] = None,
+    tool_diameter: float = 10.0,
+    num_directions: int = 26
+) -> Dict:
+    """
+    Analyze tool accessibility for machining using ray-based visibility.
+    
+    Casts rays from feature locations in multiple directions to determine
+    which directions have clear tool access vs interference.
+    
+    Args:
+        mesh: Trimesh mesh object
+        feature_locations: List of (x, y, z) points to check access from
+        tool_diameter: Tool diameter in mm (affects clearance check)
+        num_directions: Number of directions to test (6=orthogonal, 26=full)
+    
+    Returns:
+        Dict with accessibility analysis per feature
+    """
+    try:
+        import numpy as np
+    except ImportError:
+        return {'error': 'numpy not available'}
+    
+    # Standard access directions
+    if num_directions == 6:
+        # Orthogonal only
+        directions = np.array([
+            [0, 0, 1],   # Top (+Z)
+            [0, 0, -1],  # Bottom (-Z)
+            [1, 0, 0],   # Right (+X)
+            [-1, 0, 0],  # Left (-X)
+            [0, 1, 0],   # Front (+Y)
+            [0, -1, 0],  # Back (-Y)
+        ], dtype=float)
+    else:
+        # Full 26 directions (cube corners + edges + faces)
+        directions = []
+        for x in [-1, 0, 1]:
+            for y in [-1, 0, 1]:
+                for z in [-1, 0, 1]:
+                    if x == 0 and y == 0 and z == 0:
+                        continue
+                    directions.append([x, y, z])
+        directions = np.array(directions, dtype=float)
+        # Normalize
+        directions = directions / np.linalg.norm(directions, axis=1, keepdims=True)
+    
+    # Direction labels
+    direction_labels = {
+        (0, 0, 1): 'top',
+        (0, 0, -1): 'bottom',
+        (1, 0, 0): 'right',
+        (-1, 0, 0): 'left',
+        (0, 1, 0): 'front',
+        (0, -1, 0): 'back',
+    }
+    
+    if feature_locations is None or len(feature_locations) == 0:
+        # Use mesh centroid as default test point
+        feature_locations = [tuple(mesh.centroid)]
+    
+    results = {
+        'features': [],
+        'summary': {
+            'total_features': len(feature_locations),
+            'fully_accessible': 0,
+            'partially_accessible': 0,
+            'difficult_access': 0,
+            'requires_5axis': False,
+            'accessible_directions': set(),
+        }
+    }
+    
+    # Check if mesh has ray intersection capability
+    if not hasattr(mesh, 'ray'):
+        results['error'] = 'Mesh ray intersection not available'
+        return results
+    
+    for loc in feature_locations:
+        loc = np.array(loc)
+        accessible_dirs = []
+        blocked_dirs = []
+        
+        for d_idx, direction in enumerate(directions):
+            # Cast ray from feature outward
+            # If it doesn't hit mesh (or hits at large distance), direction is accessible
+            
+            origins = np.array([loc])
+            ray_dirs = np.array([direction])
+            
+            try:
+                # Use trimesh ray intersection
+                locations, index_ray, index_tri = mesh.ray.intersects_location(
+                    ray_origins=origins,
+                    ray_directions=ray_dirs
+                )
+                
+                if len(locations) == 0:
+                    # No intersection - fully accessible
+                    accessible_dirs.append(tuple(np.round(direction, 1)))
+                else:
+                    # Check distance to nearest hit
+                    distances = np.linalg.norm(locations - loc, axis=1)
+                    min_dist = np.min(distances)
+                    
+                    # If nearest hit is far (> 100mm), consider accessible
+                    # Tool needs clearance proportional to diameter
+                    clearance_needed = tool_diameter * 3
+                    
+                    if min_dist > clearance_needed:
+                        accessible_dirs.append(tuple(np.round(direction, 1)))
+                    else:
+                        blocked_dirs.append({
+                            'direction': tuple(np.round(direction, 1)),
+                            'blocked_at': float(min_dist)
+                        })
+            except Exception:
+                # Ray cast failed - assume accessible
+                accessible_dirs.append(tuple(np.round(direction, 1)))
+        
+        # Classify feature accessibility
+        num_accessible = len(accessible_dirs)
+        if num_accessible >= 6:
+            access_level = 'fully_accessible'
+            results['summary']['fully_accessible'] += 1
+        elif num_accessible >= 2:
+            access_level = 'partially_accessible'
+            results['summary']['partially_accessible'] += 1
+        else:
+            access_level = 'difficult_access'
+            results['summary']['difficult_access'] += 1
+        
+        # Check if any accessible direction requires 5-axis
+        orthogonal_axes = {(0, 0, 1.0), (0, 0, -1.0), (1.0, 0, 0), (-1.0, 0, 0), (0, 1.0, 0), (0, -1.0, 0)}
+        has_orthogonal = any(
+            tuple(np.round(d, 0)) in orthogonal_axes
+            for d in accessible_dirs
+        )
+        
+        if not has_orthogonal and num_accessible > 0:
+            results['summary']['requires_5axis'] = True
+        
+        for d in accessible_dirs:
+            results['summary']['accessible_directions'].add(d)
+        
+        results['features'].append({
+            'location': loc.tolist(),
+            'accessible_directions': accessible_dirs[:6],  # Top 6
+            'blocked_count': len(blocked_dirs),
+            'access_level': access_level,
+        })
+    
+    # Convert set to list for JSON serialization
+    results['summary']['accessible_directions'] = list(results['summary']['accessible_directions'])[:10]
+    
+    return results
+
+
 def analyze_machining_complexity_from_mesh(
     mesh,
     holes: Optional[List] = None,
@@ -539,6 +700,25 @@ def analyze_machining_complexity_from_mesh(
     feature_access, direction_count, needs_4axis, needs_5axis = _analyze_feature_access_directions(
         holes, pockets, undercuts
     )
+    
+    # Run full accessibility analysis if we have feature locations
+    feature_locations = []
+    for hole in holes:
+        center = getattr(hole, 'center', None)
+        if center is not None:
+            feature_locations.append(tuple(center) if hasattr(center, '__iter__') else (0, 0, 0))
+    for pocket in pockets:
+        center = getattr(pocket, 'center', None)
+        if center is not None:
+            feature_locations.append(tuple(center) if hasattr(center, '__iter__') else (0, 0, 0))
+    
+    accessibility_result = {}
+    if feature_locations and hasattr(mesh, 'ray'):
+        accessibility_result = analyze_tool_accessibility(mesh, feature_locations)
+        if accessibility_result.get('summary', {}).get('requires_5axis'):
+            needs_5axis = True
+        if accessibility_result.get('summary', {}).get('difficult_access', 0) > 0:
+            needs_4axis = True
     
     # Simplified axis analysis from mesh
     vertices = mesh.vectors

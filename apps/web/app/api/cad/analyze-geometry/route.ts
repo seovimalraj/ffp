@@ -515,7 +515,11 @@ function buildGeometryResult(ctx: GeometryContext): any {
     } : undefined,
     validation: backendData.validation || undefined,
     complexityScore: backendData.complexity_score || 0,
-    features: generateFeatureTags(backendData, recommendedProcess, bendCount, detectedThickness)
+    features: generateFeatureTags(backendData, recommendedProcess, bendCount, detectedThickness),
+    // === ADVANCED MANUFACTURING ANALYSIS ===
+    surfaceFinishAnalysis: transformSurfaceFinish(backendData.surface_finish),
+    castingAnalysis: transformCastingAnalysis(backendData.casting_analysis),
+    machiningComplexity: transformMachiningComplexity(backendData.machining_complexity),
   };
 }
 
@@ -782,4 +786,100 @@ function estimateMachiningTime(data: any): number {
 function calculateMaterialWeight(volumeCm3: number): number {
   // Aluminum 6061 density: 2.7 g/cm³
   return volumeCm3 * 2.7;
+}
+
+/**
+ * Transform backend surface finish analysis to frontend format
+ */
+function transformSurfaceFinish(surfaceFinish: any): any {
+  if (!surfaceFinish) return undefined;
+  
+  return {
+    dominantGrade: surfaceFinish.dominant_grade || 'standard',
+    minRaRequired: surfaceFinish.min_ra_required || 3.2,
+    minRzEstimated: surfaceFinish.min_rz_estimated || surfaceFinish.min_ra_required * 5 || 16,
+    precisionFaceCount: surfaceFinish.precision_face_count || 0,
+    polishedFaceCount: surfaceFinish.polished_face_count || 0,
+    groundFaceCount: surfaceFinish.ground_face_count || 0,
+    totalPrecisionAreaMm2: surfaceFinish.total_precision_area_mm2 || 0,
+    finishComplexityScore: surfaceFinish.finish_complexity_score || 0,
+    features: (surfaceFinish.features || []).map((f: any) => ({
+      grade: f.grade || 'standard',
+      estimatedRa: f.estimated_ra || 3.2,
+      estimatedRz: f.estimated_rz || f.estimated_ra * 5 || 16,
+      faceAreaMm2: f.face_area_mm2 || 0,
+      faceType: f.face_type || 'unknown',
+      isMatingSurface: f.is_mating_surface || false,
+      requiresGrinding: f.requires_grinding || false,
+      requiresPolishing: f.requires_polishing || false,
+    })),
+  };
+}
+
+/**
+ * Transform backend casting analysis to frontend format
+ */
+function transformCastingAnalysis(castingAnalysis: any): any {
+  if (!castingAnalysis) return undefined;
+  
+  return {
+    isLikelyCasting: castingAnalysis.is_likely_casting || false,
+    castingType: castingAnalysis.casting_type || 'not_castable',
+    optimalPartingZ: castingAnalysis.optimal_parting_z,
+    draftCompliantFaces: castingAnalysis.draft_compliant_faces || 0,
+    draftInsufficientFaces: castingAnalysis.draft_insufficient_faces || 0,
+    averageDraftDeg: castingAnalysis.average_draft_deg || 0,
+    minDraftDeg: castingAnalysis.min_draft_deg || 0,
+    hasUndercuts: castingAnalysis.has_undercuts || false,
+    undercutCount: castingAnalysis.undercut_count || 0,
+    ejectorDifficulty: castingAnalysis.ejector_difficulty || 'easy',
+    confidence: castingAnalysis.confidence || 0,
+    partingLines: (castingAnalysis.parting_lines || []).map((pl: any) => ({
+      zLevel: pl.z_level,
+      complexity: pl.complexity || 0,
+      isPlanar: pl.is_planar !== false,
+      confidence: pl.confidence || 0,
+    })),
+  };
+}
+
+/**
+ * Transform backend machining complexity analysis to frontend format
+ */
+function transformMachiningComplexity(machiningComplexity: any): any {
+  if (!machiningComplexity) return undefined;
+  
+  return {
+    primaryProcess: machiningComplexity.primary_process || 'milling',
+    secondaryProcess: machiningComplexity.secondary_process,
+    recommendedMachine: machiningComplexity.recommended_machine || 'mill_3axis',
+    estimatedSetupCount: machiningComplexity.estimated_setup_count || 1,
+    complexityScore: machiningComplexity.complexity_score || 0,
+    requires5Axis: machiningComplexity.requires_5axis || false,
+    requires4Axis: machiningComplexity.requires_4axis || false,
+    isTurnMill: machiningComplexity.is_turn_mill || false,
+    requiresEdm: machiningComplexity.requires_edm || false,
+    milling: machiningComplexity.milling ? {
+      minAxesRequired: machiningComplexity.milling.min_axes_required || 3,
+      hasDeepPockets: machiningComplexity.milling.has_deep_pockets || false,
+      hasUndercuts: machiningComplexity.milling.has_undercuts || false,
+      hasCompoundAngles: machiningComplexity.milling.has_compound_angles || false,
+      accessDirectionCount: machiningComplexity.milling.access_direction_count || 1,
+      maxToolLengthMm: machiningComplexity.milling.max_tool_length_mm || 0,
+    } : undefined,
+    turning: machiningComplexity.turning ? {
+      isRotationallySymmetric: machiningComplexity.turning.is_rotationally_symmetric || false,
+      symmetryAxis: machiningComplexity.turning.symmetry_axis,
+      hasCrossHoles: machiningComplexity.turning.has_cross_holes || false,
+      crossHoleCount: machiningComplexity.turning.cross_hole_count || 0,
+      hasFlats: machiningComplexity.turning.has_flats || false,
+      hasThreads: machiningComplexity.turning.has_threads || false,
+      requiresTailstock: machiningComplexity.turning.requires_tailstock || false,
+    } : undefined,
+    setups: (machiningComplexity.setups || []).map((s: any) => ({
+      setupNumber: s.setup_number || 0,
+      orientation: s.orientation || 'top',
+      requiresSpecialFixture: s.requires_special_fixture || false,
+    })),
+  };
 }

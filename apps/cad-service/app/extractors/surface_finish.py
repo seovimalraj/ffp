@@ -11,7 +11,7 @@ Detects likely surface finish requirements based on:
 
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import List, Optional, Tuple
+from typing import List, Optional, Tuple, Dict
 import math
 
 
@@ -350,6 +350,10 @@ def extract_surface_finish_from_mesh(mesh) -> SurfaceFinishAnalysis:
         normal_bins[key]['indices'].append(i)
         normal_bins[key]['centroids'].append(centroids[i])
     
+    # Enhanced: Estimate local curvature from mesh
+    # High curvature regions often need better finish
+    curvature_scores = _estimate_mesh_curvature(mesh, vertices, normals, areas)
+    
     # Large planar clusters likely need good finish
     for normal_key, data in normal_bins.items():
         cluster_area = data['area']
@@ -360,12 +364,25 @@ def extract_surface_finish_from_mesh(mesh) -> SurfaceFinishAnalysis:
         cluster_centroids = np.array(data['centroids'])
         center = tuple(np.mean(cluster_centroids, axis=0))
         
+        # Get average curvature for this cluster
+        cluster_indices = data['indices']
+        if curvature_scores is not None and len(cluster_indices) > 0:
+            avg_curvature = np.mean([curvature_scores.get(i, 0.0) for i in cluster_indices])
+        else:
+            avg_curvature = 0.0
+        
         # Large planar faces -> standard finish
         # Very large faces -> likely datum/mating
+        # High curvature -> may need better finish for smooth blends
         if cluster_area > 500.0:
             grade = SurfaceFinishGrade.FINE
             est_ra = 1.6
             is_mating = True
+        elif avg_curvature > 0.1:
+            # Curved surface - may need polishing for appearance
+            grade = SurfaceFinishGrade.FINE
+            est_ra = 1.6
+            is_mating = False
         else:
             grade = SurfaceFinishGrade.STANDARD
             est_ra = 3.2
@@ -375,13 +392,13 @@ def extract_surface_finish_from_mesh(mesh) -> SurfaceFinishAnalysis:
             grade=grade,
             estimated_ra=est_ra,
             face_area=cluster_area,
-            face_type='planar',
+            face_type='planar' if avg_curvature < 0.05 else 'curved',
             center=center,
             is_mating_surface=is_mating,
             is_datum=is_mating,
             requires_grinding=False,
-            requires_polishing=False,
-            confidence=0.3  # Lower confidence for mesh
+            requires_polishing=avg_curvature > 0.2,
+            confidence=0.4  # Lower confidence for mesh
         ))
     
     # Determine dominant grade
@@ -410,3 +427,131 @@ def extract_surface_finish_from_mesh(mesh) -> SurfaceFinishAnalysis:
         total_precision_area=sum(f.face_area for f in features if f.grade != SurfaceFinishGrade.STANDARD),
         finish_complexity_score=min(precision_count * 5 + polished_count * 10, 100)
     )
+
+
+def _estimate_mesh_curvature(mesh, vertices, normals, areas) -> Optional[Dict[int, float]]:
+    """
+    Estimate local curvature from mesh geometry for surface finish estimation.
+    
+    Uses face normal deviation to estimate curvature.
+    Higher curvature regions may require finer surface finish.
+    
+    Returns dict mapping face index to curvature value.
+    """
+    try:
+        import numpy as np
+    except ImportError:
+        return None
+    
+    if not hasattr(mesh, 'face_adjacency') or len(mesh.face_adjacency) < 5:
+        return None
+    
+    try:
+        adjacency = mesh.face_adjacency  # pairs of adjacent faces
+        
+        # For each face, measure normal deviation from neighbors
+        curvature_map = {}
+        
+        # Build adjacency lookup
+        face_neighbors = {}
+        for f1, f2 in adjacency:
+            if f1 not in face_neighbors:
+                face_neighbors[f1] = []
+            if f2 not in face_neighbors:
+                face_neighbors[f2] = []
+            face_neighbors[f1].append(f2)
+            face_neighbors[f2].append(f1)
+        
+        for face_idx in range(len(normals)):
+            neighbors = face_neighbors.get(face_idx, [])
+            if not neighbors:
+                curvature_map[face_idx] = 0.0
+                continue
+            
+            # Compute normal deviation from neighbors
+            face_normal = normals[face_idx]
+            neighbor_normals = normals[neighbors]
+            
+            # Dot product gives cosine of angle
+            dots = np.abs(neighbor_normals @ face_normal)
+            dots = np.clip(dots, 0, 1)
+            
+            # Convert to angle deviation (higher = more curved)
+            angles = np.arccos(dots)
+            avg_deviation = np.mean(angles)
+            
+            # Normalize to 0-1 range (0 = flat, 1 = high curvature)
+            curvature_map[face_idx] = min(avg_deviation / (np.pi / 4), 1.0)
+        
+        return curvature_map
+        
+    except Exception:
+        return None
+
+
+def estimate_ra_from_curvature(
+    curvature: float,
+    is_precision_feature: bool = False,
+    feature_type: str = "general"
+) -> Tuple[float, SurfaceFinishGrade]:
+    """
+    Estimate Ra surface finish requirement from local curvature.
+    
+    Higher curvature regions on functional surfaces often require
+    better finish to reduce stress concentrations and appearance.
+    
+    Args:
+        curvature: Normalized curvature value 0-1
+        is_precision_feature: True for critical surfaces
+        feature_type: 'bore', 'shaft', 'fillet', 'general'
+    
+    Returns:
+        Tuple of (Ra in µm, SurfaceFinishGrade)
+    """
+    # Base Ra from curvature
+    # Flat (low curvature) = standard 3.2µm
+    # High curvature = may need better finish for stress/appearance
+    
+    if feature_type == "bore":
+        # Bores often need good finish for sliding fit
+        if curvature < 0.1:
+            return (1.6, SurfaceFinishGrade.FINE)
+        else:
+            return (0.8, SurfaceFinishGrade.PRECISION)
+    
+    elif feature_type == "shaft":
+        # External cylinders for fit
+        if curvature < 0.1:
+            return (1.6, SurfaceFinishGrade.FINE)
+        else:
+            return (0.8, SurfaceFinishGrade.PRECISION)
+    
+    elif feature_type == "fillet":
+        # Fillets - high curvature is expected
+        if is_precision_feature:
+            return (0.8, SurfaceFinishGrade.PRECISION)
+        else:
+            return (3.2, SurfaceFinishGrade.STANDARD)
+    
+    else:
+        # General surfaces
+        if is_precision_feature:
+            if curvature > 0.3:
+                return (0.8, SurfaceFinishGrade.PRECISION)
+            else:
+                return (1.6, SurfaceFinishGrade.FINE)
+        else:
+            if curvature > 0.5:
+                return (1.6, SurfaceFinishGrade.FINE)
+            else:
+                return (3.2, SurfaceFinishGrade.STANDARD)
+
+
+def estimate_rz_from_ra(ra: float) -> float:
+    """
+    Estimate Rz (peak-to-valley roughness) from Ra (average roughness).
+    
+    Standard approximation: Rz ≈ 4-6 × Ra for machined surfaces.
+    Uses factor of 5 as typical value.
+    """
+    return ra * 5.0
