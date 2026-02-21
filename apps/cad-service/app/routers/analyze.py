@@ -197,23 +197,38 @@ def _serialize_surface_finish(surface_finish):
 
 
 def _serialize_casting_analysis(casting_analysis):
-    """Serialize casting analysis for frontend."""
+    """Serialize casting analysis for frontend.
+    
+    Handles both CastingAnalysis from process_detection and draft_angles.
+    """
     if casting_analysis is None:
         return None
     
     try:
+        # Handle attribute name differences between two CastingAnalysis classes:
+        # - process_detection.CastingAnalysis: is_likely_cast, recommended_casting_process
+        # - draft_angles.CastingAnalysis: is_likely_casting, casting_type
+        is_casting = getattr(casting_analysis, 'is_likely_casting', None)
+        if is_casting is None:
+            is_casting = getattr(casting_analysis, 'is_likely_cast', False)
+        
+        casting_type = getattr(casting_analysis, 'casting_type', None)
+        if casting_type is None:
+            process = getattr(casting_analysis, 'recommended_casting_process', None)
+            casting_type = process.value if hasattr(process, 'value') else str(process) if process else 'unknown'
+        
         return {
-            "is_likely_casting": casting_analysis.is_likely_casting,
-            "casting_type": casting_analysis.casting_type,
-            "optimal_parting_z": casting_analysis.optimal_parting_z,
-            "draft_compliant_faces": casting_analysis.draft_compliant_faces,
-            "draft_insufficient_faces": casting_analysis.draft_insufficient_faces,
-            "average_draft_deg": casting_analysis.average_draft,
-            "min_draft_deg": casting_analysis.min_draft,
-            "has_undercuts": casting_analysis.has_undercuts,
-            "undercut_count": casting_analysis.undercut_count,
-            "ejector_difficulty": casting_analysis.ejector_difficulty,
-            "confidence": casting_analysis.confidence,
+            "is_likely_casting": is_casting,
+            "casting_type": casting_type,
+            "optimal_parting_z": getattr(casting_analysis, 'optimal_parting_z', None),
+            "draft_compliant_faces": getattr(casting_analysis, 'draft_compliant_faces', 0),
+            "draft_insufficient_faces": getattr(casting_analysis, 'draft_insufficient_faces', 0),
+            "average_draft_deg": getattr(casting_analysis, 'average_draft', getattr(casting_analysis, 'average_draft_angle', 0.0)),
+            "min_draft_deg": getattr(casting_analysis, 'min_draft', 0.0),
+            "has_undercuts": getattr(casting_analysis, 'has_undercuts', False),
+            "undercut_count": getattr(casting_analysis, 'undercut_count', 0),
+            "ejector_difficulty": getattr(casting_analysis, 'ejector_difficulty', 'unknown'),
+            "confidence": getattr(casting_analysis, 'confidence', 0.0),
             "parting_lines": [
                 {
                     "z_level": pl.z_level,
@@ -221,7 +236,7 @@ def _serialize_casting_analysis(casting_analysis):
                     "is_planar": pl.is_planar,
                     "confidence": pl.confidence,
                 }
-                for pl in (casting_analysis.parting_lines or [])[:5]
+                for pl in (getattr(casting_analysis, 'parting_lines', None) or [])[:5]
             ],
         }
     except Exception as e:
@@ -1024,13 +1039,14 @@ def _analyze_dxf(file_path: str, scale: float, material: str = 'default') -> dic
     classification_confidence = min(0.98, max(0.75, base_confidence))
     
     # Build response - DXF is ALWAYS sheet_metal
+    # Match format used by STL/STEP for consistency
+    vol_mm3 = flat_area * default_thickness
+    area_mm2 = flat_area * 2 + perimeter_length * default_thickness
+    
     return {
-        'volume': flat_area * default_thickness,  # mm³
-        'surfaceArea': flat_area * 2 + perimeter_length * default_thickness,  # mm²
-        'boundingBox': {
-            'x': round(width, 2),
-            'y': round(height, 2),
-            'z': round(default_thickness, 2),
+        'volume': vol_mm3 / 1000.0,  # Convert to cm³ like STL/STEP
+        'surface_area': area_mm2 / 100.0,  # Convert to cm² like STL/STEP
+        'bbox': {
             'min': {'x': round(min_x, 2), 'y': round(min_y, 2), 'z': 0.0},
             'max': {'x': round(max_x, 2), 'y': round(max_y, 2), 'z': round(default_thickness, 2)},
         },
