@@ -299,7 +299,7 @@ def _normals_parallel(n1, n2, tol_deg: float = 5.0) -> bool:
 def _find_paired_planes(
     planar_faces: List[dict],
     min_area: float = 100.0,
-    max_sheet_distance: float = 10.0,
+    max_sheet_distance: float = 6.0,
 ) -> List[PlanarPairInfo]:
     """Find pairs of approximately parallel planar faces at uniform distances.
 
@@ -307,7 +307,7 @@ def _find_paired_planes(
         planar_faces: list of dicts with keys ``normal``, ``d``, ``area``, ``face``.
         min_area: minimum face area (mm²) to consider.
         max_sheet_distance: maximum distance (mm) to consider as sheet metal thickness.
-            Reduced from 50mm to 10mm to avoid false positives on machined blocks.
+            Set to 6mm to match MATERIAL_THICKNESS_RANGES (practical forming limit).
 
     Returns:
         list of PlanarPairInfo for detected pairs.
@@ -327,8 +327,8 @@ def _find_paired_planes(
             if not _normals_parallel(f1["normal"], f2["normal"]):
                 continue
             dist = abs(f1["d"] - f2["d"])
-            # Distance must be positive and in sheet metal range (0.1 – 10 mm)
-            # Reduced from 50mm to avoid false positives on machined plates/blocks
+            # Distance must be positive and in sheet metal range (0.1 – 8 mm)
+            # Standard sheet metal max thickness for press brake forming
             if 0.1 <= dist <= max_sheet_distance and dist < best_dist:
                 # Check area similarity — paired faces should be roughly the same size
                 area_ratio = min(f1["area"], f2["area"]) / max(f1["area"], f2["area"])
@@ -558,6 +558,17 @@ def classify_faces(shape, total_surface_area: float = 0.0) -> FaceClassification
         dominant_thickness,
     )
 
+    # ACCURACY FIX: Boost sheet metal when paired planes AND valid thickness detected
+    # This helps STEP files with holes/fillets that would otherwise score high on CNC
+    if len(pairs) >= 2 and dominant_thickness and 0.5 <= dominant_thickness <= 6.0:
+        # Strong paired plane evidence with valid sheet thickness
+        sm_score += 10
+        reasoning_parts.append(f"paired planes ({len(pairs)}) with {dominant_thickness:.1f}mm thickness")
+    elif len(pairs) >= 1 and dominant_thickness and 0.5 <= dominant_thickness <= 4.0:
+        # Single pair with standard sheet gauge
+        sm_score += 6
+        reasoning_parts.append(f"paired plane at {dominant_thickness:.1f}mm thickness")
+
     is_sm = sm_score >= 60 and sm_score > cnc_score
     is_cnc = cnc_score >= 55 and cnc_score > sm_score
 
@@ -727,18 +738,18 @@ def _compute_scores(
         sm += 8
 
     # --- Dominant pair thickness (sheet metal gauge) ---
-    # IMPROVED: Give more weight to standard sheet metal gauges (0.5-6mm)
-    # and penalize thicknesses that are borderline or outside the range.
+    # Standard sheet metal gauges (0.5-6mm) get strong signal.
+    # Above 6mm is not standard sheet metal for most shops.
     if dominant_thickness is not None:
         if 0.4 <= dominant_thickness <= 4.0:
             # Standard sheet metal gauge range - strong signal
             sm += 18
             reasons.append(f"dominant pair thickness {dominant_thickness:.2f}mm in standard sheet gauge")
-        elif 4.0 < dominant_thickness <= 8.0:
-            # Thick sheet/plate - moderate signal
-            sm += 8
+        elif 4.0 < dominant_thickness <= 6.0:
+            # Thick sheet - moderate signal
+            sm += 10
             reasons.append(f"dominant pair thickness {dominant_thickness:.2f}mm in thick sheet range")
-        elif dominant_thickness > 8.0:
+        elif dominant_thickness > 6.0:
             cnc += 15
             reasons.append(f"thick pairs ({dominant_thickness:.1f}mm) suggest CNC machined plate")
 

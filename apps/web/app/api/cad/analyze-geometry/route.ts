@@ -336,11 +336,12 @@ function mapCostImpactToSavings(costImpact: string | undefined): number {
  * Transform backend Python analysis to frontend TypeScript GeometryData format
  */
 function transformBackendGeometry(backendData: any, _fileName: string): any {
-  const bbox = backendData.bbox || { min: { x: 0, y: 0, z: 0 }, max: { x: 0, y: 0, z: 0 } };
+  // Handle both 'bbox' (STL/STEP) and 'boundingBox' (legacy DXF) keys
+  const bboxData = backendData.bbox || backendData.boundingBox || { min: { x: 0, y: 0, z: 0 }, max: { x: 0, y: 0, z: 0 } };
   const boundingBox = {
-    x: bbox.max.x - bbox.min.x,
-    y: bbox.max.y - bbox.min.y,
-    z: bbox.max.z - bbox.min.z
+    x: (bboxData.max?.x || 0) - (bboxData.min?.x || 0),
+    y: (bboxData.max?.y || 0) - (bboxData.min?.y || 0),
+    z: (bboxData.max?.z || 0) - (bboxData.min?.z || 0)
   };
 
   const advancedMetrics = backendData.advanced_metrics || {};

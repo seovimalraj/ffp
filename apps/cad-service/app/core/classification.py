@@ -739,7 +739,7 @@ class ProcessClassifier:
                     "Face classification early override: cylinder_area_ratio %.1f%% - turned part",
                     cyl_area_ratio * 100,
                 )
-                return ('cnc_milling', 0.85, metadata)
+                return ('cnc_turning', 0.85, metadata)
         
         # Check 2: Moderate cylinder ratio with chamfers (cone faces) = turning
         # BUT NOT if significant bends are detected
@@ -754,12 +754,20 @@ class ProcessClassifier:
                 "Face classification early override: cylinder_ratio %.1f%% with %d chamfers",
                 cyl_ratio * 100, cone_count,
             )
-            return ('cnc_milling', 0.85, metadata)
+            return ('cnc_turning', 0.85, metadata)
         
         # Check 3: Face classification strongly favors CNC (score gap > 15)
         is_likely_cnc = getattr(face_result, 'is_likely_cnc', False)
         is_likely_sm = getattr(face_result, 'is_likely_sheet_metal', False)
-        if is_likely_cnc and not is_likely_sm and cnc_score > sm_score + 15:
+        
+        # ACCURACY FIX: Don't override to CNC if paired planes are detected with valid thickness
+        has_sheet_metal_evidence = (
+            face_result.paired_plane_count >= 1 and
+            face_result.dominant_pair_thickness is not None and
+            0.4 <= face_result.dominant_pair_thickness <= 6.0
+        )
+        
+        if is_likely_cnc and not is_likely_sm and cnc_score > sm_score + 15 and not has_sheet_metal_evidence:
             metadata['classification_method'] = 'face_type_cnc_score_override'
             metadata['reasoning'] = (
                 f"FACE-TYPE ANALYSIS: CNC score {cnc_score:.0f} >> SM score {sm_score:.0f}, "
@@ -1022,7 +1030,7 @@ class ProcessClassifier:
                     "Advanced thickness rejected: high cylinder_area_ratio %.1f%% - turned part",
                     cyl_area_ratio * 100,
                 )
-                return ('cnc_milling', 0.85, metadata)
+                return ('cnc_turning', 0.85, metadata)
             
             # Check 2: Face classification says CNC with good confidence
             cnc_score = getattr(fc, 'cnc_face_score', 0) or 0
@@ -1184,7 +1192,7 @@ class ProcessClassifier:
                     f"THICKNESS-DETECTED: {detected_thickness:.2f}mm but "
                     f"cylinder_area_ratio {cyl_area_ratio:.1%} indicates CNC turned part"
                 )
-                return ('cnc_milling', 0.85, metadata)
+                return ('cnc_turning', 0.85, metadata)
             
             # Guard 3: Face classification strongly favors CNC
             cnc_score = getattr(fc, 'cnc_face_score', 0) or 0
@@ -1736,7 +1744,9 @@ class ProcessClassifier:
         if hasattr(self, '_machining_complexity_analysis') and self._machining_complexity_analysis is not None:
             mc = self._machining_complexity_analysis
             requires_5axis = getattr(mc, 'requires_5axis', False)
-            access_direction_count = getattr(mc, 'access_direction_count', 1)
+            # access_direction_count is on milling_complexity, not top-level
+            mc_milling = getattr(mc, 'milling_complexity', None)
+            access_direction_count = getattr(mc_milling, 'access_direction_count', 1) if mc_milling else 1
             
             if requires_5axis or access_direction_count > 3:
                 logger.info(
