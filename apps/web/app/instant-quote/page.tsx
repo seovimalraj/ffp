@@ -164,10 +164,16 @@ export default function InstantQuotePage() {
         let geometry: GeometryData;
 
         const fileExt = file.name.toLowerCase().split(".").pop();
-        const isStepFile = fileExt === "step" || fileExt === "stp";
+        const useBackendAnalysis =
+          fileExt === "step" ||
+          fileExt === "stp" ||
+          fileExt === "iges" ||
+          fileExt === "igs" ||
+          fileExt === "dxf" ||
+          fileExt === "stl";
 
-        if (isStepFile) {
-          // Use backend analysis for STEP files (accurate bend detection)
+        if (useBackendAnalysis) {
+          // Use backend analysis for STEP/IGES/DXF files (accurate process classification)
           console.log(`📡 Using backend analysis for ${file.name}`);
           try {
             const analysisResponse = await fetch("/api/cad/analyze-geometry", {

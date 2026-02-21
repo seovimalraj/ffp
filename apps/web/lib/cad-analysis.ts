@@ -240,6 +240,108 @@ export interface SheetMetalFeatures {
   complexity: ComplexityLevel | "very-complex";
 }
 
+// === ADVANCED MANUFACTURING ANALYSIS TYPES ===
+
+/** Surface finish grade classification */
+export type SurfaceFinishGrade = 'rough' | 'standard' | 'fine' | 'precision' | 'polished' | 'ground' | 'mirror';
+
+/** Surface finish analysis from backend */
+export interface SurfaceFinishAnalysis {
+  dominantGrade: SurfaceFinishGrade;
+  minRaRequired: number; // μm Ra
+  minRzEstimated: number; // μm Rz (≈5×Ra)
+  precisionFaceCount: number;
+  polishedFaceCount: number;
+  groundFaceCount: number;
+  totalPrecisionAreaMm2: number;
+  finishComplexityScore: number; // 0-100
+  features?: Array<{
+    grade: SurfaceFinishGrade;
+    estimatedRa: number;
+    estimatedRz: number;
+    faceAreaMm2: number;
+    faceType: string;
+    isMatingSurface: boolean;
+    requiresGrinding: boolean;
+    requiresPolishing: boolean;
+  }>;
+}
+
+/** Parting line info for casting analysis */
+export interface PartingLineInfo {
+  zLevel: number;
+  complexity: number; // 0-100
+  isPlanar: boolean;
+  confidence: number; // 0-1
+}
+
+/** Complete casting analysis from backend */
+export interface CastingAnalysis {
+  isLikelyCasting: boolean;
+  castingType: string; // 'die_casting' | 'sand_casting' | 'investment_casting' | 'injection_molding' | 'not_castable'
+  optimalPartingZ?: number;
+  draftCompliantFaces: number;
+  draftInsufficientFaces: number;
+  averageDraftDeg: number;
+  minDraftDeg: number;
+  hasUndercuts: boolean;
+  undercutCount: number;
+  ejectorDifficulty: string; // 'easy' | 'moderate' | 'difficult'
+  confidence: number; // 0-1
+  partingLines?: PartingLineInfo[];
+}
+
+/** Machine type classification */
+export type MachineType = 
+  | 'lathe_2axis' | 'lathe_live' | 'turn_mill'
+  | 'mill_3axis' | 'mill_4axis' | 'mill_5axis'
+  | 'swiss_lathe' | 'multi_spindle'
+  | 'edm_wire' | 'edm_sinker' | 'grinding';
+
+/** Milling complexity details */
+export interface MillingComplexityDetail {
+  minAxesRequired: number;
+  hasDeepPockets: boolean;
+  hasUndercuts: boolean;
+  hasCompoundAngles: boolean;
+  accessDirectionCount: number;
+  maxToolLengthMm: number;
+}
+
+/** Turning analysis details */
+export interface TurningAnalysisDetail {
+  isRotationallySymmetric: boolean;
+  symmetryAxis?: string;
+  hasCrossHoles: boolean;
+  crossHoleCount: number;
+  hasFlats: boolean;
+  hasThreads: boolean;
+  requiresTailstock: boolean;
+}
+
+/** Setup requirement */
+export interface SetupRequirement {
+  setupNumber: number;
+  orientation: string;
+  requiresSpecialFixture: boolean;
+}
+
+/** Complete machining complexity analysis from backend */
+export interface MachiningComplexityAnalysis {
+  primaryProcess: string;
+  secondaryProcess?: string;
+  recommendedMachine: string; // MachineType values
+  estimatedSetupCount: number;
+  complexityScore: number; // 0-100
+  requires5Axis: boolean;
+  requires4Axis: boolean;
+  isTurnMill: boolean;
+  requiresEdm: boolean;
+  milling?: MillingComplexityDetail;
+  turning?: TurningAnalysisDetail;
+  setups?: SetupRequirement[];
+}
+
 export interface GeometryData {
   volume: number; // mm³
   surfaceArea: number; // mm²
@@ -334,6 +436,11 @@ export interface GeometryData {
   // === ADDITIONAL BACKEND DATA ===
   validation?: Record<string, any>;
   complexityScore?: number; // Numeric complexity score (0-100)
+  
+  // === ADVANCED MANUFACTURING ANALYSIS ===
+  surfaceFinishAnalysis?: SurfaceFinishAnalysis; // Backend surface finish Ra/Rz analysis
+  castingAnalysis?: CastingAnalysis; // Casting feasibility with parting lines
+  machiningComplexity?: MachiningComplexityAnalysis; // 5-axis/setup requirements
 }
 
 /**

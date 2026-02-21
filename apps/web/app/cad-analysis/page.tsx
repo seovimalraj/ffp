@@ -85,9 +85,9 @@ export default function CadAnalysisPage() {
             notify.error(`Failed to upload ${file.name}`);
           }
 
-          // Step 2: Choose analysis — backend for STEP/IGES, client-side otherwise
+          // Step 2: Choose analysis — backend for STEP/IGES/DXF, client-side otherwise
           const extension = file.name.toLowerCase().split(".").pop();
-          const useBackendAnalysis = ["step", "stp", "iges", "igs"].includes(
+          const useBackendAnalysis = ["step", "stp", "iges", "igs", "dxf", "stl"].includes(
             extension || "",
           );
 

@@ -24,7 +24,7 @@ from ..extractors.threads import extract_threads_from_shape, extract_threads_fro
 from ..extractors.slots import extract_slots_from_shape, extract_slots_from_pockets
 from ..extractors.undercuts import extract_undercuts_from_shape, detect_undercuts_from_mesh
 from ..extractors.fillets import extract_fillets_from_shape, detect_fillets_from_mesh
-from ..extractors.draft_angles import analyze_draft_from_shape, analyze_draft_from_mesh
+from ..extractors.draft_angles import analyze_draft_from_shape, analyze_draft_from_mesh, analyze_for_casting
 from ..extractors.grain_direction import analyze_grain_direction
 from ..extractors.nesting import estimate_nesting
 from ..extractors.bend_angles import extract_bend_angles_from_shape
@@ -161,6 +161,133 @@ def _serialize_features(threads=None, slots=None, undercuts=None, fillets=None, 
         ]
     return detail
 
+
+def _serialize_surface_finish(surface_finish):
+    """Serialize surface finish analysis for frontend."""
+    if surface_finish is None:
+        return None
+    
+    try:
+        return {
+            "dominant_grade": surface_finish.dominant_grade.value if hasattr(surface_finish.dominant_grade, 'value') else str(surface_finish.dominant_grade),
+            "min_ra_required": surface_finish.min_ra_required,
+            "min_rz_estimated": surface_finish.min_ra_required * 5.0,  # Rz ≈ 5 × Ra
+            "precision_face_count": surface_finish.precision_face_count,
+            "polished_face_count": surface_finish.polished_face_count,
+            "ground_face_count": getattr(surface_finish, 'ground_face_count', 0),
+            "total_precision_area_mm2": surface_finish.total_precision_area,
+            "finish_complexity_score": surface_finish.finish_complexity_score,
+            "features": [
+                {
+                    "grade": f.grade.value if hasattr(f.grade, 'value') else str(f.grade),
+                    "estimated_ra": f.estimated_ra,
+                    "estimated_rz": f.estimated_ra * 5.0,
+                    "face_area_mm2": f.face_area,
+                    "face_type": f.face_type,
+                    "is_mating_surface": f.is_mating_surface,
+                    "requires_grinding": f.requires_grinding,
+                    "requires_polishing": f.requires_polishing,
+                }
+                for f in (surface_finish.features or [])[:10]
+            ],
+        }
+    except Exception as e:
+        print(f"⚠️ Surface finish serialization failed: {e}")
+        return None
+
+
+def _serialize_casting_analysis(casting_analysis):
+    """Serialize casting analysis for frontend."""
+    if casting_analysis is None:
+        return None
+    
+    try:
+        return {
+            "is_likely_casting": casting_analysis.is_likely_casting,
+            "casting_type": casting_analysis.casting_type,
+            "optimal_parting_z": casting_analysis.optimal_parting_z,
+            "draft_compliant_faces": casting_analysis.draft_compliant_faces,
+            "draft_insufficient_faces": casting_analysis.draft_insufficient_faces,
+            "average_draft_deg": casting_analysis.average_draft,
+            "min_draft_deg": casting_analysis.min_draft,
+            "has_undercuts": casting_analysis.has_undercuts,
+            "undercut_count": casting_analysis.undercut_count,
+            "ejector_difficulty": casting_analysis.ejector_difficulty,
+            "confidence": casting_analysis.confidence,
+            "parting_lines": [
+                {
+                    "z_level": pl.z_level,
+                    "complexity": pl.complexity,
+                    "is_planar": pl.is_planar,
+                    "confidence": pl.confidence,
+                }
+                for pl in (casting_analysis.parting_lines or [])[:5]
+            ],
+        }
+    except Exception as e:
+        print(f"⚠️ Casting analysis serialization failed: {e}")
+        return None
+
+
+def _serialize_machining_complexity(machining_complexity):
+    """Serialize machining complexity analysis for frontend."""
+    if machining_complexity is None:
+        return None
+    
+    try:
+        result = {
+            "primary_process": machining_complexity.primary_process,
+            "secondary_process": machining_complexity.secondary_process,
+            "recommended_machine": machining_complexity.recommended_machine.value if hasattr(machining_complexity.recommended_machine, 'value') else str(machining_complexity.recommended_machine),
+            "estimated_setup_count": machining_complexity.estimated_setup_count,
+            "complexity_score": machining_complexity.complexity_score,
+            "requires_5axis": machining_complexity.requires_5axis,
+            "requires_4axis": machining_complexity.requires_4axis,
+            "is_turn_mill": machining_complexity.is_turn_mill,
+            "requires_edm": machining_complexity.requires_edm,
+        }
+        
+        # Add milling complexity if present
+        if machining_complexity.milling_complexity:
+            mc = machining_complexity.milling_complexity
+            result["milling"] = {
+                "min_axes_required": mc.min_axes_required,
+                "has_deep_pockets": mc.has_deep_pockets,
+                "has_undercuts": mc.has_undercuts,
+                "has_compound_angles": mc.has_compound_angles,
+                "access_direction_count": mc.access_direction_count,
+                "max_tool_length_mm": mc.max_tool_length_required,
+            }
+        
+        # Add turning analysis if present
+        if machining_complexity.turning_analysis:
+            ta = machining_complexity.turning_analysis
+            result["turning"] = {
+                "is_rotationally_symmetric": ta.is_rotationally_symmetric,
+                "symmetry_axis": ta.symmetry_axis,
+                "has_cross_holes": ta.has_cross_holes,
+                "cross_hole_count": ta.cross_hole_count,
+                "has_flats": ta.has_flats,
+                "has_threads": ta.has_threads,
+                "requires_tailstock": ta.requires_tailstock,
+            }
+        
+        # Add setups summary
+        if machining_complexity.setups:
+            result["setups"] = [
+                {
+                    "setup_number": s.setup_number,
+                    "orientation": s.orientation,
+                    "requires_special_fixture": s.requires_special_fixture,
+                }
+                for s in machining_complexity.setups[:6]
+            ]
+        
+        return result
+    except Exception as e:
+        print(f"⚠️ Machining complexity serialization failed: {e}")
+        return None
+
 class AnalysisRequest(BaseModel):
     file_id: str
     file_path: Optional[str] = None
@@ -214,7 +341,8 @@ def _extract_mesh_features(mesh):
     """Extract features from STL mesh with per-feature error handling."""
     results = {
         "threads": [], "undercuts": [], "fillets": [], "draft": [],
-        "holes": [], "pockets": [], "bosses": [], "ribs": []
+        "holes": [], "pockets": [], "bosses": [], "ribs": [],
+        "surface_finish": None
     }
     extractors = [
         ("threads", lambda: extract_threads_from_mesh(mesh)),
@@ -225,6 +353,7 @@ def _extract_mesh_features(mesh):
         ("pockets", lambda: extract_pockets_from_mesh(mesh)),
         ("bosses", lambda: extract_bosses_from_mesh(mesh)),
         ("ribs", lambda: extract_ribs_from_mesh(mesh)),
+        ("surface_finish", lambda: extract_surface_finish_from_mesh(mesh)),
     ]
     for name, fn in extractors:
         try:
@@ -990,6 +1119,38 @@ def _analyze_stl(file_path, scale, material: str = 'default'):
     features = _extract_mesh_features(mesh)
     face_count = int(mesh.faces.shape[0])
 
+    # Casting analysis (draft angles + parting line)
+    casting_analysis = None
+    try:
+        if features['draft']:
+            casting_analysis = analyze_for_casting(
+                mesh,
+                draft_results=features['draft'],
+                detected_thickness=detected_thickness,
+                min_wall=detected_thickness,
+                max_wall=detected_thickness
+            )
+            if casting_analysis.is_likely_casting:
+                print(f"🏭 Casting candidate: {casting_analysis.casting_type} "
+                      f"(draft avg={casting_analysis.average_draft:.1f}°, "
+                      f"undercuts={casting_analysis.undercut_count})")
+    except Exception as e:
+        print(f"⚠️ Casting analysis failed: {str(e)[:80]}")
+
+    # Machining complexity analysis (5-axis, setup count)
+    machining_complexity = None
+    try:
+        machining_complexity = analyze_machining_complexity_from_mesh(
+            mesh,
+            holes=features['holes'],
+            pockets=features['pockets'],
+            undercuts=features['undercuts']
+        )
+        if machining_complexity.requires_5axis:
+            print(f"⚙️ 5-Axis machining required: {machining_complexity.estimated_setup_count} setups")
+    except Exception as e:
+        print(f"⚠️ Machining complexity analysis failed: {str(e)[:80]}")
+
     # Classification - pass ALL extracted features for full analysis
     # Note: STL doesn't have face_classification (requires BRep), so extended
     # process detection (weldment, casting, 5-axis) will be limited
@@ -1085,6 +1246,10 @@ def _analyze_stl(file_path, scale, material: str = 'default'):
         "advanced_metrics": advanced_metrics,
         "dfm_analysis": dfm_result,
         "validation": validation,
+        # Enhanced analysis results
+        "surface_finish": _serialize_surface_finish(features.get('surface_finish')),
+        "casting_analysis": _serialize_casting_analysis(casting_analysis),
+        "machining_complexity": _serialize_machining_complexity(machining_complexity),
     }
     _attach_optional_metrics(metrics, grain_dir, nesting_est)
     return metrics

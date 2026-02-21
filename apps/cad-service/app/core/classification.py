@@ -151,6 +151,9 @@ class ProcessClassifier:
         self._sheet_min_thickness = thickness_range[0]
         self._sheet_max_thickness = thickness_range[1]
         
+        # Store detected thickness for use in classification cascade
+        self._detected_thickness = detected_thickness
+        
         metadata: Dict[str, Any] = {
             'sheet_metal_score': self.sheet_metal_score,
             'detected_thickness': detected_thickness,
@@ -710,18 +713,20 @@ class ProcessClassifier:
         step_bends = getattr(self, '_step_bends', [])
         has_significant_bends = len(step_bends) >= 2  # 2+ bends = likely sheet metal
         
-        # Get thickness info - thin uniform walls = sheet metal
-        min_dim = self.metrics.min_dim
-        is_thin_profile = min_dim < 6.0  # Sheet metal typically < 6mm
+        # Get detected wall thickness (more reliable than bbox min_dim for bent parts)
+        # For bent enclosures, bbox min_dim might be 60mm+ but actual wall is 1-2mm
+        detected_wall = getattr(self, '_detected_thickness', None)
+        is_thin_wall = detected_wall is not None and detected_wall < 8.0
         
         # Check 1: High cylindrical surface area (>45%) indicates turning
         # BUT NOT if the part has bends (bent sheet metal has cylinder surfaces from bend radii)
         if cyl_area_ratio > 0.45:
-            # If significant bends AND thin profile, this is likely bent sheet metal
-            if has_significant_bends and is_thin_profile:
+            # Skip CNC override if STEP bends are detected - bends mean sheet metal
+            # The presence of bends is strong evidence regardless of dimensions
+            if has_significant_bends:
                 logger.info(
-                    "Skipping cylinder_area_ratio override: %d bends detected with thin profile (%.1fmm) - likely bent sheet metal",
-                    len(step_bends), min_dim,
+                    "Skipping cylinder_area_ratio override: %d STEP bends detected - likely bent sheet metal (wall=%.1fmm)",
+                    len(step_bends), detected_wall or 0,
                 )
                 # Don't return - continue to other checks
             else:
