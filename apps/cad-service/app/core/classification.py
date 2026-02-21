@@ -700,25 +700,45 @@ class ProcessClassifier:
         # Turned parts have high cylinder_area_ratio (cylindrical surfaces dominate)
         # This must fire BEFORE confidence checks because turned parts may have
         # low cnc_face_score due to planar end faces but still be clearly CNC.
+        # HOWEVER: Bent sheet metal also has high cylinder area due to bend radii!
+        # We must check for STEP-extracted bends before triggering this override.
         cyl_area_ratio = getattr(face_result, 'cylinder_area_ratio', 0.0) or 0.0
         cyl_ratio = getattr(face_result, 'cylinder_ratio', 0.0) or 0.0
         cone_count = face_result.histogram.cone if face_result.histogram else 0
         
+        # Get STEP-extracted bends - these are reliable indicators of sheet metal
+        step_bends = getattr(self, '_step_bends', [])
+        has_significant_bends = len(step_bends) >= 2  # 2+ bends = likely sheet metal
+        
+        # Get thickness info - thin uniform walls = sheet metal
+        min_dim = self.metrics.min_dim
+        is_thin_profile = min_dim < 6.0  # Sheet metal typically < 6mm
+        
         # Check 1: High cylindrical surface area (>45%) indicates turning
+        # BUT NOT if the part has bends (bent sheet metal has cylinder surfaces from bend radii)
         if cyl_area_ratio > 0.45:
-            metadata['classification_method'] = 'face_type_cnc_turned_override'
-            metadata['reasoning'] = (
-                f"FACE-TYPE ANALYSIS: cylinder_area_ratio {cyl_area_ratio:.1%} "
-                f"indicates CNC turned part (SM={sm_score:.0f}, CNC={cnc_score:.0f})"
-            )
-            logger.info(
-                "Face classification early override: cylinder_area_ratio %.1f%% - turned part",
-                cyl_area_ratio * 100,
-            )
-            return ('cnc_milling', 0.85, metadata)
+            # If significant bends AND thin profile, this is likely bent sheet metal
+            if has_significant_bends and is_thin_profile:
+                logger.info(
+                    "Skipping cylinder_area_ratio override: %d bends detected with thin profile (%.1fmm) - likely bent sheet metal",
+                    len(step_bends), min_dim,
+                )
+                # Don't return - continue to other checks
+            else:
+                metadata['classification_method'] = 'face_type_cnc_turned_override'
+                metadata['reasoning'] = (
+                    f"FACE-TYPE ANALYSIS: cylinder_area_ratio {cyl_area_ratio:.1%} "
+                    f"indicates CNC turned part (SM={sm_score:.0f}, CNC={cnc_score:.0f})"
+                )
+                logger.info(
+                    "Face classification early override: cylinder_area_ratio %.1f%% - turned part",
+                    cyl_area_ratio * 100,
+                )
+                return ('cnc_milling', 0.85, metadata)
         
         # Check 2: Moderate cylinder ratio with chamfers (cone faces) = turning
-        if cyl_ratio > 0.40 and cone_count >= 2:
+        # BUT NOT if significant bends are detected
+        if cyl_ratio > 0.40 and cone_count >= 2 and not has_significant_bends:
             metadata['classification_method'] = 'face_type_cnc_turned_chamfered_override'
             metadata['reasoning'] = (
                 f"FACE-TYPE ANALYSIS: cylinder_ratio {cyl_ratio:.1%} with "
@@ -815,10 +835,19 @@ class ProcessClassifier:
             
             # FIX: Check if part has bends - if so, DO NOT override to CNC
             # Bent parts are sheet metal even if they have some CNC-like features
+            # Check BOTH heuristic bend detection AND STEP-extracted bends
+            step_bends = getattr(self, '_step_bends', [])
             has_actual_bends = (
-                bend_analysis.is_likely_bent and 
-                bend_analysis.bend_count >= 1
+                (bend_analysis.is_likely_bent and bend_analysis.bend_count >= 1) or
+                len(step_bends) >= 1  # STEP/IGES extracted bends are very reliable
             )
+            
+            # Log bend status for debugging
+            if has_actual_bends:
+                logger.info(
+                    "Part has bends - skipping CNC overrides (heuristic: %s/%d, STEP: %d)",
+                    bend_analysis.is_likely_bent, bend_analysis.bend_count, len(step_bends),
+                )
             
             # Only apply CNC overrides if there are NO actual bends
             if not has_actual_bends:
@@ -969,11 +998,16 @@ class ProcessClassifier:
         # Turned parts have high cylinder_area_ratio (cylindrical surfaces dominate)
         # They often have thin wall gaps between stepped cylinders that ray-casting
         # incorrectly interprets as sheet metal thickness.
+        # HOWEVER: Bent sheet metal also has high cylinder area due to bend radii!
         fc = self._face_classification
+        step_bends = getattr(self, '_step_bends', [])
+        has_significant_bends = len(step_bends) >= 2
+        
         if fc is not None:
             # Check 1: High cylindrical surface area (>45%) indicates turning
+            # BUT NOT if significant bends are detected (bent sheet metal)
             cyl_area_ratio = getattr(fc, 'cylinder_area_ratio', 0.0) or 0.0
-            if cyl_area_ratio > 0.45:
+            if cyl_area_ratio > 0.45 and not has_significant_bends:
                 metadata['classification_method'] = 'cnc_turned_part_override'
                 metadata['reasoning'] = (
                     f"THICKNESS ANALYSIS detected sheet but cylinder_area_ratio "
@@ -1005,9 +1039,10 @@ class ProcessClassifier:
                 return ('cnc_milling', 0.85, metadata)
             
             # Check 3: High cylinder_ratio (many cylindrical faces) with cones (chamfers)
+            # BUT NOT if significant bends are detected (bent sheet metal)
             cyl_ratio = getattr(fc, 'cylinder_ratio', 0.0) or 0.0
             cone_count = fc.histogram.cone if fc.histogram else 0
-            if cyl_ratio > 0.40 and cone_count >= 2:
+            if cyl_ratio > 0.40 and cone_count >= 2 and not has_significant_bends:
                 # Many cylinders + cones = turned part with chamfers
                 metadata['classification_method'] = 'cnc_turned_chamfered_override'
                 metadata['reasoning'] = (
@@ -1020,17 +1055,22 @@ class ProcessClassifier:
                 )
                 return ('cnc_milling', 0.85, metadata)
 
+        # Check for actual bends (STEP-extracted or heuristic)
+        # If bends exist, this is sheet metal even with high machining feature scores
+        has_actual_bends = has_significant_bends or (bend_analysis.is_likely_bent and bend_analysis.bend_count >= 1)
+        
         # GAP 10 FIX: Require higher threshold and specific feature types
         # Old threshold (50) was too aggressive - tapped holes in sheet metal  
         # could trigger CNC override incorrectly
         # New: Require mf_score >= 65 OR (mf_score >= 50 with undercuts/deep pockets)
+        # EXCEPTION: If bends are detected, don't override - it's sheet metal
         has_strong_cnc_features = (
             self._feature_counts['undercut_count'] > 0 or
             self._feature_counts['pocket_count'] >= 3
         )
         cnc_override_threshold = 50 if has_strong_cnc_features else 65
         
-        if mf_score >= cnc_override_threshold:
+        if mf_score >= cnc_override_threshold and not has_actual_bends:
             metadata['classification_method'] = 'advanced_analysis_cnc_feature_override'
             metadata['reasoning'] = (
                 f"ADVANCED ANALYSIS detected sheet thickness but machining "
@@ -1042,9 +1082,10 @@ class ProcessClassifier:
 
         # Only override to CNC if truly solid AND no bends detected
         # Bent sheet metal enclosures have high volume efficiency in bbox
+        # Check both STEP-extracted bends and heuristic bends
         is_truly_solid = (self.metrics.volume_efficiency > 0.75
                           and aspect_ratio < 5
-                          and not bend_analysis.is_likely_bent)
+                          and not has_actual_bends)
         if is_truly_solid:
             metadata['classification_method'] = 'advanced_analysis_cnc_guard'
             metadata['reasoning'] = (
@@ -1100,6 +1141,10 @@ class ProcessClassifier:
         mf_score = self._machining_feature_score
         min_dim = self.metrics.min_dim or 10.0
         
+        # Check for STEP-extracted bends - bent sheet metal has cylinder surfaces
+        step_bends = getattr(self, '_step_bends', [])
+        has_significant_bends = len(step_bends) >= 2
+        
         # NEW: Guard against misclassifying CNC parts with thin internal walls
         # When face classification shows thick dominant_pair_thickness (>= 8mm),
         # the ray-cast thin wall detection is likely finding walls between machined
@@ -1122,8 +1167,9 @@ class ProcessClassifier:
                 return ('cnc_milling', 0.85, metadata)
             
             # Guard 2: High cylindrical surface area indicates turning
+            # BUT NOT if significant bends are detected (bent sheet metal)
             cyl_area_ratio = getattr(fc, 'cylinder_area_ratio', 0.0) or 0.0
-            if cyl_area_ratio > 0.45:
+            if cyl_area_ratio > 0.45 and not has_significant_bends:
                 logger.info(
                     "Legacy thickness rejected: cylinder_area_ratio %.1f%% - turned part",
                     cyl_area_ratio * 100,
@@ -1154,9 +1200,10 @@ class ProcessClassifier:
                 return ('cnc_milling', 0.85, metadata)
             
             # Guard 4: High cylinder_ratio with cone faces (chamfers) = turning
+            # BUT NOT if significant bends are detected (bent sheet metal)
             cyl_ratio = getattr(fc, 'cylinder_ratio', 0.0) or 0.0
             cone_count = fc.histogram.cone if fc.histogram else 0
-            if cyl_ratio > 0.40 and cone_count >= 2:
+            if cyl_ratio > 0.40 and cone_count >= 2 and not has_significant_bends:
                 logger.info(
                     "Legacy thickness rejected: cylinder_ratio %.1f%% with %d chamfers",
                     cyl_ratio * 100, cone_count,
@@ -1170,8 +1217,9 @@ class ProcessClassifier:
         
         # NEW: Early rejection of cube-like shapes
         # Parts with AR < 3 and min_dim > 4mm should not be sheet metal
-        # unless they have clear bend evidence
-        if aspect_ratio < 3.0 and min_dim > 4.0 and not bend_analysis.is_likely_bent:
+        # unless they have clear bend evidence (heuristic OR STEP-extracted)
+        has_bend_evidence = bend_analysis.is_likely_bent or has_significant_bends
+        if aspect_ratio < 3.0 and min_dim > 4.0 and not has_bend_evidence:
             logger.info(
                 "Legacy thickness rejected: cube-like shape (AR=%.1f, min_dim=%.1fmm)",
                 aspect_ratio, min_dim,
@@ -1179,19 +1227,20 @@ class ProcessClassifier:
             return None  # Defer to other tiers
         
         # Check for flat sheet profile (high AR + thin = flat sheet)
-        is_flat_sheet_profile = aspect_ratio >= 8.0 and min_dim <= SHEET_METAL_MAX_THICKNESS
+        # Check for flat sheet profile (high AR + thin = flat sheet)
         is_flat_sheet_profile = aspect_ratio >= 8.0 and min_dim <= SHEET_METAL_MAX_THICKNESS
 
         # GAP 10 FIX: Same logic as _advanced_sheet_or_cnc_guard
         # Strong machining features → CNC regardless of thickness
         # But require higher threshold (65) unless strong CNC indicators present
+        # EXCEPTION: If bends are detected, don't override - it's sheet metal
         has_strong_cnc_features = (
             self._feature_counts['undercut_count'] > 0 or
             self._feature_counts['pocket_count'] >= 3
         )
         cnc_override_threshold = 50 if has_strong_cnc_features else 65
         
-        if mf_score >= cnc_override_threshold:
+        if mf_score >= cnc_override_threshold and not has_bend_evidence:
             metadata['classification_method'] = 'cnc_feature_override'
             metadata['reasoning'] = (
                 f"THICKNESS-DETECTED: {detected_thickness:.2f}mm but "
@@ -1210,7 +1259,8 @@ class ProcessClassifier:
             return ('sheet_metal', confidence, metadata)
 
         # Solid + chunky → CNC (only if NO bends detected and NOT a flat profile)
-        if is_solid and is_chunky and not bend_analysis.is_likely_bent and not is_flat_sheet_profile:
+        # Check both heuristic bends and STEP-extracted bends
+        if is_solid and is_chunky and not has_bend_evidence and not is_flat_sheet_profile:
             metadata['classification_method'] = 'cnc_override'
             metadata['reasoning'] = (
                 f"THICKNESS-DETECTED: {detected_thickness:.2f}mm but chunky solid "
@@ -1221,10 +1271,11 @@ class ProcessClassifier:
 
         # Moderately solid, not quite flat — bent parts override CNC fallback
         if self.metrics.volume_efficiency > 0.50 and aspect_ratio < 10:
-            if bend_analysis.is_likely_bent:
+            if has_bend_evidence:
+                bend_count = bend_analysis.bend_count if bend_analysis.is_likely_bent else len(step_bends)
                 confidence = 0.80
                 reasoning = (f"THICKNESS-DETECTED: {detected_thickness:.2f}mm "
-                             f"with {bend_analysis.bend_count} bends, bent sheet metal")
+                             f"with {bend_count} bends, bent sheet metal")
             elif self.metrics.volume_efficiency > 0.70 and not is_flat_sheet_profile:
                 # Only classify as CNC if NOT a flat sheet profile
                 metadata['classification_method'] = 'cnc_fallback'
@@ -1240,10 +1291,11 @@ class ProcessClassifier:
                              f"moderate solidity, likely sheet metal")
         else:
             base_conf = 0.85 + (thickness_confidence * 0.10)
-            if bend_analysis.is_likely_bent:
+            if has_bend_evidence:
+                bend_count = bend_analysis.bend_count if bend_analysis.is_likely_bent else len(step_bends)
                 confidence = min(0.98, base_conf + 0.05)
                 reasoning = (f"THICKNESS-DETECTED: {detected_thickness:.2f}mm wall "
-                             f"thickness with {bend_analysis.bend_count} bends")
+                             f"thickness with {bend_count} bends")
             else:
                 confidence = base_conf
                 reasoning = (f"THICKNESS-DETECTED: {detected_thickness:.2f}mm "
