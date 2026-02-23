@@ -14,7 +14,7 @@ const Footer = () => {
           Support
         </Link>
       </div>
-      <p>© 2025 Frigate Engineering Services. Secure & Confidential.</p>
+      <p>© 2026 Frigate Engineering Services. Secure & Confidential.</p>
     </footer>
   );
 };
