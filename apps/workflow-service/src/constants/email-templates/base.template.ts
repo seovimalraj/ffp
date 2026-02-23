@@ -23,8 +23,8 @@ export const BaseEmailTemplate = (
     </mj-section>
 
     <!-- Main content -->
-    <mj-section padding="10px 24px 0 24px">
-      <mj-column background-color="#ffffff" padding="28px" border-radius="8px">
+    <mj-section padding="10px 0">
+      <mj-column background-color="#ffffff" padding="18px" border-radius="8px">
         ${content}
       </mj-column>
     </mj-section>
