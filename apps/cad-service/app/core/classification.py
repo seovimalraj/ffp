@@ -194,7 +194,12 @@ class ProcessClassifier:
     def _advanced_sheet_or_cnc_guard(self, thickness_analysis, bend_detector,
                                      bend_analysis, aspect_ratio, metadata):
         """Handle confirmed sheet-thickness with CNC guard."""
-        if self.metrics.volume_efficiency > 0.60 and aspect_ratio < 10:
+        # Only override to CNC if truly solid AND no bends detected
+        # Bent sheet metal enclosures have high volume efficiency in bbox
+        is_truly_solid = (self.metrics.volume_efficiency > 0.75
+                          and aspect_ratio < 5
+                          and not bend_analysis.is_likely_bent)
+        if is_truly_solid:
             metadata['classification_method'] = 'advanced_analysis_cnc_guard'
             metadata['reasoning'] = (
                 f"ADVANCED ANALYSIS detected sheet thickness but part is solid "
@@ -241,8 +246,8 @@ class ProcessClassifier:
                                   bend_detector, bend_analysis, aspect_ratio,
                                   metadata):
         """Decide sheet-metal vs CNC for valid sheet-range thickness."""
-        is_solid = self.metrics.volume_efficiency > 0.60
-        is_chunky = aspect_ratio < 10
+        is_solid = self.metrics.volume_efficiency > 0.75
+        is_chunky = aspect_ratio < 5
 
         # Flat sheet
         if aspect_ratio >= 15:
@@ -254,8 +259,8 @@ class ProcessClassifier:
             )
             return ('sheet_metal', confidence, metadata)
 
-        # Solid + chunky → CNC
-        if is_solid and is_chunky:
+        # Solid + chunky → CNC (only if NO bends detected)
+        if is_solid and is_chunky and not bend_analysis.is_likely_bent:
             metadata['classification_method'] = 'cnc_override'
             metadata['reasoning'] = (
                 f"THICKNESS-DETECTED: {detected_thickness:.2f}mm but chunky solid "
@@ -264,19 +269,24 @@ class ProcessClassifier:
             )
             return ('cnc_milling', 0.85, metadata)
 
-        # Moderately solid, not flat
+        # Moderately solid, not flat — bent parts override CNC fallback
         if self.metrics.volume_efficiency > 0.50 and aspect_ratio < 15:
-            if bend_analysis.is_likely_bent and self.metrics.volume_efficiency < 0.55:
-                confidence = 0.75
+            if bend_analysis.is_likely_bent:
+                confidence = 0.80
                 reasoning = (f"THICKNESS-DETECTED: {detected_thickness:.2f}mm "
-                             f"with {bend_analysis.bend_count} bends, moderate solidity")
-            else:
+                             f"with {bend_analysis.bend_count} bends, bent sheet metal")
+            elif self.metrics.volume_efficiency > 0.70:
                 metadata['classification_method'] = 'cnc_fallback'
                 metadata['reasoning'] = (
                     f"THICKNESS-DETECTED: {detected_thickness:.2f}mm but no bends and "
-                    f"moderate volume efficiency {self.metrics.volume_efficiency:.2f} suggests CNC"
+                    f"high volume efficiency {self.metrics.volume_efficiency:.2f} suggests CNC"
                 )
                 return ('cnc_milling', 0.70, metadata)
+            else:
+                # Moderate volume efficiency without bends — still likely sheet metal
+                confidence = 0.70
+                reasoning = (f"THICKNESS-DETECTED: {detected_thickness:.2f}mm "
+                             f"moderate solidity, likely sheet metal")
         else:
             base_conf = 0.85 + (thickness_confidence * 0.10)
             if bend_analysis.is_likely_bent:
@@ -296,13 +306,27 @@ class ProcessClassifier:
 
     def _try_bend_classification(self, bend_detector, bend_analysis, min_dim,
                                  metadata):
-        """Classify based on bend detection alone. Returns result or None."""
-        if not bend_analysis.is_likely_bent or min_dim >= SHEET_METAL_MAX_THICKNESS:
+        """Classify based on bend detection alone. Returns result or None.
+        
+        Bends are very strong evidence of sheet metal manufacturing.
+        For bent parts, min_dim is bbox minimum (not wall thickness), so we
+        should NOT require min_dim < 8mm — a bent enclosure could be 100×80×60mm.
+        """
+        if not bend_analysis.is_likely_bent:
             return None
 
-        confidence = min(0.90, 0.70 + bend_analysis.confidence * 0.20)
+        # High bend count with good confidence → sheet metal regardless of bbox dims
+        if bend_analysis.bend_count >= 2 and bend_analysis.confidence >= 0.5:
+            confidence = min(0.92, 0.75 + bend_analysis.confidence * 0.15)
+        elif min_dim < SHEET_METAL_MAX_THICKNESS:
+            # Single bend with thin profile
+            confidence = min(0.85, 0.70 + bend_analysis.confidence * 0.15)
+        else:
+            # Single bend with large bbox min — less certain
+            confidence = min(0.75, 0.60 + bend_analysis.confidence * 0.10)
+
         reasoning = (f"BEND-DETECTED: {bend_analysis.bend_count} bends "
-                     f"with {min_dim:.2f}mm profile")
+                     f"(confidence: {bend_analysis.confidence:.2f})")
         return ('sheet_metal', confidence, {
             **metadata,
             'classification_method': 'bend_detection',
@@ -312,10 +336,10 @@ class ProcessClassifier:
 
     def _try_dimension_classification(self, min_dim, aspect_ratio, metadata):
         """Classify thin + high-aspect parts. Returns result or None."""
-        if min_dim >= 6 or aspect_ratio <= 8:
+        if min_dim >= 8 or aspect_ratio <= 5:
             return None
 
-        if self.metrics.volume_efficiency > 0.60:
+        if self.metrics.volume_efficiency > 0.75:
             return ('cnc_milling', 0.75, {
                 **metadata,
                 'classification_method': 'dimension_override_cnc',
@@ -381,7 +405,7 @@ class ProcessClassifier:
     def _try_score_classification(self, enhanced_score, metadata):
         """Return sheet-metal or CNC override based on enhanced score, or None."""
         if enhanced_score > 65:
-            if self.metrics.volume_efficiency > 0.60:
+            if self.metrics.volume_efficiency > 0.75:
                 return ('cnc_milling', 0.80, {
                     **metadata,
                     'classification_method': 'cnc_volume_override',

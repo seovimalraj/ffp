@@ -3841,11 +3841,13 @@ function generateDefaultSheetMetalFeatures(
   const bbox = geometry.boundingBox;
   const dims = [bbox.x, bbox.y, bbox.z].sort((a, b) => a - b);
 
-  // Use material thickness if specified, otherwise smallest dimension (clamped for reasonability)
+  // Priority: 1) explicit material thickness, 2) detected wall thickness from backend, 3) bbox min dim
   const thickness =
     materialThickness > 0 && materialThickness <= 25
       ? materialThickness
-      : Math.min(dims[0], 6); // Cap at 6mm for auto-detection
+      : geometry.detectedWallThickness && geometry.detectedWallThickness > 0
+        ? geometry.detectedWallThickness
+        : Math.min(dims[0], 8); // Cap at 8mm (aligned with backend max)
   const width = dims[1];
   const length = dims[2];
 
@@ -4838,17 +4840,31 @@ function isSheetMetalCandidate(geometry: GeometryData): boolean {
     geometry.boundingBox.y,
     geometry.boundingBox.z,
   ].sort((a, b) => a - b);
-  const thickness = dims[0];
+
+  // Prefer actual ray-cast wall thickness from backend over bbox min dimension.
+  // For bent sheet metal parts (brackets, enclosures), the bbox minimum dimension
+  // is NOT the wall thickness — it's the overall depth of the bent form.
+  const thickness = geometry.detectedWallThickness && geometry.detectedWallThickness > 0
+    ? geometry.detectedWallThickness
+    : dims[0];
   const longest = dims[2];
 
-  // Sheet metal typically 0.5mm to 8mm thick (aligned with backend classification)
-  if (thickness < SIZE_LIMITS.min || thickness > 8) return false;
+  // Sheet metal typically 0.3mm to 10mm thick (generous range to avoid false rejections)
+  if (thickness < 0.3 || thickness > 10) return false;
   if (longest > SIZE_LIMITS.max) return false;
 
-  // Check if it's actually sheet-like (thin relative to area)
-  // Use aspect ratio > 5 (more permissive to match backend bent sheet metal detection)
-  const aspectRatio = longest / thickness;
-  return aspectRatio > 5;
+  // If backend already classified as sheet-metal with good confidence, trust it
+  if (
+    geometry.recommendedProcess === "sheet-metal" &&
+    geometry.processConfidence !== undefined &&
+    geometry.processConfidence >= 0.6
+  ) {
+    return true;
+  }
+
+  // For bbox-only analysis, check aspect ratio (thin relative to area)
+  const aspectRatio = longest / Math.max(thickness, 0.1);
+  return aspectRatio > 3;
 }
 
 function manualQuoteBreakdown(
