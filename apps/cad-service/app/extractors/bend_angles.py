@@ -183,11 +183,15 @@ def _check_cylinder_plane_bend(surf1, surf2, s1_type, edge, occ):
     u2 = cyl_surf.LastUParameter()
     angle_deg = math.degrees(abs(u2 - u1))
     
-    # FIX: Relax constraints - allow larger bend radii and smaller angles
-    # bend_radius up to 100mm for heavy gauge materials
-    # angle as low as 5° (very slight bends)
-    if not (5.0 < angle_deg < 180.0 and bend_radius < 100.0):
-        logger.debug("BEND: Cylinder-plane rejected: angle=%.1f°, radius=%.2fmm", angle_deg, bend_radius)
+    # ACCURACY FIX: Tighten constraints for sheet metal bend detection
+    # - Sheet metal bend radii are typically 0.5mm-20mm (max 30mm for thick plate)
+    # - Larger radii indicate cylindrical turned bodies, not bends
+    # - Angle must be 5-180° (reasonable bend range)
+    # - Radii > 30mm are almost certainly NOT sheet metal bends
+    max_bend_radius = 30.0  # mm - max realistic sheet metal bend radius
+    if not (5.0 < angle_deg < 180.0 and bend_radius < max_bend_radius):
+        logger.debug("BEND: Cylinder-plane rejected: angle=%.1f°, radius=%.2fmm (max=%.0fmm)", 
+                     angle_deg, bend_radius, max_bend_radius)
         return None
 
     props = gprops_cls()
@@ -212,10 +216,12 @@ def _check_cylinder_cylinder_bend(surf1, surf2, edge, occ):
     cyl2 = surf2.Cylinder()
     r1, r2 = cyl1.Radius(), cyl2.Radius()
     
-    # FIX: Relax constraints
-    # - Radii can differ by up to 2mm (inner vs outer radius)
-    # - Allow radii up to 100mm
-    if abs(r1 - r2) >= 2.0 or r1 >= 100.0:
+    # ACCURACY FIX: Tighten constraints for sheet metal bends
+    # - Radii must be similar (difference < 2mm for inner/outer of same bend)
+    # - Max radius 30mm for realistic sheet metal bends
+    # - Larger radii indicate turned bodies, not sheet metal bends
+    max_bend_radius = 30.0  # mm
+    if abs(r1 - r2) >= 2.0 or r1 >= max_bend_radius or r2 >= max_bend_radius:
         return None
 
     bend_radius = (r1 + r2) / 2.0

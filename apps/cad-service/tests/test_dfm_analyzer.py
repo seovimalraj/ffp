@@ -41,7 +41,7 @@ def test_hole_transformation_basic():
             id="H-002",
             type="blind",
             diameter_mm=3.0,
-            depth_mm=25.0,  # Deep hole: 25/3 = 8.3x
+            depth_mm=35.0,  # Deep hole: 35/3 = 11.7x (> default 10x threshold)
             axis=(0, 0, 1),
             entry_face_id=3,
             exit_face_id=None,
@@ -52,7 +52,7 @@ def test_hole_transformation_basic():
     result = transform_holes_to_advanced_features(holes)
     
     assert result["totalCount"] == 2
-    assert result["deepHoleCount"] == 1, "H-002 should be deep (depth > 5x dia)"
+    assert result["deepHoleCount"] == 1, "H-002 should be deep (depth > 10x dia)"
     assert result["smallHoleCount"] == 0, "No holes below 1mm"
     assert abs(result["diameterRange"]["min"] - 3.0) < 0.01
     assert abs(result["diameterRange"]["max"] - 6.0) < 0.01

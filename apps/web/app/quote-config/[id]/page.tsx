@@ -579,9 +579,9 @@ export default function QuoteConfigPage() {
 
           console.log(`Analyzing CAD file: ${file.name}`);
 
-          // ENTERPRISE-LEVEL: Use backend analysis for STEP files (advanced ray-casting thickness detection)
+          // Use backend analysis for STEP/IGES/DXF files (advanced classification)
           const extension = file.name.toLowerCase().split(".").pop();
-          const useBackendAnalysis = ["step", "stp", "iges", "igs"].includes(
+          const useBackendAnalysis = ["step", "stp", "iges", "igs", "dxf", "stl"].includes(
             extension || "",
           );
 

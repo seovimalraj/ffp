@@ -133,6 +133,45 @@ def load_step_shape(path: str):
     return shape
 
 
+def load_iges_shape(path: str):
+    """Return a TopoDS_Shape from an IGES file using pythonOCC.
+    
+    IGES (Initial Graphics Exchange Specification) is an older CAD format
+    similar to STEP but with less rich topology. OCC can read it and produce
+    the same TopoDS_Shape for analysis.
+    
+    Raises RuntimeError if OCC not available or file can't be read.
+    """
+    if not occ_available():
+        raise RuntimeError("pythonocc-core is not available in this environment")
+
+    from OCC.Core.IGESControl import IGESControl_Reader
+    from OCC.Core.IFSelect import IFSelect_RetDone
+
+    reader = IGESControl_Reader()
+    status = reader.ReadFile(path)
+    if status != IFSelect_RetDone:
+        raise RuntimeError("IGES read failed")
+    reader.TransferRoots()
+    shape = reader.OneShape()
+    return shape
+
+
+def load_brep_shape(path: str):
+    """Load a shape from STEP or IGES file based on extension.
+    
+    This is a convenience function that auto-detects the format.
+    """
+    import os
+    ext = os.path.splitext(path)[1].lower()
+    if ext in ('.step', '.stp'):
+        return load_step_shape(path)
+    elif ext in ('.iges', '.igs'):
+        return load_iges_shape(path)
+    else:
+        raise RuntimeError(f"Unsupported BRep format: {ext}. Use .step, .stp, .iges, or .igs")
+
+
 def shape_mass_props(shape) -> tuple[float, float]:
     """Return (volume_mm3, surface_area_mm2) for a TopoDS_Shape."""
     from OCC.Core.GProp import GProp_GProps

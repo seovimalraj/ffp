@@ -468,7 +468,7 @@ class AdvancedBendDetector:
             detected_thickness, thickness_confidence, bend_indicators, bend_count
         )
         bend_count = self._check_dimension_ratio(
-            has_thickness_discrepancy, bend_indicators, bend_count
+            has_thickness_discrepancy, bend_indicators, bend_count, detected_thickness
         )
         bend_count = self._check_volume_hollowness(
             is_hollow, bend_indicators, bend_count
@@ -480,7 +480,7 @@ class AdvancedBendDetector:
         bend_count = self._check_mesh_complexity(
             triangle_count, bend_indicators, bend_count
         )
-        has_flanges = self._check_flanges(is_hollow, bend_indicators)
+        has_flanges = self._check_flanges(is_hollow, bend_indicators, detected_thickness)
         has_relief_cuts = self._check_relief_cuts(bend_count, bend_indicators)
 
         # Calculate overall confidence
@@ -543,11 +543,30 @@ class AdvancedBendDetector:
 
     def _check_dimension_ratio(
         self, has_thickness_discrepancy: bool,
-        indicators: List[Dict], bend_count: int
+        indicators: List[Dict], bend_count: int,
+        detected_thickness: Optional[float] = None
     ) -> int:
         """METHOD 1B: Dimension ratio detection when thickness detection fails."""
-        if has_thickness_discrepancy or self.min_dim >= 6 or self.aspect_ratio <= 8:
+        # Skip if thickness already detected as a discrepancy
+        if has_thickness_discrepancy:
             return bend_count
+        
+        # Skip if part is not thin (min_dim >= 6mm)
+        if self.min_dim >= 6:
+            return bend_count
+        
+        # Skip if aspect ratio is low (not sheet-like)
+        if self.aspect_ratio <= 8:
+            return bend_count
+        
+        # IMPORTANT: Skip if detected_thickness matches bbox minimum (flat sheet, not bent)
+        # A flat sheet has thickness ≈ min_dim, whereas a bent sheet has thickness << min_dim
+        if detected_thickness is not None and detected_thickness > 0:
+            thickness_ratio = detected_thickness / self.min_dim if self.min_dim > 0 else 1.0
+            # If thickness is within 30% of bbox min, it's likely a flat sheet, not bent
+            if thickness_ratio >= 0.7:
+                return bend_count
+        
         indicators.append({
             'method': 'dimension_ratio',
             'confidence': 0.70,
@@ -670,9 +689,12 @@ class AdvancedBendDetector:
             return max(bend_count, min(5, int(triangle_count / 3000)))
         return bend_count
 
-    def _check_flanges(self, is_hollow: bool, indicators: List[Dict]) -> bool:
+    def _check_flanges(self, is_hollow: bool, indicators: List[Dict], detected_thickness: Optional[float] = None) -> bool:
         """METHOD 6: Flange detection."""
-        if self.min_dim < 6 and is_hollow:
+        # Use detected_thickness if available, otherwise fall back to min_dim
+        effective_thickness = detected_thickness if detected_thickness is not None else self.min_dim
+        
+        if effective_thickness < 6 and is_hollow:
             indicators.append({
                 'method': 'flange_detection',
                 'confidence': 0.6,

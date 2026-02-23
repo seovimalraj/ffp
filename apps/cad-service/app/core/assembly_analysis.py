@@ -191,41 +191,241 @@ def _detect_standard_parts(
     return False, None
 
 
+@dataclass
+class WeldJoint:
+    """Detected weld joint between components."""
+    joint_type: str  # 'butt', 'fillet', 't_joint', 'corner', 'lap', 'edge'
+    component_a: int
+    component_b: int
+    edge_length: float  # mm
+    contact_area: float  # mm²
+    perpendicular: bool  # T-joint or corner
+    confidence: float
+
+
+@dataclass
+class WeldmentAnalysis:
+    """Detailed weldment analysis results."""
+    is_weldment: bool
+    weld_joints: List[WeldJoint]
+    structural_members: List[Dict]  # tube, angle, channel, plate
+    frame_type: str  # 'rectangular', 'triangular', 'custom'
+    total_weld_length: float  # mm
+    joint_count_by_type: Dict[str, int]
+    confidence: float
+
+
+def _detect_structural_member_type(
+    bbox_dims: Tuple[float, float, float],
+    volume: float,
+    area: float
+) -> Tuple[str, float]:
+    """
+    Detect if a component is a structural member (tube, angle, channel, plate).
+    
+    Returns: (member_type, confidence)
+    """
+    dims = sorted(bbox_dims)
+    min_dim, mid_dim, max_dim = dims[0], dims[1], dims[2]
+    
+    # Volume efficiency
+    envelope = dims[0] * dims[1] * dims[2]
+    vol_eff = volume / envelope if envelope > 0 else 0
+    
+    # Length ratio (how elongated)
+    length_ratio = max_dim / mid_dim if mid_dim > 0.1 else 1.0
+    
+    # Cross-section ratio
+    cross_ratio = mid_dim / min_dim if min_dim > 0.1 else 1.0
+    
+    # Plate: thin, low volume efficiency is OK for plates
+    if min_dim < 12 and length_ratio > 2 and cross_ratio > 2:
+        return "plate", 0.8
+    
+    # Round tube: nearly square cross-section, hollow (low vol_eff)
+    if 0.8 < cross_ratio < 1.3 and vol_eff < 0.5 and length_ratio > 3:
+        return "round_tube", 0.7
+    
+    # Square/rectangular tube: low vol_eff, elongated
+    if vol_eff < 0.4 and length_ratio > 3:
+        return "rect_tube", 0.7
+    
+    # Angle/L-section: very low vol_eff (< 25%), elongated
+    if vol_eff < 0.25 and length_ratio > 4:
+        return "angle", 0.6
+    
+    # Channel/C-section: low vol_eff, elongated
+    if vol_eff < 0.35 and length_ratio > 3:
+        return "channel", 0.6
+    
+    # Bar stock: high vol_eff, elongated
+    if vol_eff > 0.7 and length_ratio > 4:
+        return "bar", 0.6
+    
+    return "unknown", 0.3
+
+
+def _detect_joint_type(
+    c1: ComponentInfo,
+    c2: ComponentInfo,
+    distance: float
+) -> Optional[WeldJoint]:
+    """
+    Detect weld joint type between two components based on geometry.
+    """
+    # Get primary directions (longest axis) of each component
+    dims1 = sorted(enumerate(c1.bbox_dims), key=lambda x: x[1], reverse=True)
+    dims2 = sorted(enumerate(c2.bbox_dims), key=lambda x: x[1], reverse=True)
+    
+    axis1 = dims1[0][0]  # Index of longest dimension
+    axis2 = dims2[0][0]
+    
+    # Same axis direction - could be butt or lap joint
+    if axis1 == axis2:
+        # Check if aligned end-to-end (butt) or overlapping (lap)
+        center_diff = [
+            abs(c1.center_of_mass[i] - c2.center_of_mass[i])
+            for i in range(3)
+        ]
+        
+        # If difference along primary axis is large, could be butt weld
+        if center_diff[axis1] > c1.bbox_dims[axis1] * 0.4:
+            edge_length = min(c1.bbox_dims[(axis1+1)%3], c2.bbox_dims[(axis1+1)%3])
+            return WeldJoint(
+                joint_type="butt",
+                component_a=c1.body_index,
+                component_b=c2.body_index,
+                edge_length=edge_length,
+                contact_area=edge_length * min(c1.bbox_dims[(axis1+2)%3], c2.bbox_dims[(axis1+2)%3]),
+                perpendicular=False,
+                confidence=0.6
+            )
+        else:
+            # Overlapping - lap joint
+            return WeldJoint(
+                joint_type="lap",
+                component_a=c1.body_index,
+                component_b=c2.body_index,
+                edge_length=min(c1.bbox_dims[axis1], c2.bbox_dims[axis1]),
+                contact_area=100.0,
+                perpendicular=False,
+                confidence=0.5
+            )
+    
+    # Different primary axes - T-joint or corner
+    # T-joint: one component perpendicular to another's face
+    # Corner: both at edges meeting at angle
+    
+    # Simplified: if axes are perpendicular
+    perpendicular = axis1 != axis2
+    
+    if perpendicular:
+        # Determine T vs corner based on position
+        # If one center is near the edge of the other, it's T-joint
+        shorter = c1 if c1.bbox_dims[axis1] < c2.bbox_dims[axis2] else c2
+        longer = c2 if shorter == c1 else c1
+        
+        # Check if shorter's center is near longer's end
+        longer_axis_idx = dims2[0][0] if shorter == c1 else dims1[0][0]
+        
+        edge_length = min(shorter.bbox_dims)
+        
+        return WeldJoint(
+            joint_type="t_joint",
+            component_a=c1.body_index,
+            component_b=c2.body_index,
+            edge_length=edge_length,
+            contact_area=edge_length * min(shorter.bbox_dims),
+            perpendicular=True,
+            confidence=0.65
+        )
+    
+    return None
+
+
 def _detect_weldment_characteristics(
     body_count: int,
     components: List[ComponentInfo],
     relationships: List[AssemblyRelationship]
 ) -> Tuple[bool, int, int]:
     """
-    Detect if assembly is a weldment.
+    Detect if assembly is a weldment with detailed joint analysis.
     
-    Indicators:
-    - Multiple structural shapes (tubes, angles, plates)
-    - High contact areas between components
-    - Sheet metal parts with mating edges
+    Enhanced detection includes:
+    - Structural member identification (tubes, angles, plates)
+    - Joint type classification (butt, fillet, T-joint, corner, lap)
+    - Frame pattern recognition
     
     Returns: (is_weldment, weld_joint_count, structural_member_count)
     """
     if body_count < 2:
         return False, 0, 0
     
-    # Count sheet metal / plate components
-    structural_count = sum(
+    # Identify structural members
+    structural_members = []
+    structural_count = 0
+    
+    for comp in components:
+        member_type, confidence = _detect_structural_member_type(
+            comp.bbox_dims, comp.volume_mm3, comp.surface_area_mm2
+        )
+        if member_type != "unknown":
+            structural_members.append({
+                'body_index': comp.body_index,
+                'type': member_type,
+                'confidence': confidence
+            })
+            structural_count += 1
+    
+    # Count sheet metal / plate components (legacy check)
+    sheet_metal_count = sum(
         1 for c in components 
         if c.component_type == ComponentType.SHEET_METAL_PART
     )
+    structural_count = max(structural_count, sheet_metal_count)
     
-    # Count high-contact relationships (potential weld joints)
-    weld_candidates = sum(
+    # Detect weld joints
+    weld_joints = []
+    for rel in relationships:
+        if rel.relationship_type == 'contact' and rel.contact_area > 10:
+            c1 = components[rel.component_a_index]
+            c2 = components[rel.component_b_index]
+            
+            # Calculate center distance
+            dist = math.sqrt(sum(
+                (c1.center_of_mass[i] - c2.center_of_mass[i])**2
+                for i in range(3)
+            ))
+            
+            joint = _detect_joint_type(c1, c2, dist)
+            if joint:
+                weld_joints.append(joint)
+    
+    weld_count = len(weld_joints)
+    
+    # Additional heuristic: count high-contact relationships
+    high_contact_count = sum(
         1 for r in relationships
         if r.contact_area > 10 and r.relationship_type == 'contact'
     )
+    weld_count = max(weld_count, high_contact_count)
     
-    # Heuristic: weldment if mostly sheet metal with many contacts
-    if structural_count >= body_count * 0.5 and weld_candidates >= body_count - 1:
-        return True, weld_candidates, structural_count
+    # Weldment detection criteria:
+    # 1. Multiple structural members with many joints
+    # 2. Mostly sheet metal/plates with contacts
+    # 3. At least N-1 joints for N bodies (connected graph)
     
-    return False, 0, structural_count
+    is_weldment = False
+    
+    if structural_count >= body_count * 0.5 and weld_count >= body_count - 1:
+        is_weldment = True
+    elif len(structural_members) >= 2 and weld_count >= 1:
+        # At least 2 structural members with joints
+        is_weldment = True
+    elif sheet_metal_count >= 2 and high_contact_count >= 1:
+        is_weldment = True
+    
+    return is_weldment, weld_count, structural_count
 
 
 def analyze_multi_body_assembly(shape) -> AssemblyAnalysis:

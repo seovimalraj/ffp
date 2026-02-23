@@ -2,11 +2,14 @@
 
 Analyses face normals relative to a mold pull direction and computes the
 draft angle for each face.  Faces with insufficient draft are flagged.
+
+Enhanced with parting line detection and casting feasibility analysis.
 """
 from __future__ import annotations
 
 import logging
 import math
+from dataclasses import dataclass
 from typing import List, Optional, Tuple
 
 from ..models import DraftAngleInfo
@@ -205,3 +208,267 @@ def get_min_draft_for_material(material: str) -> float:
         if key in material_lower:
             return val
     return DRAFT_RECOMMENDATIONS["default"]
+
+
+# =============================================================================
+# Parting Line and Casting Detection
+# =============================================================================
+
+@dataclass
+class PartingLineInfo:
+    """Information about a potential parting line for casting/mold."""
+    z_level: float  # Height of parting plane
+    perimeter_length: float  # Length of parting line (mm)
+    cross_section_area: float  # Cross-section area at parting plane (mm²)
+    complexity: float  # 0-100, how complex the parting line is
+    is_planar: bool  # True if parting line lies in a plane
+    confidence: float
+
+
+@dataclass
+class CastingAnalysis:
+    """Complete casting analysis results."""
+    is_likely_casting: bool
+    casting_type: str  # 'die_casting', 'sand_casting', 'investment', 'injection_mold'
+    parting_lines: List[PartingLineInfo]
+    optimal_parting_z: Optional[float]
+    draft_compliant_faces: int
+    draft_insufficient_faces: int
+    average_draft: float
+    min_draft: float
+    max_wall_thickness: Optional[float]
+    min_wall_thickness: Optional[float]
+    has_undercuts: bool
+    undercut_count: int
+    ejector_difficulty: str  # 'easy', 'moderate', 'difficult'
+    confidence: float
+
+
+def _find_parting_plane_candidates(
+    mesh,
+    num_slices: int = 20
+) -> List[Dict]:
+    """
+    Find potential parting plane locations by analyzing cross-sections.
+    
+    A good parting line:
+    - Maximizes projected area in both directions
+    - Minimizes undercut regions
+    - Has a simple, ideally planar boundary
+    """
+    try:
+        import numpy as np
+    except ImportError:
+        return []
+    
+    if not hasattr(mesh, 'bounds'):
+        return []
+    
+    bounds = mesh.bounds
+    z_min = bounds[0][2]
+    z_max = bounds[1][2]
+    
+    # Analyze silhouette at multiple Z levels
+    candidates = []
+    z_levels = np.linspace(z_min + 0.05 * (z_max - z_min),
+                          z_max - 0.05 * (z_max - z_min),
+                          num_slices)
+    
+    for z in z_levels:
+        try:
+            # Count faces above and below
+            if hasattr(mesh, 'face_normals') and hasattr(mesh, 'triangles_center'):
+                centers = mesh.triangles_center
+                above_count = np.sum(centers[:, 2] > z)
+                below_count = np.sum(centers[:, 2] < z)
+                
+                # Balance score - want roughly equal above/below
+                total = above_count + below_count
+                if total > 0:
+                    balance = 1.0 - abs(above_count - below_count) / total
+                else:
+                    balance = 0.0
+                
+                candidates.append({
+                    'z_level': float(z),
+                    'balance_score': balance,
+                    'above_faces': above_count,
+                    'below_faces': below_count,
+                })
+        except Exception:
+            continue
+    
+    # Sort by balance score
+    candidates.sort(key=lambda c: c['balance_score'], reverse=True)
+    
+    return candidates[:5]
+
+
+def _detect_undercuts_for_casting(
+    mesh,
+    pull_direction: Tuple[float, float, float] = DEFAULT_PULL_DIRECTION
+) -> Tuple[int, bool]:
+    """
+    Detect undercut regions that would prevent mold release.
+    
+    Undercuts are faces where the normal points against the pull direction
+    and below the parting line.
+    """
+    try:
+        import numpy as np
+    except ImportError:
+        return 0, False
+    
+    if not hasattr(mesh, 'face_normals'):
+        return 0, False
+    
+    pd = np.array(_normalize(pull_direction))
+    normals = mesh.face_normals
+    
+    # Undercuts: faces where normal has negative component along pull
+    # (would trap the part in the mold)
+    dots = normals @ pd
+    
+    # Loose threshold - faces pointing somewhat against pull
+    undercut_mask = dots < -0.1
+    undercut_count = int(np.sum(undercut_mask))
+    
+    # Severe undercuts - directly opposing pull
+    severe_mask = dots < -0.5
+    has_severe = bool(np.any(severe_mask))
+    
+    return undercut_count, has_severe
+
+
+def analyze_for_casting(
+    mesh,
+    draft_results: List[DraftAngleInfo],
+    pull_direction: Tuple[float, float, float] = DEFAULT_PULL_DIRECTION,
+    detected_thickness: Optional[float] = None,
+    min_wall: Optional[float] = None,
+    max_wall: Optional[float] = None
+) -> CastingAnalysis:
+    """
+    Comprehensive casting analysis for mold/die feasibility.
+    
+    Determines:
+    - If part is suitable for casting processes
+    - Optimal parting line location
+    - Draft angle compliance
+    - Undercut issues
+    - Recommended casting process
+    """
+    try:
+        import numpy as np
+    except ImportError:
+        return CastingAnalysis(
+            is_likely_casting=False,
+            casting_type="unknown",
+            parting_lines=[],
+            optimal_parting_z=None,
+            draft_compliant_faces=0,
+            draft_insufficient_faces=0,
+            average_draft=0.0,
+            min_draft=0.0,
+            max_wall_thickness=max_wall,
+            min_wall_thickness=min_wall,
+            has_undercuts=False,
+            undercut_count=0,
+            ejector_difficulty="unknown",
+            confidence=0.0
+        )
+    
+    # Analyze draft compliance
+    compliant = sum(1 for d in draft_results if d.is_sufficient)
+    insufficient = sum(1 for d in draft_results if not d.is_sufficient)
+    
+    if draft_results:
+        avg_draft = np.mean([d.draft_angle_deg for d in draft_results])
+        min_draft = min(d.draft_angle_deg for d in draft_results)
+    else:
+        avg_draft = 0.0
+        min_draft = 0.0
+    
+    # Find parting plane candidates
+    parting_candidates = _find_parting_plane_candidates(mesh)
+    
+    parting_lines = []
+    optimal_z = None
+    if parting_candidates:
+        optimal_z = parting_candidates[0]['z_level']
+        for pc in parting_candidates[:3]:
+            parting_lines.append(PartingLineInfo(
+                z_level=pc['z_level'],
+                perimeter_length=0.0,  # Would need cross-section analysis
+                cross_section_area=0.0,
+                complexity=50.0 * (1 - pc['balance_score']),
+                is_planar=True,
+                confidence=pc['balance_score']
+            ))
+    
+    # Detect undercuts
+    undercut_count, has_severe_undercuts = _detect_undercuts_for_casting(mesh, pull_direction)
+    
+    # Determine casting suitability
+    # Good draft + minimal undercuts = castable
+    draft_ratio = compliant / max(compliant + insufficient, 1)
+    
+    is_likely_casting = (
+        avg_draft >= 0.5 and  # Some draft present
+        draft_ratio >= 0.7 and  # Most faces have adequate draft
+        not has_severe_undercuts  # No severe undercuts
+    )
+    
+    # Determine casting type based on geometry
+    if detected_thickness is not None:
+        wall = detected_thickness
+    elif min_wall is not None:
+        wall = min_wall
+    else:
+        wall = 5.0  # Default
+    
+    if wall < 1.5:
+        # Very thin - die casting or injection
+        casting_type = "die_casting" if avg_draft >= 1.0 else "injection_molding"
+    elif wall < 4.0:
+        # Medium - can be die cast
+        casting_type = "die_casting"
+    elif wall < 10.0:
+        # Thicker - could be sand or investment
+        if undercut_count > 5:
+            casting_type = "investment_casting"  # Handles undercuts better
+        else:
+            casting_type = "sand_casting"
+    else:
+        # Very thick - sand casting
+        casting_type = "sand_casting"
+    
+    # Ejector difficulty
+    if has_severe_undercuts:
+        ejector_difficulty = "difficult"
+    elif undercut_count > 10:
+        ejector_difficulty = "moderate"
+    elif insufficient > compliant:
+        ejector_difficulty = "moderate"
+    else:
+        ejector_difficulty = "easy"
+    
+    # Confidence
+    confidence = draft_ratio * 0.5 + (0.3 if parting_lines else 0) + (0.2 if not has_severe_undercuts else 0)
+    
+    return CastingAnalysis(
+        is_likely_casting=is_likely_casting,
+        casting_type=casting_type if is_likely_casting else "not_castable",
+        parting_lines=parting_lines,
+        optimal_parting_z=optimal_z,
+        draft_compliant_faces=compliant,
+        draft_insufficient_faces=insufficient,
+        average_draft=float(avg_draft),
+        min_draft=float(min_draft),
+        max_wall_thickness=max_wall,
+        min_wall_thickness=min_wall,
+        has_undercuts=undercut_count > 0,
+        undercut_count=undercut_count,
+        ejector_difficulty=ejector_difficulty,
+        confidence=float(confidence)
+    )

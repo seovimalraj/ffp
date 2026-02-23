@@ -3670,7 +3670,7 @@ export const CUTTING_METHODS: Record<string, CuttingMethodConfig> = {
     costPerMeter: 0.8,
     speedMmPerMin: 3000,
     setupCost: 45,
-    minThickness: 0.5,
+    minThickness: 0.3, // Allow thin sheet metal (0.3mm minimum)
     maxThickness: 20,
     materialCompatibility: [
       "steel",
@@ -3694,7 +3694,7 @@ export const CUTTING_METHODS: Record<string, CuttingMethodConfig> = {
     costPerMeter: 1.2,
     speedMmPerMin: 800,
     setupCost: 60,
-    minThickness: 0.5,
+    minThickness: 0.3, // Waterjet can cut thin stock
     maxThickness: 150,
     materialCompatibility: [
       "steel",
@@ -3709,13 +3709,13 @@ export const CUTTING_METHODS: Record<string, CuttingMethodConfig> = {
     costPerMeter: 0.4,
     speedMmPerMin: 5000,
     setupCost: 50,
-    minThickness: 0.5,
+    minThickness: 0.3, // Turret punch can handle thin stock
     maxThickness: 6,
     materialCompatibility: ["steel", "stainless", "aluminum"],
   },
 };
 
-const SIZE_LIMITS = { min: 0.5, max: 700 };
+const SIZE_LIMITS = { min: 0.3, max: 700 }; // min 0.3mm for thin sheet metal
 
 // Lead time type price multipliers (applied to final price)
 const leadTimePriceMultipliers = {
@@ -3814,7 +3814,7 @@ const ADVANCED_PRICING = {
 const CNC_CONSTRAINTS = {
   minWallThickness: 0.5, // mm
   minFeatureSize: 0.8, // mm
-  maxAspectRatio: 20, // length:diameter for deep holes/pockets
+  maxAspectRatio: 50, // length:width for flat plates (increased from 20 for thin plate parts)
   minHoleDepth: 0.5, // mm
   maxPartVolume: 500000, // cm3 (500L)
 };
@@ -3844,12 +3844,17 @@ function generateDefaultSheetMetalFeatures(
   const bbox = geometry.boundingBox;
   const dims = [bbox.x, bbox.y, bbox.z].sort((a, b) => a - b);
 
-  // Priority: 1) explicit material thickness, 2) detected wall thickness from backend, 3) bbox min dim
+  // Priority: 1) explicit material thickness, 2) detected wall thickness from backend (if valid),
+  // 3) dominant_pair_thickness from face classification, 4) bbox min dim
   let thickness: number;
   if (materialThickness > 0 && materialThickness <= 25) {
     thickness = materialThickness;
-  } else if (geometry.detectedWallThickness && geometry.detectedWallThickness > 0) {
+  } else if (geometry.detectedWallThickness && geometry.detectedWallThickness >= 0.3 && geometry.detectedWallThickness <= 25) {
+    // Only use detected thickness if it's a valid sheet metal range (0.3mm to 25mm)
     thickness = geometry.detectedWallThickness;
+  } else if ((geometry as any).faceClassification?.dominant_pair_thickness >= 0.3) {
+    // Fallback: use dominant planar pair thickness from face classification
+    thickness = (geometry as any).faceClassification.dominant_pair_thickness;
   } else {
     thickness = Math.min(dims[0], 8); // Cap at 8mm (aligned with backend max)
   }
@@ -4479,7 +4484,7 @@ function checkSheetMetalFeasibility(
     };
   }
 
-  if (bendCount > 30) {
+  if (bendCount > 300) {
     return {
       isFeasible: false,
       reason: `Excessive bend count (${bendCount} bends) exceeds standard fabrication capacity. Please request manual quote.`,
@@ -4797,10 +4802,10 @@ type ManualQuoteResult = { requiresManualQuote: boolean; reason?: string };
 
 function checkSizeConstraints(dims: number[]): ManualQuoteResult | null {
   if (dims.some((d) => d < SIZE_LIMITS.min)) {
-    return { requiresManualQuote: true, reason: "Part too small for standard CNC (min 0.5mm)" };
+    return { requiresManualQuote: true, reason: `Part too small for manufacturing (min ${SIZE_LIMITS.min}mm)` };
   }
   if (dims.some((d) => d > SIZE_LIMITS.max)) {
-    return { requiresManualQuote: true, reason: "Part exceeds CNC envelope (max 700mm)" };
+    return { requiresManualQuote: true, reason: `Part exceeds equipment capacity (max ${SIZE_LIMITS.max}mm)` };
   }
   return null;
 }
@@ -4821,7 +4826,7 @@ function checkCNCConstraints(
   if (geometry.complexity === "complex" && material.machinabilityFactor > 2.5) {
     return { requiresManualQuote: true, reason: "Complex geometry with difficult-to-machine material" };
   }
-  if (geometry.estimatedMachiningTime > 1200) {
+  if (geometry.estimatedMachiningTime > 3600) {
     return { requiresManualQuote: true, reason: "Machining time exceeds standard production capacity" };
   }
   return null;
@@ -4852,7 +4857,7 @@ function shouldRequestManualQuote(
     return { requiresManualQuote: true, reason: "Geometry not suitable for sheet metal manufacturing" };
   }
 
-  if (geometry.complexity === "complex" && process.type !== "injection-molding") {
+  if (geometry.complexity === "complex" && process.type !== "injection-molding" && process.type !== "sheet-metal") {
     const surfaceToVolumeRatio = geometry.surfaceArea / (volumeCm3 * 10);
     if (surfaceToVolumeRatio > 50) {
       return { requiresManualQuote: true, reason: "Complex internal features may require multi-axis or EDM" };
@@ -4863,6 +4868,17 @@ function shouldRequestManualQuote(
 }
 
 function isSheetMetalCandidate(geometry: GeometryData): boolean {
+  // FIRST: If backend already classified as sheet-metal with good confidence, trust it
+  // This takes priority over thickness validation, since bent parts may have
+  // invalid thickness readings but correct process classification
+  if (
+    geometry.recommendedProcess === "sheet-metal" &&
+    geometry.processConfidence !== undefined &&
+    geometry.processConfidence >= 0.6
+  ) {
+    return true;
+  }
+
   const dims = [
     geometry.boundingBox.x,
     geometry.boundingBox.y,
@@ -4872,23 +4888,18 @@ function isSheetMetalCandidate(geometry: GeometryData): boolean {
   // Prefer actual ray-cast wall thickness from backend over bbox min dimension.
   // For bent sheet metal parts (brackets, enclosures), the bbox minimum dimension
   // is NOT the wall thickness — it's the overall depth of the bent form.
-  const thickness = geometry.detectedWallThickness && geometry.detectedWallThickness > 0
-    ? geometry.detectedWallThickness
-    : dims[0];
+  // Use faceClassification.dominant_pair_thickness if available
+  let thickness = dims[0];
+  if (geometry.detectedWallThickness && geometry.detectedWallThickness >= 0.3) {
+    thickness = geometry.detectedWallThickness;
+  } else if ((geometry as any).faceClassification?.dominant_pair_thickness >= 0.3) {
+    thickness = (geometry as any).faceClassification.dominant_pair_thickness;
+  }
   const longest = dims[2];
 
   // Sheet metal typically 0.3mm to 10mm thick (generous range to avoid false rejections)
   if (thickness < 0.3 || thickness > 10) return false;
   if (longest > SIZE_LIMITS.max) return false;
-
-  // If backend already classified as sheet-metal with good confidence, trust it
-  if (
-    geometry.recommendedProcess === "sheet-metal" &&
-    geometry.processConfidence !== undefined &&
-    geometry.processConfidence >= 0.6
-  ) {
-    return true;
-  }
 
   // For bbox-only analysis, check aspect ratio (thin relative to area)
   const aspectRatio = longest / Math.max(thickness, 0.1);

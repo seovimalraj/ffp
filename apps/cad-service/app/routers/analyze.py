@@ -15,7 +15,7 @@ import httpx
 from ..workers.celery import celery_app
 from ..utils.download import download_to_temp
 from ..utils.units import scale_to_mm
-from ..loaders.step_loader import occ_available, load_step_shape, shape_mass_props, count_solids_and_compounds
+from ..loaders.step_loader import occ_available, load_step_shape, load_iges_shape, shape_mass_props, count_solids_and_compounds
 from ..loaders.stl_loader import load_stl, mesh_mass_props
 from ..extractors.holes import extract_holes_from_shape, extract_holes_from_mesh
 from ..extractors.pockets import extract_pockets_from_shape, extract_pockets_from_mesh
@@ -24,7 +24,7 @@ from ..extractors.threads import extract_threads_from_shape, extract_threads_fro
 from ..extractors.slots import extract_slots_from_shape, extract_slots_from_pockets
 from ..extractors.undercuts import extract_undercuts_from_shape, detect_undercuts_from_mesh
 from ..extractors.fillets import extract_fillets_from_shape, detect_fillets_from_mesh
-from ..extractors.draft_angles import analyze_draft_from_shape, analyze_draft_from_mesh
+from ..extractors.draft_angles import analyze_draft_from_shape, analyze_draft_from_mesh, analyze_for_casting
 from ..extractors.grain_direction import analyze_grain_direction
 from ..extractors.nesting import estimate_nesting
 from ..extractors.bend_angles import extract_bend_angles_from_shape
@@ -161,6 +161,148 @@ def _serialize_features(threads=None, slots=None, undercuts=None, fillets=None, 
         ]
     return detail
 
+
+def _serialize_surface_finish(surface_finish):
+    """Serialize surface finish analysis for frontend."""
+    if surface_finish is None:
+        return None
+    
+    try:
+        return {
+            "dominant_grade": surface_finish.dominant_grade.value if hasattr(surface_finish.dominant_grade, 'value') else str(surface_finish.dominant_grade),
+            "min_ra_required": surface_finish.min_ra_required,
+            "min_rz_estimated": surface_finish.min_ra_required * 5.0,  # Rz ≈ 5 × Ra
+            "precision_face_count": surface_finish.precision_face_count,
+            "polished_face_count": surface_finish.polished_face_count,
+            "ground_face_count": getattr(surface_finish, 'ground_face_count', 0),
+            "total_precision_area_mm2": surface_finish.total_precision_area,
+            "finish_complexity_score": surface_finish.finish_complexity_score,
+            "features": [
+                {
+                    "grade": f.grade.value if hasattr(f.grade, 'value') else str(f.grade),
+                    "estimated_ra": f.estimated_ra,
+                    "estimated_rz": f.estimated_ra * 5.0,
+                    "face_area_mm2": f.face_area,
+                    "face_type": f.face_type,
+                    "is_mating_surface": f.is_mating_surface,
+                    "requires_grinding": f.requires_grinding,
+                    "requires_polishing": f.requires_polishing,
+                }
+                for f in (surface_finish.features or [])[:10]
+            ],
+        }
+    except Exception as e:
+        print(f"⚠️ Surface finish serialization failed: {e}")
+        return None
+
+
+def _serialize_casting_analysis(casting_analysis):
+    """Serialize casting analysis for frontend.
+    
+    Handles both CastingAnalysis from process_detection and draft_angles.
+    """
+    if casting_analysis is None:
+        return None
+    
+    try:
+        # Handle attribute name differences between two CastingAnalysis classes:
+        # - process_detection.CastingAnalysis: is_likely_cast, recommended_casting_process
+        # - draft_angles.CastingAnalysis: is_likely_casting, casting_type
+        is_casting = getattr(casting_analysis, 'is_likely_casting', None)
+        if is_casting is None:
+            is_casting = getattr(casting_analysis, 'is_likely_cast', False)
+        
+        casting_type = getattr(casting_analysis, 'casting_type', None)
+        if casting_type is None:
+            process = getattr(casting_analysis, 'recommended_casting_process', None)
+            casting_type = process.value if hasattr(process, 'value') else str(process) if process else 'unknown'
+        
+        return {
+            "is_likely_casting": is_casting,
+            "casting_type": casting_type,
+            "optimal_parting_z": getattr(casting_analysis, 'optimal_parting_z', None),
+            "draft_compliant_faces": getattr(casting_analysis, 'draft_compliant_faces', 0),
+            "draft_insufficient_faces": getattr(casting_analysis, 'draft_insufficient_faces', 0),
+            "average_draft_deg": getattr(casting_analysis, 'average_draft', getattr(casting_analysis, 'average_draft_angle', 0.0)),
+            "min_draft_deg": getattr(casting_analysis, 'min_draft', 0.0),
+            "has_undercuts": getattr(casting_analysis, 'has_undercuts', False),
+            "undercut_count": getattr(casting_analysis, 'undercut_count', 0),
+            "ejector_difficulty": getattr(casting_analysis, 'ejector_difficulty', 'unknown'),
+            "confidence": getattr(casting_analysis, 'confidence', 0.0),
+            "parting_lines": [
+                {
+                    "z_level": pl.z_level,
+                    "complexity": pl.complexity,
+                    "is_planar": pl.is_planar,
+                    "confidence": pl.confidence,
+                }
+                for pl in (getattr(casting_analysis, 'parting_lines', None) or [])[:5]
+            ],
+        }
+    except Exception as e:
+        print(f"⚠️ Casting analysis serialization failed: {e}")
+        return None
+
+
+def _serialize_machining_complexity(machining_complexity):
+    """Serialize machining complexity analysis for frontend."""
+    if machining_complexity is None:
+        return None
+    
+    try:
+        result = {
+            "primary_process": machining_complexity.primary_process,
+            "secondary_process": machining_complexity.secondary_process,
+            "recommended_machine": machining_complexity.recommended_machine.value if hasattr(machining_complexity.recommended_machine, 'value') else str(machining_complexity.recommended_machine),
+            "estimated_setup_count": machining_complexity.estimated_setup_count,
+            "complexity_score": machining_complexity.complexity_score,
+            "requires_5axis": machining_complexity.requires_5axis,
+            "requires_4axis": machining_complexity.requires_4axis,
+            "is_turn_mill": machining_complexity.is_turn_mill,
+            "requires_edm": machining_complexity.requires_edm,
+        }
+        
+        # Add milling complexity if present
+        if machining_complexity.milling_complexity:
+            mc = machining_complexity.milling_complexity
+            result["milling"] = {
+                "min_axes_required": mc.min_axes_required,
+                "has_deep_pockets": mc.has_deep_pockets,
+                "has_undercuts": mc.has_undercuts,
+                "has_compound_angles": mc.has_compound_angles,
+                "access_direction_count": mc.access_direction_count,
+                "max_tool_length_mm": mc.max_tool_length_required,
+            }
+        
+        # Add turning analysis if present
+        if machining_complexity.turning_analysis:
+            ta = machining_complexity.turning_analysis
+            result["turning"] = {
+                "is_rotationally_symmetric": ta.is_rotationally_symmetric,
+                "symmetry_axis": ta.symmetry_axis,
+                "has_cross_holes": ta.has_cross_holes,
+                "cross_hole_count": ta.cross_hole_count,
+                "has_flats": ta.has_flats,
+                "has_threads": ta.has_threads,
+                "requires_tailstock": ta.requires_tailstock,
+            }
+        
+        # Add setups summary
+        if machining_complexity.setups:
+            result["setups"] = [
+                {
+                    "setup_number": s.setup_number,
+                    "orientation": s.orientation,
+                    "requires_special_fixture": s.requires_special_fixture,
+                }
+                for s in machining_complexity.setups[:6]
+            ]
+        
+        return result
+    except Exception as e:
+        print(f"⚠️ Machining complexity serialization failed: {e}")
+        return None
+
 class AnalysisRequest(BaseModel):
     file_id: str
     file_path: Optional[str] = None
@@ -214,7 +356,8 @@ def _extract_mesh_features(mesh):
     """Extract features from STL mesh with per-feature error handling."""
     results = {
         "threads": [], "undercuts": [], "fillets": [], "draft": [],
-        "holes": [], "pockets": [], "bosses": [], "ribs": []
+        "holes": [], "pockets": [], "bosses": [], "ribs": [],
+        "surface_finish": None
     }
     extractors = [
         ("threads", lambda: extract_threads_from_mesh(mesh)),
@@ -225,6 +368,7 @@ def _extract_mesh_features(mesh):
         ("pockets", lambda: extract_pockets_from_mesh(mesh)),
         ("bosses", lambda: extract_bosses_from_mesh(mesh)),
         ("ribs", lambda: extract_ribs_from_mesh(mesh)),
+        ("surface_finish", lambda: extract_surface_finish_from_mesh(mesh)),
     ]
     for name, fn in extractors:
         try:
@@ -895,13 +1039,14 @@ def _analyze_dxf(file_path: str, scale: float, material: str = 'default') -> dic
     classification_confidence = min(0.98, max(0.75, base_confidence))
     
     # Build response - DXF is ALWAYS sheet_metal
+    # Match format used by STL/STEP for consistency
+    vol_mm3 = flat_area * default_thickness
+    area_mm2 = flat_area * 2 + perimeter_length * default_thickness
+    
     return {
-        'volume': flat_area * default_thickness,  # mm³
-        'surfaceArea': flat_area * 2 + perimeter_length * default_thickness,  # mm²
-        'boundingBox': {
-            'x': round(width, 2),
-            'y': round(height, 2),
-            'z': round(default_thickness, 2),
+        'volume': vol_mm3 / 1000.0,  # Convert to cm³ like STL/STEP
+        'surface_area': area_mm2 / 100.0,  # Convert to cm² like STL/STEP
+        'bbox': {
             'min': {'x': round(min_x, 2), 'y': round(min_y, 2), 'z': 0.0},
             'max': {'x': round(max_x, 2), 'y': round(max_y, 2), 'z': round(default_thickness, 2)},
         },
@@ -910,9 +1055,15 @@ def _analyze_dxf(file_path: str, scale: float, material: str = 'default') -> dic
         'complexity_score': 0.3 if sheet_metal_features['complexity'] == 'simple' else 0.5,
         
         # DXF is ALWAYS sheet metal - confidence based on profile quality
-        'recommended_process': 'sheet_metal',
+        'process_type': 'sheet_metal',
+        'sheet_metal_score': 95,  # High score for DXF files (always sheet metal)
         'classification_confidence': classification_confidence,
         'classification_method': 'dxf_auto_sheet_metal',
+        'advanced_metrics': {
+            'detected_thickness_mm': default_thickness,
+            'thickness_confidence': 0.5,
+            'classification_confidence': classification_confidence,
+        },
         
         # Sheet metal features
         'sheetMetalFeatures': sheet_metal_features,
@@ -983,6 +1134,38 @@ def _analyze_stl(file_path, scale, material: str = 'default'):
     # Feature extraction
     features = _extract_mesh_features(mesh)
     face_count = int(mesh.faces.shape[0])
+
+    # Casting analysis (draft angles + parting line)
+    casting_analysis = None
+    try:
+        if features['draft']:
+            casting_analysis = analyze_for_casting(
+                mesh,
+                draft_results=features['draft'],
+                detected_thickness=detected_thickness,
+                min_wall=detected_thickness,
+                max_wall=detected_thickness
+            )
+            if casting_analysis.is_likely_casting:
+                print(f"🏭 Casting candidate: {casting_analysis.casting_type} "
+                      f"(draft avg={casting_analysis.average_draft:.1f}°, "
+                      f"undercuts={casting_analysis.undercut_count})")
+    except Exception as e:
+        print(f"⚠️ Casting analysis failed: {str(e)[:80]}")
+
+    # Machining complexity analysis (5-axis, setup count)
+    machining_complexity = None
+    try:
+        machining_complexity = analyze_machining_complexity_from_mesh(
+            mesh,
+            holes=features['holes'],
+            pockets=features['pockets'],
+            undercuts=features['undercuts']
+        )
+        if machining_complexity.requires_5axis:
+            print(f"⚙️ 5-Axis machining required: {machining_complexity.estimated_setup_count} setups")
+    except Exception as e:
+        print(f"⚠️ Machining complexity analysis failed: {str(e)[:80]}")
 
     # Classification - pass ALL extracted features for full analysis
     # Note: STL doesn't have face_classification (requires BRep), so extended
@@ -1079,6 +1262,10 @@ def _analyze_stl(file_path, scale, material: str = 'default'):
         "advanced_metrics": advanced_metrics,
         "dfm_analysis": dfm_result,
         "validation": validation,
+        # Enhanced analysis results
+        "surface_finish": _serialize_surface_finish(features.get('surface_finish')),
+        "casting_analysis": _serialize_casting_analysis(casting_analysis),
+        "machining_complexity": _serialize_machining_complexity(machining_complexity),
     }
     _attach_optional_metrics(metrics, grain_dir, nesting_est)
     return metrics
@@ -1294,27 +1481,206 @@ def _extract_step_bends(shape, thickness_mm):
         return None
 
 
+def _analyze_iges(file_path, material: str = 'default'):
+    """Analyze an IGES file and return normalized metrics.
+    
+    IGES is a BRep format similar to STEP, so we use the same analysis pipeline.
+    The only difference is the loader (IGESControl_Reader vs STEPControl_Reader).
+    
+    Args:
+        file_path: Path to IGES file
+        material: Material type for classification thresholds
+    """
+    if not occ_available():
+        raise HTTPException(
+            status_code=400,
+            detail="IGES analysis requires pythonOCC; not available",
+        )
+    shape = load_iges_shape(file_path)
+
+    # Assembly detection — FIRST, before anything else
+    assembly_result = _detect_assembly_early(shape)
+    if assembly_result is not None:
+        return assembly_result
+
+    vol_mm3, area_mm2 = shape_mass_props(shape)
+    bbox_dict, bbox_dims = _extract_occ_bbox(shape)
+
+    # Face type classification (BRepAdaptor — most reliable signal)
+    try:
+        face_result = classify_faces(shape, area_mm2)
+        logging.warning(
+            "IGES Face classification: planes=%.0f%% cyl=%.0f%% freeform=%.0f%% "
+            "pairs=%d SM=%.0f CNC=%.0f → %s",
+            face_result.plane_ratio * 100,
+            face_result.cylinder_ratio * 100,
+            face_result.freeform_ratio * 100,
+            face_result.paired_plane_count,
+            face_result.sheet_metal_face_score,
+            face_result.cnc_face_score,
+            "sheet_metal" if face_result.is_likely_sheet_metal
+            else ("cnc" if face_result.is_likely_cnc else "uncertain"),
+        )
+    except Exception as exc:
+        logging.warning("IGES Face classification failed (continuing): %s", exc)
+        face_result = None
+
+    # Wall thickness via meshing
+    actual_thickness, thickness_confidence, triangle_count, thickness_analysis = \
+        _detect_step_wall_thickness(shape, bbox_dims)
+
+    # Feature extraction (wrapped so one failure doesn't crash the whole analysis)
+    try:
+        holes = extract_holes_from_shape(shape)
+    except Exception as e:
+        logging.warning("IGES Hole extraction failed: %s", str(e)[:120])
+        holes = []
+    try:
+        pockets = extract_pockets_from_shape(shape)
+    except Exception as e:
+        logging.warning("IGES Pocket extraction failed: %s", str(e)[:120])
+        pockets = []
+    features = _extract_step_additional_features(shape, holes, pockets)
+    
+    # Extract bends BEFORE classification
+    step_bend_result = _extract_step_bends(shape, actual_thickness)
+    bends_list = []
+    if step_bend_result is not None and hasattr(step_bend_result, 'bends'):
+        bends_list = step_bend_result.bends
+
+    # Extract advanced process analysis
+    body_count_info = count_solids_and_compounds(shape)
+    body_count = getattr(body_count_info, 'solid_count', 1) if body_count_info else 1
+    advanced_process = _extract_advanced_process_analysis(
+        shape, holes, pockets, features['undercuts'], face_result, body_count
+    )
+
+    # Classification - pass full feature objects for enhanced analysis
+    process_type_str, _conf, metadata, advanced_metrics = _classify_process(
+        bbox_dims, vol_mm3, area_mm2,
+        detected_thickness=actual_thickness,
+        thickness_confidence=thickness_confidence,
+        triangle_count=triangle_count,
+        thickness_analysis=thickness_analysis,
+        face_classification=face_result,
+        holes=holes,
+        pockets=pockets,
+        fillets=features['fillets'],
+        bends=bends_list,
+        undercuts=features['undercuts'],
+        draft_analysis=features['draft'],
+        slots=features['slots'],
+        threads=features['threads'],
+        material=material,
+        hole_count=len(holes),
+        pocket_count=len(pockets),
+        thread_count=len(features['threads']),
+        undercut_count=len(features['undercuts']),
+        fillet_count=len(features['fillets']),
+        slot_count=len(features['slots']),
+        boss_count=len(features['bosses']),
+        rib_count=len(features['ribs']),
+        surface_finish_analysis=features.get('surface_finish'),
+        tolerance_analysis=features.get('tolerances'),
+        machining_complexity=advanced_process.get('machining_complexity'),
+        casting_analysis=advanced_process.get('casting_analysis'),
+        weldment_analysis=advanced_process.get('weldment_analysis'),
+        body_count=body_count,
+    )
+
+    # Complexity
+    bend_analysis = metadata.get('bend_analysis', {})
+    complexity, complexity_score = _calculate_complexity(
+        process_type_str, bend_analysis, bbox_dims, triangle_count,
+        hole_count=len(holes), pocket_count=len(pockets), is_step=True,
+    )
+
+    # Sheet metal extras
+    grain_dir, nesting_est = _compute_sheet_metal_extras(
+        process_type_str, bbox_dims, metadata, actual_thickness,
+    )
+
+    # Validation & DFM
+    validation = _validate_geometry_safe(bbox_dims, vol_mm3, area_mm2)
+    dfm_geometry = build_geometry_for_dfm(
+        bbox_dims=bbox_dims, volume_mm3=vol_mm3, surface_area_mm2=area_mm2,
+        holes=holes, pockets=pockets, process_type=process_type_str,
+        thickness=actual_thickness,
+        bend_analysis=bend_analysis,
+        complexity=complexity,
+        threads=features['threads'], slots=features['slots'],
+        undercuts=features['undercuts'], fillets=features['fillets'],
+        draft_analysis=features['draft'],
+        grain_direction=grain_dir, nesting=nesting_est,
+    )
+    dfm_result = _run_dfm_safe(dfm_geometry, process_type_str)
+
+    metrics = {
+        "volume": vol_mm3 / 1000.0,
+        "surface_area": area_mm2 / 100.0,
+        "bbox": bbox_dict,
+        "thickness": actual_thickness,
+        "primitive_features": {
+            "holes": len(holes),
+            "pockets": len(pockets),
+            "threads": len(features['threads']),
+            "slots": len(features['slots']),
+            "undercuts": len(features['undercuts']),
+            "fillets": len(features['fillets']),
+            "faces": triangle_count,
+        },
+        "feature_detail": _serialize_features(
+            threads=features['threads'],
+            slots=features['slots'],
+            undercuts=features['undercuts'],
+            fillets=features['fillets'],
+            holes=holes,
+            pockets=pockets,
+        ),
+        "material_usage": None,
+        "process_type": process_type_str,
+        "sheet_metal_score": metadata.get('sheet_metal_score', 0),
+        "complexity": complexity,
+        "complexity_score": complexity_score,
+        "advanced_metrics": advanced_metrics,
+        "dfm_analysis": dfm_result,
+        "validation": validation,
+    }
+    _attach_optional_metrics(metrics, grain_dir, nesting_est, step_bend_result)
+    return metrics
+
+
 def analyze_file_path(file_path: str, units_hint: Optional[str] = None, 
                       material: Optional[str] = None) -> dict:
-    """Analyze a CAD file (STEP/STL/DXF) and return normalized metrics.
+    """Analyze a CAD file and return normalized metrics.
+    
+    Supported formats:
+    - BRep (full geometry): STEP (.step, .stp), IGES (.iges, .igs)
+    - Mesh: STL (.stl), OBJ (.obj)
+    - 2D: DXF (.dxf)
+    
     Returns a dict matching previous mock structure to limit integration changes.
     
     Args:
         file_path: Path to the CAD file
-        units_hint: Unit hint for STL files (e.g. "mm", "inch")
+        units_hint: Unit hint for mesh files (e.g. "mm", "inch")
         material: Material type for thickness classification
                   (e.g. "steel", "aluminum", "stainless", "copper", "brass", "titanium")
     """
     ext = os.path.splitext(file_path)[1].lower()
     scale = scale_to_mm(units_hint)
     material_type = material or 'default'
-    if ext in (".stl",):
+    if ext in (".stl", ".obj"):
+        # STL and OBJ are both mesh formats supported by trimesh
         return _analyze_stl(file_path, scale, material=material_type)
     if ext in (".step", ".stp"):
         return _analyze_step(file_path, material=material_type)
+    if ext in (".iges", ".igs"):
+        # IGES is a BRep format similar to STEP, analyze same way
+        return _analyze_iges(file_path, material=material_type)
     if ext in (".dxf",):
         return _analyze_dxf(file_path, scale, material=material_type)
-    raise HTTPException(status_code=400, detail="Unsupported CAD format. Use STEP, STL, or DXF.")
+    raise HTTPException(status_code=400, detail="Unsupported CAD format. Use STEP, IGES, STL, OBJ, or DXF.")
 
 def calculate_stock_size(bbox: dict, thickness: Optional[float] = None) -> dict:
     """Calculate required stock material size."""
@@ -1360,7 +1726,7 @@ def analyze_file(file_id: str, file_path: str, units_hint: Optional[str] = None,
                     "metrics": metrics,
                     "file_url": file_url,
                     "units_hint": units_hint,
-                    "loader": 'occ' if local_path.lower().endswith(('.step', '.stp')) else 'trimesh'
+                    "loader": 'occ' if local_path.lower().endswith(('.step', '.stp', '.iges', '.igs')) else 'trimesh'
                 }
                 if secret:
                     body = json.dumps(payload)

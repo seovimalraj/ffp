@@ -57,7 +57,7 @@ const UploadFileModal = ({
 
           const extension = file.name.toLowerCase().split(".").pop();
           console.log(`   File extension detected: ${extension}`);
-          const useBackendAnalysis = ["step", "stp", "iges", "igs"].includes(
+          const useBackendAnalysis = ["step", "stp", "iges", "igs", "dxf", "stl"].includes(
             extension || "",
           );
           console.log(`   Use backend analysis? ${useBackendAnalysis}`);
