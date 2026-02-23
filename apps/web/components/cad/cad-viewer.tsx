@@ -36,12 +36,7 @@ export const CAD_EXTS: ReadonlySet<CADExt> = new Set<CADExt>([
 ]);
 
 export const MESH_ASSEMBLY_EXTS: ReadonlySet<MeshAssemblyExt> =
-  new Set<MeshAssemblyExt>([
-    "obj",
-    "3mf",
-    "gltf",
-    "glb",
-  ]);
+  new Set<MeshAssemblyExt>(["obj", "3mf", "gltf", "glb"]);
 
 function isCadExt(ext: string | undefined): ext is CADExt {
   if (!ext) return false;
@@ -53,7 +48,9 @@ function isMeshAssemblyExt(ext: string | undefined): ext is MeshAssemblyExt {
   return MESH_ASSEMBLY_EXTS.has(ext as MeshAssemblyExt);
 }
 
-function getFileExt(file: File | string | null | undefined): string | undefined {
+function getFileExt(
+  file: File | string | null | undefined,
+): string | undefined {
   if (!file) return undefined;
 
   const raw = typeof file === "string" ? file : file.name;
@@ -69,7 +66,9 @@ function getFileExt(file: File | string | null | undefined): string | undefined 
   return basename.slice(lastDotIndex + 1).toLowerCase();
 }
 
-function getFileCacheKey(file: File | string | null | undefined): string | null {
+function getFileCacheKey(
+  file: File | string | null | undefined,
+): string | null {
   if (!file) return null;
   if (typeof file === "string") return `url:${file}`;
   return `file:${file.name}:${file.size}:${file.lastModified}`;
@@ -122,6 +121,7 @@ interface CadViewerProps {
   };
   backgroundColor?: string | number;
   showViewCube?: boolean;
+  showFlatParts?: boolean;
   assemblyLoadMode?: AssemblyLoadMode;
 }
 
@@ -143,6 +143,7 @@ export const CadViewer = forwardRef<CadViewerRef, CadViewerProps>(
       selectedHighlight,
       backgroundColor,
       showViewCube = true,
+      showFlatParts = true,
       assemblyLoadMode: assemblyLoadModeProp,
     },
     ref,
@@ -164,7 +165,9 @@ export const CadViewer = forwardRef<CadViewerRef, CadViewerProps>(
     const [currentExt, setCurrentExt] = useState<string>("");
     const [sheetMeta, setSheetMeta] = useState<SheetMetalMeta | null>(null);
     const [flatEnabled, setFlatEnabled] = useState(false);
-    const [formedGeom, setFormedGeom] = useState<THREE.BufferGeometry | null>(null);
+    const [formedGeom, setFormedGeom] = useState<THREE.BufferGeometry | null>(
+      null,
+    );
     const [flatGeom, setFlatGeom] = useState<THREE.BufferGeometry | null>(null);
     const [kFactor, setKFactor] = useState(0.33);
     const [thicknessOverrideMM, setThicknessOverrideMM] = useState<
@@ -387,7 +390,9 @@ export const CadViewer = forwardRef<CadViewerRef, CadViewerProps>(
       setDimsMM({ x: size.x, y: size.y, z: size.z });
     }
 
-    function disposeGeometrySafe(geom: THREE.BufferGeometry | null | undefined) {
+    function disposeGeometrySafe(
+      geom: THREE.BufferGeometry | null | undefined,
+    ) {
       if (!geom) return;
       try {
         geom.dispose();
@@ -458,7 +463,12 @@ export const CadViewer = forwardRef<CadViewerRef, CadViewerProps>(
             let bounds: THREE.Box3;
             let didBuildSolid = false;
             const parsed = parseDxfFromArrayBuffer(buf);
-            const scaleToMm = dxfUnits === "inch" ? 25.4 : dxfUnits === "mm" ? 1 : parsed.meta.scaleToMm;
+            const scaleToMm =
+              dxfUnits === "inch"
+                ? 25.4
+                : dxfUnits === "mm"
+                  ? 1
+                  : parsed.meta.scaleToMm;
 
             try {
               const solid = buildSolidFromDxf(parsed.dxf, scaleToMm, {
@@ -519,13 +529,17 @@ export const CadViewer = forwardRef<CadViewerRef, CadViewerProps>(
 
             const usePartsMode = assemblyMode === "parts";
             if (usePartsMode && isCadExt(ext)) {
-              const assembly = await loadCadAssemblyFile(file, workerRef.current!);
+              const assembly = await loadCadAssemblyFile(
+                file,
+                workerRef.current!,
+              );
               if (isStale()) return;
               const loadedParts = assembly.object.children
                 .filter((child: THREE.Object3D) => (child as any).isMesh)
                 .map((child, index) => ({
                   name:
-                    typeof child.name === "string" && child.name.trim().length > 0
+                    typeof child.name === "string" &&
+                    child.name.trim().length > 0
                       ? child.name
                       : `Part ${index + 1}`,
                   object: child,
@@ -546,7 +560,8 @@ export const CadViewer = forwardRef<CadViewerRef, CadViewerProps>(
                 if (child?.isMesh && child.parent === object) {
                   loadedParts.push({
                     name:
-                      typeof child.name === "string" && child.name.trim().length > 0
+                      typeof child.name === "string" &&
+                      child.name.trim().length > 0
                         ? child.name
                         : `Part ${loadedParts.length + 1}`,
                     object: child,
@@ -557,7 +572,8 @@ export const CadViewer = forwardRef<CadViewerRef, CadViewerProps>(
                 object.children.forEach((child, index) => {
                   loadedParts.push({
                     name:
-                      typeof child.name === "string" && child.name.trim().length > 0
+                      typeof child.name === "string" &&
+                      child.name.trim().length > 0
                         ? child.name
                         : `Part ${index + 1}`,
                     object: child,
@@ -566,7 +582,9 @@ export const CadViewer = forwardRef<CadViewerRef, CadViewerProps>(
               }
 
               setDimsFromObject(object);
-              viewerRef.current?.loadObject3D(object, { explodeTopLevel: true });
+              viewerRef.current?.loadObject3D(object, {
+                explodeTopLevel: true,
+              });
               setParts(loadedParts);
             } else {
               const geom = await loadMeshFile(file, workerRef.current!);
@@ -1062,58 +1080,60 @@ export const CadViewer = forwardRef<CadViewerRef, CadViewerProps>(
           </div>
         )}
 
-        <div
-          style={{
-            position: "absolute",
-            top: 12,
-            right: 12,
-            zIndex: 35,
-            display: "flex",
-            gap: 6,
-            padding: 6,
-            borderRadius: 10,
-            background: "rgba(255, 255, 255, 0.9)",
-            border: "1px solid rgba(148, 163, 184, 0.4)",
-            backdropFilter: "blur(4px)",
-          }}
-        >
-          <button
-            onClick={() => setAssemblyMode("flat")}
+        {showFlatParts && (
+          <div
             style={{
-              border: "1px solid rgba(148, 163, 184, 0.6)",
-              borderRadius: 8,
-              padding: "4px 8px",
-              fontSize: 12,
-              fontWeight: 600,
-              color: assemblyMode === "flat" ? "#ffffff" : "#0f172a",
-              background: assemblyMode === "flat" ? "#0f172a" : "#f8fafc",
-              cursor: "pointer",
+              position: "absolute",
+              top: 82,
+              right: 12,
+              zIndex: 35,
+              display: "flex",
+              gap: 6,
+              padding: 6,
+              borderRadius: 10,
+              background: "rgba(255, 255, 255, 0.9)",
+              border: "1px solid rgba(148, 163, 184, 0.4)",
+              backdropFilter: "blur(4px)",
             }}
           >
-            Flat
-          </button>
-          <button
-            onClick={() => setAssemblyMode("parts")}
-            style={{
-              border: "1px solid rgba(148, 163, 184, 0.6)",
-              borderRadius: 8,
-              padding: "4px 8px",
-              fontSize: 12,
-              fontWeight: 600,
-              color: assemblyMode === "parts" ? "#ffffff" : "#0f172a",
-              background: assemblyMode === "parts" ? "#0f172a" : "#f8fafc",
-              cursor: "pointer",
-            }}
-          >
-            Parts
-          </button>
-        </div>
+            <button
+              onClick={() => setAssemblyMode("flat")}
+              style={{
+                border: "1px solid rgba(148, 163, 184, 0.6)",
+                borderRadius: 8,
+                padding: "4px 8px",
+                fontSize: 12,
+                fontWeight: 600,
+                color: assemblyMode === "flat" ? "#ffffff" : "#0f172a",
+                background: assemblyMode === "flat" ? "#0f172a" : "#f8fafc",
+                cursor: "pointer",
+              }}
+            >
+              Flat
+            </button>
+            <button
+              onClick={() => setAssemblyMode("parts")}
+              style={{
+                border: "1px solid rgba(148, 163, 184, 0.6)",
+                borderRadius: 8,
+                padding: "4px 8px",
+                fontSize: 12,
+                fontWeight: 600,
+                color: assemblyMode === "parts" ? "#ffffff" : "#0f172a",
+                background: assemblyMode === "parts" ? "#0f172a" : "#f8fafc",
+                cursor: "pointer",
+              }}
+            >
+              Parts
+            </button>
+          </div>
+        )}
 
         {assemblyMode === "parts" && parts.length > 0 && (
           <div
             style={{
               position: "absolute",
-              top: 62,
+              top: 132,
               right: 12,
               zIndex: 34,
               width: 220,
@@ -1372,7 +1392,9 @@ export const CadViewer = forwardRef<CadViewerRef, CadViewerProps>(
                       className={`relative inline-flex h-5 w-9 flex-shrink-0 rounded-full border-2 border-transparent transition-colors duration-200 focus:outline-none ${
                         flatEnabled ? "bg-blue-600" : "bg-slate-200"
                       } ${
-                        isUnfolding ? "cursor-not-allowed opacity-60" : "cursor-pointer"
+                        isUnfolding
+                          ? "cursor-not-allowed opacity-60"
+                          : "cursor-pointer"
                       }`}
                     >
                       <span
@@ -1406,7 +1428,9 @@ export const CadViewer = forwardRef<CadViewerRef, CadViewerProps>(
                       step={0.01}
                       placeholder="auto"
                       value={thicknessOverrideMM ?? ""}
-                      onChange={(e) => handleThicknessOverrideChange(e.target.value)}
+                      onChange={(e) =>
+                        handleThicknessOverrideChange(e.target.value)
+                      }
                       className="w-20 rounded-md border border-slate-200/70 bg-slate-50 px-2 py-1 text-right text-xs font-medium text-slate-700 outline-none focus:border-blue-300"
                     />
                   </div>
