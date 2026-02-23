@@ -13,7 +13,14 @@ import { LineGeometry } from "three/examples/jsm/lines/LineGeometry.js";
 
 export type Viewer = {
   loadMeshFromGeometry: (geom: THREE.BufferGeometry) => void;
-  loadObject3D: (object: THREE.Object3D) => void;
+  replacePrimaryGeometry: (
+    geom: THREE.BufferGeometry,
+    opts?: { refit?: boolean },
+  ) => void;
+  loadObject3D: (
+    object: THREE.Object3D,
+    options?: { explodeTopLevel?: boolean },
+  ) => void;
   clear: () => void;
   setView: (
     preset: "top" | "front" | "right" | "iso" | "bottom" | "left" | "back",
@@ -23,14 +30,22 @@ export type Viewer = {
   resize: () => void;
   dispose: () => void;
   pickAtScreenPosition: (ndcX: number, ndcY: number) => THREE.Vector3 | null;
+  pickMeshAtScreenPosition: (
+    ndcX: number,
+    ndcY: number,
+  ) => { point: THREE.Vector3; object: THREE.Object3D } | null;
   pickEdgeAtScreenPosition: (
     ndcX: number,
     ndcY: number,
   ) => { point: THREE.Vector3; object: THREE.Object3D } | null;
+  isolateObject: (object: THREE.Object3D) => void;
+  clearIsolation: () => void;
+  showAllParts: () => void;
   highlightEdgeAtScreenPosition: (ndcX: number, ndcY: number) => void;
   clearEdgeHighlight: () => void;
   measureEdgeAtScreenPosition: (ndcX: number, ndcY: number) => number | null;
   setControlsEnabled: (enabled: boolean) => void;
+  setControlsPreset: (preset: "orbit3d" | "dxf2d") => void;
   setMeasurementSegment: (
     p1: THREE.Vector3 | null,
     p2: THREE.Vector3 | null,
@@ -46,6 +61,7 @@ export type Viewer = {
   ) => void;
   setClipping: (value: number | null) => void;
   fitToScreen: (zoom?: number) => void;
+  frameObject: (object: THREE.Object3D) => void;
   setHighlight: (
     triangles: number[] | null,
     location?: { x: number; y: number; z: number },
@@ -884,15 +900,91 @@ export function createViewer(container: HTMLElement): Viewer {
   ortho.position.copy(persp.position);
 
   let activeCamera: THREE.Camera = persp;
+  let controlsPreset: "orbit3d" | "dxf2d" = "orbit3d";
+
+  function applyControlsPresetTo(
+    orbitControls: OrbitControls,
+    preset: "orbit3d" | "dxf2d",
+  ) {
+    if (preset === "dxf2d") {
+      orbitControls.enableRotate = true;
+      orbitControls.enablePan = true;
+      orbitControls.enableZoom = true;
+      orbitControls.screenSpacePanning = false;
+      orbitControls.mouseButtons = {
+        LEFT: THREE.MOUSE.ROTATE,
+        MIDDLE: THREE.MOUSE.DOLLY,
+        RIGHT: THREE.MOUSE.PAN,
+      };
+      orbitControls.touches = {
+        ONE: THREE.TOUCH.ROTATE,
+        TWO: THREE.TOUCH.DOLLY_PAN,
+      };
+      return;
+    }
+
+    orbitControls.enableRotate = true;
+    orbitControls.enablePan = true;
+    orbitControls.enableZoom = true;
+    orbitControls.screenSpacePanning = false;
+    orbitControls.mouseButtons = {
+      LEFT: THREE.MOUSE.ROTATE,
+      MIDDLE: THREE.MOUSE.DOLLY,
+      RIGHT: THREE.MOUSE.PAN,
+    };
+    orbitControls.touches = {
+      ONE: THREE.TOUCH.ROTATE,
+      TWO: THREE.TOUCH.DOLLY_PAN,
+    };
+  }
+
+  function createControls(camera: THREE.Camera): OrbitControls {
+    const orbitControls = new OrbitControls(camera, renderer.domElement);
+    orbitControls.enableDamping = true;
+    orbitControls.dampingFactor = 0.1;
+    applyControlsPresetTo(orbitControls, controlsPreset);
+    if (requestUpdateSilhouette) {
+      try {
+        orbitControls.addEventListener("change", requestUpdateSilhouette as any);
+      } catch {
+        // ignore listener binding errors
+      }
+    }
+    return orbitControls;
+  }
+
+  function rebindControls(camera: THREE.Camera) {
+    const prevTarget = controls?.target?.clone?.() ?? new THREE.Vector3();
+    const prevEnabled = controls?.enabled ?? true;
+    try {
+      controls?.removeEventListener("change", requestUpdateSilhouette as any);
+    } catch {
+      // ignore listener cleanup errors
+    }
+    try {
+      controls?.dispose();
+    } catch {
+      // ignore dispose errors
+    }
+
+    controls = createControls(camera);
+    controls.target.copy(prevTarget);
+    controls.enabled = prevEnabled;
+    controls.update();
+  }
+
+  function applyControlsPreset(preset: "orbit3d" | "dxf2d") {
+    controlsPreset = preset;
+    applyControlsPresetTo(controls, controlsPreset);
+    controls.update();
+  }
 
   const lastCamQuat = new THREE.Quaternion();
   const lastCamPos = new THREE.Vector3();
   lastCamQuat.copy(activeCamera.quaternion);
   lastCamPos.copy(activeCamera.position);
 
-  controls = new OrbitControls(persp, renderer.domElement);
-  controls.enableDamping = true;
-  controls.dampingFactor = 0.1;
+  controls = createControls(activeCamera);
   // Update silhouette edges when the camera moves (throttled to rAF)
   // listener added after requestUpdateSilhouette is declared below
 
@@ -926,6 +1018,38 @@ export function createViewer(container: HTMLElement): Viewer {
   const edgesGroup = new THREE.Group();
   edgesGroup.name = "edgesGroup";
   featureEdgesGroup.add(edgesGroup);
+
+  let isolationVisibilitySnapshot: Map<THREE.Object3D, boolean> | null = null;
+
+  function getTopLevelModelChildren(): THREE.Object3D[] {
+    return modelRoot.children.filter((child) => child !== featureEdgesGroup);
+  }
+
+  function resetIsolationSnapshot() {
+    isolationVisibilitySnapshot = null;
+  }
+
+  function getPartRootUnderModelRoot(
+    object: THREE.Object3D | null | undefined,
+  ): THREE.Object3D | null {
+    if (!object) return null;
+    let current: THREE.Object3D | null = object;
+    while (current && current.parent && current.parent !== modelRoot) {
+      current = current.parent;
+    }
+    if (!current || current.parent !== modelRoot) return null;
+    if (current === featureEdgesGroup) return null;
+    return current;
+  }
+
+  function isEffectivelyVisible(object: THREE.Object3D): boolean {
+    let current: THREE.Object3D | null = object;
+    while (current) {
+      if (!current.visible) return false;
+      current = current.parent;
+    }
+    return true;
+  }
 
   // CAD adjacency/cache for tangent + silhouette overlays (per-mesh)
   const cadMeshData = new WeakMap<THREE.Mesh, any>();
@@ -1043,20 +1167,22 @@ export function createViewer(container: HTMLElement): Viewer {
   let wireframeEnabled = false;
   let wireframeLines: THREE.LineSegments | null = null;
 
-  function setFeatureEdgesEnabled(visible: boolean) {
-    featureEdgesEnabled = !!visible;
+  function updateFeatureEdgesVisibility() {
     try {
-      // Toggle all tracked edge overlays
       for (const ln of featureEdgeLines) {
         try {
           ln.visible = featureEdgesEnabled;
         } catch {}
       }
-      // Keep the group visibility in sync as a convenience
       featureEdgesGroup.visible = featureEdgesEnabled;
     } catch {
       /* ignore */
     }
+  }
+
+  function setFeatureEdgesEnabled(visible: boolean) {
+    featureEdgesEnabled = !!visible;
+    updateFeatureEdgesVisibility();
   }
 
   // Helper: dispose and remove any existing edge overlays
@@ -1172,6 +1298,8 @@ export function createViewer(container: HTMLElement): Viewer {
         /* ignore per-mesh errors */
       }
     });
+
+    updateFeatureEdgesVisibility();
   }
 
   // Backwards-compatible wrapper used elsewhere in the file
@@ -1292,6 +1420,63 @@ export function createViewer(container: HTMLElement): Viewer {
       }
     }
     return null;
+  }
+
+  function pickMeshAtScreenPosition(
+    ndcX: number,
+    ndcY: number,
+  ): { point: THREE.Vector3; object: THREE.Object3D } | null {
+    const ndc = new THREE.Vector2(ndcX, ndcY);
+    raycaster.setFromCamera(ndc, activeCamera);
+    const intersects = raycaster.intersectObjects(modelRoot.children, true);
+    if (intersects.length === 0) return null;
+
+    for (const intr of intersects) {
+      const obj = intr.object as any;
+      if (!obj || !obj.isMesh) continue;
+      if (obj.userData?.__edgeOverlay === true) continue;
+      if (obj.userData?.__isFeatureEdge === true) continue;
+      const partRoot = getPartRootUnderModelRoot(intr.object);
+      if (!partRoot) continue;
+      return { point: intr.point.clone(), object: partRoot };
+    }
+
+    return null;
+  }
+
+  function isolateObject(object: THREE.Object3D): void {
+    const targetPart = getPartRootUnderModelRoot(object);
+    if (!targetPart) return;
+
+    const children = getTopLevelModelChildren();
+    if (!isolationVisibilitySnapshot) {
+      isolationVisibilitySnapshot = new Map<THREE.Object3D, boolean>();
+      for (const child of children) {
+        isolationVisibilitySnapshot.set(child, child.visible);
+      }
+    }
+
+    for (const child of children) {
+      child.visible = child === targetPart;
+    }
+    requestUpdateSilhouette?.();
+  }
+
+  function clearIsolation(): void {
+    if (!isolationVisibilitySnapshot) return;
+    isolationVisibilitySnapshot.forEach((visible, child) => {
+      if (child) child.visible = visible;
+    });
+    resetIsolationSnapshot();
+    requestUpdateSilhouette?.();
+  }
+
+  function showAllParts(): void {
+    for (const child of getTopLevelModelChildren()) {
+      child.visible = true;
+    }
+    resetIsolationSnapshot();
+    requestUpdateSilhouette?.();
   }
 
   /**
@@ -2009,6 +2194,7 @@ export function createViewer(container: HTMLElement): Viewer {
 
     modelRoot.traverse((obj: any) => {
       if (!obj.isMesh || !obj.geometry) return;
+      if (!isEffectivelyVisible(obj)) return;
 
       const geom = obj.geometry as THREE.BufferGeometry;
       const edgeThreshold = 40;
@@ -2064,6 +2250,379 @@ export function createViewer(container: HTMLElement): Viewer {
     return dataURL;
   }
 
+  function normalizeModelRootToOriginMin(): THREE.Box3 | null {
+    modelRoot.position.set(0, 0, 0);
+    modelRoot.updateWorldMatrix(true, true);
+
+    const initialBox = new THREE.Box3().setFromObject(modelRoot);
+    if (initialBox.isEmpty()) return null;
+
+    modelRoot.position.sub(initialBox.min.clone());
+    modelRoot.updateWorldMatrix(true, true);
+
+    const translatedBox = new THREE.Box3().setFromObject(modelRoot);
+    return translatedBox.isEmpty() ? null : translatedBox;
+  }
+
+  function disposeObjectResources(object: THREE.Object3D) {
+    try {
+      object.traverse((obj: any) => {
+        if (obj.geometry) obj.geometry.dispose();
+        if (obj.material) {
+          if (Array.isArray(obj.material)) {
+            obj.material.forEach((m: any) => {
+              if (m.map) m.map.dispose();
+              m.dispose();
+            });
+          } else {
+            if (obj.material.map) obj.material.map.dispose();
+            obj.material.dispose();
+          }
+        }
+      });
+    } catch {
+      /* ignore */
+    }
+  }
+
+  function clearModelRootChildren() {
+    resetIsolationSnapshot();
+    for (const child of [...modelRoot.children]) {
+      if (child === featureEdgesGroup) continue;
+      disposeObjectResources(child);
+      try {
+        modelRoot.remove(child);
+      } catch {
+        /* ignore */
+      }
+    }
+  }
+
+  function recenterGeometryAtOrigin(geom: THREE.BufferGeometry) {
+    geom.computeBoundingBox();
+    const gbox = geom.boundingBox!.clone();
+    const gcenter = gbox.getCenter(new THREE.Vector3());
+    geom.translate(-gcenter.x, -gcenter.y, -gcenter.z);
+  }
+
+  function buildCadAnalysisOverlaysForMesh(mesh: THREE.Mesh) {
+    try {
+      // Prepare a geometry suitable for indexing/analysis
+      const analysisGeom = mesh.geometry as THREE.BufferGeometry;
+      let indexedGeom: THREE.BufferGeometry;
+      if (analysisGeom.index) {
+        indexedGeom = analysisGeom.clone();
+      } else {
+        // mergeVertices produces an indexed geometry usable for adjacency
+        indexedGeom = BufferGeometryUtils.mergeVertices(analysisGeom.clone(), 1e-6);
+      }
+
+      const posAttr = indexedGeom.getAttribute("position");
+      const idx = indexedGeom.index ? indexedGeom.index.array : null;
+      if (!posAttr || !idx) {
+        // Can't build adjacency without indices
+      } else {
+        const positions = posAttr.array as ArrayLike<number>;
+        const indexArr = idx as ArrayLike<number>;
+        const faceCount = indexArr.length / 3;
+
+        // face normals + centers (local space)
+        const faceNormals: THREE.Vector3[] = new Array(faceCount);
+        const faceCenters: THREE.Vector3[] = new Array(faceCount);
+        for (let f = 0; f < faceCount; f++) {
+          const i0 = indexArr[f * 3];
+          const i1 = indexArr[f * 3 + 1];
+          const i2 = indexArr[f * 3 + 2];
+          const p0 = new THREE.Vector3(
+            positions[i0 * 3],
+            positions[i0 * 3 + 1],
+            positions[i0 * 3 + 2],
+          );
+          const p1 = new THREE.Vector3(
+            positions[i1 * 3],
+            positions[i1 * 3 + 1],
+            positions[i1 * 3 + 2],
+          );
+          const p2 = new THREE.Vector3(
+            positions[i2 * 3],
+            positions[i2 * 3 + 1],
+            positions[i2 * 3 + 2],
+          );
+          const e1 = p1.clone().sub(p0);
+          const e2 = p2.clone().sub(p0);
+          const n = e1.clone().cross(e2).normalize();
+          faceNormals[f] = n;
+          faceCenters[f] = p0
+            .clone()
+            .add(p1)
+            .add(p2)
+            .multiplyScalar(1 / 3);
+        }
+
+        // Build undirected edge map -> adjacent faces
+        const edgeMap = new Map<string, { a: number; b: number; faces: number[] }>();
+        for (let f = 0; f < faceCount; f++) {
+          const ia = indexArr[f * 3];
+          const ib = indexArr[f * 3 + 1];
+          const ic = indexArr[f * 3 + 2];
+          const edges = [
+            [ia, ib],
+            [ib, ic],
+            [ic, ia],
+          ];
+          for (const [v0, v1] of edges) {
+            const a = Math.min(v0, v1);
+            const b = Math.max(v0, v1);
+            const key = `${a}_${b}`;
+            const cur = edgeMap.get(key);
+            if (!cur) edgeMap.set(key, { a, b, faces: [f] });
+            else cur.faces.push(f);
+          }
+        }
+
+        // Convert edgeMap to edge list with local endpoint positions and adjacent faces
+        const edges: any[] = [];
+        edgeMap.forEach((val) => {
+          const aIdx = val.a;
+          const bIdx = val.b;
+          const aPos = new THREE.Vector3(
+            positions[aIdx * 3],
+            positions[aIdx * 3 + 1],
+            positions[aIdx * 3 + 2],
+          );
+          const bPos = new THREE.Vector3(
+            positions[bIdx * 3],
+            positions[bIdx * 3 + 1],
+            positions[bIdx * 3 + 2],
+          );
+          const f0 = val.faces[0];
+          const f1 = val.faces.length > 1 ? val.faces[1] : undefined;
+          edges.push({ aIdx, bIdx, aPos, bPos, f0, f1 });
+        });
+
+        // Determine planar-ish classification per face based on average neighbor normal deviation
+        const planarEpsRad = THREE.MathUtils.degToRad(1.0); // ~1 degree threshold
+        const neighborAngleSum: number[] = new Array(faceCount).fill(0);
+        const neighborCount: number[] = new Array(faceCount).fill(0);
+        // For each edge with two faces, accumulate neighbor angles
+        edgeMap.forEach((val) => {
+          if (val.faces.length < 2) return;
+          const f0 = val.faces[0];
+          const f1 = val.faces[1];
+          const ang = faceNormals[f0].angleTo(faceNormals[f1]);
+          neighborAngleSum[f0] += ang;
+          neighborAngleSum[f1] += ang;
+          neighborCount[f0] += 1;
+          neighborCount[f1] += 1;
+        });
+        const planar: boolean[] = new Array(faceCount);
+        for (let fi = 0; fi < faceCount; fi++) {
+          const avg =
+            neighborCount[fi] > 0 ? neighborAngleSum[fi] / neighborCount[fi] : 0;
+          planar[fi] = avg < planarEpsRad;
+        }
+
+        // Build tangent edges: emit edges where planar-ness differs across the edge
+        // and the dihedral is small (< ~5 degrees)
+        const tangentMin = 1e-6; // ignore exact-zero degenerate
+        const tangentMax = THREE.MathUtils.degToRad(5.0);
+        const tangentPositions: number[] = [];
+        for (const e of edges) {
+          if (e.f1 === undefined) continue; // ignore boundary for tangent overlay
+          const f0 = e.f0;
+          const f1 = e.f1;
+          const dihedral = faceNormals[f0].angleTo(faceNormals[f1]);
+          if (
+            !!planar[f0] !== !!planar[f1] &&
+            dihedral > tangentMin &&
+            dihedral < tangentMax
+          ) {
+            tangentPositions.push(
+              e.aPos.x,
+              e.aPos.y,
+              e.aPos.z,
+              e.bPos.x,
+              e.bPos.y,
+              e.bPos.z,
+            );
+          }
+        }
+
+        // Create tangent LineSegments (static)
+        let tangentObj: THREE.LineSegments | null = null;
+        try {
+          const tg = new THREE.BufferGeometry();
+          if (tangentPositions.length > 0) {
+            tg.setAttribute(
+              "position",
+              new THREE.Float32BufferAttribute(
+                new Float32Array(tangentPositions),
+                3,
+              ),
+            );
+            tg.computeBoundingSphere();
+          } else {
+            tg.setAttribute(
+              "position",
+              new THREE.Float32BufferAttribute(new Float32Array(0), 3),
+            );
+          }
+          const tmat = new THREE.LineBasicMaterial({
+            color: 0x111111,
+            transparent: true,
+            opacity: 0.85,
+            depthTest: true,
+            depthWrite: false,
+            polygonOffset: true,
+            polygonOffsetFactor: -1,
+            polygonOffsetUnits: 1,
+          });
+          tangentObj = new THREE.LineSegments(tg, tmat);
+          tangentObj.frustumCulled = false;
+          tangentObj.renderOrder = (mesh.renderOrder ?? 0) + 1;
+          tangentObj.userData.__edgeOverlay = true;
+          edgesGroup.add(tangentObj);
+          edgePickables.push(tangentObj);
+        } catch (e) {
+          /* ignore tangent build errors */
+        }
+
+        // Create silhouette LineSegments (dynamic) with empty geom initially
+        let silhouetteObj: THREE.LineSegments | null = null;
+        try {
+          const sg = new THREE.BufferGeometry();
+          sg.setAttribute(
+            "position",
+            new THREE.Float32BufferAttribute(new Float32Array(0), 3),
+          );
+          const smat = new THREE.LineBasicMaterial({
+            color: 0x000000,
+            linewidth: 3.0,
+            transparent: true,
+            opacity: 1.0,
+            depthTest: false,
+            depthWrite: false,
+            polygonOffset: true,
+            polygonOffsetFactor: -1,
+            polygonOffsetUnits: 1,
+          });
+          silhouetteObj = new THREE.LineSegments(sg, smat);
+          silhouetteObj.frustumCulled = false;
+          silhouetteObj.renderOrder = 10000;
+          silhouetteObj.userData.__edgeOverlay = true;
+          edgesGroup.add(silhouetteObj);
+          edgePickables.push(silhouetteObj);
+        } catch (e) {
+          /* ignore silhouette build errors */
+        }
+
+        // Cache data for silhouette updates
+        cadMeshData.set(mesh, {
+          faceNormals,
+          faceCenters,
+          edges,
+          silhouetteObj,
+          tangentObj,
+        });
+
+        // Request an initial silhouette update
+        requestUpdateSilhouette?.();
+      }
+    } catch (e) {
+      /* ignore per-mesh analysis errors */
+    }
+  }
+
+  function finalizePrimaryGeometryUpdate(
+    primaryObject: THREE.Object3D | null,
+    opts?: { refit?: boolean },
+  ) {
+    const translatedBox = normalizeModelRootToOriginMin();
+    if (translatedBox) {
+      modelBounds = { min: translatedBox.min.y, max: translatedBox.max.y };
+      const centeredSize = translatedBox.getSize(new THREE.Vector3());
+      modelDiagonal = centeredSize.length();
+      setClipping(currentClippingValue); // Re-apply clipping to new material
+
+      // Ensure controls target is at the center of the translated model
+      const newCenter = translatedBox.getCenter(new THREE.Vector3());
+      controls.target.copy(newCenter);
+      controls.update();
+
+      // Keep grid at y=0 (do not move it)
+      if (gridHelper) gridHelper.position.y = 0;
+
+      // Default fit with zoom=1 (internally uses padding 1.5)
+      const shouldRefit = opts?.refit !== false;
+      if (shouldRefit) {
+        const padding = 1.5;
+        fitCameraToBox(translatedBox, padding);
+      }
+      // Create feature edges after the model has been positioned and matrices are up-to-date.
+      modelRoot.updateWorldMatrix(true, true);
+      // Build wireframe overlay for the primary mesh (separate overlay object)
+      if ((primaryObject as any)?.isMesh) {
+        try {
+          buildWireframeOverlay(primaryObject as THREE.Mesh);
+        } catch {
+          /* ignore */
+        }
+      }
+      rebuildFeatureEdges();
+    } else {
+      // No geometry: reset bounds
+      modelBounds = { min: 0, max: 0 };
+      modelDiagonal = 0;
+      clearFeatureEdges();
+      disposeWireframeOverlay();
+    }
+  }
+
+  function findPrimaryMeshUnderModelRoot(): THREE.Mesh | null {
+    for (const child of getTopLevelModelChildren()) {
+      if ((child as any).isMesh) return child as THREE.Mesh;
+    }
+    for (const child of getTopLevelModelChildren()) {
+      let found: THREE.Mesh | null = null;
+      child.traverse((node: any) => {
+        if (found || !node?.isMesh) return;
+        if (node?.userData?.__edgeOverlay) return;
+        if (node?.userData?.__isFeatureEdge) return;
+        found = node as THREE.Mesh;
+      });
+      if (found) return found;
+    }
+    return null;
+  }
+
+  function replacePrimaryGeometry(
+    geom: THREE.BufferGeometry,
+    opts?: { refit?: boolean },
+  ) {
+    const mesh = findPrimaryMeshUnderModelRoot();
+    if (!mesh) return;
+
+    recenterGeometryAtOrigin(geom);
+
+    disposeWireframeOverlay();
+    clearFeatureEdges();
+    clearEdgeHighlight();
+    cadMeshData.delete(mesh);
+
+    const prevGeom = mesh.geometry as THREE.BufferGeometry | undefined;
+    mesh.geometry = geom;
+    if (prevGeom && prevGeom !== geom) {
+      try {
+        prevGeom.dispose();
+      } catch {
+        /* ignore */
+      }
+    }
+
+    buildCadAnalysisOverlaysForMesh(mesh);
+    finalizePrimaryGeometryUpdate(mesh, { refit: opts?.refit !== false });
+  }
+
   function loadMeshFromGeometry(geom: THREE.BufferGeometry) {
     // 1) Ensure normals if it looks like a mesh
     // A simple heuristic: if it has enough vertices to form at least one triangle
@@ -2072,10 +2631,7 @@ export function createViewer(container: HTMLElement): Viewer {
     // If computeVertexNormals was called in mesh-loader, it might have normals.
 
     // 2) Recenter geometry at origin
-    geom.computeBoundingBox();
-    const gbox = geom.boundingBox!.clone();
-    const gcenter = gbox.getCenter(new THREE.Vector3());
-    geom.translate(-gcenter.x, -gcenter.y, -gcenter.z);
+    recenterGeometryAtOrigin(geom);
 
     // 3) Create object and add to scene
     // Determine if we should use Mesh or LineSegments
@@ -2098,376 +2654,117 @@ export function createViewer(container: HTMLElement): Viewer {
     // Remove existing model children except the featureEdgesRoot, disposing resources
     // dispose wireframe overlay for old model before removing children
     disposeWireframeOverlay();
-
-    for (const child of [...modelRoot.children]) {
-      if (child === featureEdgesGroup) continue;
-      try {
-        child.traverse((obj: any) => {
-          if (obj.geometry) obj.geometry.dispose();
-          if (obj.material) {
-            if (Array.isArray(obj.material)) {
-              obj.material.forEach((m: any) => {
-                if (m.map) m.map.dispose();
-                m.dispose();
-              });
-            } else {
-              if (obj.material.map) obj.material.map.dispose();
-              obj.material.dispose();
-            }
-          }
-        });
-      } catch {
-        /* ignore */
-      }
-      try {
-        modelRoot.remove(child);
-      } catch {
-        /* ignore */
-      }
-    }
+    clearModelRootChildren();
     modelRoot.add(object);
 
     // Precompute adjacency, face normals and create tangent + silhouette overlays
     if ((object as any).isMesh) {
-      const mesh = object as THREE.Mesh;
-      try {
-        // Prepare a geometry suitable for indexing/analysis
-        const analysisGeom = mesh.geometry as THREE.BufferGeometry;
-        let indexedGeom: THREE.BufferGeometry;
-        if (analysisGeom.index) {
-          indexedGeom = analysisGeom.clone();
-        } else {
-          // mergeVertices produces an indexed geometry usable for adjacency
-          indexedGeom = BufferGeometryUtils.mergeVertices(
-            analysisGeom.clone(),
-            1e-6,
-          );
-        }
-
-        const posAttr = indexedGeom.getAttribute("position");
-        const idx = indexedGeom.index ? indexedGeom.index.array : null;
-        if (!posAttr || !idx) {
-          // Can't build adjacency without indices
-        } else {
-          const positions = posAttr.array as ArrayLike<number>;
-          const indexArr = idx as ArrayLike<number>;
-          const faceCount = indexArr.length / 3;
-
-          // face normals + centers (local space)
-          const faceNormals: THREE.Vector3[] = new Array(faceCount);
-          const faceCenters: THREE.Vector3[] = new Array(faceCount);
-          for (let f = 0; f < faceCount; f++) {
-            const i0 = indexArr[f * 3];
-            const i1 = indexArr[f * 3 + 1];
-            const i2 = indexArr[f * 3 + 2];
-            const p0 = new THREE.Vector3(
-              positions[i0 * 3],
-              positions[i0 * 3 + 1],
-              positions[i0 * 3 + 2],
-            );
-            const p1 = new THREE.Vector3(
-              positions[i1 * 3],
-              positions[i1 * 3 + 1],
-              positions[i1 * 3 + 2],
-            );
-            const p2 = new THREE.Vector3(
-              positions[i2 * 3],
-              positions[i2 * 3 + 1],
-              positions[i2 * 3 + 2],
-            );
-            const e1 = p1.clone().sub(p0);
-            const e2 = p2.clone().sub(p0);
-            const n = e1.clone().cross(e2).normalize();
-            faceNormals[f] = n;
-            faceCenters[f] = p0
-              .clone()
-              .add(p1)
-              .add(p2)
-              .multiplyScalar(1 / 3);
-          }
-
-          // Build undirected edge map -> adjacent faces
-          const edgeMap = new Map<
-            string,
-            { a: number; b: number; faces: number[] }
-          >();
-          for (let f = 0; f < faceCount; f++) {
-            const ia = indexArr[f * 3];
-            const ib = indexArr[f * 3 + 1];
-            const ic = indexArr[f * 3 + 2];
-            const edges = [
-              [ia, ib],
-              [ib, ic],
-              [ic, ia],
-            ];
-            for (const [v0, v1] of edges) {
-              const a = Math.min(v0, v1);
-              const b = Math.max(v0, v1);
-              const key = `${a}_${b}`;
-              const cur = edgeMap.get(key);
-              if (!cur) edgeMap.set(key, { a, b, faces: [f] });
-              else cur.faces.push(f);
-            }
-          }
-
-          // Convert edgeMap to edge list with local endpoint positions and adjacent faces
-          const edges: any[] = [];
-          edgeMap.forEach((val) => {
-            const aIdx = val.a;
-            const bIdx = val.b;
-            const aPos = new THREE.Vector3(
-              positions[aIdx * 3],
-              positions[aIdx * 3 + 1],
-              positions[aIdx * 3 + 2],
-            );
-            const bPos = new THREE.Vector3(
-              positions[bIdx * 3],
-              positions[bIdx * 3 + 1],
-              positions[bIdx * 3 + 2],
-            );
-            const f0 = val.faces[0];
-            const f1 = val.faces.length > 1 ? val.faces[1] : undefined;
-            edges.push({ aIdx, bIdx, aPos, bPos, f0, f1 });
-          });
-
-          // Determine planar-ish classification per face based on average neighbor normal deviation
-          const planarEpsRad = THREE.MathUtils.degToRad(1.0); // ~1 degree threshold
-          const neighborAngleSum: number[] = new Array(faceCount).fill(0);
-          const neighborCount: number[] = new Array(faceCount).fill(0);
-          // For each edge with two faces, accumulate neighbor angles
-          edgeMap.forEach((val) => {
-            if (val.faces.length < 2) return;
-            const f0 = val.faces[0];
-            const f1 = val.faces[1];
-            const ang = faceNormals[f0].angleTo(faceNormals[f1]);
-            neighborAngleSum[f0] += ang;
-            neighborAngleSum[f1] += ang;
-            neighborCount[f0] += 1;
-            neighborCount[f1] += 1;
-          });
-          const planar: boolean[] = new Array(faceCount);
-          for (let fi = 0; fi < faceCount; fi++) {
-            const avg =
-              neighborCount[fi] > 0
-                ? neighborAngleSum[fi] / neighborCount[fi]
-                : 0;
-            planar[fi] = avg < planarEpsRad;
-          }
-
-          // Build tangent edges: emit edges where planar-ness differs across the edge
-          // and the dihedral is small (< ~5 degrees)
-          const tangentMin = 1e-6; // ignore exact-zero degenerate
-          const tangentMax = THREE.MathUtils.degToRad(5.0);
-          const tangentPositions: number[] = [];
-          for (const e of edges) {
-            if (e.f1 === undefined) continue; // ignore boundary for tangent overlay
-            const f0 = e.f0;
-            const f1 = e.f1;
-            const dihedral = faceNormals[f0].angleTo(faceNormals[f1]);
-            if (
-              !!planar[f0] !== !!planar[f1] &&
-              dihedral > tangentMin &&
-              dihedral < tangentMax
-            ) {
-              tangentPositions.push(
-                e.aPos.x,
-                e.aPos.y,
-                e.aPos.z,
-                e.bPos.x,
-                e.bPos.y,
-                e.bPos.z,
-              );
-            }
-          }
-
-          // Create tangent LineSegments (static)
-          let tangentObj: THREE.LineSegments | null = null;
-          try {
-            const tg = new THREE.BufferGeometry();
-            if (tangentPositions.length > 0) {
-              tg.setAttribute(
-                "position",
-                new THREE.Float32BufferAttribute(
-                  new Float32Array(tangentPositions),
-                  3,
-                ),
-              );
-              tg.computeBoundingSphere();
-            } else {
-              tg.setAttribute(
-                "position",
-                new THREE.Float32BufferAttribute(new Float32Array(0), 3),
-              );
-            }
-            const tmat = new THREE.LineBasicMaterial({
-              color: 0x111111,
-              transparent: true,
-              opacity: 0.85,
-              depthTest: true,
-              depthWrite: false,
-              polygonOffset: true,
-              polygonOffsetFactor: -1,
-              polygonOffsetUnits: 1,
-            });
-            tangentObj = new THREE.LineSegments(tg, tmat);
-            tangentObj.frustumCulled = false;
-            tangentObj.renderOrder = (mesh.renderOrder ?? 0) + 1;
-            tangentObj.userData.__edgeOverlay = true;
-            edgesGroup.add(tangentObj);
-            edgePickables.push(tangentObj);
-          } catch (e) {
-            /* ignore tangent build errors */
-          }
-
-          // Create silhouette LineSegments (dynamic) with empty geom initially
-          let silhouetteObj: THREE.LineSegments | null = null;
-          try {
-            const sg = new THREE.BufferGeometry();
-            sg.setAttribute(
-              "position",
-              new THREE.Float32BufferAttribute(new Float32Array(0), 3),
-            );
-            const smat = new THREE.LineBasicMaterial({
-              color: 0x000000,
-              linewidth: 3.0,
-              transparent: true,
-              opacity: 1.0,
-              depthTest: false,
-              depthWrite: false,
-              polygonOffset: true,
-              polygonOffsetFactor: -1,
-              polygonOffsetUnits: 1,
-            });
-            silhouetteObj = new THREE.LineSegments(sg, smat);
-            silhouetteObj.frustumCulled = false;
-            silhouetteObj.renderOrder = 10000;
-            silhouetteObj.userData.__edgeOverlay = true;
-            edgesGroup.add(silhouetteObj);
-            edgePickables.push(silhouetteObj);
-          } catch (e) {
-            /* ignore silhouette build errors */
-          }
-
-          // Cache data for silhouette updates
-          cadMeshData.set(mesh, {
-            faceNormals,
-            faceCenters,
-            edges,
-            silhouetteObj,
-            tangentObj,
-          });
-
-          // Request an initial silhouette update
-          requestUpdateSilhouette?.();
-        }
-      } catch (e) {
-        /* ignore per-mesh analysis errors */
-      }
+      buildCadAnalysisOverlaysForMesh(object as THREE.Mesh);
     }
 
-    // Place model so its bounding-box minimum corner sits at world origin (0,0,0)
-    // Reset any translation on modelRoot, compute bounds, then shift by -box.min
-    modelRoot.position.set(0, 0, 0);
-
-    const box = new THREE.Box3().setFromObject(modelRoot);
-    if (!box.isEmpty()) {
-      // Translate so min corner moves to origin
-      modelRoot.position.sub(box.min.clone());
-
-      // Ensure matrices are up to date
-      modelRoot.updateWorldMatrix(true, true);
-
-      // Recompute bounds after translation
-      const centeredBox = new THREE.Box3().setFromObject(modelRoot);
-      modelBounds = { min: centeredBox.min.y, max: centeredBox.max.y };
-      const centeredSize = centeredBox.getSize(new THREE.Vector3());
-      modelDiagonal = centeredSize.length();
-      setClipping(currentClippingValue); // Re-apply clipping to new material
-
-      // Ensure controls target is at the center of the translated model
-      const newCenter = centeredBox.getCenter(new THREE.Vector3());
-      controls.target.copy(newCenter);
-      controls.update();
-
-      // Keep grid at y=0 (do not move it)
-      if (gridHelper) gridHelper.position.y = 0;
-
-      // Default fit with zoom=1 (internally uses padding 1.5)
-      const padding = 1.5;
-      fitCameraToBox(centeredBox, padding);
-      // Create feature edges after the model has been positioned and matrices are up-to-date.
-      modelRoot.updateWorldMatrix(true, true);
-      // Build wireframe overlay for the primary mesh (separate overlay object)
-      if ((object as any).isMesh) {
-        try {
-          buildWireframeOverlay(object as THREE.Mesh);
-        } catch {
-          /* ignore */
-        }
-      }
-      rebuildFeatureEdges();
-    } else {
-      // No geometry: reset bounds
-      modelBounds = { min: 0, max: 0 };
-      modelDiagonal = 0;
-      clearFeatureEdges();
-      disposeWireframeOverlay();
-    }
+    finalizePrimaryGeometryUpdate(object, { refit: true });
   }
 
-  function loadObject3D(object: THREE.Object3D) {
+  function applyDxfSolidMaterialOverrides(object: THREE.Object3D) {
+    const disposedMaterials = new Set<THREE.Material>();
+    const disposeMaterialOnce = (material: THREE.Material) => {
+      if (disposedMaterials.has(material)) return;
+      disposedMaterials.add(material);
+      try {
+        if ((material as any).map) (material as any).map.dispose?.();
+      } catch {
+        /* ignore */
+      }
+      try {
+        material.dispose();
+      } catch {
+        /* ignore */
+      }
+    };
+    const toMetallicDoubleSided = (material: THREE.Material): THREE.Material => {
+      let next = material;
+      const isCompatible =
+        material instanceof THREE.MeshStandardMaterial ||
+        material instanceof THREE.MeshPhysicalMaterial;
+      if (!isCompatible) {
+        disposeMaterialOnce(material);
+        next = createStainlessSteelMaterial().clone();
+      }
+      next.side = THREE.DoubleSide;
+      next.needsUpdate = true;
+      return next;
+    };
+
+    object.traverse((child: any) => {
+      if (!child.isMesh) return;
+      const mesh = child as THREE.Mesh;
+      if (Array.isArray(mesh.material)) {
+        mesh.material = mesh.material.map((mat) =>
+          toMetallicDoubleSided(mat),
+        );
+      } else if (mesh.material) {
+        mesh.material = toMetallicDoubleSided(mesh.material);
+      }
+      mesh.castShadow = true;
+      mesh.receiveShadow = true;
+    });
+  }
+
+  function loadObject3D(
+    object: THREE.Object3D,
+    options?: { explodeTopLevel?: boolean },
+  ) {
+    const isDxfSolid = object.userData?.__source === "dxf-solid";
+    const explodeTopLevel = !!options?.explodeTopLevel;
+
     // Clear mesh-only overlays and edge highlights when switching to linework
     clearFeatureEdges();
     disposeWireframeOverlay();
     clearEdgeHighlight();
 
     // Remove existing model children except the featureEdgesRoot, disposing resources
-    for (const child of [...modelRoot.children]) {
-      if (child === featureEdgesGroup) continue;
-      try {
-        child.traverse((obj: any) => {
-          if (obj.geometry) obj.geometry.dispose();
-          if (obj.material) {
-            if (Array.isArray(obj.material)) {
-              obj.material.forEach((m: any) => {
-                if (m.map) m.map.dispose();
-                m.dispose();
-              });
-            } else {
-              if (obj.material.map) obj.material.map.dispose();
-              obj.material.dispose();
-            }
-          }
-        });
-      } catch {
-        /* ignore */
-      }
-      try {
-        modelRoot.remove(child);
-      } catch {
-        /* ignore */
-      }
+    clearModelRootChildren();
+
+    if (isDxfSolid) {
+      applyDxfSolidMaterialOverrides(object);
     }
 
-    modelRoot.position.set(0, 0, 0);
-
     modelRoot.add(object);
-    modelRoot.updateWorldMatrix(true, true);
+    if (explodeTopLevel && object.children.length > 0) {
+      object.updateWorldMatrix(true, true);
+      const topLevelChildren = [...object.children];
+      for (const child of topLevelChildren) {
+        modelRoot.attach(child);
+      }
+      modelRoot.remove(object);
+    }
 
-    const centeredBox = new THREE.Box3().setFromObject(modelRoot);
-    if (!centeredBox.isEmpty()) {
-      modelBounds = { min: centeredBox.min.y, max: centeredBox.max.y };
-      const centeredSize = centeredBox.getSize(new THREE.Vector3());
+    let hasAnyMesh = false;
+    modelRoot.traverse((child: any) => {
+      if (child === featureEdgesGroup || hasAnyMesh) return;
+      if (child.isMesh) hasAnyMesh = true;
+    });
+
+    const translatedBox = normalizeModelRootToOriginMin();
+    if (translatedBox) {
+      modelBounds = { min: translatedBox.min.y, max: translatedBox.max.y };
+      const centeredSize = translatedBox.getSize(new THREE.Vector3());
       modelDiagonal = centeredSize.length();
+
+      const newCenter = translatedBox.getCenter(new THREE.Vector3());
+      controls.target.copy(newCenter);
+      controls.update();
 
       if (gridHelper) gridHelper.position.y = 0;
 
       const padding = 1.5;
-      fitCameraToBox(centeredBox, padding);
-      // Reset controls target to origin after camera placement
-      controls.target.set(0, 0, 0);
-      controls.update();
+      fitCameraToBox(translatedBox, padding);
       updateClippingPlanes();
+      if (hasAnyMesh) {
+        modelRoot.updateWorldMatrix(true, true);
+        rebuildFeatureEdges();
+        updateFeatureEdgesVisibility();
+      }
     } else {
       modelBounds = { min: 0, max: 0 };
       modelDiagonal = 0;
@@ -2478,6 +2775,7 @@ export function createViewer(container: HTMLElement): Viewer {
   function clear() {
     clearFeatureEdges();
     disposeWireframeOverlay();
+    resetIsolationSnapshot();
     modelRoot.clear();
     modelRoot.position.set(0, 0, 0);
   }
@@ -2535,7 +2833,11 @@ export function createViewer(container: HTMLElement): Viewer {
   }
 
   function setProjection(mode: "perspective" | "orthographic") {
-    activeCamera = mode === "perspective" ? persp : ortho;
+    const nextCamera = mode === "perspective" ? persp : ortho;
+    if (activeCamera !== nextCamera) {
+      activeCamera = nextCamera;
+      rebindControls(activeCamera);
+    }
     requestUpdateSilhouette?.();
   }
 
@@ -2546,6 +2848,17 @@ export function createViewer(container: HTMLElement): Viewer {
     const aspect = w / Math.max(1, h);
     persp.aspect = aspect;
     persp.updateProjectionMatrix();
+    const orthoViewHeight =
+      Number.isFinite(ortho.top - ortho.bottom) &&
+      Math.abs(ortho.top - ortho.bottom) > 1e-6
+        ? ortho.top - ortho.bottom
+        : orthoHeight;
+    const orthoHalfHeight = orthoViewHeight / 2;
+    ortho.left = -orthoHalfHeight * aspect;
+    ortho.right = orthoHalfHeight * aspect;
+    ortho.top = orthoHalfHeight;
+    ortho.bottom = -orthoHalfHeight;
+    ortho.updateProjectionMatrix();
 
     if (edgeHoverLineMaterial) {
       edgeHoverLineMaterial.resolution.set(w, h);
@@ -2555,6 +2868,10 @@ export function createViewer(container: HTMLElement): Viewer {
 
   function setControlsEnabled(enabled: boolean) {
     controls.enabled = !!enabled;
+  }
+
+  function setControlsPreset(preset: "orbit3d" | "dxf2d") {
+    applyControlsPreset(preset);
   }
 
   const render = () => {
@@ -2681,6 +2998,57 @@ export function createViewer(container: HTMLElement): Viewer {
     // userZoom < 1 means further (larger padding)
     const padding = 1.5 / Math.max(0.1, zoom);
     fitCameraToBox(box, padding);
+  }
+
+  function frameObject(object: THREE.Object3D) {
+    if (!object) return;
+    object.updateWorldMatrix(true, true);
+    const box = new THREE.Box3().setFromObject(object);
+    if (box.isEmpty()) return;
+
+    const size = box.getSize(new THREE.Vector3());
+    const center = box.getCenter(new THREE.Vector3());
+    const maxDim = Math.max(size.x, size.y, size.z, 1e-3);
+    const padding = 1.5;
+
+    const currentTarget = controls.target.clone();
+    const currentDir = new THREE.Vector3().subVectors(
+      activeCamera.position,
+      currentTarget,
+    );
+    if (currentDir.lengthSq() <= 1e-12) {
+      currentDir.set(1, 0.8, 1);
+    }
+    currentDir.normalize();
+
+    const fov = (persp.fov * Math.PI) / 180;
+    const distance = (maxDim / 2 / Math.tan(fov / 2)) * padding;
+    const cameraPos = center.clone().add(currentDir.multiplyScalar(distance));
+    const up = activeCamera.up.clone();
+
+    persp.position.copy(cameraPos);
+    persp.up.copy(up);
+    persp.near = Math.max(0.1, distance * 0.01);
+    persp.far = distance * 100 + maxDim;
+    persp.lookAt(center);
+    persp.updateProjectionMatrix();
+
+    const aspect = container.clientWidth / Math.max(1, container.clientHeight);
+    const half = (maxDim * padding) / 2;
+    ortho.left = -half * aspect;
+    ortho.right = half * aspect;
+    ortho.top = half;
+    ortho.bottom = -half;
+    ortho.near = -10000;
+    ortho.far = 10000;
+    ortho.position.copy(cameraPos);
+    ortho.up.copy(up);
+    ortho.lookAt(center);
+    ortho.updateProjectionMatrix();
+
+    controls.target.copy(center);
+    controls.update();
+    requestUpdateSilhouette?.();
   }
 
   function setBackgroundColor(color: string | number) {
@@ -2843,6 +3211,9 @@ export function createViewer(container: HTMLElement): Viewer {
     try {
       controls.removeEventListener("change", requestUpdateSilhouette as any);
     } catch {}
+    try {
+      controls.dispose();
+    } catch {}
     if (silhouetteRAFId) {
       try {
         cancelAnimationFrame(silhouetteRAFId);
@@ -2949,6 +3320,7 @@ export function createViewer(container: HTMLElement): Viewer {
 
   return {
     loadMeshFromGeometry,
+    replacePrimaryGeometry,
     loadObject3D,
     clear,
     setView,
@@ -2957,7 +3329,11 @@ export function createViewer(container: HTMLElement): Viewer {
     resize,
     dispose,
     pickAtScreenPosition,
+    pickMeshAtScreenPosition,
     pickEdgeAtScreenPosition,
+    isolateObject,
+    clearIsolation,
+    showAllParts,
     highlightEdgeAtScreenPosition,
     clearEdgeHighlight,
     measureEdgeAtScreenPosition,
@@ -2968,9 +3344,11 @@ export function createViewer(container: HTMLElement): Viewer {
     setMaterialProperties,
     setClipping,
     fitToScreen,
+    frameObject,
     setHighlight,
     setBackgroundColor,
     setControlsEnabled,
+    setControlsPreset,
     setShowViewCube: (visible: boolean) => {
       cubeWrapper.style.display = visible ? "block" : "none";
     },

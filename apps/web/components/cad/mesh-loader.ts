@@ -5,8 +5,6 @@ import { OBJLoader } from "three/examples/jsm/loaders/OBJLoader.js";
 import { ThreeMFLoader } from "three/examples/jsm/loaders/3MFLoader.js";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 import * as BufferGeometryUtils from "three/examples/jsm/utils/BufferGeometryUtils.js";
-import { DXFLoader } from "three-dxf-loader";
-import { DxfParser } from "dxf-parser";
 import { createStainlessSteelMaterial } from "./viewer";
 
 type TessReq = {
@@ -15,56 +13,146 @@ type TessReq = {
   payload: {
     buffer: ArrayBuffer;
     ext: "step" | "stp" | "iges" | "igs" | "brep";
+    mode?: "flat" | "parts";
     linearDeflection?: number;
     angularDeflection?: number;
   };
 };
 
-type TessOk = {
+type AnalyzeSheetMetalReq = {
+  id: string;
+  type: "analyze_sheetmetal";
+  payload: {
+    buffer: ArrayBuffer;
+    ext: CADExt;
+  };
+};
+
+type UnfoldSheetMetalReq = {
+  id: string;
+  type: "unfold_sheetmetal";
+  payload: {
+    buffer: ArrayBuffer;
+    ext: CADExt;
+    kFactor: number;
+    thicknessOverrideMM?: number;
+  };
+};
+
+type TessFlatOk = {
   id: string;
   ok: true;
   positions: Float32Array;
   indices: Uint32Array;
 };
+
+type TessPartsMesh = {
+  name: string;
+  color?: [number, number, number] | null;
+  positions: Float32Array;
+  normals?: Float32Array;
+  indices: Uint32Array;
+};
+
+type TessPartsOk = {
+  id: string;
+  ok: true;
+  mode: "parts";
+  root: CadAssemblyNode | any;
+  meshes: TessPartsMesh[];
+};
+
 type TessErr = { id: string; ok: false; error: string };
 
 type CADExt = "step" | "stp" | "iges" | "igs" | "brep";
+type MeshAssemblyExt = "obj" | "3mf" | "gltf" | "glb";
+
+export type SheetMetalMeta = {
+  isAssembly: boolean;
+  isSheetMetal: boolean;
+  thicknessMM?: number;
+  bendCount?: number;
+  reason?:
+    | "assembly"
+    | "not_sheetmetal"
+    | "not_brep_source"
+    | "unsupported_surfaces"
+    | "analysis_failed"
+    | string;
+};
+
+type AnalyzeSheetMetalOk = {
+  id: string;
+  ok: true;
+  meta: SheetMetalMeta;
+};
+
+type UnfoldSheetMetalOk = {
+  id: string;
+  ok: true;
+  meta: SheetMetalMeta;
+  flat: {
+    positions: Float32Array;
+    indices: Uint32Array;
+  };
+};
+
+export type CadAssemblyNode = {
+  name: string;
+  meshes: number[];
+  children: CadAssemblyNode[];
+  [key: string]: unknown;
+};
+
+export type CadAssemblyLoadResult = {
+  object: THREE.Group;
+  root: CadAssemblyNode;
+  meshes: THREE.Mesh[];
+};
+
+function applyStainlessSteelMaterialOverrides(root: any, doubleSide = false) {
+  if (!root || !root.traverse) return;
+
+  root.traverse((child: any) => {
+    if (!child?.isMesh || !child.material) return;
+
+    try {
+      if (Array.isArray(child.material)) {
+        const count = child.material.length;
+        child.material.forEach((m: any) => {
+          try {
+            if (m) m.dispose();
+          } catch {
+            /* ignore */
+          }
+        });
+        child.material = new Array(count).fill(0).map(() => {
+          const mat = createStainlessSteelMaterial().clone();
+          if (doubleSide) mat.side = THREE.DoubleSide;
+          return mat;
+        });
+      } else {
+        try {
+          child.material.dispose();
+        } catch {
+          /* ignore */
+        }
+        const mat = createStainlessSteelMaterial().clone();
+        if (doubleSide) mat.side = THREE.DoubleSide;
+        child.material = mat;
+      }
+    } catch {
+      /* ignore any weird loader material shapes */
+    }
+  });
+}
 
 function mergeFromObject(root: any) {
   const geos: THREE.BufferGeometry[] = [];
 
   // Apply stainless-steel material to any meshes in the loaded root object
   // (only affects meshes belonging to the loaded model; helpers created elsewhere are untouched)
-  if (root && root.traverse) {
-    root.traverse((child: any) => {
-      if (child.isMesh && child.material) {
-        try {
-          if (Array.isArray(child.material)) {
-            const count = child.material.length;
-            child.material.forEach((m: any) => {
-              try {
-                if (m) m.dispose();
-              } catch {
-                /* ignore */
-              }
-            });
-            child.material = new Array(count)
-              .fill(0)
-              .map(() => createStainlessSteelMaterial().clone());
-          } else {
-            try {
-              child.material.dispose();
-            } catch {
-              /* ignore */
-            }
-            child.material = createStainlessSteelMaterial().clone();
-          }
-        } catch {
-          /* ignore any weird loader material shapes */
-        }
-      }
-    });
-  }
+  applyStainlessSteelMaterialOverrides(root, false);
 
   // Handle common loader return patterns (e.g. { scene: ... }) or arrays
   const input = root.scene || root;
@@ -150,14 +238,6 @@ async function loadMeshOnMainThread(file: File, ext: string) {
     }
   }
 
-  if (ext === "dxf") {
-    const text = await file.text();
-    const loader = new DXFLoader();
-    // DXFLoader needs the parser
-    const dxf = loader.parse(text, new DxfParser());
-    return mergeFromObject(dxf);
-  }
-
   throw new Error("Unsupported mesh format");
 }
 
@@ -171,35 +251,366 @@ function isCADExt(ext: string): ext is CADExt {
   );
 }
 
+function isMeshAssemblyExt(ext: string): ext is MeshAssemblyExt {
+  return ext === "obj" || ext === "3mf" || ext === "gltf" || ext === "glb";
+}
+
+function normalizeSheetMetalMeta(raw: any): SheetMetalMeta {
+  if (!raw || typeof raw !== "object") {
+    return {
+      isAssembly: false,
+      isSheetMetal: false,
+      reason: "analysis_failed",
+    };
+  }
+
+  const thicknessMM = Number(raw.thicknessMM);
+  const bendCount = Number(raw.bendCount);
+  return {
+    isAssembly: !!raw.isAssembly,
+    isSheetMetal: !!raw.isSheetMetal,
+    thicknessMM: Number.isFinite(thicknessMM) ? thicknessMM : undefined,
+    bendCount: Number.isFinite(bendCount) ? bendCount : undefined,
+    reason: typeof raw.reason === "string" ? raw.reason : undefined,
+  };
+}
+
+async function resolveInputFile(file: File | string): Promise<{
+  fileObj: File;
+  ext: string;
+}> {
+  if (typeof file !== "string") {
+    return {
+      fileObj: file,
+      ext: (file.name.split(".").pop() || "").toLowerCase(),
+    };
+  }
+
+  try {
+    const resp = await fetch(file);
+    if (!resp.ok) throw new Error(`Failed to fetch file: ${resp.statusText}`);
+    const blob = await resp.blob();
+    const urlPart = file.split("?")[0];
+    const filename = urlPart.split("/").pop() || "model.step";
+    const fileObj = new File([blob], filename, { type: blob.type });
+    const ext = (filename.split(".").pop() || "").toLowerCase();
+    return { fileObj, ext };
+  } catch (err: any) {
+    throw new Error("Failed to download file from URL: " + err.message);
+  }
+}
+
+function normalizeCadRoot(root: any, meshCount: number): CadAssemblyNode {
+  if (!root || typeof root !== "object") {
+    return {
+      name: "Root",
+      meshes: new Array(meshCount).fill(0).map((_, idx) => idx),
+      children: [],
+    };
+  }
+
+  const rawMeshes = Array.isArray((root as any).meshes)
+    ? (root as any).meshes
+    : [];
+  const meshes = rawMeshes
+    .map((idx: any) => Number(idx))
+    .filter((idx: number) => Number.isInteger(idx));
+
+  const rawChildren = Array.isArray((root as any).children)
+    ? (root as any).children
+    : [];
+  const children = rawChildren.map((child: any) =>
+    normalizeCadRoot(child, meshCount),
+  );
+
+  const normalized: CadAssemblyNode = {
+    ...(root as object),
+    name: typeof (root as any).name === "string" ? (root as any).name : "Root",
+    meshes,
+    children,
+  };
+
+  return normalized;
+}
+
+export function resolveNodeMeshes(
+  node: Pick<CadAssemblyNode, "meshes"> | null | undefined,
+  meshesArray: THREE.Mesh[],
+): THREE.Mesh[] {
+  if (!node || !Array.isArray(node.meshes)) return [];
+
+  const resolved: THREE.Mesh[] = [];
+  for (const idx of node.meshes) {
+    if (!Number.isInteger(idx)) continue;
+    if (idx < 0 || idx >= meshesArray.length) continue;
+    const mesh = meshesArray[idx];
+    if (mesh) resolved.push(mesh);
+  }
+  return resolved;
+}
+
+export async function loadCadAssemblyFile(
+  file: File | string,
+  worker: Worker,
+): Promise<CadAssemblyLoadResult> {
+  const { fileObj, ext } = await resolveInputFile(file);
+  if (!isCADExt(ext)) {
+    throw new Error("Unsupported CAD assembly format. Try STEP, IGES or BREP.");
+  }
+
+  const id = Math.random().toString(36).slice(2);
+  const buf = await fileObj.arrayBuffer();
+
+  return new Promise<CadAssemblyLoadResult>((resolve, reject) => {
+    const handle = (e: MessageEvent<TessPartsOk | TessErr | TessFlatOk>) => {
+      const data = e.data;
+      if (!data || data.id !== id) return;
+      worker.removeEventListener("message", handle as any);
+
+      if (!data.ok) {
+        reject(
+          new Error(
+            "error" in data && typeof data.error === "string"
+              ? data.error
+              : "OpenCascade error",
+          ),
+        );
+        return;
+      }
+
+      if (!("mode" in data) || data.mode !== "parts") {
+        reject(new Error("CAD worker did not return parts data"));
+        return;
+      }
+
+      const group = new THREE.Group();
+      const meshes: THREE.Mesh[] = [];
+
+      for (let i = 0; i < data.meshes.length; i++) {
+        const packed = data.meshes[i];
+        const geom = new THREE.BufferGeometry();
+
+        geom.setAttribute(
+          "position",
+          new THREE.BufferAttribute(packed.positions, 3),
+        );
+        geom.setIndex(new THREE.BufferAttribute(packed.indices, 1));
+        if (packed.normals) {
+          geom.setAttribute("normal", new THREE.BufferAttribute(packed.normals, 3));
+        } else {
+          try {
+            geom.computeVertexNormals();
+          } catch {
+            /* ignore */
+          }
+        }
+
+        const mat = createStainlessSteelMaterial().clone();
+        mat.side = THREE.DoubleSide;
+        const mesh = new THREE.Mesh(geom, mat);
+        mesh.name =
+          typeof packed.name === "string" && packed.name.trim().length > 0
+            ? packed.name
+            : `Part ${i + 1}`;
+        mesh.userData.__cadMeshIndex = i;
+        if (packed.color) {
+          mesh.userData.__cadColor = packed.color;
+        }
+        group.add(mesh);
+        meshes.push(mesh);
+      }
+
+      const root = normalizeCadRoot(data.root, meshes.length);
+      if (typeof root.name === "string" && root.name.trim().length > 0) {
+        group.name = root.name;
+      }
+      resolve({ object: group, root, meshes });
+    };
+
+    worker.addEventListener("message", handle as any);
+    worker.postMessage(
+      {
+        id,
+        type: "tessellate",
+        payload: { buffer: buf, ext, mode: "parts" },
+      } as TessReq,
+      [buf],
+    );
+  });
+}
+
+export async function loadMeshAssemblyAsObject3D(
+  file: File | string,
+): Promise<THREE.Object3D> {
+  const { fileObj, ext } = await resolveInputFile(file);
+  if (!isMeshAssemblyExt(ext)) {
+    throw new Error("Unsupported assembly mesh format. Try OBJ, 3MF, glTF or GLB.");
+  }
+
+  let object: THREE.Object3D | null = null;
+
+  if (ext === "obj") {
+    const text = await fileObj.text();
+    const loader = new OBJLoader();
+    object = loader.parse(text);
+  } else if (ext === "3mf") {
+    const buf = await fileObj.arrayBuffer();
+    const loader = new ThreeMFLoader();
+    object = loader.parse(buf as ArrayBuffer);
+  } else if (ext === "gltf" || ext === "glb") {
+    const url = URL.createObjectURL(fileObj);
+    try {
+      const loader = new GLTFLoader();
+      const { scene } = await loader.loadAsync(url);
+      object = scene;
+    } finally {
+      URL.revokeObjectURL(url);
+    }
+  }
+
+  if (!object) {
+    throw new Error("No object hierarchy found in file");
+  }
+
+  applyStainlessSteelMaterialOverrides(object, true);
+  return object;
+}
+
+export async function analyzeCadSheetMetal(
+  file: File | string,
+  worker: Worker,
+): Promise<SheetMetalMeta> {
+  const { fileObj, ext } = await resolveInputFile(file);
+  if (!isCADExt(ext)) {
+    return {
+      isAssembly: false,
+      isSheetMetal: false,
+      reason: "not_brep_source",
+    };
+  }
+
+  const id = Math.random().toString(36).slice(2);
+  const buf = await fileObj.arrayBuffer();
+
+  return new Promise<SheetMetalMeta>((resolve, reject) => {
+    const handle = (e: MessageEvent<AnalyzeSheetMetalOk | TessErr>) => {
+      const data = e.data;
+      if (!data || data.id !== id) return;
+      worker.removeEventListener("message", handle as any);
+
+      if (!data.ok) {
+        reject(
+          new Error(
+            "error" in data && typeof data.error === "string"
+              ? data.error
+              : "OpenCascade error",
+          ),
+        );
+        return;
+      }
+      resolve(normalizeSheetMetalMeta(data.meta));
+    };
+
+    worker.addEventListener("message", handle as any);
+    worker.postMessage(
+      {
+        id,
+        type: "analyze_sheetmetal",
+        payload: { buffer: buf, ext },
+      } as AnalyzeSheetMetalReq,
+      [buf],
+    );
+  });
+}
+
+export async function unfoldCadSheetMetal(
+  file: File | string,
+  worker: Worker,
+  opts: { kFactor: number; thicknessOverrideMM?: number },
+): Promise<{ flat: THREE.BufferGeometry; meta: SheetMetalMeta }> {
+  const { fileObj, ext } = await resolveInputFile(file);
+  if (!isCADExt(ext)) {
+    return {
+      meta: {
+        isAssembly: false,
+        isSheetMetal: false,
+        reason: "not_brep_source",
+      },
+      flat: new THREE.BufferGeometry(),
+    };
+  }
+
+  const id = Math.random().toString(36).slice(2);
+  const buf = await fileObj.arrayBuffer();
+
+  return new Promise<{ flat: THREE.BufferGeometry; meta: SheetMetalMeta }>(
+    (resolve, reject) => {
+      const handle = (e: MessageEvent<UnfoldSheetMetalOk | TessErr>) => {
+        const data = e.data;
+        if (!data || data.id !== id) return;
+        worker.removeEventListener("message", handle as any);
+
+        if (!data.ok) {
+          reject(
+            new Error(
+              "error" in data && typeof data.error === "string"
+                ? data.error
+                : "OpenCascade error",
+            ),
+          );
+          return;
+        }
+
+        const positions =
+          data.flat?.positions instanceof Float32Array
+            ? data.flat.positions
+            : new Float32Array(data.flat?.positions ?? []);
+        const indices =
+          data.flat?.indices instanceof Uint32Array
+            ? data.flat.indices
+            : new Uint32Array(data.flat?.indices ?? []);
+        if (positions.length === 0 || indices.length === 0) {
+          reject(new Error("Unfolded flat pattern is empty"));
+          return;
+        }
+
+        const flat = new THREE.BufferGeometry();
+        flat.setAttribute("position", new THREE.BufferAttribute(positions, 3));
+        flat.setIndex(new THREE.BufferAttribute(indices, 1));
+        flat.computeVertexNormals();
+
+        resolve({
+          flat,
+          meta: normalizeSheetMetalMeta(data.meta),
+        });
+      };
+
+      worker.addEventListener("message", handle as any);
+      worker.postMessage(
+        {
+          id,
+          type: "unfold_sheetmetal",
+          payload: {
+            buffer: buf,
+            ext,
+            kFactor: opts.kFactor,
+            thicknessOverrideMM: opts.thicknessOverrideMM,
+          },
+        } as UnfoldSheetMetalReq,
+        [buf],
+      );
+    },
+  );
+}
+
 export async function loadMeshFile(
   file: File | string,
   worker?: Worker,
 ): Promise<THREE.BufferGeometry> {
-  let fileObj: File;
-  let ext = "";
+  const { fileObj, ext } = await resolveInputFile(file);
 
-  if (typeof file === "string") {
-    // It's a URL
-    try {
-      const resp = await fetch(file);
-      if (!resp.ok) throw new Error(`Failed to fetch file: ${resp.statusText}`);
-      const blob = await resp.blob();
-
-      // Try to get filename from URL or headers, fallback to "unknown.stp" if indeterminate but defaulting to something
-      // Actually, identifying extension is crucial.
-      // Let's assume URL contains extension or we use a fallback.
-      // If the URL is signed or clean, it usually has the name.
-      const urlPart = file.split("?")[0];
-      const filename = urlPart.split("/").pop() || "model.step";
-
-      fileObj = new File([blob], filename, { type: blob.type });
-      ext = (filename.split(".").pop() || "").toLowerCase();
-    } catch (err: any) {
-      throw new Error("Failed to download file from URL: " + err.message);
-    }
-  } else {
-    fileObj = file;
-    ext = (file.name.split(".").pop() || "").toLowerCase();
+  if (ext === "dxf") {
+    throw new Error("DXF must be loaded via the DXF 2D loader.");
   }
 
   if (
@@ -207,8 +618,7 @@ export async function loadMeshFile(
     ext === "obj" ||
     ext === "3mf" ||
     ext === "gltf" ||
-    ext === "glb" ||
-    ext === "dxf"
+    ext === "glb"
   ) {
     return loadMeshOnMainThread(fileObj, ext);
   }
@@ -220,13 +630,19 @@ export async function loadMeshFile(
     const buf = await fileObj.arrayBuffer();
 
     return new Promise<THREE.BufferGeometry>((resolve, reject) => {
-      const handle = (e: MessageEvent<TessOk | TessErr>) => {
+      const handle = (e: MessageEvent<TessFlatOk | TessErr>) => {
         const data = e.data;
         if (!data || data.id !== id) return;
         worker.removeEventListener("message", handle as any);
 
         if (!data.ok) {
-          reject(new Error(data.error ?? "OpenCascade error"));
+          reject(
+            new Error(
+              "error" in data && typeof data.error === "string"
+                ? data.error
+                : "OpenCascade error",
+            ),
+          );
           return;
         }
 
@@ -249,6 +665,6 @@ export async function loadMeshFile(
   }
 
   throw new Error(
-    "Unsupported file. Try STL, OBJ, 3MF, glTF, GLB, STEP, IGES, BREP or DXF.",
+    "Unsupported file. Try STL, OBJ, 3MF, glTF, GLB, STEP, IGES or BREP.",
   );
 }
