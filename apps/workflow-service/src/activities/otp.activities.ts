@@ -8,7 +8,7 @@ const OTPEmailTemplate = (name: string = "Customer", code: string) => `
 <mjml>
   <mj-head>
     <mj-title>Your Frigate verification code</mj-title>
-    <mj-preview>Your verification code is {{otp}}. Expires in {{expires_minutes}} minutes.</mj-preview>
+    <mj-preview>Your verification code is ${code}. Expires in 10 minutes.</mj-preview>
 
     <mj-attributes>
       <mj-all font-family="Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" />
