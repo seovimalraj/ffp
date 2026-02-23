@@ -118,6 +118,7 @@ export function processParts(parts: any[]) {
       geometry: part.geometry,
       files2d: part.files2d || [],
       process, // Use the normalized process value
+      changeMeta: part.changeMeta || {},
       certificates: part.certificates || [],
       is_archived: part.is_archived || false,
     };

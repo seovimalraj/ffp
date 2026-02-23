@@ -8,6 +8,7 @@ import {
   UseGuards,
   InternalServerErrorException,
   Query,
+  Body,
 } from '@nestjs/common';
 import { SupabaseService } from 'src/supabase/supabase.service';
 import { FileInterceptor } from '@nestjs/platform-express';
@@ -15,6 +16,7 @@ import { BucketNames, SQLFunctions } from '../../libs/constants';
 import { CurrentUser } from 'src/auth/user.decorator';
 import { CurrentUserDto } from 'src/auth/auth.dto';
 import { AuthGuard } from 'src/auth/auth.guard';
+import { Public } from 'src/auth/public.decorator';
 
 @Controller('files')
 @UseGuards(AuthGuard)
@@ -62,30 +64,36 @@ export class FilesController {
     return data;
   }
 
+  @Public()
   @Post()
   @UseInterceptors(FileInterceptor('file'))
   async uploadFile(
     // eslint-disable-next-line no-undef
     @UploadedFile() file: Express.Multer.File,
-    @CurrentUser() user: CurrentUserDto,
+    @Body()
+    body: {
+      requireUploadId: boolean;
+    },
   ) {
     if (!file) {
       throw new BadRequestException('File is required');
     }
 
-    const publicUrl = await this.supabaseService.uploadFile(
+    const requireUploadId =
+      body.requireUploadId === true ||
+      String(body.requireUploadId).toLowerCase() === 'true';
+
+    const meta = await this.supabaseService.uploadFile(
       file,
       BucketNames.rfqStore,
       undefined,
-      {
-        id: user.id,
-        role: user.role,
-      },
+      requireUploadId,
     );
 
     return {
       message: 'File uploaded successfully',
-      url: publicUrl,
+      url: meta.publicUrl,
+      uploadId: meta.uploadId,
     };
   }
 }

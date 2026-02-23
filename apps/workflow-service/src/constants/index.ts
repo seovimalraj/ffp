@@ -67,9 +67,15 @@ export enum Tables {
 
   ManualQuoteApproval = "manual_quote_approval",
 
-  SystemConfig = "system_config",
+  DfmFilesTable = "dfm_files",
 
   OTPTable = "otps",
+
+  SystemConfig = "system_config",
+
+  TechnicalSupportRequest = "technical_support_request ",
+
+  UploadsTable = "uploads",
 }
 
 /**

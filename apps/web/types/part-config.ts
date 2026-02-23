@@ -22,6 +22,7 @@ export interface PartConfig {
     | "injection-molding"
     | "manual-quote";
   material: string;
+
   quantity: number;
   tolerance: string;
   finish: string;
@@ -37,6 +38,7 @@ export interface PartConfig {
   leadTime?: number;
   snapshot_2d_url?: string;
   is_archived?: boolean;
+  changeMeta: Record<string, any>;
 
   // Sheet Metal Specific Fields
   thickness?: string; // Sheet metal thickness (e.g., "1.5" for 1.5mm)

@@ -1,6 +1,7 @@
 "use client";
 
 import { Card } from "@/components/ui/card";
+import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
 import {
   Zap,
@@ -11,13 +12,10 @@ import {
   FileText,
   Maximize2,
   Activity,
-  Ruler,
   Check,
   Wrench,
   Expand,
   Layers,
-  Droplet,
-  ClipboardCheck,
   Edit,
   BrainCog,
   AlertTriangle,
@@ -27,7 +25,6 @@ import { useCallback, useState } from "react";
 import { useDropzone } from "react-dropzone";
 import dynamic from "next/dynamic";
 import { ImageViewerModal } from "@/components/image-viewer-modal";
-import { CubeIcon } from "@heroicons/react/24/outline";
 import { CadViewer } from "@/components/cad/cad-viewer";
 import ExpandFileModal from "./expand-file-modal";
 import { EditPartModal } from "./edit-part-modal";
@@ -65,7 +62,11 @@ import {
 import { apiClient } from "@/lib/api";
 import FileManagementModal from "./file-management-modal";
 import { formatCurrencyFixed, cn } from "@/lib/utils";
-import { leadTimeMeta, markupMap } from "@cnc-quote/shared";
+import {
+  leadTimeMeta,
+  markupMap,
+  TWO_D_AND_IMAGE_MIME,
+} from "@cnc-quote/shared";
 import { Badge } from "@/components/ui/badge";
 import { useSuggestionContext } from "@/components/store/suggestion-store";
 import { PartStatusModal } from "./part-status-modal";
@@ -236,18 +237,7 @@ export function PartCardItem({
 
   const { getRootProps, getInputProps } = useDropzone({
     onDrop,
-    accept: {
-      "model/stl": [".stl"],
-      "model/step": [".step", ".stp"],
-      "application/octet-stream": [".stl", ".step", ".stp"],
-      "application/pdf": [".pdf"],
-      "image/vnd.dxf": [".dxf"],
-      "image/vnd.dwg": [".dwg"],
-      "image/png": [".png"],
-      "image/jpeg": [".jpg", ".jpeg"],
-      "image/svg+xml": [".svg"],
-      "image/webp": [".webp"],
-    },
+    accept: TWO_D_AND_IMAGE_MIME,
     multiple: true,
   });
 
@@ -385,25 +375,6 @@ export function PartCardItem({
 
           {!isManual && (
             <>
-              {part.geometry && (
-                <div className="flex flex-wrap gap-0.5">
-                  <div className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-slate-100/50 border border-slate-200 text-[10px] font-bold text-slate-600 uppercase tracking-wider">
-                    <Maximize2 className="w-3.5 h-3.5 text-slate-400" />
-                    {part.geometry.boundingBox.x.toFixed(1)}×
-                    {part.geometry.boundingBox.y.toFixed(1)}×
-                    {part.geometry.boundingBox.z.toFixed(1)}
-                  </div>
-                  <div className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-slate-100/50 border border-slate-200 text-[10px] font-bold text-slate-600 uppercase tracking-wider">
-                    <CubeIcon className="w-3.5 h-3.5 text-slate-400" />
-                    {part.geometry.volume.toFixed(0)} mm³
-                  </div>
-                  <div className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-slate-100/50 border border-slate-200 text-[10px] font-bold text-slate-600 uppercase tracking-wider">
-                    <Ruler className="w-3.5 h-3.5 text-slate-400" />
-                    {part.geometry.surfaceArea.toFixed(0)} mm²
-                  </div>
-                </div>
-              )}
-
               {part.files2d && part.files2d.length > 0 ? (
                 <div className="space-y-3">
                   {/* Show first 2 files */}
@@ -497,8 +468,21 @@ export function PartCardItem({
               ) : (
                 <div
                   {...getRootProps()}
-                  className="border border-dashed border-slate-300 rounded-lg p-8 bg-slate-50/50 hover:bg-slate-50 hover:border-blue-400 transition-all cursor-pointer text-center group flex flex-col items-center justify-center gap-3"
+                  className={cn(
+                    "border-2 border-dashed rounded-xl p-8 transition-all cursor-pointer text-center group flex flex-col items-center justify-center gap-3 relative overflow-hidden",
+                    has2DIssue
+                      ? "border-red-200 bg-red-50/30 hover:bg-red-50/50 hover:border-red-400 shadow-[0_0_25px_rgba(239,68,68,0.15)] ring-4 ring-red-500/5"
+                      : "border-slate-300 bg-slate-50/50 hover:bg-slate-50 hover:border-blue-400",
+                  )}
                 >
+                  {has2DIssue && (
+                    <div className="absolute top-3 right-3 flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-red-500 text-white shadow-lg shadow-red-200/50">
+                      <AlertTriangle className="w-3 h-3" />
+                      <span className="text-[10px] font-black uppercase tracking-wider">
+                        Mandatory
+                      </span>
+                    </div>
+                  )}
                   <input {...getInputProps()} />
                   {isUploading ? (
                     <div className="flex flex-col items-center justify-center">
@@ -509,11 +493,38 @@ export function PartCardItem({
                     </div>
                   ) : (
                     <>
-                      <div className="p-2 bg-white rounded-full border border-slate-200 shadow-sm group-hover:border-blue-300">
-                        <Upload className="w-4 h-4 text-slate-400 group-hover:text-blue-500" />
+                      <div
+                        className={cn(
+                          "p-2 bg-white rounded-full border shadow-sm transition-colors",
+                          has2DIssue
+                            ? "border-red-200 group-hover:border-red-300"
+                            : "border-slate-200 group-hover:border-blue-300",
+                        )}
+                      >
+                        <Upload
+                          className={cn(
+                            "w-4 h-4 transition-colors",
+                            has2DIssue
+                              ? "text-red-400 group-hover:text-red-500"
+                              : "text-slate-400 group-hover:text-blue-500",
+                          )}
+                        />
                       </div>
-                      <p className="text-xs font-medium text-slate-600 group-hover:text-blue-700 transition-colors">
-                        Upload 2D Drawings <br />
+                      <p
+                        className={cn(
+                          "text-xs font-medium transition-colors",
+                          has2DIssue
+                            ? "text-red-600 group-hover:text-red-700"
+                            : "text-slate-600 group-hover:text-blue-700",
+                        )}
+                      >
+                        Upload 2D Drawings{" "}
+                        {has2DIssue && (
+                          <span className="text-red-500 font-bold ml-0.5">
+                            *
+                          </span>
+                        )}
+                        <br />
                         <span className="text-slate-400 font-normal">
                           (PDF, JPG, PNG, DXF, DWG - Multiple files supported)
                         </span>
@@ -645,15 +656,17 @@ export function PartCardItem({
               </div>
 
               {/* Row 2: Quantity & Configure Actions */}
-              {!isManual && (
-                <div className="flex items-center justify-between gap-4 w-full">
-                  <div className="flex items-center gap-3 w-full justify-between">
-                    <Button
-                      variant="blueCta"
-                      onClick={() => setIsEditModalOpen(true)}
-                      title="Configure Part"
-                      disabled={isManual}
-                      className="
+            </div>
+          </div>
+          <div className="flex item-center">
+            {!isManual && (
+              <div className="flex flex-col items-start gap-3 w-full justify-between">
+                <Button
+                  variant="blueCta"
+                  onClick={() => setIsEditModalOpen(true)}
+                  title="Configure Part"
+                  disabled={isManual}
+                  className="
                       h-11 px-5 gap-2.5 rounded-xl
                       border-slate-300 text-slate-700
                       bg-white shadow-sm
@@ -661,188 +674,200 @@ export function PartCardItem({
                       focus-visible:ring-2 focus-visible:ring-blue-500
                       group
                     "
+                >
+                  <Edit
+                    stroke="white"
+                    className="h-4.5 w-4.5 text-white group-hover:text-blue-600 transition-colors"
+                  />
+                  <span className="text-xs text-white ml-1 font-bold tracking-wide">
+                    Edit Specification
+                  </span>
+                </Button>
+                {/* Action Buttons: Standardized h-11 */}
+                <div
+                  className={`flex h-11 items-center rounded-xl border border-slate-200 bg-white px-2 shadow-sm transition-all hover:border-blue-200 ${isManual ? "opacity-60 cursor-not-allowed" : ""}`}
+                >
+                  {/* Label */}
+                  <span className="mx-2 text-[10px] font-black uppercase tracking-widest text-slate-400">
+                    Qty
+                  </span>
+
+                  {/* Stepper */}
+                  <div className="flex items-center rounded-lg bg-slate-50 p-0.5 ml-1">
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      disabled={isManual}
+                      className="h-7 w-7 rounded-md text-slate-500 disabled:bg-gray-700 disabled:text-white hover:bg-white hover:text-blue-600 transition-colors shadow-sm"
+                      onClick={() => {
+                        if (isManual) return;
+                        const newQ = part.quantity - 1;
+                        if (newQ >= 1)
+                          updatePart(index, "quantity", newQ, false);
+                      }}
                     >
-                      <Edit
-                        stroke="white"
-                        className="h-4.5 w-4.5 text-white group-hover:text-blue-600 transition-colors"
-                      />
-                      <span className="text-xs text-white ml-1 font-bold tracking-wide">
-                        Edit Specification
-                      </span>
+                      <span className="text-sm font-bold leading-none">−</span>
                     </Button>
-                    {/* Action Buttons: Standardized h-11 */}
-                    <div
-                      className={`flex h-11 items-center rounded-xl border border-slate-200 bg-white px-2 shadow-sm transition-all hover:border-blue-200 ${isManual ? "opacity-60 cursor-not-allowed" : ""}`}
+
+                    <input
+                      type="number"
+                      value={part.quantity}
+                      onChange={(e) => {
+                        if (isManual) return;
+                        const val = parseInt(e.target.value || "1");
+                        if (!isNaN(val) && val >= 1) {
+                          updatePart(index, "quantity", val, false);
+                        }
+                      }}
+                      className="mx-1 w-12 bg-transparent text-center text-sm font-bold text-slate-900 focus:outline-none"
+                      min="1"
+                      disabled={isManual}
+                    />
+
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      disabled={isManual}
+                      className="h-7 w-7 rounded-md text-slate-500 hover:bg-white hover:text-blue-600 transition-colors shadow-sm"
+                      onClick={() => {
+                        if (isManual) return;
+                        updatePart(index, "quantity", part.quantity + 1, false);
+                      }}
                     >
-                      {/* Label */}
-                      <span className="mx-2 text-[10px] font-black uppercase tracking-widest text-slate-400">
-                        Qty
-                      </span>
-
-                      {/* Stepper */}
-                      <div className="flex items-center rounded-lg bg-slate-50 p-0.5 ml-1">
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          disabled={isManual}
-                          className="h-7 w-7 rounded-md text-slate-500 disabled:bg-gray-700 disabled:text-white hover:bg-white hover:text-blue-600 transition-colors shadow-sm"
-                          onClick={() => {
-                            if (isManual) return;
-                            const newQ = part.quantity - 1;
-                            if (newQ >= 1)
-                              updatePart(index, "quantity", newQ, false);
-                          }}
-                        >
-                          <span className="text-sm font-bold leading-none">
-                            −
-                          </span>
-                        </Button>
-
-                        <input
-                          type="number"
-                          value={part.quantity}
-                          onChange={(e) => {
-                            if (isManual) return;
-                            const val = parseInt(e.target.value || "1");
-                            if (!isNaN(val) && val >= 1) {
-                              updatePart(index, "quantity", val, false);
-                            }
-                          }}
-                          className="mx-1 w-12 bg-transparent text-center text-sm font-bold text-slate-900 focus:outline-none"
-                          min="1"
-                          disabled={isManual}
-                        />
-
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          disabled={isManual}
-                          className="h-7 w-7 rounded-md text-slate-500 hover:bg-white hover:text-blue-600 transition-colors shadow-sm"
-                          onClick={() => {
-                            if (isManual) return;
-                            updatePart(
-                              index,
-                              "quantity",
-                              part.quantity + 1,
-                              false,
-                            );
-                          }}
-                        >
-                          <span className="text-sm font-bold leading-none">
-                            +
-                          </span>
-                        </Button>
-                      </div>
-                    </div>
+                      <span className="text-sm font-bold leading-none">+</span>
+                    </Button>
                   </div>
                 </div>
-              )}
-            </div>
-          </div>
-          {part.process !== "manual-quote" ? (
-            <div className="flex flex-col xl:flex-row gap-8">
-              {/* Content Area */}
-              <div className="flex-1 space-y-4">
-                <div className="flex flex-col">
-                  {/* Material */}
-                  <div className="flex items-center gap-4 py-4 group">
-                    <div className="h-10 w-10 shrink-0 rounded-lg bg-slate-50 flex items-center justify-center text-slate-500 group-hover:text-blue-600 group-hover:bg-blue-50 transition-colors">
-                      <Layers className="w-5 h-5" />
+
+                {/* Content Area */}
+                <div className="flex-1">
+                  <div className="flex flex-col gap-2.5">
+                    {/* Process */}
+                    <div className="flex items-baseline gap-2">
+                      <span className="text-sm font-bold text-slate-900">
+                        Process:
+                      </span>
+                      <span className="text-sm text-slate-600">
+                        {getProcessDisplayName(part.process)}
+                      </span>
                     </div>
-                    <div className="min-w-0">
-                      <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-0.5">
-                        Material
-                      </p>
-                      <p className="text-sm font-bold text-slate-900 truncate">
+
+                    {/* Material */}
+                    <div className="flex items-baseline gap-2">
+                      <span className="text-sm font-bold text-slate-900">
+                        Material:
+                      </span>
+                      <span className="text-sm text-slate-600">
                         {MATERIALS_LIST.find((m) => m.value === part.material)
                           ?.label ||
                           getMaterialDisplayName(part.material, part.process) ||
                           "Not specified"}
-                      </p>
+                      </span>
                     </div>
-                  </div>
 
-                  {/* Finish */}
-                  <div className="flex items-center gap-4 py-4 group">
-                    <div className="h-10 w-10 shrink-0 rounded-lg bg-slate-50 flex items-center justify-center text-slate-500 group-hover:text-blue-600 group-hover:bg-blue-50 transition-colors">
-                      <Droplet className="w-5 h-5" />
-                    </div>
-                    <div className="min-w-0">
-                      <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-0.5">
-                        Finish
-                      </p>
-                      <p className="text-sm font-bold text-slate-900 truncate">
+                    {/* Measurement */}
+                    {part.geometry && (
+                      <div className="flex items-baseline gap-2">
+                        <span className="text-sm font-bold text-slate-900">
+                          Measurement:
+                        </span>
+                        <span className="text-sm text-slate-600">
+                          {part.geometry.boundingBox.x.toFixed(2)}mm ×{" "}
+                          {part.geometry.boundingBox.y.toFixed(2)}mm ×{" "}
+                          {part.geometry.boundingBox.z.toFixed(2)}mm
+                          {part.geometry.volume > 0 &&
+                            ` | ${part.geometry.volume.toFixed(0)} mm³`}
+                        </span>
+                      </div>
+                    )}
+
+                    {/* Finish */}
+                    <div className="flex items-baseline gap-2">
+                      <span className="text-sm font-bold text-slate-900">
+                        Finish:
+                      </span>
+                      <span className="text-sm text-slate-600">
                         {FINISHES_LIST.find((f) => f.value === part.finish)
                           ?.label ||
                           part.finish ||
                           "As Machined"}
-                      </p>
+                      </span>
                     </div>
-                  </div>
 
-                  {/* Tolerance for CNC / Thickness for Sheet Metal */}
-                  <div className="flex items-center gap-4 py-4 group">
-                    <div className="h-10 w-10 shrink-0 rounded-lg bg-slate-50 flex items-center justify-center text-slate-500 group-hover:text-blue-600 group-hover:bg-blue-50 transition-colors">
-                      <Ruler className="w-5 h-5" />
-                    </div>
-                    <div className="min-w-0">
-                      <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-0.5">
+                    {/* Tolerance / Thickness */}
+                    <div className="flex items-baseline gap-2">
+                      <span className="text-sm font-bold text-slate-900">
                         {isSheetMetalProcess(part.process)
-                          ? "Thickness"
-                          : "Tolerance"}
-                      </p>
-                      <p className="text-sm font-bold text-slate-900 truncate capitalize">
+                          ? "Thickness:"
+                          : "Tolerance:"}
+                      </span>
+                      <span className="text-sm text-slate-600 capitalize">
                         {isSheetMetalProcess(part.process)
                           ? `${getValidSheetThickness(part)}mm`
                           : part.tolerance || "Standard"}
-                      </p>
+                      </span>
                     </div>
-                  </div>
 
-                  {/* Inspection */}
-                  <div className="flex items-center gap-4 py-4 group">
-                    <div className="h-10 w-10 shrink-0 rounded-lg bg-slate-50 flex items-center justify-center text-slate-500 group-hover:text-blue-600 group-hover:bg-blue-50 transition-colors">
-                      <ClipboardCheck className="w-5 h-5" />
+                    {/* Threads */}
+                    <div className="flex items-baseline gap-2">
+                      <span className="text-sm font-bold text-slate-900">
+                        Threads and Tapped Holes:
+                      </span>
+                      <span className="text-sm text-slate-600">
+                        {THREAD_OPTIONS.find((t) => t.value === part.threads)
+                          ?.label ||
+                          part.threads ||
+                          "None"}
+                      </span>
                     </div>
-                    <div className="min-w-0">
-                      <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-0.5">
-                        Inspection
-                      </p>
-                      <p className="text-sm font-bold text-slate-900 truncate capitalize">
-                        {part.inspection || "Standard"}
-                      </p>
+
+                    {/* Inspection */}
+                    <div className="flex items-baseline gap-2">
+                      <span className="text-sm font-bold text-slate-900">
+                        Inspection:
+                      </span>
+                      <span className="text-sm text-slate-600 capitalize">
+                        {INSPECTIONS_OPTIONS.find(
+                          (i) => i.value === part.inspection,
+                        )?.label ||
+                          part.inspection ||
+                          "Standard"}
+                      </span>
                     </div>
                   </div>
                 </div>
               </div>
-              {/* Row 2: Lead Time Pricing Options */}
-              <div className="w-full xl:w-[240px] shrink-0">
-                <div className="grid grid-cols-1 gap-3">
-                  {(["economy", "standard", "expedited"] as const).map(
-                    (leadTimeType) => {
-                      const realPrice = calculatePrice(part, leadTimeType);
-                      const perPartPrice =
-                        calculatePrice(part, leadTimeType) / part.quantity;
+            )}
+            {part.process !== "manual-quote" ? (
+              <div className="flex flex-col xl:flex-row gap-8">
+                {/* Row 2: Lead Time Pricing Options */}
+                <div className="w-full xl:w-[240px] shrink-0">
+                  <div className="grid grid-cols-1 gap-3">
+                    {(["economy", "standard", "expedited"] as const).map(
+                      (leadTimeType) => {
+                        const realPrice = calculatePrice(part, leadTimeType);
+                        const perPartPrice =
+                          calculatePrice(part, leadTimeType) / part.quantity;
 
-                      const uplift = markupMap[leadTimeType];
-                      const marketingPrice = realPrice * (1 + uplift);
+                        const uplift = markupMap[leadTimeType];
+                        const marketingPrice = realPrice * (1 + uplift);
 
-                      const isSelected = part.leadTimeType === leadTimeType;
-                      const icon = `/icons/${leadTimeType}.png`;
-                      const leadTime = calculateLeadTime(part, leadTimeType);
+                        const isSelected = part.leadTimeType === leadTimeType;
+                        const icon = `/icons/${leadTimeType}.png`;
+                        const leadTime = calculateLeadTime(part, leadTimeType);
 
-                      return (
-                        <div
-                          key={leadTimeType}
-                          onClick={() =>
-                            updatePart(
-                              index,
-                              "leadTimeType",
-                              leadTimeType,
-                              false,
-                            )
-                          }
-                          className={`
+                        return (
+                          <div
+                            key={leadTimeType}
+                            onClick={() =>
+                              updatePart(
+                                index,
+                                "leadTimeType",
+                                leadTimeType,
+                                false,
+                              )
+                            }
+                            className={`
                               relative cursor-pointer rounded-xl sm:rounded-2xl
                               border p-3 transition-all
                               active:scale-[0.98]
@@ -852,109 +877,112 @@ export function PartCardItem({
                                   : "border-slate-200 bg-white hover:border-slate-300 hover:shadow-sm"
                               }
                             `}
-                        >
-                          {/* Badge */}
-                          <div className="absolute right-2 top-2 sm:-right-3 sm:-top-2">
-                            <span
-                              className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide
+                          >
+                            {/* Badge */}
+                            <div className="absolute right-2 top-2 sm:-right-3 sm:-top-2">
+                              <span
+                                className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide
                                 ${
                                   isSelected
                                     ? "bg-blue-100 text-blue-700"
                                     : "bg-slate-200 text-slate-600"
                                 }
                               `}
-                            >
-                              {leadTimeMeta[leadTimeType].badge}
-                            </span>
-                          </div>
-
-                          {/* Header */}
-                          <div className="mb-3 sm:mb-4 flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3">
-                            <img
-                              src={icon}
-                              alt=""
-                              className="h-8 w-8 sm:h-9 sm:w-9 shrink-0"
-                            />
-
-                            <div className="leading-tight">
-                              <div className="text-sm font-semibold capitalize text-slate-700">
-                                {leadTimeType}
-                              </div>
-                              <div className="text-xs text-slate-400">
-                                {leadTime} Business Days
-                              </div>
-                            </div>
-                          </div>
-
-                          {/* Pricing */}
-                          <div className="space-y-1">
-                            <div
-                              className={`text-xl sm:text-2xl font-bold leading-none ${
-                                isSelected ? "text-blue-700" : "text-slate-700"
-                              }`}
-                            >
-                              {formatCurrencyFixed(realPrice)}
-                              <span className={"text-xs ml-2 text-blue-700"}>
-                                ({formatCurrencyFixed(perPartPrice)} ea)
+                              >
+                                {leadTimeMeta[leadTimeType].badge}
                               </span>
                             </div>
-                            <div className="flex items-baseline gap-x-2">
-                              <div className="text-xs sm:text-sm text-red-500 line-through decoration-dashed">
-                                {formatCurrencyFixed(marketingPrice)}
+
+                            {/* Header */}
+                            <div className="mb-3 sm:mb-4 flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3">
+                              <img
+                                src={icon}
+                                alt=""
+                                className="h-8 w-8 sm:h-9 sm:w-9 shrink-0"
+                              />
+
+                              <div className="leading-tight">
+                                <div className="text-sm font-semibold capitalize text-slate-700">
+                                  {leadTimeType}
+                                </div>
+                                <div className="text-xs text-slate-400">
+                                  {leadTime} Business Days
+                                </div>
                               </div>
-                              <div className="text-xs text-slate-500">
-                                Save{" "}
-                                <span className="font-semibold text-green-700">
-                                  {formatCurrencyFixed(
-                                    marketingPrice - realPrice,
-                                  )}
+                            </div>
+
+                            {/* Pricing */}
+                            <div className="space-y-1">
+                              <div
+                                className={`text-xl sm:text-2xl font-bold leading-none ${
+                                  isSelected
+                                    ? "text-blue-700"
+                                    : "text-slate-700"
+                                }`}
+                              >
+                                {formatCurrencyFixed(realPrice)}
+                                <span className={"text-xs ml-2 text-blue-700"}>
+                                  ({formatCurrencyFixed(perPartPrice)} ea)
                                 </span>
+                              </div>
+                              <div className="flex items-baseline gap-x-2">
+                                <div className="text-xs sm:text-sm text-red-500 line-through decoration-dashed">
+                                  {formatCurrencyFixed(marketingPrice)}
+                                </div>
+                                <div className="text-xs text-slate-500">
+                                  Save{" "}
+                                  <span className="font-semibold text-green-700">
+                                    {formatCurrencyFixed(
+                                      marketingPrice - realPrice,
+                                    )}
+                                  </span>
+                                </div>
                               </div>
                             </div>
                           </div>
-                        </div>
-                      );
-                    },
-                  )}
-                </div>
-              </div>
-            </div>
-          ) : (
-            <div className="space-y-4">
-              <div className="relative overflow-hidden rounded-2xl border border-purple-200/50 bg-white p-[1px] shadow-xl shadow-purple-500/10">
-                {/* The "Glow" background */}
-                <div className="absolute -left-10 -top-10 h-32 w-32 bg-purple-200/50 blur-3xl" />
-
-                <div className="relative flex items-center gap-5 rounded-[15px] bg-white/80 backdrop-blur-sm p-5">
-                  <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-purple-500 to-indigo-600 text-white shadow-lg shadow-purple-200">
-                    <FileText size={24} strokeWidth={2.5} />
-                  </div>
-
-                  <div className="flex flex-col gap-1">
-                    <div className="mb-1 flex items-center gap-2">
-                      <span className="text-[10px] font-black uppercase tracking-[0.2em] text-purple-600/70">
-                        Status
-                      </span>
-                      <span className="h-[1px] flex-1 bg-slate-200" />
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <span className="h-2 w-2 animate-pulse rounded-full bg-purple-500" />
-                      <h3 className="font-bold uppercase text-sm leading-relaxed tracking-tight text-slate-900">
-                        Manual review required
-                      </h3>
-                    </div>
-                    <p className="mt-1 text-xs uppercase text-slate-500">
-                      This file is unique. Our team will provide a
-                      <span className="mx-1 font-medium text-slate-900 underline decoration-purple-400 decoration-2 underline-offset-2">
-                        custom price
-                      </span>
-                      within 24 hours.
-                    </p>
+                        );
+                      },
+                    )}
                   </div>
                 </div>
               </div>
-            </div>
-          )}
+            ) : (
+              <div className="space-y-4">
+                <div className="relative overflow-hidden rounded-2xl border border-purple-200/50 bg-white p-[1px] shadow-xl shadow-purple-500/10">
+                  {/* The "Glow" background */}
+                  <div className="absolute -left-10 -top-10 h-32 w-32 bg-purple-200/50 blur-3xl" />
+
+                  <div className="relative flex items-center gap-5 rounded-[15px] bg-white/80 backdrop-blur-sm p-5">
+                    <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-purple-500 to-indigo-600 text-white shadow-lg shadow-purple-200">
+                      <FileText size={24} strokeWidth={2.5} />
+                    </div>
+
+                    <div className="flex flex-col gap-1">
+                      <div className="mb-1 flex items-center gap-2">
+                        <span className="text-[10px] font-black uppercase tracking-[0.2em] text-purple-600/70">
+                          Status
+                        </span>
+                        <span className="h-[1px] flex-1 bg-slate-200" />
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <span className="h-2 w-2 animate-pulse rounded-full bg-purple-500" />
+                        <h3 className="font-bold uppercase text-sm leading-relaxed tracking-tight text-slate-900">
+                          Manual review required
+                        </h3>
+                      </div>
+                      <p className="mt-1 text-xs uppercase text-slate-500">
+                        This file is unique. Our team will provide a
+                        <span className="mx-1 font-medium text-slate-900 underline decoration-purple-400 decoration-2 underline-offset-2">
+                          custom price
+                        </span>
+                        within 24 hours.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
 
           {/* Sheet Metal Lead Time Breakdown - Hidden per user request */}
           {/* Lead time breakdown and AI optimization removed for sheet metal parts */}
@@ -1030,6 +1058,95 @@ export function PartCardItem({
         has2DIssue={has2DIssue}
         totalPrice={totalPrice}
       />
+    </Card>
+  );
+}
+
+export function PartCardSkeleton({ fileName }: { fileName: string }) {
+  return (
+    <Card className="overflow-hidden border border-slate-200 shadow-sm bg-white relative">
+      <div className="flex flex-col md:flex-row">
+        {/* LEFT SIDEBAR SKELETON */}
+        <div className="w-full md:w-[340px] bg-slate-50/80 border-b md:border-b-0 md:border-r border-slate-100 p-6 flex flex-col gap-6 flex-shrink-0">
+          <Skeleton className="aspect-square w-full rounded-xl" />
+          <div className="flex flex-wrap gap-2">
+            <Skeleton className="h-8 w-24 rounded-lg" />
+            <Skeleton className="h-8 w-24 rounded-lg" />
+            <Skeleton className="h-8 w-24 rounded-lg" />
+          </div>
+          <div className="space-y-3">
+            <Skeleton className="h-20 w-full rounded-lg" />
+            <Skeleton className="h-12 w-full rounded-lg border border-dashed border-slate-300" />
+          </div>
+        </div>
+
+        {/* RIGHT MAIN CONTENT SKELETON */}
+        <div className="flex-1 p-6 lg:p-8 flex flex-col min-w-0">
+          <div className="flex flex-col gap-6 mb-1 pb-4">
+            {/* Top Row: Title, Index & Actions */}
+            <div className="flex items-start justify-between w-full gap-4">
+              <div className="flex items-start gap-4 min-w-0 flex-1">
+                <Skeleton className="h-10 w-10 shrink-0 rounded-xl" />
+                <div className="min-w-0 flex flex-col gap-2 pt-0.5 w-full max-w-md">
+                  <div className="flex items-center gap-2">
+                    <h3 className="truncate text-xl font-black tracking-tight text-slate-900 leading-tight">
+                      {fileName}
+                    </h3>
+                    <Skeleton className="h-5 w-20 rounded-md" />
+                  </div>
+                  <div className="flex gap-2">
+                    <Skeleton className="h-6 w-24 rounded-md" />
+                    <Skeleton className="h-6 w-24 rounded-md" />
+                    <Skeleton className="h-6 w-24 rounded-md" />
+                  </div>
+                </div>
+              </div>
+              <div className="flex gap-2">
+                <Skeleton className="h-9 w-9 rounded-lg" />
+                <Skeleton className="h-9 w-9 rounded-lg" />
+              </div>
+            </div>
+
+            <div className="flex items-center justify-between gap-4 w-full">
+              <div className="flex items-center gap-3 w-full justify-between">
+                <Skeleton className="h-11 w-40 rounded-xl" />
+                <Skeleton className="h-11 w-32 rounded-xl" />
+              </div>
+            </div>
+          </div>
+
+          <div className="flex flex-col xl:flex-row gap-8">
+            {/* Content Area */}
+            <div className="flex-1">
+              <div className="flex flex-col gap-3">
+                {[1, 2, 3, 4, 5, 6].map((i) => (
+                  <div key={i} className="flex items-center gap-2">
+                    <Skeleton className="h-4 w-24" />
+                    <Skeleton className="h-4 w-32" />
+                  </div>
+                ))}
+              </div>
+            </div>
+            <div className="w-full xl:w-[260px] flex flex-col gap-4 mt-4 xl:mt-0">
+              <Skeleton className="h-32 w-full rounded-2xl" />
+            </div>
+          </div>
+        </div>
+      </div>
+      {/* Uploading indicator overlay */}
+      <div className="absolute inset-0 bg-white/40 backdrop-blur-[1px] flex items-center justify-center z-20">
+        <div className="bg-white px-6 py-4 rounded-2xl shadow-xl border border-blue-100 flex items-center gap-4">
+          <Loader2 className="w-6 h-6 text-blue-600 animate-spin" />
+          <div className="flex flex-col">
+            <span className="font-bold text-slate-900">
+              Uploading & Analyzing...
+            </span>
+            <span className="text-xs text-slate-500">
+              Processing geometry data
+            </span>
+          </div>
+        </div>
+      </div>
     </Card>
   );
 }
