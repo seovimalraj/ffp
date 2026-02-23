@@ -8,6 +8,68 @@ export enum MetaNames {
   permissionsMetaKey = "permissions",
 }
 
+// accepts file formats
+export const CAD_MIME_MAP = {
+  "model/stl": [".stl"],
+  "application/sla": [".stl"],
+  "application/vnd.ms-pki.stl": [".stl"],
+  "model/x.stl-binary": [".stl"],
+
+  "model/step": [".step", ".stp"],
+  "application/step": [".step", ".stp"],
+
+  "model/iges": [".iges", ".igs"],
+  "application/iges": [".iges", ".igs"],
+
+  "image/vnd.dxf": [".dxf"],
+  "application/dxf": [".dxf"],
+
+  "model/obj": [".obj"],
+
+  "application/octet-stream": [
+    ".stl",
+    ".step",
+    ".stp",
+    ".iges",
+    ".igs",
+    ".dxf",
+    ".obj",
+  ],
+};
+
+export const TWO_D_AND_IMAGE_MIME = {
+  // --- 2D technical drawings ---
+  "application/pdf": [".pdf"],
+
+  // DXF
+  "image/vnd.dxf": [".dxf"],
+  "application/dxf": [".dxf"],
+
+  // DWG
+  "image/vnd.dwg": [".dwg"],
+  "application/acad": [".dwg"],
+
+  // SVG (vector drawings)
+  "image/svg+xml": [".svg"],
+
+  // --- Raster images ---
+  "image/png": [".png"],
+  "image/jpeg": [".jpg", ".jpeg"],
+  "image/webp": [".webp"],
+
+  // Fallback (many tools send this)
+  "application/octet-stream": [
+    ".pdf",
+    ".dxf",
+    ".dwg",
+    ".svg",
+    ".png",
+    ".jpg",
+    ".jpeg",
+    ".webp",
+  ],
+};
+
 /**
  * Enum representing different types of stock materials
  */

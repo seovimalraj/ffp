@@ -12,6 +12,7 @@ import {
   InternalServerErrorException,
   Query,
   Logger,
+  BadRequestException,
 } from '@nestjs/common';
 import { RoleNames, SQLFunctions, Tables } from '../../libs/constants';
 import { Roles } from '../auth/roles.decorator';
@@ -120,6 +121,67 @@ export class RfqController {
 
     return {
       exists: (count ?? 0) > 0,
+    };
+  }
+
+  @Get(':rfqId/tech-support')
+  @Roles(RoleNames.Customer, RoleNames.Admin)
+  async getTechicalSupportRequests(
+    @Query('status') status: string,
+    @Query('limit') limit?: number,
+    @Query('cursorCreatedAt') cursorCreatedAt?: string,
+    @Query('cursorId') cursorId?: string,
+    @CurrentUser() user?: CurrentUserDto,
+  ) {
+    const client = this.supbaseService.getClient();
+    const pageLimit = Number(limit) || 20;
+
+    let query = client
+      .from(Tables.TechnicalSupportRequest)
+      .select('*, organizations(name),rfq(rfq_code, status,order_id)')
+      .order('created_at', { ascending: false })
+      .order('id', { ascending: false });
+
+    if (status) {
+      query = query.eq('status', status);
+    }
+
+    if (user.role !== 'admin') {
+      query = query.eq('organization_id', user.organizationId);
+    }
+
+    // Cursor: fetch records older than the last seen row
+    if (cursorCreatedAt && cursorId) {
+      query = query.or(
+        `created_at.lt."${cursorCreatedAt}",and(created_at.eq."${cursorCreatedAt}",id.lt."${cursorId}")`,
+      );
+    }
+
+    // Fetch one extra row to detect whether there is a next page
+    const { data, error } = await query.limit(pageLimit + 1);
+
+    if (error) {
+      this.logger.error(
+        { error },
+        'Error while querying technical support requests',
+      );
+      throw new InternalServerErrorException(
+        'Failed to fetch technical support requests',
+      );
+    }
+
+    const hasMore = data.length > pageLimit;
+    const result = hasMore ? data.slice(0, pageLimit) : data;
+
+    const lastItem = result[result.length - 1];
+    const nextCursor = hasMore
+      ? { createdAt: lastItem?.created_at, id: lastItem?.id }
+      : null;
+
+    return {
+      ts_requests: result,
+      hasMore,
+      nextCursor,
     };
   }
 
@@ -701,6 +763,50 @@ export class RfqController {
     return {
       success: true,
       rfq: data,
+    };
+  }
+
+  @Patch('technical-support/:id')
+  @Roles(RoleNames.Admin)
+  async updateSupportRequestStatus(
+    @Param('id') id: string,
+    @Body()
+    body: {
+      status: 'pending' | 'inprogress' | 'resolved' | 'rejected';
+      reject_reason?: string;
+    },
+  ) {
+    const client = this.supbaseService.getClient();
+
+    if (body.status === 'rejected' && !body.reject_reason) {
+      throw new BadRequestException('reject_reason is required when rejecting');
+    }
+
+    const updatePayload: any = {
+      status: body.status,
+    };
+
+    if (body.status === 'rejected') {
+      updatePayload.reject_reason = body.reject_reason;
+    }
+
+    const { data, error } = await client
+      .from(Tables.TechnicalSupportRequest)
+      .update(updatePayload)
+      .eq('id', id)
+      .select()
+      .single();
+
+    if (error) {
+      this.logger.error({ error }, 'Error while updating support request');
+      throw new InternalServerErrorException(
+        'Failed to update support request',
+      );
+    }
+
+    return {
+      success: true,
+      result: data,
     };
   }
 

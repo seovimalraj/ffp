@@ -280,21 +280,22 @@ export function DataTable<T>({
   }
 
   // Calculate offsets for left-sticky columns
+  // Updated widths: Expansion=36px, Numbering=40px, Selectable=40px
   let currentLeftOffset = 0;
-  if (numbering) currentLeftOffset += 48; // Estimate width for numbering
-  if (selectable) currentLeftOffset += 52; // Estimate width for selectable
-  if (renderExpansion) currentLeftOffset += 48; // Estimate width for expand button
+  if (renderExpansion) currentLeftOffset += 36;
+  if (numbering) currentLeftOffset += 40;
+  if (selectable) currentLeftOffset += 44; // 40px + some breathing room
 
   return (
-    <div className="relative w-full bg-card rounded-xl border border-border shadow-sm overflow-hidden">
+    <div className="relative w-full rounded-md border border-border bg-card overflow-hidden">
       <div className="w-full overflow-x-auto custom-scrollbar">
-        <table className="w-full text-sm text-left border-separate border-spacing-0">
-          <thead className="text-muted-foreground font-medium sticky top-0 z-30">
-            <tr className="">
+        <table className="w-full text-sm text-left border-collapse">
+          <thead className="bg-muted/50 text-muted-foreground font-medium sticky top-0 z-30">
+            <tr className="border-b border-border transition-colors hover:bg-muted/50 data-[state=selected]:bg-muted">
               {renderExpansion && (
                 <th
                   scope="col"
-                  className="px-4 py-4 w-10 sticky left-0 z-40 bg-muted border-b border-border"
+                  className="h-10 w-9 px-2 sticky left-0 z-40 bg-muted/95 backdrop-blur supports-[backdrop-filter]:bg-muted/50 border-b border-border text-center"
                 >
                   <span className="sr-only">Expand</span>
                 </th>
@@ -303,8 +304,8 @@ export function DataTable<T>({
                 <th
                   scope="col"
                   className={cn(
-                    "px-6 py-4 w-12 text-xs font-semibold uppercase tracking-wider sticky z-40 bg-muted border-b border-border",
-                    renderExpansion ? "left-10" : "left-0",
+                    "h-10 w-10 px-2 text-xs font-semibold uppercase tracking-wider sticky z-40 bg-muted/95 backdrop-blur supports-[backdrop-filter]:bg-muted/50 border-b border-border text-center",
+                    renderExpansion ? "left-9" : "left-0",
                   )}
                 >
                   #
@@ -314,17 +315,17 @@ export function DataTable<T>({
                 <th
                   scope="col"
                   className={cn(
-                    "px-6 py-4 w-12 sticky z-40 bg-muted border-b border-border",
+                    "h-10 w-10 px-4 sticky z-40 bg-muted/95 backdrop-blur supports-[backdrop-filter]:bg-muted/50 border-b border-border",
                     renderExpansion && numbering
-                      ? "left-[100px]"
+                      ? "left-[76px]" // 36 + 40
                       : renderExpansion
-                        ? "left-10"
+                        ? "left-9"
                         : numbering
-                          ? "left-12"
+                          ? "left-10"
                           : "left-0",
                   )}
                 >
-                  <div className="flex items-center">
+                  <div className="flex items-center justify-center">
                     <input
                       type="checkbox"
                       checked={
@@ -348,13 +349,13 @@ export function DataTable<T>({
                     key={col.key}
                     scope="col"
                     className={cn(
-                      "px-6 py-4 text-xs font-semibold uppercase tracking-wider border-b border-border bg-muted",
-                      idx === 0 && !selectable && !numbering && "pl-8",
+                      "h-10 px-4 text-xs font-semibold uppercase tracking-wider border-b border-border bg-muted/50 align-middle",
+                      idx === 0 && !selectable && !numbering && "pl-6",
                       col.sortable &&
                         "cursor-pointer select-none hover:text-foreground transition-colors group",
                       col.headerClassName,
                       isSticky &&
-                        "sticky z-40 shadow-[1px_0_0_0_rgba(0,0,0,0.1)]",
+                        "sticky z-40 shadow-[1px_0_0_0_rgba(0,0,0,0.1)] bg-muted/95 backdrop-blur supports-[backdrop-filter]:bg-muted/50",
                     )}
                     style={isSticky ? { left: leftPos } : {}}
                     onClick={() => col.sortable && handleSort(col.key)}
@@ -381,7 +382,7 @@ export function DataTable<T>({
               {actions && actions.length > 0 && (
                 <th
                   scope="col"
-                  className="px-6 py-4 text-right text-xs font-semibold uppercase tracking-wider w-12 sticky right-0 z-40 bg-muted border-b border-border"
+                  className="h-10 w-12 px-4 text-right text-xs font-semibold uppercase tracking-wider sticky right-0 z-40 bg-muted/95 backdrop-blur supports-[backdrop-filter]:bg-muted/50 border-b border-border"
                 >
                   <span className="sr-only">Actions</span>
                 </th>
@@ -405,28 +406,30 @@ export function DataTable<T>({
 
                 // Reset offset for cells
                 let cellLeftOffset = 0;
-                if (numbering) cellLeftOffset += 48;
-                if (selectable) cellLeftOffset += 52;
+                if (renderExpansion) cellLeftOffset += 36;
+                if (numbering) cellLeftOffset += 40;
+                if (selectable) cellLeftOffset += 44;
 
                 return (
                   <>
                     <tr
                       key={rowKey}
+                      data-state={isSelected ? "selected" : undefined}
                       className={cn(
-                        "group transition-colors duration-200",
+                        "group transition-colors duration-200 hover:bg-muted/40",
                         isSelected
-                          ? "bg-primary/5 shadow-[inset_0_0_0_999px_rgba(var(--primary-rgb),0.05)]"
+                          ? "bg-primary/5 hover:bg-primary/10"
                           : "bg-card",
                         expandedRows.has(rowKey) && "bg-muted/30",
                       )}
                     >
                       {renderExpansion && (
-                        <td className="px-3 py-4 sticky left-0 z-10 bg-white dark:bg-neutral-950 group-hover:bg-slate-50 dark:group-hover:bg-neutral-900 shadow-[1px_0_0_0_rgba(0,0,0,0.1)] dark:shadow-[1px_0_0_0_rgba(255,255,255,0.1)]">
+                        <td className="px-2 py-3 sticky left-0 z-10 bg-card dark:bg-card group-hover:bg-muted/40 dark:group-hover:bg-muted/40 group-data-[state=selected]:bg-muted/40 shadow-[1px_0_0_0_rgba(0,0,0,0.05)] text-center align-middle">
                           <button
                             onClick={() => toggleRowExpansion(rowKey)}
                             disabled={isRowExpandable && !isRowExpandable(row)}
                             className={cn(
-                              "flex items-center justify-center w-6 h-6 rounded-md hover:bg-muted transition-all",
+                              "inline-flex items-center justify-center w-6 h-6 rounded-md hover:bg-muted-foreground/10 transition-all",
                               isRowExpandable &&
                                 !isRowExpandable(row) &&
                                 "opacity-0 pointer-events-none",
@@ -445,8 +448,8 @@ export function DataTable<T>({
                       {numbering && (
                         <td
                           className={cn(
-                            "px-6 py-4 text-muted-foreground font-mono text-xs sticky z-10 bg-white dark:bg-neutral-950 group-hover:bg-slate-50 dark:group-hover:bg-neutral-900 shadow-[1px_0_0_0_rgba(0,0,0,0.1)] dark:shadow-[1px_0_0_0_rgba(255,255,255,0.1)]",
-                            renderExpansion ? "left-10" : "left-0",
+                            "px-2 py-3 text-muted-foreground font-mono text-xs sticky z-10 bg-card dark:bg-card group-hover:bg-muted/40 dark:group-hover:bg-muted/40 group-data-[state=selected]:bg-muted/40 shadow-[1px_0_0_0_rgba(0,0,0,0.05)] text-center align-middle",
+                            renderExpansion ? "left-9" : "left-0",
                           )}
                         >
                           {rowIndex + 1}
@@ -455,17 +458,17 @@ export function DataTable<T>({
                       {selectable && (
                         <td
                           className={cn(
-                            "px-6 py-4 sticky z-10 bg-white dark:bg-neutral-950 group-hover:bg-slate-50 dark:group-hover:bg-neutral-900 shadow-[1px_0_0_0_rgba(0,0,0,0.1)] dark:shadow-[1px_0_0_0_rgba(255,255,255,0.1)]",
+                            "px-4 py-3 sticky z-10 bg-card dark:bg-card group-hover:bg-muted/40 dark:group-hover:bg-muted/40 group-data-[state=selected]:bg-muted/40 shadow-[1px_0_0_0_rgba(0,0,0,0.05)] align-middle",
                             renderExpansion && numbering
-                              ? "left-[100px]"
+                              ? "left-[76px]"
                               : renderExpansion
-                                ? "left-10"
+                                ? "left-9"
                                 : numbering
-                                  ? "left-12"
+                                  ? "left-10"
                                   : "left-0",
                           )}
                         >
-                          <div className="flex items-center">
+                          <div className="flex items-center justify-center">
                             <input
                               type="checkbox"
                               checked={isSelected}
@@ -485,13 +488,13 @@ export function DataTable<T>({
                           <td
                             key={col.key}
                             className={cn(
-                              "px-6 py-4 whitespace-nowrap bg-card group-hover:bg-muted/30 group-[.is-selected]:bg-primary/5",
+                              "px-4 py-3 whitespace-nowrap align-middle",
                               colIndex === 0 && !selectable && !numbering
-                                ? "pl-8 font-medium text-foreground"
+                                ? "pl-6 font-medium text-foreground"
                                 : "text-muted-foreground",
                               col.cellClassName,
                               isSticky &&
-                                "sticky z-10 bg-white dark:bg-neutral-950 group-hover:bg-slate-50 dark:group-hover:bg-neutral-900 group-[.is-selected]:bg-slate-50 dark:group-[.is-selected]:bg-neutral-900 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.1)] dark:shadow-[2px_0_5px_-2px_rgba(255,255,255,0.1)]",
+                                "sticky z-10 bg-card dark:bg-card group-hover:bg-muted/40 dark:group-hover:bg-muted/40 group-data-[state=selected]:bg-muted/40 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.1)]",
                             )}
                             style={isSticky ? { left: leftPos } : {}}
                           >
@@ -503,11 +506,11 @@ export function DataTable<T>({
                         );
                       })}
                       {actions && actions.length > 0 && (
-                        <td className="px-6 py-4 text-right sticky right-0 z-10 bg-white dark:bg-neutral-950 group-hover:bg-slate-50 dark:group-hover:bg-neutral-900 group-[.is-selected]:bg-slate-50 dark:group-[.is-selected]:bg-neutral-900 shadow-[-1px_0_0_0_rgba(0,0,0,0.1)] dark:shadow-[-1px_0_0_0_rgba(255,255,255,0.1)]">
+                        <td className="px-4 py-3 text-right sticky right-0 z-10 bg-card dark:bg-card group-hover:bg-muted/40 dark:group-hover:bg-muted/40 group-data-[state=selected]:bg-muted/40 shadow-[-1px_0_0_0_rgba(0,0,0,0.05)] align-middle">
                           <DropdownMenu>
                             <DropdownMenuTrigger asChild>
                               <button
-                                className="inline-flex items-center justify-center w-8 h-8 rounded-lg text-muted-foreground/50 hover:text-foreground hover:bg-muted transition-all focus:outline-none focus:ring-2 focus:ring-ring ring-offset-1"
+                                className="inline-flex items-center justify-center w-8 h-8 rounded-lg text-muted-foreground/50 hover:text-foreground hover:bg-muted-foreground/10 transition-all focus:outline-none focus:ring-2 focus:ring-ring ring-offset-1"
                                 aria-label="Open actions menu"
                               >
                                 <EllipsisVerticalIcon className="h-5 w-5" />

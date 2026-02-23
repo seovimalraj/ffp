@@ -28,7 +28,6 @@ import {
   Truck,
   X,
   ChevronDown,
-  Headphones,
 } from "lucide-react";
 import { FloatingActions } from "@/components/ui/floating-actions";
 import { analyzeCADFile } from "../../../lib/cad-analysis";
@@ -51,7 +50,7 @@ import {
   getDefaultToleranceForProcess,
   getDefaultThickness,
 } from "../../../lib/pricing-engine";
-import { PartCardItem } from "../components/part-card-item";
+import { PartCardItem, PartCardSkeleton } from "../components/part-card-item";
 import { useDropzone } from "react-dropzone";
 import {
   formatCurrencyFixed,
@@ -84,6 +83,7 @@ import { ManualQuoteWarningModal } from "../components/manual-quote-warning-moda
 import { SuggestionProvider } from "@/components/store/suggestion-store";
 import Footer from "@/components/ui/footer";
 import TechnicalSupportModal from "../components/technical-support-modal";
+import { CAD_MIME_MAP } from "@cnc-quote/shared";
 
 /**
  * Normalize process string from database/API to clean format.
@@ -456,6 +456,7 @@ export default function QuoteConfigPage() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [is3DFileUploading, setIs3DFileUploading] = useState(false);
+  const [uploadingFiles, setUploadingFiles] = useState<string[]>([]);
 
   const [archivedParts, setArchivedParts] = useState<PartConfig[]>([]);
   const [showArchiveModal, setShowArchiveModal] = useState(false);
@@ -560,6 +561,7 @@ export default function QuoteConfigPage() {
       if (acceptedFiles.length === 0) return;
 
       setIs3DFileUploading(true);
+      setUploadingFiles(acceptedFiles.map((file) => file.name));
 
       try {
         const newParts = [];
@@ -736,6 +738,7 @@ export default function QuoteConfigPage() {
         notify.error("Failed to process files");
       } finally {
         setIs3DFileUploading(false);
+        setUploadingFiles([]);
       }
     },
     [parts.length, upload],
@@ -744,19 +747,7 @@ export default function QuoteConfigPage() {
   // Setup dropzone
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
     onDrop: onDropFiles,
-    accept: {
-      "model/stl": [".stl"],
-      "model/step": [".step", ".stp"],
-      "application/octet-stream": [".stl", ".step", ".stp"],
-      "application/sla": [".stl"],
-      "application/vnd.ms-pki.stl": [".stl"],
-      "application/iges": [".iges", ".igs"],
-      "image/vnd.dxf": [".dxf"],
-      "image/vnd.dwg": [".dwg"],
-      "model/x.stl-binary": [".stl"],
-      "application/x-navistyle": [".x_t", ".x_b"],
-      "model/obj": [".obj"],
-    },
+    accept: CAD_MIME_MAP,
     multiple: true,
   });
 
@@ -1090,6 +1081,7 @@ export default function QuoteConfigPage() {
                   },
                   preview: f.file_url,
                 })),
+                changeMeta: p.change_meta || {},
               };
 
               // Recalculate Pricing Object
@@ -1837,7 +1829,7 @@ export default function QuoteConfigPage() {
                   >
                     <img
                       src="\icons\costumer-service.png"
-                      className="size-4 md:mr-2"
+                      className="size-4 md:mr-2 invert"
                     />
                     <span className="hidden md:inline">
                       {supportRequestExists
@@ -1919,6 +1911,11 @@ export default function QuoteConfigPage() {
                 />
               );
             })}
+
+            {/* Part Upload Skeletons */}
+            {uploadingFiles.map((fileName, index) => (
+              <PartCardSkeleton key={`skeleton-${index}`} fileName={fileName} />
+            ))}
 
             {/* Add Part Button */}
             <div className="pt-6 md:pt-8 w-full">
@@ -2018,7 +2015,6 @@ export default function QuoteConfigPage() {
                 {/* Mini Breakdown */}
                 <div className="space-y-3 max-h-[calc(100vh-85px)] overflow-y-auto custom-scrollbar pr-1">
                   {parts.map((p, i) => {
-                    console.log(p, "p");
                     const isManual = p.process === "manual-quote";
                     const pPrice = p.final_price || 0;
                     const calculatedLeadTime = p.leadTime || 0;

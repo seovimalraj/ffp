@@ -62,6 +62,11 @@ import {
 } from "@/components/ui/input-otp";
 import "react-phone-number-input/style.css";
 import Footer from "@/components/ui/footer";
+import {
+  validateEmail,
+  validatePassword,
+} from "@/lib/validation/email.validation";
+import { CAD_MIME_MAP } from "@cnc-quote/shared";
 
 interface UploadedFileData {
   file: File;
@@ -113,24 +118,7 @@ export default function InstantQuotePage() {
 
   const { getRootProps, getInputProps, isDragActive, open } = useDropzone({
     onDrop,
-    accept: {
-      "model/stl": [".stl"],
-      "model/step": [".step", ".stp"],
-      "model/iges": [".iges", ".igs"],
-      "application/dxf": [".dxf"],
-      "image/vnd.dxf": [".dxf"],
-      "application/acad": [".dwg"],
-      "image/vnd.dwg": [".dwg"],
-      "application/octet-stream": [
-        ".stl",
-        ".step",
-        ".stp",
-        ".iges",
-        ".igs",
-        ".dxf",
-        ".dwg",
-      ],
-    },
+    accept: CAD_MIME_MAP,
   });
 
   const removeFile = (index: number) => {
@@ -336,19 +324,6 @@ export default function InstantQuotePage() {
         return next;
       });
     }
-  };
-
-  const validateEmail = (email: string) => {
-    if (!email) return "Email is required";
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    if (!emailRegex.test(email)) return "Please enter a valid email address";
-    return "";
-  };
-
-  const validatePassword = (password: string) => {
-    if (!password) return "Password is required";
-    if (password.length < 6) return "Password must be at least 6 characters";
-    return "";
   };
 
   const validateForm = () => {

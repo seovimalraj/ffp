@@ -19,6 +19,7 @@ import configuration from './config/configuration';
 import { InngestModule } from './inngest/inngest.module';
 import { TemporalModule } from './temporal/temporal.module';
 import { AdminModule } from './admin/admin.module';
+import { SystemModule } from './system/system.module';
 
 @Module({
   imports: [
@@ -57,6 +58,7 @@ import { AdminModule } from './admin/admin.module';
     InngestModule,
     TemporalModule,
     AdminModule,
+    SystemModule,
   ],
   controllers: [AppController],
   providers: [AppService],

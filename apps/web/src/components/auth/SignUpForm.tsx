@@ -22,6 +22,10 @@ import "react-phone-number-input/style.css";
 import { isValidPhone } from "@/lib/validation/phone-validation";
 import { CountryCode } from "@/lib/validation/postcode-types";
 import { isBannedEmail } from "../../../utils/check-disposable-email";
+import {
+  validateEmail,
+  validatePassword,
+} from "@/lib/validation/email.validation";
 
 export function SignUpForm() {
   const [showPassword, setShowPassword] = useState(false);
@@ -44,21 +48,6 @@ export function SignUpForm() {
   useEffect(() => {
     trackEvent("signup_view");
   }, []);
-
-  const validateEmail = (email: string) => {
-    if (!email) return "Email is required";
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    if (!emailRegex.test(email)) return "Please enter a valid email address";
-    if (isBannedEmail(email))
-      return "Registration requires a verified organizational email. Disposable and public email domains are blocked.";
-    return "";
-  };
-
-  const validatePassword = (password: string) => {
-    if (!password) return "Password is required";
-    if (password.length < 6) return "Password must be at least 6 characters";
-    return "";
-  };
 
   const validateForm = () => {
     const newErrors: Record<string, string> = {};
