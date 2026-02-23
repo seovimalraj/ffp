@@ -14,6 +14,8 @@
     "test:admin": "pnpm --filter @cnc-quote/web exec tsx --test lib/api/__tests__/admin.contract.test.ts",
     "deploy": "turbo run build && pnpm start",
     "type-check": "turbo run type-check",
+    "occ:verify:artifacts": "node apps/web/scripts/verify-occt-export.mjs",
+    "occ:verify:export": "node apps/web/scripts/verify-occt-export-runtime.mjs",
     "prepare": "husky install",
     "clean:web": "cd apps/web && rm -rf .next out",
     "clean:api": "cd apps/api && rm -rf dist",
