@@ -1,0 +1,2222 @@
+import assert from "node:assert/strict";
+import { describe, it } from "node:test";
+
+import { parseDxfFromArrayBuffer, type ParsedDxf } from "../dxf";
+import { buildSolidFromDxf, buildSolidFromDxfWithDebug } from "../dxf_solid";
+
+function toArrayBuffer(text: string): ArrayBuffer {
+  const bytes = new TextEncoder().encode(text);
+  return bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength);
+}
+
+function normalizeDxfFixture(raw: string): string {
+  return `${raw.replace(/\r/g, "").trim()}\n`;
+}
+
+function triangleCount(
+  solid: ReturnType<typeof buildSolidFromDxfWithDebug>["solid"],
+): number {
+  if (!solid) return 0;
+  const geometry = solid.mesh.geometry;
+  const index = geometry.getIndex();
+  if (index) return index.count / 3;
+  return (geometry.getAttribute("position")?.count ?? 0) / 3;
+}
+
+const viewerSolidOpts = {
+  thicknessMm: 2,
+  chordalToleranceMm: 0.1,
+  edgeThresholdDeg: 25,
+  debugBuildInfo: true,
+} as const;
+
+const viewerSolidOptsNoDebug = {
+  thicknessMm: 2,
+  chordalToleranceMm: 0.1,
+  edgeThresholdDeg: 25,
+} as const;
+
+const DXF_FLAT_PATTERN_ESMF03 = `
+0
+SECTION
+2
+ENTITIES
+  0
+CIRCLE
+  5
+63
+330
+1F
+100
+AcDbEntity
+  8
+0
+  6
+Continuous
+ 62
+     7
+370
+    25
+100
+AcDbCircle
+ 10
+-139.7985405764
+ 20
+0.0
+ 30
+0.0
+ 40
+2.500000000000004
+  0
+CIRCLE
+  5
+64
+330
+1F
+100
+AcDbEntity
+  8
+0
+  6
+Continuous
+ 62
+     7
+370
+    25
+100
+AcDbCircle
+ 10
+139.7985405764
+ 20
+0.0
+ 30
+0.0
+ 40
+2.499999999999998
+  0
+CIRCLE
+  5
+65
+330
+1F
+100
+AcDbEntity
+  8
+0
+  6
+Continuous
+ 62
+     7
+370
+    25
+100
+AcDbCircle
+ 10
+0.0
+ 20
+38.6851502882
+ 30
+0.0
+ 40
+2.525000000000002
+  0
+CIRCLE
+  5
+66
+330
+1F
+100
+AcDbEntity
+  8
+0
+  6
+Continuous
+ 62
+     7
+370
+    25
+100
+AcDbCircle
+ 10
+0.0
+ 20
+-38.6851502882
+ 30
+0.0
+ 40
+2.500000000000004
+  0
+CIRCLE
+  5
+83
+330
+1F
+100
+AcDbEntity
+  8
+0
+  6
+Continuous
+ 62
+     7
+370
+    25
+100
+AcDbCircle
+ 10
+0.0
+ 20
+38.6851502882
+ 30
+0.0
+ 40
+2.500000000000009
+  0
+LINE
+  5
+84
+330
+1F
+100
+AcDbEntity
+  8
+0
+  6
+Continuous
+ 62
+     7
+370
+    25
+100
+AcDbLine
+ 10
+-125.5485405764
+ 20
+-7.5
+ 30
+0.0
+ 11
+-125.5485405764
+ 21
+-26.25
+ 31
+0.0
+  0
+LINE
+  5
+85
+330
+1F
+100
+AcDbEntity
+  8
+0
+  6
+Continuous
+ 62
+     7
+370
+    25
+100
+AcDbLine
+ 10
+-139.7985405764
+ 20
+-7.5
+ 30
+0.0
+ 11
+-125.5485405764
+ 21
+-7.5
+ 31
+0.0
+  0
+LINE
+  5
+86
+330
+1F
+100
+AcDbEntity
+  8
+0
+  6
+Continuous
+ 62
+     7
+370
+    25
+100
+AcDbLine
+ 10
+-125.5485405764
+ 20
+7.5
+ 30
+0.0
+ 11
+-139.7985405764
+ 21
+7.5
+ 31
+0.0
+  0
+LINE
+  5
+87
+330
+1F
+100
+AcDbEntity
+  8
+0
+  6
+Continuous
+ 62
+     7
+370
+    25
+100
+AcDbLine
+ 10
+-125.5485405764
+ 20
+26.25
+ 30
+0.0
+ 11
+-125.5485405764
+ 21
+7.5
+ 31
+0.0
+  0
+LINE
+  5
+88
+330
+1F
+100
+AcDbEntity
+  8
+0
+  6
+Continuous
+ 62
+     7
+370
+    25
+100
+AcDbLine
+ 10
+-8.10706
+ 20
+26.25
+ 30
+0.0
+ 11
+-125.5485405764
+ 21
+26.25
+ 31
+0.0
+  0
+LINE
+  5
+89
+330
+1F
+100
+AcDbEntity
+  8
+0
+  6
+Continuous
+ 62
+     7
+370
+    25
+100
+AcDbLine
+ 10
+-8.10706
+ 20
+21.88882
+ 30
+0.0
+ 11
+-8.10706
+ 21
+26.25
+ 31
+0.0
+  0
+LINE
+  5
+8A
+330
+1F
+100
+AcDbEntity
+  8
+0
+  6
+Continuous
+ 62
+     7
+370
+    25
+100
+AcDbLine
+ 10
+-7.5
+ 20
+38.6851502882
+ 30
+0.0
+ 11
+-7.5
+ 21
+21.88882
+ 31
+0.0
+  0
+LINE
+  5
+8B
+330
+1F
+100
+AcDbEntity
+  8
+0
+  6
+Continuous
+ 62
+     7
+370
+    25
+100
+AcDbLine
+ 10
+7.5
+ 20
+21.88882
+ 30
+0.0
+ 11
+7.5
+ 21
+38.6851502882
+ 31
+0.0
+  0
+LINE
+  5
+8C
+330
+1F
+100
+AcDbEntity
+  8
+0
+  6
+Continuous
+ 62
+     7
+370
+    25
+100
+AcDbLine
+ 10
+8.10706
+ 20
+26.25
+ 30
+0.0
+ 11
+8.10706
+ 21
+21.88882
+ 31
+0.0
+  0
+LINE
+  5
+8D
+330
+1F
+100
+AcDbEntity
+  8
+0
+  6
+Continuous
+ 62
+     7
+370
+    25
+100
+AcDbLine
+ 10
+125.5485405764
+ 20
+26.25
+ 30
+0.0
+ 11
+8.10706
+ 21
+26.25
+ 31
+0.0
+  0
+LINE
+  5
+8E
+330
+1F
+100
+AcDbEntity
+  8
+0
+  6
+Continuous
+ 62
+     7
+370
+    25
+100
+AcDbLine
+ 10
+125.5485405764
+ 20
+26.25
+ 30
+0.0
+ 11
+125.5485405764
+ 21
+7.5
+ 31
+0.0
+  0
+LINE
+  5
+8F
+330
+1F
+100
+AcDbEntity
+  8
+0
+  6
+Continuous
+ 62
+     7
+370
+    25
+100
+AcDbLine
+ 10
+125.5485405764
+ 20
+7.5
+ 30
+0.0
+ 11
+139.7985405764
+ 21
+7.5
+ 31
+0.0
+  0
+LINE
+  5
+90
+330
+1F
+100
+AcDbEntity
+  8
+0
+  6
+Continuous
+ 62
+     7
+370
+    25
+100
+AcDbLine
+ 10
+139.7985405764
+ 20
+-7.5
+ 30
+0.0
+ 11
+125.5485405764
+ 21
+-7.5
+ 31
+0.0
+  0
+LINE
+  5
+91
+330
+1F
+100
+AcDbEntity
+  8
+0
+  6
+Continuous
+ 62
+     7
+370
+    25
+100
+AcDbLine
+ 10
+125.5485405764
+ 20
+-7.5
+ 30
+0.0
+ 11
+125.5485405764
+ 21
+-26.25
+ 31
+0.0
+  0
+LINE
+  5
+92
+330
+1F
+100
+AcDbEntity
+  8
+0
+  6
+Continuous
+ 62
+     7
+370
+    25
+100
+AcDbLine
+ 10
+125.5485405764
+ 20
+-26.25
+ 30
+0.0
+ 11
+8.10706
+ 21
+-26.25
+ 31
+0.0
+  0
+LINE
+  5
+93
+330
+1F
+100
+AcDbEntity
+  8
+0
+  6
+Continuous
+ 62
+     7
+370
+    25
+100
+AcDbLine
+ 10
+8.10706
+ 20
+-21.88882
+ 30
+0.0
+ 11
+8.10706
+ 21
+-26.25
+ 31
+0.0
+  0
+LINE
+  5
+94
+330
+1F
+100
+AcDbEntity
+  8
+0
+  6
+Continuous
+ 62
+     7
+370
+    25
+100
+AcDbLine
+ 10
+7.5
+ 20
+-38.6851502882
+ 30
+0.0
+ 11
+7.5
+ 21
+-21.88882
+ 31
+0.0
+  0
+LINE
+  5
+95
+330
+1F
+100
+AcDbEntity
+  8
+0
+  6
+Continuous
+ 62
+     7
+370
+    25
+100
+AcDbLine
+ 10
+-7.5
+ 20
+-21.88882
+ 30
+0.0
+ 11
+-7.5
+ 21
+-38.6851502882
+ 31
+0.0
+  0
+LINE
+  5
+96
+330
+1F
+100
+AcDbEntity
+  8
+0
+  6
+Continuous
+ 62
+     7
+370
+    25
+100
+AcDbLine
+ 10
+-8.10706
+ 20
+-26.25
+ 30
+0.0
+ 11
+-8.10706
+ 21
+-21.88882
+ 31
+0.0
+  0
+LINE
+  5
+97
+330
+1F
+100
+AcDbEntity
+  8
+0
+  6
+Continuous
+ 62
+     7
+370
+    25
+100
+AcDbLine
+ 10
+-8.10706
+ 20
+-26.25
+ 30
+0.0
+ 11
+-125.5485405764
+ 21
+-26.25
+ 31
+0.0
+  0
+ARC
+  5
+98
+330
+1F
+100
+AcDbEntity
+  8
+0
+  6
+Continuous
+ 62
+     7
+370
+    25
+100
+AcDbCircle
+ 10
+-139.7985405764
+ 20
+0.0
+ 30
+0.0
+ 40
+7.499999999999998
+100
+AcDbArc
+ 50
+90.0
+ 51
+270.0
+  0
+ARC
+  5
+99
+330
+1F
+100
+AcDbEntity
+  8
+0
+  6
+Continuous
+ 62
+     7
+370
+    25
+100
+AcDbCircle
+ 10
+-7.80353
+ 20
+21.88882
+ 30
+0.0
+ 40
+0.3035300000000003
+100
+AcDbArc
+ 50
+180.0
+ 51
+0.0
+  0
+ARC
+  5
+9A
+330
+1F
+100
+AcDbEntity
+  8
+0
+  6
+Continuous
+ 62
+     7
+370
+    25
+100
+AcDbCircle
+ 10
+0.0
+ 20
+38.6851502882
+ 30
+0.0
+ 40
+7.5
+100
+AcDbArc
+ 50
+0.0
+ 51
+180.0
+  0
+ARC
+  5
+9B
+330
+1F
+100
+AcDbEntity
+  8
+0
+  6
+Continuous
+ 62
+     7
+370
+    25
+100
+AcDbCircle
+ 10
+7.80353
+ 20
+21.88882
+ 30
+0.0
+ 40
+0.3035300000000012
+100
+AcDbArc
+ 50
+180.0
+ 51
+0.0
+  0
+ARC
+  5
+9C
+330
+1F
+100
+AcDbEntity
+  8
+0
+  6
+Continuous
+ 62
+     7
+370
+    25
+100
+AcDbCircle
+ 10
+139.7985405764
+ 20
+0.0
+ 30
+0.0
+ 40
+7.499999999999998
+100
+AcDbArc
+ 50
+270.0
+ 51
+90.0
+  0
+ARC
+  5
+9D
+330
+1F
+100
+AcDbEntity
+  8
+0
+  6
+Continuous
+ 62
+     7
+370
+    25
+100
+AcDbCircle
+ 10
+7.80353
+ 20
+-21.88882
+ 30
+0.0
+ 40
+0.3035300000000012
+100
+AcDbArc
+ 50
+0.0
+ 51
+180.0
+  0
+ARC
+  5
+9E
+330
+1F
+100
+AcDbEntity
+  8
+0
+  6
+Continuous
+ 62
+     7
+370
+    25
+100
+AcDbCircle
+ 10
+0.0
+ 20
+-38.6851502882
+ 30
+0.0
+ 40
+7.500000000000001
+100
+AcDbArc
+ 50
+180.0
+ 51
+0.0
+  0
+ARC
+  5
+9F
+330
+1F
+100
+AcDbEntity
+  8
+0
+  6
+Continuous
+ 62
+     7
+370
+    25
+100
+AcDbCircle
+ 10
+-7.80353
+ 20
+-21.88882
+ 30
+0.0
+ 40
+0.3035300000000003
+100
+AcDbArc
+ 50
+0.0
+ 51
+180.0
+  0
+ENDSEC
+0
+EOF
+`;
+
+const DXF_FRONT_RACK_NO_HARDWARE = `
+0
+SECTION
+2
+ENTITIES
+  0
+LINE
+  5
+73
+330
+1F
+100
+AcDbEntity
+  8
+0
+  6
+CENTERX2
+ 62
+     7
+100
+AcDbLine
+ 10
+-1.375
+ 20
+-9.155
+ 30
+0.0
+ 11
+1.375
+ 21
+-9.155
+ 31
+0.0
+  0
+LINE
+  5
+74
+330
+1F
+100
+AcDbEntity
+  8
+0
+  6
+CENTERX2
+ 62
+     7
+100
+AcDbLine
+ 10
+-1.375
+ 20
+-11.342
+ 30
+0.0
+ 11
+1.375
+ 21
+-11.342
+ 31
+0.0
+  0
+CIRCLE
+  5
+75
+330
+1F
+100
+AcDbEntity
+  8
+0
+  6
+CONTINUOUS
+ 62
+     7
+100
+AcDbCircle
+ 10
+0.0
+ 20
+-7.5
+ 30
+0.0
+ 40
+0.0984251968503944
+  0
+CIRCLE
+  5
+76
+330
+1F
+100
+AcDbEntity
+  8
+0
+  6
+CONTINUOUS
+ 62
+     7
+100
+AcDbCircle
+ 10
+-0.8464566929
+ 20
+-8.2874015748
+ 30
+0.0
+ 40
+0.0984251968503926
+  0
+CIRCLE
+  5
+77
+330
+1F
+100
+AcDbEntity
+  8
+0
+  6
+CONTINUOUS
+ 62
+     7
+100
+AcDbCircle
+ 10
+0.8464566929
+ 20
+-8.2874015748
+ 30
+0.0
+ 40
+0.0984251968503926
+  0
+CIRCLE
+  5
+78
+330
+1F
+100
+AcDbEntity
+  8
+0
+  6
+CONTINUOUS
+ 62
+     7
+100
+AcDbCircle
+ 10
+0.8464566929
+ 20
+-0.7874015748
+ 30
+0.0
+ 40
+0.0984251968503935
+  0
+CIRCLE
+  5
+79
+330
+1F
+100
+AcDbEntity
+  8
+0
+  6
+CONTINUOUS
+ 62
+     7
+100
+AcDbCircle
+ 10
+-0.8464566929
+ 20
+-0.7874015748
+ 30
+0.0
+ 40
+0.0984251968503935
+  0
+CIRCLE
+  5
+7A
+330
+1F
+100
+AcDbEntity
+  8
+0
+  6
+CONTINUOUS
+ 62
+     7
+100
+AcDbCircle
+ 10
+0.0
+ 20
+-8.2874015748
+ 30
+0.0
+ 40
+0.1141732283464556
+  0
+LINE
+  5
+99
+330
+1F
+100
+AcDbEntity
+  8
+0
+  6
+CONTINUOUS
+ 62
+     7
+100
+AcDbLine
+ 10
+-1.7391732283
+ 20
+-14.9974003648
+ 30
+0.0
+ 11
+-1.7391732283
+ 21
+-14.2257468215
+ 31
+0.0
+  0
+LINE
+  5
+9A
+330
+1F
+100
+AcDbEntity
+  8
+0
+  6
+CONTINUOUS
+ 62
+     7
+100
+AcDbLine
+ 10
+-1.5108267717
+ 20
+-14.9974003648
+ 30
+0.0
+ 11
+-1.5108267717
+ 21
+-14.2257468215
+ 31
+0.0
+  0
+LINE
+  5
+9B
+330
+1F
+100
+AcDbEntity
+  8
+0
+  6
+CONTINUOUS
+ 62
+     7
+100
+AcDbLine
+ 10
+1.7391732283
+ 20
+-14.9974003648
+ 30
+0.0
+ 11
+1.7391732283
+ 21
+-14.2257468215
+ 31
+0.0
+  0
+LINE
+  5
+9C
+330
+1F
+100
+AcDbEntity
+  8
+0
+  6
+CONTINUOUS
+ 62
+     7
+100
+AcDbLine
+ 10
+1.5108267717
+ 20
+-14.9974003648
+ 30
+0.0
+ 11
+1.5108267717
+ 21
+-14.2257468215
+ 31
+0.0
+  0
+LINE
+  5
+9D
+330
+1F
+100
+AcDbEntity
+  8
+0
+  6
+CONTINUOUS
+ 62
+     7
+100
+AcDbLine
+ 10
+-1.5108267717
+ 20
+-13.6194476089
+ 30
+0.0
+ 11
+-1.5108267717
+ 21
+-12.8477940656
+ 31
+0.0
+  0
+LINE
+  5
+9E
+330
+1F
+100
+AcDbEntity
+  8
+0
+  6
+CONTINUOUS
+ 62
+     7
+100
+AcDbLine
+ 10
+-1.7391732283
+ 20
+-13.6194476089
+ 30
+0.0
+ 11
+-1.7391732283
+ 21
+-12.8477940656
+ 31
+0.0
+  0
+LINE
+  5
+9F
+330
+1F
+100
+AcDbEntity
+  8
+0
+  6
+CONTINUOUS
+ 62
+     7
+100
+AcDbLine
+ 10
+1.7391732283
+ 20
+-13.6194476089
+ 30
+0.0
+ 11
+1.7391732283
+ 21
+-12.8477940656
+ 31
+0.0
+  0
+LINE
+  5
+A0
+330
+1F
+100
+AcDbEntity
+  8
+0
+  6
+CONTINUOUS
+ 62
+     7
+100
+AcDbLine
+ 10
+1.5108267717
+ 20
+-13.6194476089
+ 30
+0.0
+ 11
+1.5108267717
+ 21
+-12.8477940656
+ 31
+0.0
+  0
+LINE
+  5
+A1
+330
+1F
+100
+AcDbEntity
+  8
+0
+  6
+CONTINUOUS
+ 62
+     7
+100
+AcDbLine
+ 10
+1.875
+ 20
+-12.6115735931
+ 30
+0.0
+ 11
+1.875
+ 21
+-15.1115735931
+ 31
+0.0
+  0
+LINE
+  5
+A2
+330
+1F
+100
+AcDbEntity
+  8
+0
+  6
+CONTINUOUS
+ 62
+     7
+100
+AcDbLine
+ 10
+1.625
+ 20
+-15.3615735931
+ 30
+0.0
+ 11
+-1.625
+ 21
+-15.3615735931
+ 31
+0.0
+  0
+LINE
+  5
+A3
+330
+1F
+100
+AcDbEntity
+  8
+0
+  6
+CONTINUOUS
+ 62
+     7
+100
+AcDbLine
+ 10
+-1.875
+ 20
+-15.1115735931
+ 30
+0.0
+ 11
+-1.875
+ 21
+-12.6115735931
+ 31
+0.0
+  0
+LINE
+  5
+A4
+330
+1F
+100
+AcDbEntity
+  8
+0
+  6
+CONTINUOUS
+ 62
+     7
+100
+AcDbLine
+ 10
+-1.375
+ 20
+-0.25
+ 30
+0.0
+ 11
+-1.375
+ 21
+-12.1115735931
+ 31
+0.0
+  0
+LINE
+  5
+A5
+330
+1F
+100
+AcDbEntity
+  8
+0
+  6
+CONTINUOUS
+ 62
+     7
+100
+AcDbLine
+ 10
+1.125
+ 20
+0.0
+ 30
+0.0
+ 11
+-1.125
+ 21
+0.0
+ 31
+0.0
+  0
+LINE
+  5
+A6
+330
+1F
+100
+AcDbEntity
+  8
+0
+  6
+CONTINUOUS
+ 62
+     7
+100
+AcDbLine
+ 10
+1.375
+ 20
+-12.1115735931
+ 30
+0.0
+ 11
+1.375
+ 21
+-0.25
+ 31
+0.0
+  0
+ARC
+  5
+A7
+330
+1F
+100
+AcDbEntity
+  8
+0
+  6
+CONTINUOUS
+ 62
+     7
+100
+AcDbCircle
+ 10
+-1.625
+ 20
+-14.9974003648
+ 30
+0.0
+ 40
+0.1141732283464518
+100
+AcDbArc
+ 50
+180.0
+ 51
+0.0
+  0
+ARC
+  5
+A8
+330
+1F
+100
+AcDbEntity
+  8
+0
+  6
+CONTINUOUS
+ 62
+     7
+100
+AcDbCircle
+ 10
+-1.625
+ 20
+-14.2257468215
+ 30
+0.0
+ 40
+0.114173228346453
+100
+AcDbArc
+ 50
+0.0
+ 51
+180.0
+  0
+ARC
+  5
+A9
+330
+1F
+100
+AcDbEntity
+  8
+0
+  6
+CONTINUOUS
+ 62
+     7
+100
+AcDbCircle
+ 10
+1.625
+ 20
+-14.2257468215
+ 30
+0.0
+ 40
+0.1141732283464533
+100
+AcDbArc
+ 50
+0.0
+ 51
+180.0
+  0
+ARC
+  5
+AA
+330
+1F
+100
+AcDbEntity
+  8
+0
+  6
+CONTINUOUS
+ 62
+     7
+100
+AcDbCircle
+ 10
+1.625
+ 20
+-14.9974003648
+ 30
+0.0
+ 40
+0.1141732283464527
+100
+AcDbArc
+ 50
+180.0
+ 51
+0.0
+  0
+ARC
+  5
+AB
+330
+1F
+100
+AcDbEntity
+  8
+0
+  6
+CONTINUOUS
+ 62
+     7
+100
+AcDbCircle
+ 10
+-1.625
+ 20
+-13.6194476089
+ 30
+0.0
+ 40
+0.1141732283464517
+100
+AcDbArc
+ 50
+180.0
+ 51
+0.0
+  0
+ARC
+  5
+AC
+330
+1F
+100
+AcDbEntity
+  8
+0
+  6
+CONTINUOUS
+ 62
+     7
+100
+AcDbCircle
+ 10
+-1.625
+ 20
+-12.8477940656
+ 30
+0.0
+ 40
+0.1141732283464532
+100
+AcDbArc
+ 50
+0.0
+ 51
+180.0
+  0
+ARC
+  5
+AD
+330
+1F
+100
+AcDbEntity
+  8
+0
+  6
+CONTINUOUS
+ 62
+     7
+100
+AcDbCircle
+ 10
+1.625
+ 20
+-12.8477940656
+ 30
+0.0
+ 40
+0.1141732283464533
+100
+AcDbArc
+ 50
+0.0
+ 51
+180.0
+  0
+ARC
+  5
+AE
+330
+1F
+100
+AcDbEntity
+  8
+0
+  6
+CONTINUOUS
+ 62
+     7
+100
+AcDbCircle
+ 10
+1.625
+ 20
+-13.6194476089
+ 30
+0.0
+ 40
+0.1141732283464542
+100
+AcDbArc
+ 50
+180.0
+ 51
+360.0
+  0
+ARC
+  5
+AF
+330
+1F
+100
+AcDbEntity
+  8
+0
+  6
+CONTINUOUS
+ 62
+     7
+100
+AcDbCircle
+ 10
+1.625
+ 20
+-12.1115735931
+ 30
+0.0
+ 40
+0.2500000000000016
+100
+AcDbArc
+ 50
+180.0
+ 51
+270.0
+  0
+ARC
+  5
+B0
+330
+1F
+100
+AcDbEntity
+  8
+0
+  6
+CONTINUOUS
+ 62
+     7
+100
+AcDbCircle
+ 10
+1.625
+ 20
+-12.6115735931
+ 30
+0.0
+ 40
+0.250000000000006
+100
+AcDbArc
+ 50
+0.0
+ 51
+90.0
+  0
+ARC
+  5
+B1
+330
+1F
+100
+AcDbEntity
+  8
+0
+  6
+CONTINUOUS
+ 62
+     7
+100
+AcDbCircle
+ 10
+1.625
+ 20
+-15.1115735931
+ 30
+0.0
+ 40
+0.2499999999999982
+100
+AcDbArc
+ 50
+270.0
+ 51
+0.0
+  0
+ARC
+  5
+B2
+330
+1F
+100
+AcDbEntity
+  8
+0
+  6
+CONTINUOUS
+ 62
+     7
+100
+AcDbCircle
+ 10
+-1.625
+ 20
+-15.1115735931
+ 30
+0.0
+ 40
+0.250000000000002
+100
+AcDbArc
+ 50
+180.0
+ 51
+270.0
+  0
+ARC
+  5
+B3
+330
+1F
+100
+AcDbEntity
+  8
+0
+  6
+CONTINUOUS
+ 62
+     7
+100
+AcDbCircle
+ 10
+-1.625
+ 20
+-12.6115735931
+ 30
+0.0
+ 40
+0.2499999999999964
+100
+AcDbArc
+ 50
+90.0
+ 51
+180.0
+  0
+ARC
+  5
+B4
+330
+1F
+100
+AcDbEntity
+  8
+0
+  6
+CONTINUOUS
+ 62
+     7
+100
+AcDbCircle
+ 10
+-1.625
+ 20
+-12.1115735931
+ 30
+0.0
+ 40
+0.2499999999999982
+100
+AcDbArc
+ 50
+270.0
+ 51
+0.0
+  0
+ARC
+  5
+B5
+330
+1F
+100
+AcDbEntity
+  8
+0
+  6
+CONTINUOUS
+ 62
+     7
+100
+AcDbCircle
+ 10
+-1.125
+ 20
+-0.25
+ 30
+0.0
+ 40
+0.2500000000000009
+100
+AcDbArc
+ 50
+90.0
+ 51
+180.0
+  0
+ARC
+  5
+B6
+330
+1F
+100
+AcDbEntity
+  8
+0
+  6
+CONTINUOUS
+ 62
+     7
+100
+AcDbCircle
+ 10
+1.125
+ 20
+-0.25
+ 30
+0.0
+ 40
+0.2500000000000004
+100
+AcDbArc
+ 50
+0.0
+ 51
+90.0
+  0
+ENDSEC
+0
+EOF
+`;
+
+type FixtureExpectation = {
+  name: string;
+  rawDxf: string;
+  minTriangles: number;
+  minHoles: number;
+};
+
+describe("DXF remaining viewer-path failures", () => {
+  const fixtures: FixtureExpectation[] = [
+    {
+      name: "Flat pattern - ESMF-03",
+      rawDxf: DXF_FLAT_PATTERN_ESMF03,
+      minTriangles: 600,
+      minHoles: 4,
+    },
+    {
+      name: "FRONT RACK PLATE NO HARDWARE",
+      rawDxf: DXF_FRONT_RACK_NO_HARDWARE,
+      minTriangles: 300,
+      minHoles: 8,
+    },
+  ];
+
+  for (const fixture of fixtures) {
+    it(`repairs ${fixture.name} into a non-trivial solid with holes`, () => {
+      const parsed = parseDxfFromArrayBuffer(
+        toArrayBuffer(normalizeDxfFixture(fixture.rawDxf)),
+      );
+      const built = buildSolidFromDxfWithDebug(parsed.dxf, 1, viewerSolidOpts);
+
+      assert.ok(
+        built.solid,
+        `expected solid for ${fixture.name}; reason=${built.debug?.failureReason ?? "unknown"}`,
+      );
+
+      const triangles = triangleCount(built.solid);
+      assert.ok(
+        triangles >= fixture.minTriangles,
+        `expected ${fixture.name} to have >= ${fixture.minTriangles} triangles, got ${triangles}`,
+      );
+
+      assert.equal(
+        built.debug?.usedRepairPass,
+        true,
+        `expected repair pass for ${fixture.name}`,
+      );
+
+      const holeLoops = built.debug?.holeLoopCount ?? 0;
+      assert.ok(
+        holeLoops >= fixture.minHoles,
+        `expected ${fixture.name} to preserve holes (>=${fixture.minHoles}), got ${holeLoops}`,
+      );
+    });
+  }
+
+  it("builds repair-required fixtures in non-debug mode too", () => {
+    const fixture = fixtures[0];
+    const parsed = parseDxfFromArrayBuffer(
+      toArrayBuffer(normalizeDxfFixture(fixture.rawDxf)),
+    );
+
+    const withDebug = buildSolidFromDxfWithDebug(parsed.dxf, 1, viewerSolidOpts);
+    assert.ok(withDebug.solid, "expected debug build to produce a solid");
+    assert.equal(withDebug.debug?.usedRepairPass, true);
+
+    const withoutDebug = buildSolidFromDxf(parsed.dxf, 1, viewerSolidOptsNoDebug);
+    assert.ok(withoutDebug, "expected non-debug build to produce a solid");
+
+    const index = withoutDebug!.mesh.geometry.getIndex();
+    const triangleCountNoDebug = index
+      ? index.count / 3
+      : (withoutDebug!.mesh.geometry.getAttribute("position")?.count ?? 0) / 3;
+    assert.ok(
+      triangleCountNoDebug >= fixture.minTriangles,
+      `expected non-debug repair result to have >= ${fixture.minTriangles} triangles, got ${triangleCountNoDebug}`,
+    );
+  });
+
+  it("keeps pass-1 behavior for a simple already-working plate", () => {
+    const dxf: ParsedDxf = {
+      entities: [
+        {
+          type: "LWPOLYLINE",
+          flags: 1,
+          vertices: [
+            { x: 0, y: 0 },
+            { x: 100, y: 0 },
+            { x: 100, y: 60 },
+            { x: 0, y: 60 },
+          ],
+        },
+        { type: "CIRCLE", center: { x: 30, y: 30 }, radius: 8 },
+      ],
+    };
+
+    const built = buildSolidFromDxfWithDebug(dxf, 1, viewerSolidOpts);
+    assert.ok(built.solid, "expected simple plate to remain solid in pass 1");
+    assert.equal(
+      built.debug?.usedRepairPass,
+      false,
+      "pass 1 should succeed and avoid repair for already-working fixtures",
+    );
+  });
+});
