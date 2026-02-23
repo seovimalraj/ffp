@@ -40,6 +40,7 @@ CREATE TABLE rfq_parts (
   is_archived BOOLEAN DEFAULT FALSE,
   organization_id UUID NOT NULL REFERENCES organizations(id),
   final_price numeric(10, 2),
+  change_meta JSONB,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );

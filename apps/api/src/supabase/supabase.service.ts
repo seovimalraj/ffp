@@ -1,7 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
-import { RoleNames } from '../../libs/constants';
+import { RoleNames, Tables } from '../../libs/constants';
 import { setRlsContext } from 'src/auth/set-rls-context';
 
 @Injectable()
@@ -59,22 +59,17 @@ export class SupabaseService {
     file: Express.Multer.File,
     bucket: string = 'uploads',
     path?: string,
-    user?: { id: string; role: string },
+    requireUploadId: boolean = false,
   ) {
     if (!path) {
       path = `FFP-${Date.now()}-${file.originalname}`;
     }
-    await setRlsContext(this.supabase, user.id, user.role === RoleNames.Admin);
 
     const { error } = await this.supabase.storage
       .from(bucket)
       .upload(path, file.buffer, {
         contentType: file.mimetype,
         upsert: true,
-        metadata: {
-          user_id: user.id,
-          user_role: user.role,
-        },
       });
 
     if (error) {
@@ -82,7 +77,24 @@ export class SupabaseService {
       throw new Error(`Error uploading file: ${error.message}`);
     }
 
-    return this.getPublicUrl(bucket, path);
+    const publicUrl = this.getPublicUrl(bucket, path);
+    let uploadId;
+
+    if (requireUploadId) {
+      const { data, error } = await this.supabase
+        .from(Tables.UploadsTable)
+        .insert({
+          file_url: publicUrl,
+        })
+        .select();
+
+      if (error) {
+        throw new Error(`Error while generating uploadId: ${error.message}`);
+      }
+      uploadId = data?.[0]?.id;
+    }
+
+    return { publicUrl, uploadId };
   }
 
   getPublicUrl(bucket: string, path: string) {

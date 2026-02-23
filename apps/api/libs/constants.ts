@@ -79,6 +79,8 @@ export enum Tables {
   SystemConfig = 'system_config',
 
   TechnicalSupportRequest = 'technical_support_request ',
+
+  UploadsTable = 'uploads',
 }
 
 /**

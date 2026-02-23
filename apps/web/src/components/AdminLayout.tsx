@@ -31,6 +31,7 @@ import {
   ChevronLeft,
   Menu,
   LogOut,
+  BadgeInfo,
 } from "lucide-react";
 import { Button } from "./ui/button";
 import { signOut, useSession } from "next-auth/react";
@@ -47,6 +48,7 @@ const navigationGroups = [
       { label: "Quotes", href: "/admin/quotes", icon: FileText },
       { label: "Orders", href: "/admin/orders", icon: ShoppingCart },
       { label: "RFQs & Bids", href: "/admin/rfqs", icon: Clipboard },
+      { label: "Requests", href: "/admin/requests", icon: BadgeInfo },
       { label: "Messages", href: "/admin/messages", icon: MessageSquare },
       { label: "Customers", href: "/admin/customers", icon: Users },
       { label: "Organizations", href: "/admin/organizations", icon: Building2 },
@@ -83,6 +85,11 @@ const navigationGroups = [
       { label: "Team", href: "/admin/settings/team", icon: UsersRound },
       { label: "API Keys", href: "/admin/settings/api-keys", icon: Key },
       { label: "Webhooks", href: "/admin/settings/webhooks", icon: Webhook },
+      {
+        label: "System Config",
+        href: "/admin/settings/system-config",
+        icon: Database,
+      },
     ],
   },
 ];
