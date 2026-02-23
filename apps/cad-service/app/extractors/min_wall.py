@@ -24,7 +24,7 @@ def min_wall_mesh(mesh, *, samples: int = 5000, threshold_mm: float = 1.5) -> Mi
         
         # Validate that face_index is a proper numpy array (not an exception or error object)
         if not hasattr(face_index, '__len__') or not hasattr(pts, '__len__'):
-            print(f"⚠️ Mesh sampling returned invalid data types")
+            print("⚠️ Mesh sampling returned invalid data types")
             return MinWallData(global_min_mm=0.0, samples=[])
         
         face_normals = mesh.face_normals[face_index]

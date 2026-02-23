@@ -6,6 +6,23 @@
 
 import { GeometryData, SheetMetalFeatures } from "./cad-analysis";
 
+// Type aliases for common union types
+export type ProcessType = "cnc-milling" | "cnc-turning" | "sheet-metal" | "injection-molding";
+export type ToleranceLevel = "standard" | "precision" | "tight";
+export type LeadTimeType = "economy" | "standard" | "expedited";
+export type CuttingMethod = "laser" | "plasma" | "waterjet" | "turret-punch";
+export type HardwareType = "rivet-nut" | "pem-nut" | "standoff" | "captive-screw";
+export type OptimizationEffort = "easy" | "moderate" | "difficult";
+export type OptimizationCategory = "material" | "geometry" | "tolerance" | "finish" | "quantity";
+export type SheetMetalCategory =
+  | "steel"
+  | "stainless"
+  | "aluminum"
+  | "copper"
+  | "brass"
+  | "titanium"
+  | "superalloy";
+
 export interface MaterialSpec {
   code: string;
   name: string;
@@ -15,7 +32,7 @@ export interface MaterialSpec {
 }
 
 export interface ProcessConfig {
-  type: "cnc-milling" | "cnc-turning" | "sheet-metal" | "injection-molding";
+  type: ProcessType;
   name: string; // Display name
   setupCost: number; // Fixed cost per job
   hourlyRate: number; // USD per machine hour
@@ -35,9 +52,9 @@ export interface PricingInput {
   process: ProcessConfig;
   finish: FinishOption | SheetMetalFinish;
   quantity: number;
-  tolerance: "standard" | "precision" | "tight";
-  leadTimeType: "economy" | "standard" | "expedited";
-  cuttingMethod?: "laser" | "plasma" | "waterjet" | "turret-punch";
+  tolerance: ToleranceLevel;
+  leadTimeType: LeadTimeType;
+  cuttingMethod?: CuttingMethod;
   hardware?: HardwareOption[];
 }
 
@@ -50,14 +67,7 @@ export interface SheetMetalMaterialSpec {
   density: number; // g/cm³
   costPerKg: number;
   thickness: number; // mm
-  category:
-    | "steel"
-    | "stainless"
-    | "aluminum"
-    | "copper"
-    | "brass"
-    | "titanium"
-    | "superalloy";
+  category: SheetMetalCategory;
   bendability: number; // 1 = easy, higher = harder to bend
   requiresManualQuote?: boolean; // Exotic materials requiring manual review
   manualQuoteReason?: string; // Reason for manual quote
@@ -74,7 +84,7 @@ export interface SheetMetalFinish {
 }
 
 export interface HardwareOption {
-  type: "rivet-nut" | "pem-nut" | "standoff" | "captive-screw";
+  type: HardwareType;
   quantity: number;
   unitCost: number;
 }
@@ -133,8 +143,8 @@ export interface CostOptimization {
   suggestion: string;
   potentialSavings: number;
   savingsPercent: number;
-  effort: "easy" | "moderate" | "difficult";
-  category: "material" | "geometry" | "tolerance" | "finish" | "quantity";
+  effort: OptimizationEffort;
+  category: OptimizationCategory;
 }
 
 export const CNC_MATERIALS = {
@@ -144,12 +154,12 @@ export const CNC_MATERIALS = {
       label: "Aluminum 6061-T6",
       costPerKg: 7.5,
       density: 2.7,
-      machinabilityFactor: 1.0,
+      machinabilityFactor: 1,
     },
     {
       value: "aluminum-7075",
       label: "Aluminum 7075-T6",
-      costPerKg: 14.0,
+      costPerKg: 14,
       density: 2.81,
       machinabilityFactor: 1.15,
     },
@@ -172,7 +182,7 @@ export const CNC_MATERIALS = {
       label: "Aluminum MIC-6",
       costPerKg: 8.5,
       density: 2.7,
-      machinabilityFactor: 1.0,
+      machinabilityFactor: 1,
     },
   ],
   steel: [
@@ -181,7 +191,7 @@ export const CNC_MATERIALS = {
       label: "Mild Steel 1018",
       costPerKg: 3.8,
       density: 7.87,
-      machinabilityFactor: 1.0,
+      machinabilityFactor: 1,
     },
     {
       value: "steel-1045",
@@ -209,28 +219,28 @@ export const CNC_MATERIALS = {
       label: "Structural Steel A36",
       costPerKg: 3.5,
       density: 7.85,
-      machinabilityFactor: 1.0,
+      machinabilityFactor: 1,
     },
   ],
   stainless: [
     {
       value: "stainless-304",
       label: "Stainless Steel 304",
-      costPerKg: 12.0,
-      density: 8.0,
+      costPerKg: 12,
+      density: 8,
       machinabilityFactor: 1.4,
     },
     {
       value: "stainless-316",
       label: "Stainless Steel 316",
-      costPerKg: 18.0,
-      density: 8.0,
+      costPerKg: 18,
+      density: 8,
       machinabilityFactor: 1.5,
     },
     {
       value: "stainless-17-4",
       label: "Stainless Steel 17-4 PH",
-      costPerKg: 22.0,
+      costPerKg: 22,
       density: 7.75,
       machinabilityFactor: 1.6,
     },
@@ -238,7 +248,7 @@ export const CNC_MATERIALS = {
       value: "stainless-303",
       label: "Stainless Steel 303",
       costPerKg: 13.5,
-      density: 8.0,
+      density: 8,
       machinabilityFactor: 1.2,
     },
   ],
@@ -246,14 +256,14 @@ export const CNC_MATERIALS = {
     {
       value: "titanium-gr2",
       label: "Titanium Grade 2",
-      costPerKg: 45.0,
+      costPerKg: 45,
       density: 4.51,
       machinabilityFactor: 2.5,
     },
     {
       value: "titanium-gr5",
       label: "Titanium Grade 5 (Ti-6Al-4V)",
-      costPerKg: 55.0,
+      costPerKg: 55,
       density: 4.43,
       machinabilityFactor: 2.8,
     },
@@ -269,14 +279,14 @@ export const CNC_MATERIALS = {
     {
       value: "bronze-932",
       label: "Bronze 932 (Bearing Bronze)",
-      costPerKg: 12.0,
+      costPerKg: 12,
       density: 8.8,
-      machinabilityFactor: 1.0,
+      machinabilityFactor: 1,
     },
     {
       value: "copper-110",
       label: "Copper 110 (ETP)",
-      costPerKg: 15.0,
+      costPerKg: 15,
       density: 8.94,
       machinabilityFactor: 1.3,
     },
@@ -285,21 +295,21 @@ export const CNC_MATERIALS = {
     {
       value: "delrin",
       label: "Delrin (Acetal)",
-      costPerKg: 12.0,
+      costPerKg: 12,
       density: 1.41,
       machinabilityFactor: 0.6,
     },
     {
       value: "nylon-6",
       label: "Nylon 6",
-      costPerKg: 10.0,
+      costPerKg: 10,
       density: 1.14,
       machinabilityFactor: 0.7,
     },
     {
       value: "peek",
       label: "PEEK",
-      costPerKg: 85.0,
+      costPerKg: 85,
       density: 1.32,
       machinabilityFactor: 1.2,
     },
@@ -313,7 +323,7 @@ export const CNC_MATERIALS = {
     {
       value: "abs",
       label: "ABS",
-      costPerKg: 7.0,
+      costPerKg: 7,
       density: 1.05,
       machinabilityFactor: 0.6,
     },
@@ -324,7 +334,7 @@ export const CNC_TOLERANCES = [
   {
     value: "standard",
     label: 'Standard (±0.005" / ±0.127mm)',
-    costMultiplier: 1.0,
+    costMultiplier: 1,
   },
   {
     value: "precision",
@@ -338,9 +348,9 @@ export const CNC_TOLERANCES = [
  * Sheet Metal Thickness Options (in mm)
  */
 export const SHEET_METAL_THICKNESSES = [
-  { value: "0.5", label: '0.5mm (0.020")', costMultiplier: 1.0 },
-  { value: "0.8", label: '0.8mm (0.031")', costMultiplier: 1.0 },
-  { value: "1.0", label: '1.0mm (0.039")', costMultiplier: 1.0 },
+  { value: "0.5", label: '0.5mm (0.020")', costMultiplier: 1 },
+  { value: "0.8", label: '0.8mm (0.031")', costMultiplier: 1 },
+  { value: "1.0", label: '1.0mm (0.039")', costMultiplier: 1 },
   { value: "1.2", label: '1.2mm (0.047")', costMultiplier: 1.05 },
   { value: "1.5", label: '1.5mm (0.059")', costMultiplier: 1.1 },
   { value: "2.0", label: '2.0mm (0.079")', costMultiplier: 1.15 },
@@ -855,8 +865,8 @@ export function isCNCProcess(process: string | undefined): boolean {
   if (!process) return false;
   // Clean up any malformed process strings
   const cleanProcess = process
-    .replace(/^["'\s]+|["'\s]+$/g, "")
-    .replace(/\\"/g, "")
+    .replaceAll(/(?:^["'\s]+)|(?:["'\s]+$)/g, "")
+    .replaceAll(String.raw`\"`, "")
     .toLowerCase();
   return (
     cleanProcess === "cnc-milling" ||
@@ -870,8 +880,8 @@ export function isSheetMetalProcess(process: string | undefined): boolean {
   if (!process) return false;
   // Clean up any malformed process strings (e.g., "\"sheet-metal\"" -> "sheet-metal")
   const cleanProcess = process
-    .replace(/^["'\s]+|["'\s]+$/g, "")
-    .replace(/\\"/g, "")
+    .replaceAll(/(?:^["'\s]+)|(?:["'\s]+$)/g, "")
+    .replaceAll(String.raw`\"`, "")
     .toLowerCase();
   return (
     cleanProcess === "sheet-metal" ||
@@ -938,9 +948,9 @@ export function getMaterialDisplayName(
 
   // Fallback: format the code nicely
   return materialCode
-    .replace(/-/g, " ")
-    .replace(/([A-Z]+)(\d+)/g, "$1 $2")
-    .replace(/\s+/g, " ")
+    .replaceAll("-", " ")
+    .replaceAll(/([A-Z]+)(\d+)/g, "$1 $2")
+    .replaceAll(/\s+/g, " ")
     .trim();
 }
 
@@ -1159,6 +1169,16 @@ export function recommendFinish(
 }
 
 /**
+ * Get volume discount percentage based on quantity
+ */
+function getVolumeDiscount(qty: number): number {
+  if (qty >= 100) return 0.15;
+  if (qty >= 50) return 0.1;
+  if (qty >= 25) return 0.05;
+  return 0;
+}
+
+/**
  * Quantity Break-Even Analysis
  * Calculates optimal quantities and cost per unit at different volumes
  */
@@ -1173,8 +1193,7 @@ export function analyzeQuantityBreakpoints(
 
   quantities.forEach((qty) => {
     const setupPerUnit = setupCost / qty;
-    const volumeDiscount =
-      qty >= 100 ? 0.15 : qty >= 50 ? 0.1 : qty >= 25 ? 0.05 : 0;
+    const volumeDiscount = getVolumeDiscount(qty);
     const unitPrice =
       (materialCostPerUnit + setupPerUnit) * (1 - volumeDiscount);
     const totalPrice = unitPrice * qty;
@@ -1195,8 +1214,117 @@ export function analyzeQuantityBreakpoints(
     currentQuantity: quantity,
     recommendation:
       breakpoints.find((b) => b.isOptimal) ||
-      breakpoints[breakpoints.length - 1],
+      breakpoints.at(-1),
   };
+}
+
+type ManufacturabilityFactor = {
+  factor: string;
+  impact: number;
+  status: "good" | "warning" | "critical";
+};
+
+type ManufacturabilityResult = {
+  score: number;
+  factors: ManufacturabilityFactor[];
+  suggestions: string[];
+};
+
+function scoreSheetMetalManufacturability(
+  geometry: GeometryData,
+): ManufacturabilityResult {
+  let score = 100;
+  const factors: ManufacturabilityFactor[] = [];
+  const suggestions: string[] = [];
+  const features = geometry.sheetMetalFeatures;
+
+  if (features?.bendCount) {
+    if (features.bendCount > 10) {
+      score -= 15;
+      factors.push({ factor: "High bend count", impact: -15, status: "warning" });
+      suggestions.push("Consider redesigning with fewer bends to reduce cost and lead time");
+    } else if (features.bendCount > 0) {
+      factors.push({ factor: "Moderate bends", impact: 0, status: "good" });
+    }
+  }
+
+  if (features?.complexCuts && features.complexCuts > 5) {
+    score -= 10;
+    factors.push({ factor: "Complex cutting patterns", impact: -10, status: "warning" });
+    suggestions.push("Simplify cut patterns where possible");
+  }
+
+  if (features?.flatArea) {
+    const utilization = features.flatArea / (geometry.boundingBox.x * geometry.boundingBox.y);
+    if (utilization < 0.5) {
+      score -= 12;
+      factors.push({ factor: "Poor material utilization", impact: -12, status: "warning" });
+      suggestions.push("Optimize part orientation or nesting to reduce material waste");
+    } else {
+      factors.push({ factor: "Good material utilization", impact: +5, status: "good" });
+      score += 5;
+    }
+  }
+
+  return { score, factors, suggestions };
+}
+
+function scoreCNCManufacturability(
+  geometry: GeometryData,
+  material: string,
+  process: string,
+): ManufacturabilityResult {
+  let score = 100;
+  const factors: ManufacturabilityFactor[] = [];
+  const suggestions: string[] = [];
+  const { complexity, holes, pockets, features } = geometry;
+
+  if (complexity === "complex") {
+    score -= 20;
+    factors.push({ factor: "High geometric complexity", impact: -20, status: "critical" });
+    suggestions.push("Consider simplifying geometry or splitting into multiple parts");
+  } else if (complexity === "moderate") {
+    score -= 8;
+    factors.push({ factor: "Moderate complexity", impact: -8, status: "good" });
+  }
+
+  const deepFeatures = holes?.filter((h) => h.depth > h.diameter * 5).length || 0;
+  if (deepFeatures > 0) {
+    score -= 15;
+    factors.push({ factor: "Deep hole/pocket features", impact: -15, status: "critical" });
+    suggestions.push("Deep features (L/D > 5) require special tooling - consider reducing depth");
+  }
+
+  if (features?.includes("thin-wall")) {
+    score -= 18;
+    factors.push({ factor: "Thin wall features", impact: -18, status: "critical" });
+    suggestions.push("Increase wall thickness to improve machinability and reduce vibration");
+  }
+
+  if (pockets?.some((p) => p.width < 2)) {
+    score -= 12;
+    factors.push({ factor: "Very small features", impact: -12, status: "warning" });
+    suggestions.push("Increase feature sizes above 2mm for better tool access");
+  }
+
+  const mat = getMaterialByValue(material, process);
+  if (mat && "machinabilityFactor" in mat && mat.machinabilityFactor > 2) {
+    score -= 10;
+    factors.push({ factor: "Difficult material", impact: -10, status: "warning" });
+    suggestions.push(
+      `${mat.label || (mat as MaterialDefinition).name} is difficult to machine - consider alternative materials`,
+    );
+  }
+
+  return { score, factors, suggestions };
+}
+
+function getManufacturabilityGrade(score: number): "A" | "B" | "C" | "D" | "F" {
+  if (score >= 90) return "A";
+  if (score >= 80) return "B";
+  if (score >= 70) return "C";
+  if (score >= 60) return "D";
+  return "F";
 }
 
 /**
@@ -1210,164 +1338,21 @@ export function calculateManufacturabilityScore(
 ): {
   score: number;
   grade: "A" | "B" | "C" | "D" | "F";
-  factors: Array<{
-    factor: string;
-    impact: number;
-    status: "good" | "warning" | "critical";
-  }>;
+  factors: ManufacturabilityFactor[];
   suggestions: string[];
 } {
-  let score = 100;
-  const factors: Array<{
-    factor: string;
-    impact: number;
-    status: "good" | "warning" | "critical";
-  }> = [];
-  const suggestions = [];
+  const result = isSheetMetalProcess(process)
+    ? scoreSheetMetalManufacturability(geometry)
+    : scoreCNCManufacturability(geometry, material, process);
 
-  if (isSheetMetalProcess(process)) {
-    const features = geometry.sheetMetalFeatures;
+  const grade = getManufacturabilityGrade(result.score);
 
-    if (features?.bendCount) {
-      // Bend count impact
-      if (features?.bendCount > 10) {
-        score -= 15;
-        factors.push({
-          factor: "High bend count",
-          impact: -15,
-          status: "warning",
-        });
-        suggestions.push(
-          "Consider redesigning with fewer bends to reduce cost and lead time",
-        );
-      } else if (features?.bendCount > 0) {
-        factors.push({ factor: "Moderate bends", impact: 0, status: "good" });
-      }
-    }
-
-    // Complexity of cuts
-    if (features?.complexCuts && features?.complexCuts > 5) {
-      score -= 10;
-      factors.push({
-        factor: "Complex cutting patterns",
-        impact: -10,
-        status: "warning",
-      });
-      suggestions.push("Simplify cut patterns where possible");
-    }
-
-    // Material utilization
-    if (features?.flatArea) {
-      const utilization =
-        features?.flatArea / (geometry.boundingBox.x * geometry.boundingBox.y);
-      if (utilization < 0.5) {
-        score -= 12;
-        factors.push({
-          factor: "Poor material utilization",
-          impact: -12,
-          status: "warning",
-        });
-        suggestions.push(
-          "Optimize part orientation or nesting to reduce material waste",
-        );
-      } else {
-        factors.push({
-          factor: "Good material utilization",
-          impact: +5,
-          status: "good",
-        });
-        score += 5;
-      }
-    }
-  } else {
-    // CNC manufacturability
-    const { complexity, holes, pockets, features } = geometry;
-
-    // Complexity impact
-    if (complexity === "complex") {
-      score -= 20;
-      factors.push({
-        factor: "High geometric complexity",
-        impact: -20,
-        status: "critical",
-      });
-      suggestions.push(
-        "Consider simplifying geometry or splitting into multiple parts",
-      );
-    } else if (complexity === "moderate") {
-      score -= 8;
-      factors.push({
-        factor: "Moderate complexity",
-        impact: -8,
-        status: "good",
-      });
-    }
-
-    // Deep pockets/holes
-    const deepFeatures =
-      holes?.filter((h) => h.depth > h.diameter * 5).length || 0;
-    if (deepFeatures > 0) {
-      score -= 15;
-      factors.push({
-        factor: "Deep hole/pocket features",
-        impact: -15,
-        status: "critical",
-      });
-      suggestions.push(
-        "Deep features (L/D > 5) require special tooling - consider reducing depth",
-      );
-    }
-
-    // Thin walls
-    if (features?.includes("thin-wall")) {
-      score -= 18;
-      factors.push({
-        factor: "Thin wall features",
-        impact: -18,
-        status: "critical",
-      });
-      suggestions.push(
-        "Increase wall thickness to improve machinability and reduce vibration",
-      );
-    }
-
-    // Small features
-    if (pockets?.some((p) => p.width < 2)) {
-      score -= 12;
-      factors.push({
-        factor: "Very small features",
-        impact: -12,
-        status: "warning",
-      });
-      suggestions.push(
-        "Increase feature sizes above 2mm for better tool access",
-      );
-    }
-
-    // Material machinability
-    const mat = getMaterialByValue(material, process);
-    if (mat && "machinabilityFactor" in mat && mat.machinabilityFactor > 2) {
-      score -= 10;
-      factors.push({
-        factor: "Difficult material",
-        impact: -10,
-        status: "warning",
-      });
-      suggestions.push(
-        `${mat.label || (mat as any).name} is difficult to machine - consider alternative materials`,
-      );
-    }
-  }
-
-  // Determine grade
-  let grade: "A" | "B" | "C" | "D" | "F";
-  if (score >= 90) grade = "A";
-  else if (score >= 80) grade = "B";
-  else if (score >= 70) grade = "C";
-  else if (score >= 60) grade = "D";
-  else grade = "F";
-
-  return { score: Math.max(0, score), grade, factors, suggestions };
+  return {
+    score: Math.max(0, result.score),
+    grade,
+    factors: result.factors,
+    suggestions: result.suggestions,
+  };
 }
 
 /**
@@ -1428,37 +1413,77 @@ export function generateCostOptimizations(
     });
   }
 
-  // Tolerance relaxation
-  optimizations.push({
-    suggestion:
-      'Relax tolerances to ±0.005" standard where tight tolerances are not functionally required',
-    potentialSavings: currentPrice * 0.18,
-    savingsPercent: 18,
-    effort: "easy",
-    category: "tolerance",
-  });
-
-  // Finish optimization
-  optimizations.push({
-    suggestion:
-      "Use as-machined finish instead of anodizing for non-visible parts",
-    potentialSavings: currentPrice * 0.08,
-    savingsPercent: 8,
-    effort: "easy",
-    category: "finish",
-  });
-
-  // Quantity optimization
-  optimizations.push({
-    suggestion:
-      "Increase quantity to 50+ units to achieve volume pricing discounts",
-    potentialSavings: currentPrice * 0.15,
-    savingsPercent: 15,
-    effort: "easy",
-    category: "quantity",
-  });
+  // Tolerance, finish, and quantity optimizations
+  optimizations.push(
+    {
+      suggestion:
+        'Relax tolerances to ±0.005" standard where tight tolerances are not functionally required',
+      potentialSavings: currentPrice * 0.18,
+      savingsPercent: 18,
+      effort: "easy" as const,
+      category: "tolerance" as const,
+    },
+    {
+      suggestion:
+        "Use as-machined finish instead of anodizing for non-visible parts",
+      potentialSavings: currentPrice * 0.08,
+      savingsPercent: 8,
+      effort: "easy" as const,
+      category: "finish" as const,
+    },
+    {
+      suggestion:
+        "Increase quantity to 50+ units to achieve volume pricing discounts",
+      potentialSavings: currentPrice * 0.15,
+      savingsPercent: 15,
+      effort: "easy" as const,
+      category: "quantity" as const,
+    },
+  );
 
   return optimizations.sort((a, b) => b.savingsPercent - a.savingsPercent);
+}
+
+function getCapacityMultiplier(capacity: number): number {
+  if (capacity > 0.8) return 1.3;
+  if (capacity > 0.6) return 1.1;
+  return 1;
+}
+
+function getCapacityHoursPerDay(processType: string): number {
+  if (processType === "sheet-metal") return 12;
+  if (processType === "cnc-turning") return 10;
+  return 8;
+}
+
+function getCapacityDelayDays(utilization: number): number {
+  if (utilization > 0.85) return 2;
+  if (utilization > 0.75) return 1;
+  return 0;
+}
+
+const CNC_TO_SHEET_METAL_MAPPING: Record<string, string> = {
+  "aluminum-6061": "aluminum-5052",
+  "aluminum-7075": "aluminum-5052",
+  "stainless-steel-304": "stainless-304",
+  "stainless-steel-316": "stainless-316",
+  "mild-steel": "steel-cr",
+  "carbon-steel": "steel-cr",
+};
+
+function findMappedSheetMetalMaterial(value: string) {
+  const mappedKey = CNC_TO_SHEET_METAL_MAPPING[value];
+  if (mappedKey && mappedKey in SHEET_METAL_MATERIALS) {
+    const materialFamily = SHEET_METAL_MATERIALS[mappedKey];
+    if (materialFamily && materialFamily.length > 0) {
+      const preferred = materialFamily.find((m: any) => m.thickness === 2);
+      console.log(
+        `\u26A0\uFE0F Mapped CNC material "${value}" to sheet metal "${mappedKey}"`,
+      );
+      return preferred || materialFamily[0];
+    }
+  }
+  return null;
 }
 
 /**
@@ -1485,8 +1510,7 @@ export function predictLeadTime(
 
   // Current shop capacity (in production this would come from real-time database)
   const currentCapacity = 0.72; // 72% utilized (simulated)
-  const capacityMultiplier =
-    currentCapacity > 0.8 ? 1.3 : currentCapacity > 0.6 ? 1.1 : 1;
+  const capacityMultiplier = getCapacityMultiplier(currentCapacity);
 
   if (isSheetMetalProcess(process)) {
     // Sheet metal phases
@@ -1702,100 +1726,95 @@ export function optimizeSheetMetalSetup(
  * Smart Part Bundling Analyzer
  * Identifies opportunities to combine similar parts to save on setup costs
  */
+interface PartBundle {
+  partIndices: number[];
+  similarity: number;
+  savingsPotential: number;
+  reason: string;
+  setupCostSaved: number;
+}
+
+function calculatePartSimilarity(
+  part1: any,
+  part2: any,
+): { score: number; criteria: string[] } {
+  let score = 0;
+  const criteria: string[] = [];
+
+  if (part1.process === part2.process) {
+    score += 0.3;
+    criteria.push("same process");
+  }
+  if (part1.material === part2.material) {
+    score += 0.25;
+    criteria.push("same material");
+  }
+
+  const vol1 = part1.volume || 1000;
+  const vol2 = part2.volume || 1000;
+  if (Math.min(vol1, vol2) / Math.max(vol1, vol2) > 0.7) {
+    score += 0.2;
+    criteria.push("similar size");
+  }
+
+  if (part1.finish === part2.finish) {
+    score += 0.15;
+    criteria.push("same finish");
+  }
+  if (isCNCProcess(part1.process) && part1.tolerance === part2.tolerance) {
+    score += 0.1;
+    criteria.push("same tolerance");
+  }
+
+  return { score, criteria };
+}
+
+function createBundle(
+  i: number,
+  j: number,
+  similarity: number,
+  criteria: string[],
+  part1: any,
+  part2: any,
+): PartBundle {
+  const setupCostPerPart = 95;
+  const setupSaved = setupCostPerPart * 0.8;
+  const additionalSavings = (part1.quantity + part2.quantity) * 0.5;
+  return {
+    partIndices: [i, j],
+    similarity: Math.round(similarity * 100),
+    savingsPotential: Math.round(setupSaved + additionalSavings),
+    setupCostSaved: Math.round(setupSaved),
+    reason: `These parts share ${criteria.join(", ")} - ideal for combined production run`,
+  };
+}
+
 export function analyzeSimilarParts(parts: any[]): {
-  bundles: Array<{
-    partIndices: number[];
-    similarity: number;
-    savingsPotential: number;
-    reason: string;
-    setupCostSaved: number;
-  }>;
+  bundles: PartBundle[];
   totalSavings: number;
 } {
-  const bundles: Array<{
-    partIndices: number[];
-    similarity: number;
-    savingsPotential: number;
-    reason: string;
-    setupCostSaved: number;
-  }> = [];
+  const bundles: PartBundle[] = [];
+  const compareThreshold = 0.7;
 
-  const compareThreshold = 0.7; // 70% similarity to suggest bundling
-
-  // Compare each pair of parts
   for (let i = 0; i < parts.length; i++) {
     for (let j = i + 1; j < parts.length; j++) {
-      const part1 = parts[i];
-      const part2 = parts[j];
-
-      // Skip if already in a bundle together
       const alreadyBundled = bundles.some(
         (b) => b.partIndices.includes(i) && b.partIndices.includes(j),
       );
       if (alreadyBundled) continue;
 
-      let similarityScore = 0;
-      const matchedCriteria: string[] = [];
-
-      // Check process match (most important)
-      if (part1.process === part2.process) {
-        similarityScore += 0.3;
-        matchedCriteria.push("same process");
-      }
-
-      // Check material match
-      if (part1.material === part2.material) {
-        similarityScore += 0.25;
-        matchedCriteria.push("same material");
-      }
-
-      // Check similar size (within 30%)
-      const vol1 = part1.volume || 1000;
-      const vol2 = part2.volume || 1000;
-      const volumeRatio = Math.min(vol1, vol2) / Math.max(vol1, vol2);
-      if (volumeRatio > 0.7) {
-        similarityScore += 0.2;
-        matchedCriteria.push("similar size");
-      }
-
-      // Check same finish
-      if (part1.finish === part2.finish) {
-        similarityScore += 0.15;
-        matchedCriteria.push("same finish");
-      }
-
-      // Check same tolerance (for CNC)
-      if (isCNCProcess(part1.process) && part1.tolerance === part2.tolerance) {
-        similarityScore += 0.1;
-        matchedCriteria.push("same tolerance");
-      }
-
-      // If similarity is high enough, suggest bundling
-      if (similarityScore >= compareThreshold) {
-        // Calculate setup cost savings
-        // Typical setup is $75-150 per unique part configuration
-        const setupCostPerPart = 95;
-        const setupSaved = setupCostPerPart * 0.8; // 80% of one setup cost saved
-
-        // Additional savings from combined production runs
-        const additionalSavings = (part1.quantity + part2.quantity) * 0.5; // $0.50/unit from batch efficiency
-
-        bundles.push({
-          partIndices: [i, j],
-          similarity: Math.round(similarityScore * 100),
-          savingsPotential: Math.round(setupSaved + additionalSavings),
-          setupCostSaved: Math.round(setupSaved),
-          reason: `These parts share ${matchedCriteria.join(", ")} - ideal for combined production run`,
-        });
+      const { score, criteria } = calculatePartSimilarity(parts[i], parts[j]);
+      if (score >= compareThreshold) {
+        bundles.push(createBundle(i, j, score, criteria, parts[i], parts[j]));
       }
     }
   }
 
-  const totalSavings = bundles.reduce((sum, b) => sum + b.savingsPotential, 0);
-
   return {
     bundles,
-    totalSavings: Math.round(totalSavings),
+    totalSavings: Math.round(
+      bundles.reduce((sum, b) => sum + b.savingsPotential, 0),
+    ),
   };
 }
 
@@ -1848,7 +1867,7 @@ export const SHEET_METAL_MATERIALS: Record<string, any[]> = {
       code: "AL5052-0.8",
       name: "Aluminum 5052 - 0.8mm",
       density: 2.68,
-      costPerKg: 6.0,
+      costPerKg: 6,
       thickness: 0.8,
       category: "aluminum",
       bendability: 0.9,
@@ -1858,7 +1877,7 @@ export const SHEET_METAL_MATERIALS: Record<string, any[]> = {
       name: "Aluminum 5052 - 1.0mm",
       density: 2.68,
       costPerKg: 5.8,
-      thickness: 1.0,
+      thickness: 1,
       category: "aluminum",
       bendability: 0.9,
     },
@@ -1869,23 +1888,23 @@ export const SHEET_METAL_MATERIALS: Record<string, any[]> = {
       costPerKg: 5.6,
       thickness: 1.5,
       category: "aluminum",
-      bendability: 1.0,
+      bendability: 1,
     },
     {
       code: "AL5052-2.0",
       name: "Aluminum 5052 - 2.0mm",
       density: 2.68,
       costPerKg: 5.6,
-      thickness: 2.0,
+      thickness: 2,
       category: "aluminum",
-      bendability: 1.0,
+      bendability: 1,
     },
     {
       code: "AL5052-3.0",
       name: "Aluminum 5052 - 3.0mm",
       density: 2.68,
       costPerKg: 5.8,
-      thickness: 3.0,
+      thickness: 3,
       category: "aluminum",
       bendability: 1.1,
     },
@@ -1905,7 +1924,7 @@ export const SHEET_METAL_MATERIALS: Record<string, any[]> = {
       name: "Aluminum 3003 - 1.0mm",
       density: 2.73,
       costPerKg: 5.3,
-      thickness: 1.0,
+      thickness: 1,
       category: "aluminum",
       bendability: 0.8,
     },
@@ -1923,7 +1942,7 @@ export const SHEET_METAL_MATERIALS: Record<string, any[]> = {
       name: "Aluminum 3003 - 2.0mm",
       density: 2.73,
       costPerKg: 5.2,
-      thickness: 2.0,
+      thickness: 2,
       category: "aluminum",
       bendability: 0.9,
     },
@@ -1932,9 +1951,9 @@ export const SHEET_METAL_MATERIALS: Record<string, any[]> = {
       name: "Aluminum 3003 - 3.0mm",
       density: 2.73,
       costPerKg: 5.4,
-      thickness: 3.0,
+      thickness: 3,
       category: "aluminum",
-      bendability: 1.0,
+      bendability: 1,
     },
   ],
   "aluminum-6061": [
@@ -1955,7 +1974,7 @@ export const SHEET_METAL_MATERIALS: Record<string, any[]> = {
       name: "Aluminum 6061 - 1.0mm",
       density: 2.7,
       costPerKg: 6.5,
-      thickness: 1.0,
+      thickness: 1,
       category: "aluminum",
       bendability: 1.2,
       requiresManualQuote: true,
@@ -1979,7 +1998,7 @@ export const SHEET_METAL_MATERIALS: Record<string, any[]> = {
       name: "Aluminum 6061 - 2.0mm",
       density: 2.7,
       costPerKg: 6.3,
-      thickness: 2.0,
+      thickness: 2,
       category: "aluminum",
       bendability: 1.3,
       requiresManualQuote: true,
@@ -1991,7 +2010,7 @@ export const SHEET_METAL_MATERIALS: Record<string, any[]> = {
       name: "Aluminum 6061 - 3.0mm",
       density: 2.7,
       costPerKg: 6.5,
-      thickness: 3.0,
+      thickness: 3,
       category: "aluminum",
       bendability: 1.4,
       requiresManualQuote: true,
@@ -2014,7 +2033,7 @@ export const SHEET_METAL_MATERIALS: Record<string, any[]> = {
       name: "Aluminum 5005 - 1.0mm",
       density: 2.7,
       costPerKg: 5.4,
-      thickness: 1.0,
+      thickness: 1,
       category: "aluminum",
       bendability: 0.8,
     },
@@ -2032,7 +2051,7 @@ export const SHEET_METAL_MATERIALS: Record<string, any[]> = {
       name: "Aluminum 5005 - 2.0mm",
       density: 2.7,
       costPerKg: 5.3,
-      thickness: 2.0,
+      thickness: 2,
       category: "aluminum",
       bendability: 0.9,
     },
@@ -2041,9 +2060,9 @@ export const SHEET_METAL_MATERIALS: Record<string, any[]> = {
       name: "Aluminum 5005 - 3.0mm",
       density: 2.7,
       costPerKg: 5.5,
-      thickness: 3.0,
+      thickness: 3,
       category: "aluminum",
-      bendability: 1.0,
+      bendability: 1,
     },
   ],
   "aluminum-1100": [
@@ -2060,8 +2079,8 @@ export const SHEET_METAL_MATERIALS: Record<string, any[]> = {
       code: "AL1100-1.0",
       name: "Aluminum 1100 - 1.0mm",
       density: 2.71,
-      costPerKg: 5.0,
-      thickness: 1.0,
+      costPerKg: 5,
+      thickness: 1,
       category: "aluminum",
       bendability: 0.7,
     },
@@ -2079,7 +2098,7 @@ export const SHEET_METAL_MATERIALS: Record<string, any[]> = {
       name: "Aluminum 1100 - 2.0mm",
       density: 2.71,
       costPerKg: 4.9,
-      thickness: 2.0,
+      thickness: 2,
       category: "aluminum",
       bendability: 0.8,
     },
@@ -2088,7 +2107,7 @@ export const SHEET_METAL_MATERIALS: Record<string, any[]> = {
       name: "Aluminum 1100 - 3.0mm",
       density: 2.71,
       costPerKg: 5.1,
-      thickness: 3.0,
+      thickness: 3,
       category: "aluminum",
       bendability: 0.9,
     },
@@ -2099,7 +2118,7 @@ export const SHEET_METAL_MATERIALS: Record<string, any[]> = {
       name: "Aluminum 5083 - 1.0mm",
       density: 2.66,
       costPerKg: 7.5,
-      thickness: 1.0,
+      thickness: 1,
       category: "aluminum",
       bendability: 1.1,
       requiresManualQuote: true,
@@ -2123,7 +2142,7 @@ export const SHEET_METAL_MATERIALS: Record<string, any[]> = {
       name: "Aluminum 5083 - 2.0mm",
       density: 2.66,
       costPerKg: 7.2,
-      thickness: 2.0,
+      thickness: 2,
       category: "aluminum",
       bendability: 1.2,
       requiresManualQuote: true,
@@ -2135,7 +2154,7 @@ export const SHEET_METAL_MATERIALS: Record<string, any[]> = {
       name: "Aluminum 5083 - 3.0mm",
       density: 2.66,
       costPerKg: 7.4,
-      thickness: 3.0,
+      thickness: 3,
       category: "aluminum",
       bendability: 1.3,
       requiresManualQuote: true,
@@ -2149,7 +2168,7 @@ export const SHEET_METAL_MATERIALS: Record<string, any[]> = {
       name: "Aluminum 2024 - 1.0mm",
       density: 2.78,
       costPerKg: 9.5,
-      thickness: 1.0,
+      thickness: 1,
       category: "aluminum",
       bendability: 1.8,
       requiresManualQuote: true,
@@ -2172,10 +2191,10 @@ export const SHEET_METAL_MATERIALS: Record<string, any[]> = {
       code: "AL2024-2.0",
       name: "Aluminum 2024 - 2.0mm",
       density: 2.78,
-      costPerKg: 9.0,
-      thickness: 2.0,
+      costPerKg: 9,
+      thickness: 2,
       category: "aluminum",
-      bendability: 2.0,
+      bendability: 2,
       requiresManualQuote: true,
       manualQuoteReason:
         "Aerospace grade - limited formability, requires annealing",
@@ -2186,8 +2205,8 @@ export const SHEET_METAL_MATERIALS: Record<string, any[]> = {
       code: "AL7075-1.0",
       name: "Aluminum 7075 - 1.0mm",
       density: 2.81,
-      costPerKg: 12.0,
-      thickness: 1.0,
+      costPerKg: 12,
+      thickness: 1,
       category: "aluminum",
       bendability: 2.2,
       requiresManualQuote: true,
@@ -2211,7 +2230,7 @@ export const SHEET_METAL_MATERIALS: Record<string, any[]> = {
       name: "Aluminum 7075 - 2.0mm",
       density: 2.81,
       costPerKg: 11.2,
-      thickness: 2.0,
+      thickness: 2,
       category: "aluminum",
       bendability: 2.4,
       requiresManualQuote: true,
@@ -2225,7 +2244,7 @@ export const SHEET_METAL_MATERIALS: Record<string, any[]> = {
     {
       code: "SS304-0.8",
       name: "Stainless Steel 304 - 0.8mm",
-      density: 8.0,
+      density: 8,
       costPerKg: 8.5,
       thickness: 0.8,
       category: "stainless",
@@ -2234,17 +2253,17 @@ export const SHEET_METAL_MATERIALS: Record<string, any[]> = {
     {
       code: "SS304-1.0",
       name: "Stainless Steel 304 - 1.0mm",
-      density: 8.0,
+      density: 8,
       costPerKg: 8.2,
-      thickness: 1.0,
+      thickness: 1,
       category: "stainless",
       bendability: 1.4,
     },
     {
       code: "SS304-1.5",
       name: "Stainless Steel 304 - 1.5mm",
-      density: 8.0,
-      costPerKg: 8.0,
+      density: 8,
+      costPerKg: 8,
       thickness: 1.5,
       category: "stainless",
       bendability: 1.5,
@@ -2252,18 +2271,18 @@ export const SHEET_METAL_MATERIALS: Record<string, any[]> = {
     {
       code: "SS304-2.0",
       name: "Stainless Steel 304 - 2.0mm",
-      density: 8.0,
-      costPerKg: 8.0,
-      thickness: 2.0,
+      density: 8,
+      costPerKg: 8,
+      thickness: 2,
       category: "stainless",
       bendability: 1.6,
     },
     {
       code: "SS304-3.0",
       name: "Stainless Steel 304 - 3.0mm",
-      density: 8.0,
+      density: 8,
       costPerKg: 8.2,
-      thickness: 3.0,
+      thickness: 3,
       category: "stainless",
       bendability: 1.7,
     },
@@ -2272,7 +2291,7 @@ export const SHEET_METAL_MATERIALS: Record<string, any[]> = {
     {
       code: "SS316-0.8",
       name: "Stainless Steel 316 - 0.8mm",
-      density: 8.0,
+      density: 8,
       costPerKg: 10.5,
       thickness: 0.8,
       category: "stainless",
@@ -2281,17 +2300,17 @@ export const SHEET_METAL_MATERIALS: Record<string, any[]> = {
     {
       code: "SS316-1.0",
       name: "Stainless Steel 316 - 1.0mm",
-      density: 8.0,
+      density: 8,
       costPerKg: 10.2,
-      thickness: 1.0,
+      thickness: 1,
       category: "stainless",
       bendability: 1.5,
     },
     {
       code: "SS316-1.5",
       name: "Stainless Steel 316 - 1.5mm",
-      density: 8.0,
-      costPerKg: 10.0,
+      density: 8,
+      costPerKg: 10,
       thickness: 1.5,
       category: "stainless",
       bendability: 1.6,
@@ -2299,18 +2318,18 @@ export const SHEET_METAL_MATERIALS: Record<string, any[]> = {
     {
       code: "SS316-2.0",
       name: "Stainless Steel 316 - 2.0mm",
-      density: 8.0,
-      costPerKg: 10.0,
-      thickness: 2.0,
+      density: 8,
+      costPerKg: 10,
+      thickness: 2,
       category: "stainless",
       bendability: 1.7,
     },
     {
       code: "SS316-3.0",
       name: "Stainless Steel 316 - 3.0mm",
-      density: 8.0,
+      density: 8,
       costPerKg: 10.2,
-      thickness: 3.0,
+      thickness: 3,
       category: "stainless",
       bendability: 1.8,
     },
@@ -2319,8 +2338,8 @@ export const SHEET_METAL_MATERIALS: Record<string, any[]> = {
     {
       code: "SS316L-0.8",
       name: "Stainless Steel 316L - 0.8mm",
-      density: 8.0,
-      costPerKg: 11.0,
+      density: 8,
+      costPerKg: 11,
       thickness: 0.8,
       category: "stainless",
       bendability: 1.4,
@@ -2328,16 +2347,16 @@ export const SHEET_METAL_MATERIALS: Record<string, any[]> = {
     {
       code: "SS316L-1.0",
       name: "Stainless Steel 316L - 1.0mm",
-      density: 8.0,
+      density: 8,
       costPerKg: 10.8,
-      thickness: 1.0,
+      thickness: 1,
       category: "stainless",
       bendability: 1.4,
     },
     {
       code: "SS316L-1.5",
       name: "Stainless Steel 316L - 1.5mm",
-      density: 8.0,
+      density: 8,
       costPerKg: 10.5,
       thickness: 1.5,
       category: "stainless",
@@ -2346,9 +2365,9 @@ export const SHEET_METAL_MATERIALS: Record<string, any[]> = {
     {
       code: "SS316L-2.0",
       name: "Stainless Steel 316L - 2.0mm",
-      density: 8.0,
+      density: 8,
       costPerKg: 10.5,
-      thickness: 2.0,
+      thickness: 2,
       category: "stainless",
       bendability: 1.6,
     },
@@ -2368,7 +2387,7 @@ export const SHEET_METAL_MATERIALS: Record<string, any[]> = {
       name: "Stainless Steel 430 - 1.0mm",
       density: 7.7,
       costPerKg: 6.3,
-      thickness: 1.0,
+      thickness: 1,
       category: "stainless",
       bendability: 1.3,
     },
@@ -2386,7 +2405,7 @@ export const SHEET_METAL_MATERIALS: Record<string, any[]> = {
       name: "Stainless Steel 430 - 2.0mm",
       density: 7.7,
       costPerKg: 6.2,
-      thickness: 2.0,
+      thickness: 2,
       category: "stainless",
       bendability: 1.5,
     },
@@ -2397,7 +2416,7 @@ export const SHEET_METAL_MATERIALS: Record<string, any[]> = {
       name: "Stainless Steel 409 - 1.0mm",
       density: 7.7,
       costPerKg: 5.8,
-      thickness: 1.0,
+      thickness: 1,
       category: "stainless",
       bendability: 1.2,
       requiresManualQuote: true,
@@ -2421,7 +2440,7 @@ export const SHEET_METAL_MATERIALS: Record<string, any[]> = {
       name: "Stainless Steel 409 - 2.0mm",
       density: 7.7,
       costPerKg: 5.5,
-      thickness: 2.0,
+      thickness: 2,
       category: "stainless",
       bendability: 1.4,
       requiresManualQuote: true,
@@ -2433,8 +2452,8 @@ export const SHEET_METAL_MATERIALS: Record<string, any[]> = {
     {
       code: "SS301-0.8",
       name: "Stainless Steel 301 - 0.8mm",
-      density: 8.0,
-      costPerKg: 9.0,
+      density: 8,
+      costPerKg: 9,
       thickness: 0.8,
       category: "stainless",
       bendability: 1.3,
@@ -2444,9 +2463,9 @@ export const SHEET_METAL_MATERIALS: Record<string, any[]> = {
     {
       code: "SS301-1.0",
       name: "Stainless Steel 301 - 1.0mm",
-      density: 8.0,
+      density: 8,
       costPerKg: 8.8,
-      thickness: 1.0,
+      thickness: 1,
       category: "stainless",
       bendability: 1.4,
       requiresManualQuote: true,
@@ -2455,7 +2474,7 @@ export const SHEET_METAL_MATERIALS: Record<string, any[]> = {
     {
       code: "SS301-1.5",
       name: "Stainless Steel 301 - 1.5mm",
-      density: 8.0,
+      density: 8,
       costPerKg: 8.6,
       thickness: 1.5,
       category: "stainless",
@@ -2469,8 +2488,8 @@ export const SHEET_METAL_MATERIALS: Record<string, any[]> = {
       code: "SS174PH-1.0",
       name: "Stainless Steel 17-4PH - 1.0mm",
       density: 7.8,
-      costPerKg: 18.0,
-      thickness: 1.0,
+      costPerKg: 18,
+      thickness: 1,
       category: "stainless",
       bendability: 1.8,
       requiresManualQuote: true,
@@ -2493,10 +2512,10 @@ export const SHEET_METAL_MATERIALS: Record<string, any[]> = {
       code: "SS174PH-2.0",
       name: "Stainless Steel 17-4PH - 2.0mm",
       density: 7.8,
-      costPerKg: 17.0,
-      thickness: 2.0,
+      costPerKg: 17,
+      thickness: 2,
       category: "stainless",
-      bendability: 2.0,
+      bendability: 2,
       requiresManualQuote: true,
       manualQuoteReason:
         "Precipitation hardening steel - requires heat treatment expertise",
@@ -2509,7 +2528,7 @@ export const SHEET_METAL_MATERIALS: Record<string, any[]> = {
       code: "A1018-0.8",
       name: "Carbon Steel A1018 (CRS) - 0.8mm",
       density: 7.87,
-      costPerKg: 2.0,
+      costPerKg: 2,
       thickness: 0.8,
       category: "steel",
       bendability: 0.9,
@@ -2519,7 +2538,7 @@ export const SHEET_METAL_MATERIALS: Record<string, any[]> = {
       name: "Carbon Steel A1018 (CRS) - 1.0mm",
       density: 7.87,
       costPerKg: 1.9,
-      thickness: 1.0,
+      thickness: 1,
       category: "steel",
       bendability: 0.9,
     },
@@ -2530,23 +2549,23 @@ export const SHEET_METAL_MATERIALS: Record<string, any[]> = {
       costPerKg: 1.85,
       thickness: 1.5,
       category: "steel",
-      bendability: 1.0,
+      bendability: 1,
     },
     {
       code: "A1018-2.0",
       name: "Carbon Steel A1018 (CRS) - 2.0mm",
       density: 7.87,
       costPerKg: 1.85,
-      thickness: 2.0,
+      thickness: 2,
       category: "steel",
-      bendability: 1.0,
+      bendability: 1,
     },
     {
       code: "A1018-3.0",
       name: "Carbon Steel A1018 (CRS) - 3.0mm",
       density: 7.87,
       costPerKg: 1.9,
-      thickness: 3.0,
+      thickness: 3,
       category: "steel",
       bendability: 1.1,
     },
@@ -2566,7 +2585,7 @@ export const SHEET_METAL_MATERIALS: Record<string, any[]> = {
       name: "Carbon Steel A1008 (CRS) - 1.0mm",
       density: 7.87,
       costPerKg: 1.85,
-      thickness: 1.0,
+      thickness: 1,
       category: "steel",
       bendability: 0.85,
     },
@@ -2584,7 +2603,7 @@ export const SHEET_METAL_MATERIALS: Record<string, any[]> = {
       name: "Carbon Steel A1008 (CRS) - 2.0mm",
       density: 7.87,
       costPerKg: 1.8,
-      thickness: 2.0,
+      thickness: 2,
       category: "steel",
       bendability: 0.9,
     },
@@ -2593,9 +2612,9 @@ export const SHEET_METAL_MATERIALS: Record<string, any[]> = {
       name: "Carbon Steel A1008 (CRS) - 3.0mm",
       density: 7.87,
       costPerKg: 1.85,
-      thickness: 3.0,
+      thickness: 3,
       category: "steel",
-      bendability: 1.0,
+      bendability: 1,
     },
   ],
   "carbon-steel-a1011": [
@@ -2604,7 +2623,7 @@ export const SHEET_METAL_MATERIALS: Record<string, any[]> = {
       name: "Carbon Steel A1011 (HRPO) - 1.0mm",
       density: 7.87,
       costPerKg: 1.7,
-      thickness: 1.0,
+      thickness: 1,
       category: "steel",
       bendability: 0.9,
     },
@@ -2622,16 +2641,16 @@ export const SHEET_METAL_MATERIALS: Record<string, any[]> = {
       name: "Carbon Steel A1011 (HRPO) - 2.0mm",
       density: 7.87,
       costPerKg: 1.65,
-      thickness: 2.0,
+      thickness: 2,
       category: "steel",
-      bendability: 1.0,
+      bendability: 1,
     },
     {
       code: "A1011-3.0",
       name: "Carbon Steel A1011 (HRPO) - 3.0mm",
       density: 7.87,
       costPerKg: 1.7,
-      thickness: 3.0,
+      thickness: 3,
       category: "steel",
       bendability: 1.05,
     },
@@ -2642,7 +2661,7 @@ export const SHEET_METAL_MATERIALS: Record<string, any[]> = {
       name: "Carbon Steel A36 (HR/HRPO) - 1.0mm",
       density: 7.85,
       costPerKg: 1.6,
-      thickness: 1.0,
+      thickness: 1,
       category: "steel",
       bendability: 0.95,
     },
@@ -2653,14 +2672,14 @@ export const SHEET_METAL_MATERIALS: Record<string, any[]> = {
       costPerKg: 1.55,
       thickness: 1.5,
       category: "steel",
-      bendability: 1.0,
+      bendability: 1,
     },
     {
       code: "A36-2.0",
       name: "Carbon Steel A36 (HR/HRPO) - 2.0mm",
       density: 7.85,
       costPerKg: 1.55,
-      thickness: 2.0,
+      thickness: 2,
       category: "steel",
       bendability: 1.05,
     },
@@ -2669,7 +2688,7 @@ export const SHEET_METAL_MATERIALS: Record<string, any[]> = {
       name: "Carbon Steel A36 (HR/HRPO) - 3.0mm",
       density: 7.85,
       costPerKg: 1.6,
-      thickness: 3.0,
+      thickness: 3,
       category: "steel",
       bendability: 1.1,
     },
@@ -2687,7 +2706,7 @@ export const SHEET_METAL_MATERIALS: Record<string, any[]> = {
       name: "Carbon Steel A36 (HR/HRPO) - 6.0mm",
       density: 7.85,
       costPerKg: 1.7,
-      thickness: 6.0,
+      thickness: 6,
       category: "steel",
       bendability: 1.3,
     },
@@ -2709,7 +2728,7 @@ export const SHEET_METAL_MATERIALS: Record<string, any[]> = {
       name: "Carbon Steel A572 G50 - 2.0mm",
       density: 7.85,
       costPerKg: 2.1,
-      thickness: 2.0,
+      thickness: 2,
       category: "steel",
       bendability: 1.3,
       requiresManualQuote: true,
@@ -2719,8 +2738,8 @@ export const SHEET_METAL_MATERIALS: Record<string, any[]> = {
       code: "A572-3.0",
       name: "Carbon Steel A572 G50 - 3.0mm",
       density: 7.85,
-      costPerKg: 2.0,
-      thickness: 3.0,
+      costPerKg: 2,
+      thickness: 3,
       category: "steel",
       bendability: 1.4,
       requiresManualQuote: true,
@@ -2733,7 +2752,7 @@ export const SHEET_METAL_MATERIALS: Record<string, any[]> = {
       name: "Carbon Steel 1075 - 1.0mm",
       density: 7.85,
       costPerKg: 3.5,
-      thickness: 1.0,
+      thickness: 1,
       category: "steel",
       bendability: 1.6,
       requiresManualQuote: true,
@@ -2757,7 +2776,7 @@ export const SHEET_METAL_MATERIALS: Record<string, any[]> = {
       name: "Carbon Steel 1075 - 2.0mm",
       density: 7.85,
       costPerKg: 3.3,
-      thickness: 2.0,
+      thickness: 2,
       category: "steel",
       bendability: 1.8,
       requiresManualQuote: true,
@@ -2770,8 +2789,8 @@ export const SHEET_METAL_MATERIALS: Record<string, any[]> = {
       code: "CS1095-1.0",
       name: "Carbon Steel 1095 - 1.0mm",
       density: 7.85,
-      costPerKg: 4.0,
-      thickness: 1.0,
+      costPerKg: 4,
+      thickness: 1,
       category: "steel",
       bendability: 1.8,
       requiresManualQuote: true,
@@ -2793,9 +2812,9 @@ export const SHEET_METAL_MATERIALS: Record<string, any[]> = {
       name: "Carbon Steel 1095 - 2.0mm",
       density: 7.85,
       costPerKg: 3.6,
-      thickness: 2.0,
+      thickness: 2,
       category: "steel",
-      bendability: 2.0,
+      bendability: 2,
       requiresManualQuote: true,
       manualQuoteReason: "High carbon blade steel - very limited formability",
     },
@@ -2806,7 +2825,7 @@ export const SHEET_METAL_MATERIALS: Record<string, any[]> = {
       name: "Carbon Steel 4130 - 1.0mm",
       density: 7.85,
       costPerKg: 5.5,
-      thickness: 1.0,
+      thickness: 1,
       category: "steel",
       bendability: 1.4,
       requiresManualQuote: true,
@@ -2830,7 +2849,7 @@ export const SHEET_METAL_MATERIALS: Record<string, any[]> = {
       name: "Carbon Steel 4130 - 2.0mm",
       density: 7.85,
       costPerKg: 5.2,
-      thickness: 2.0,
+      thickness: 2,
       category: "steel",
       bendability: 1.6,
       requiresManualQuote: true,
@@ -2844,7 +2863,7 @@ export const SHEET_METAL_MATERIALS: Record<string, any[]> = {
       name: "Carbon Steel 4140 - 1.0mm",
       density: 7.85,
       costPerKg: 5.8,
-      thickness: 1.0,
+      thickness: 1,
       category: "steel",
       bendability: 1.5,
       requiresManualQuote: true,
@@ -2868,7 +2887,7 @@ export const SHEET_METAL_MATERIALS: Record<string, any[]> = {
       name: "Carbon Steel 4140 - 2.0mm",
       density: 7.85,
       costPerKg: 5.5,
-      thickness: 2.0,
+      thickness: 2,
       category: "steel",
       bendability: 1.7,
       requiresManualQuote: true,
@@ -2893,7 +2912,7 @@ export const SHEET_METAL_MATERIALS: Record<string, any[]> = {
       name: "Galvanized G90 - 1.0mm",
       density: 7.85,
       costPerKg: 2.2,
-      thickness: 1.0,
+      thickness: 1,
       category: "steel",
       bendability: 0.95,
     },
@@ -2904,14 +2923,14 @@ export const SHEET_METAL_MATERIALS: Record<string, any[]> = {
       costPerKg: 2.15,
       thickness: 1.5,
       category: "steel",
-      bendability: 1.0,
+      bendability: 1,
     },
     {
       code: "GALV-G90-2.0",
       name: "Galvanized G90 - 2.0mm",
       density: 7.85,
       costPerKg: 2.15,
-      thickness: 2.0,
+      thickness: 2,
       category: "steel",
       bendability: 1.05,
     },
@@ -2920,7 +2939,7 @@ export const SHEET_METAL_MATERIALS: Record<string, any[]> = {
       name: "Galvanized G90 - 3.0mm",
       density: 7.85,
       costPerKg: 2.2,
-      thickness: 3.0,
+      thickness: 3,
       category: "steel",
       bendability: 1.1,
     },
@@ -2940,7 +2959,7 @@ export const SHEET_METAL_MATERIALS: Record<string, any[]> = {
       name: "Galvanized G60 - 1.0mm",
       density: 7.85,
       costPerKg: 2.1,
-      thickness: 1.0,
+      thickness: 1,
       category: "steel",
       bendability: 0.9,
     },
@@ -2958,9 +2977,9 @@ export const SHEET_METAL_MATERIALS: Record<string, any[]> = {
       name: "Galvanized G60 - 2.0mm",
       density: 7.85,
       costPerKg: 2.05,
-      thickness: 2.0,
+      thickness: 2,
       category: "steel",
-      bendability: 1.0,
+      bendability: 1,
     },
   ],
   "galvanneal-a60": [
@@ -2978,7 +2997,7 @@ export const SHEET_METAL_MATERIALS: Record<string, any[]> = {
       name: "Galvanneal A60 - 1.0mm",
       density: 7.85,
       costPerKg: 2.4,
-      thickness: 1.0,
+      thickness: 1,
       category: "steel",
       bendability: 0.95,
     },
@@ -2989,14 +3008,14 @@ export const SHEET_METAL_MATERIALS: Record<string, any[]> = {
       costPerKg: 2.35,
       thickness: 1.5,
       category: "steel",
-      bendability: 1.0,
+      bendability: 1,
     },
     {
       code: "GA-A60-2.0",
       name: "Galvanneal A60 - 2.0mm",
       density: 7.85,
       costPerKg: 2.35,
-      thickness: 2.0,
+      thickness: 2,
       category: "steel",
       bendability: 1.05,
     },
@@ -3016,7 +3035,7 @@ export const SHEET_METAL_MATERIALS: Record<string, any[]> = {
       name: "Galvanneal A40 - 1.0mm",
       density: 7.85,
       costPerKg: 2.3,
-      thickness: 1.0,
+      thickness: 1,
       category: "steel",
       bendability: 0.9,
     },
@@ -3034,9 +3053,9 @@ export const SHEET_METAL_MATERIALS: Record<string, any[]> = {
       name: "Galvanneal A40 - 2.0mm",
       density: 7.85,
       costPerKg: 2.25,
-      thickness: 2.0,
+      thickness: 2,
       category: "steel",
-      bendability: 1.0,
+      bendability: 1,
     },
   ],
   "electro-galvanized": [
@@ -3054,7 +3073,7 @@ export const SHEET_METAL_MATERIALS: Record<string, any[]> = {
       name: "Electro-galvanized (EG) - 1.0mm",
       density: 7.85,
       costPerKg: 2.5,
-      thickness: 1.0,
+      thickness: 1,
       category: "steel",
       bendability: 0.9,
     },
@@ -3072,9 +3091,9 @@ export const SHEET_METAL_MATERIALS: Record<string, any[]> = {
       name: "Electro-galvanized (EG) - 2.0mm",
       density: 7.85,
       costPerKg: 2.45,
-      thickness: 2.0,
+      thickness: 2,
       category: "steel",
-      bendability: 1.0,
+      bendability: 1,
     },
   ],
   "aluminized-type1": [
@@ -3083,7 +3102,7 @@ export const SHEET_METAL_MATERIALS: Record<string, any[]> = {
       name: "Aluminized Type 1 - 1.0mm",
       density: 7.85,
       costPerKg: 3.2,
-      thickness: 1.0,
+      thickness: 1,
       category: "steel",
       bendability: 1.1,
       requiresManualQuote: true,
@@ -3106,8 +3125,8 @@ export const SHEET_METAL_MATERIALS: Record<string, any[]> = {
       code: "ALUM-T1-2.0",
       name: "Aluminized Type 1 - 2.0mm",
       density: 7.85,
-      costPerKg: 3.0,
-      thickness: 2.0,
+      costPerKg: 3,
+      thickness: 2,
       category: "steel",
       bendability: 1.2,
       requiresManualQuote: true,
@@ -3123,7 +3142,7 @@ export const SHEET_METAL_MATERIALS: Record<string, any[]> = {
       costPerKg: 3.5,
       thickness: 0.8,
       category: "steel",
-      bendability: 1.0,
+      bendability: 1,
       requiresManualQuote: true,
       manualQuoteReason:
         "Pre-painted - color matching and scratch prevention required",
@@ -3133,9 +3152,9 @@ export const SHEET_METAL_MATERIALS: Record<string, any[]> = {
       name: "Pre-painted Coil - 1.0mm",
       density: 7.85,
       costPerKg: 3.4,
-      thickness: 1.0,
+      thickness: 1,
       category: "steel",
-      bendability: 1.0,
+      bendability: 1,
       requiresManualQuote: true,
       manualQuoteReason:
         "Pre-painted - color matching and scratch prevention required",
@@ -3160,7 +3179,7 @@ export const SHEET_METAL_MATERIALS: Record<string, any[]> = {
       code: "CU-C260-0.8",
       name: "Copper C260 (Brass) - 0.8mm",
       density: 8.53,
-      costPerKg: 12.0,
+      costPerKg: 12,
       thickness: 0.8,
       category: "copper",
       bendability: 0.9,
@@ -3170,7 +3189,7 @@ export const SHEET_METAL_MATERIALS: Record<string, any[]> = {
       name: "Copper C260 (Brass) - 1.0mm",
       density: 8.53,
       costPerKg: 11.5,
-      thickness: 1.0,
+      thickness: 1,
       category: "copper",
       bendability: 0.9,
     },
@@ -3181,14 +3200,14 @@ export const SHEET_METAL_MATERIALS: Record<string, any[]> = {
       costPerKg: 11.2,
       thickness: 1.5,
       category: "copper",
-      bendability: 1.0,
+      bendability: 1,
     },
     {
       code: "CU-C260-2.0",
       name: "Copper C260 (Brass) - 2.0mm",
       density: 8.53,
-      costPerKg: 11.0,
-      thickness: 2.0,
+      costPerKg: 11,
+      thickness: 2,
       category: "copper",
       bendability: 1.05,
     },
@@ -3198,7 +3217,7 @@ export const SHEET_METAL_MATERIALS: Record<string, any[]> = {
       code: "CU-C110-0.8",
       name: "Copper C110 (ETP) - 0.8mm",
       density: 8.94,
-      costPerKg: 14.0,
+      costPerKg: 14,
       thickness: 0.8,
       category: "copper",
       bendability: 0.85,
@@ -3208,7 +3227,7 @@ export const SHEET_METAL_MATERIALS: Record<string, any[]> = {
       name: "Copper C110 (ETP) - 1.0mm",
       density: 8.94,
       costPerKg: 13.5,
-      thickness: 1.0,
+      thickness: 1,
       category: "copper",
       bendability: 0.85,
     },
@@ -3225,8 +3244,8 @@ export const SHEET_METAL_MATERIALS: Record<string, any[]> = {
       code: "CU-C110-2.0",
       name: "Copper C110 (ETP) - 2.0mm",
       density: 8.94,
-      costPerKg: 13.0,
-      thickness: 2.0,
+      costPerKg: 13,
+      thickness: 2,
       category: "copper",
       bendability: 0.95,
     },
@@ -3245,8 +3264,8 @@ export const SHEET_METAL_MATERIALS: Record<string, any[]> = {
       code: "CU-C122-1.0",
       name: "Copper C122 (DHP) - 1.0mm",
       density: 8.94,
-      costPerKg: 13.0,
-      thickness: 1.0,
+      costPerKg: 13,
+      thickness: 1,
       category: "copper",
       bendability: 0.85,
     },
@@ -3264,7 +3283,7 @@ export const SHEET_METAL_MATERIALS: Record<string, any[]> = {
       name: "Copper C122 (DHP) - 2.0mm",
       density: 8.94,
       costPerKg: 12.5,
-      thickness: 2.0,
+      thickness: 2,
       category: "copper",
       bendability: 0.95,
     },
@@ -3276,8 +3295,8 @@ export const SHEET_METAL_MATERIALS: Record<string, any[]> = {
       code: "BR-C510-1.0",
       name: "Bronze C510 (Phosphor) - 1.0mm",
       density: 8.86,
-      costPerKg: 18.0,
-      thickness: 1.0,
+      costPerKg: 18,
+      thickness: 1,
       category: "brass",
       bendability: 1.1,
       requiresManualQuote: true,
@@ -3300,8 +3319,8 @@ export const SHEET_METAL_MATERIALS: Record<string, any[]> = {
       code: "BR-C510-2.0",
       name: "Bronze C510 (Phosphor) - 2.0mm",
       density: 8.86,
-      costPerKg: 17.0,
-      thickness: 2.0,
+      costPerKg: 17,
+      thickness: 2,
       category: "brass",
       bendability: 1.3,
       requiresManualQuote: true,
@@ -3314,8 +3333,8 @@ export const SHEET_METAL_MATERIALS: Record<string, any[]> = {
       code: "BR-C521-1.0",
       name: "Bronze C521 (Phosphor) - 1.0mm",
       density: 8.86,
-      costPerKg: 19.0,
-      thickness: 1.0,
+      costPerKg: 19,
+      thickness: 1,
       category: "brass",
       bendability: 1.1,
       requiresManualQuote: true,
@@ -3338,8 +3357,8 @@ export const SHEET_METAL_MATERIALS: Record<string, any[]> = {
       code: "BR-C521-2.0",
       name: "Bronze C521 (Phosphor) - 2.0mm",
       density: 8.86,
-      costPerKg: 18.0,
-      thickness: 2.0,
+      costPerKg: 18,
+      thickness: 2,
       category: "brass",
       bendability: 1.3,
       requiresManualQuote: true,
@@ -3352,10 +3371,10 @@ export const SHEET_METAL_MATERIALS: Record<string, any[]> = {
       code: "BR-C172-0.8",
       name: "Bronze C172 (Be-Cu) - 0.8mm",
       density: 8.26,
-      costPerKg: 85.0,
+      costPerKg: 85,
       thickness: 0.8,
       category: "brass",
-      bendability: 1.0,
+      bendability: 1,
       requiresManualQuote: true,
       manualQuoteReason:
         "Beryllium copper - requires special safety handling and tooling",
@@ -3364,8 +3383,8 @@ export const SHEET_METAL_MATERIALS: Record<string, any[]> = {
       code: "BR-C172-1.0",
       name: "Bronze C172 (Be-Cu) - 1.0mm",
       density: 8.26,
-      costPerKg: 82.0,
-      thickness: 1.0,
+      costPerKg: 82,
+      thickness: 1,
       category: "brass",
       bendability: 1.05,
       requiresManualQuote: true,
@@ -3376,7 +3395,7 @@ export const SHEET_METAL_MATERIALS: Record<string, any[]> = {
       code: "BR-C172-1.5",
       name: "Bronze C172 (Be-Cu) - 1.5mm",
       density: 8.26,
-      costPerKg: 80.0,
+      costPerKg: 80,
       thickness: 1.5,
       category: "brass",
       bendability: 1.1,
@@ -3392,8 +3411,8 @@ export const SHEET_METAL_MATERIALS: Record<string, any[]> = {
       code: "TI-GR2-1.0",
       name: "Titanium Grade 2 - 1.0mm",
       density: 4.51,
-      costPerKg: 45.0,
-      thickness: 1.0,
+      costPerKg: 45,
+      thickness: 1,
       category: "titanium",
       bendability: 1.8,
       requiresManualQuote: true,
@@ -3404,10 +3423,10 @@ export const SHEET_METAL_MATERIALS: Record<string, any[]> = {
       code: "TI-GR2-1.5",
       name: "Titanium Grade 2 - 1.5mm",
       density: 4.51,
-      costPerKg: 44.0,
+      costPerKg: 44,
       thickness: 1.5,
       category: "titanium",
-      bendability: 2.0,
+      bendability: 2,
       requiresManualQuote: true,
       manualQuoteReason:
         "Titanium - requires specialized tooling and expertise",
@@ -3416,8 +3435,8 @@ export const SHEET_METAL_MATERIALS: Record<string, any[]> = {
       code: "TI-GR2-2.0",
       name: "Titanium Grade 2 - 2.0mm",
       density: 4.51,
-      costPerKg: 43.0,
-      thickness: 2.0,
+      costPerKg: 43,
+      thickness: 2,
       category: "titanium",
       bendability: 2.2,
       requiresManualQuote: true,
@@ -3430,8 +3449,8 @@ export const SHEET_METAL_MATERIALS: Record<string, any[]> = {
       code: "TI-6AL4V-1.0",
       name: "Titanium Grade 5 (Ti-6Al-4V) - 1.0mm",
       density: 4.43,
-      costPerKg: 65.0,
-      thickness: 1.0,
+      costPerKg: 65,
+      thickness: 1,
       category: "titanium",
       bendability: 2.5,
       requiresManualQuote: true,
@@ -3442,7 +3461,7 @@ export const SHEET_METAL_MATERIALS: Record<string, any[]> = {
       code: "TI-6AL4V-1.5",
       name: "Titanium Grade 5 (Ti-6Al-4V) - 1.5mm",
       density: 4.43,
-      costPerKg: 64.0,
+      costPerKg: 64,
       thickness: 1.5,
       category: "titanium",
       bendability: 2.8,
@@ -3454,10 +3473,10 @@ export const SHEET_METAL_MATERIALS: Record<string, any[]> = {
       code: "TI-6AL4V-2.0",
       name: "Titanium Grade 5 (Ti-6Al-4V) - 2.0mm",
       density: 4.43,
-      costPerKg: 63.0,
-      thickness: 2.0,
+      costPerKg: 63,
+      thickness: 2,
       category: "titanium",
-      bendability: 3.0,
+      bendability: 3,
       requiresManualQuote: true,
       manualQuoteReason:
         "Aerospace titanium - requires hot forming and specialized expertise",
@@ -3470,10 +3489,10 @@ export const SHEET_METAL_MATERIALS: Record<string, any[]> = {
       code: "INC625-1.0",
       name: "Nickel Alloy Inconel 625 - 1.0mm",
       density: 8.44,
-      costPerKg: 85.0,
-      thickness: 1.0,
+      costPerKg: 85,
+      thickness: 1,
       category: "superalloy",
-      bendability: 2.0,
+      bendability: 2,
       requiresManualQuote: true,
       manualQuoteReason:
         "Superalloy - requires specialized equipment and expertise",
@@ -3482,7 +3501,7 @@ export const SHEET_METAL_MATERIALS: Record<string, any[]> = {
       code: "INC625-1.5",
       name: "Nickel Alloy Inconel 625 - 1.5mm",
       density: 8.44,
-      costPerKg: 82.0,
+      costPerKg: 82,
       thickness: 1.5,
       category: "superalloy",
       bendability: 2.2,
@@ -3494,8 +3513,8 @@ export const SHEET_METAL_MATERIALS: Record<string, any[]> = {
       code: "INC625-2.0",
       name: "Nickel Alloy Inconel 625 - 2.0mm",
       density: 8.44,
-      costPerKg: 80.0,
-      thickness: 2.0,
+      costPerKg: 80,
+      thickness: 2,
       category: "superalloy",
       bendability: 2.5,
       requiresManualQuote: true,
@@ -3508,8 +3527,8 @@ export const SHEET_METAL_MATERIALS: Record<string, any[]> = {
       code: "INC718-1.0",
       name: "Nickel Alloy Inconel 718 - 1.0mm",
       density: 8.19,
-      costPerKg: 95.0,
-      thickness: 1.0,
+      costPerKg: 95,
+      thickness: 1,
       category: "superalloy",
       bendability: 2.2,
       requiresManualQuote: true,
@@ -3519,7 +3538,7 @@ export const SHEET_METAL_MATERIALS: Record<string, any[]> = {
       code: "INC718-1.5",
       name: "Nickel Alloy Inconel 718 - 1.5mm",
       density: 8.19,
-      costPerKg: 92.0,
+      costPerKg: 92,
       thickness: 1.5,
       category: "superalloy",
       bendability: 2.4,
@@ -3530,8 +3549,8 @@ export const SHEET_METAL_MATERIALS: Record<string, any[]> = {
       code: "INC718-2.0",
       name: "Nickel Alloy Inconel 718 - 2.0mm",
       density: 8.19,
-      costPerKg: 90.0,
-      thickness: 2.0,
+      costPerKg: 90,
+      thickness: 2,
       category: "superalloy",
       bendability: 2.6,
       requiresManualQuote: true,
@@ -3543,8 +3562,8 @@ export const SHEET_METAL_MATERIALS: Record<string, any[]> = {
       code: "MONEL400-1.0",
       name: "Nickel Alloy Monel 400 - 1.0mm",
       density: 8.8,
-      costPerKg: 55.0,
-      thickness: 1.0,
+      costPerKg: 55,
+      thickness: 1,
       category: "superalloy",
       bendability: 1.5,
       requiresManualQuote: true,
@@ -3554,7 +3573,7 @@ export const SHEET_METAL_MATERIALS: Record<string, any[]> = {
       code: "MONEL400-1.5",
       name: "Nickel Alloy Monel 400 - 1.5mm",
       density: 8.8,
-      costPerKg: 53.0,
+      costPerKg: 53,
       thickness: 1.5,
       category: "superalloy",
       bendability: 1.6,
@@ -3565,8 +3584,8 @@ export const SHEET_METAL_MATERIALS: Record<string, any[]> = {
       code: "MONEL400-2.0",
       name: "Nickel Alloy Monel 400 - 2.0mm",
       density: 8.8,
-      costPerKg: 52.0,
-      thickness: 2.0,
+      costPerKg: 52,
+      thickness: 2,
       category: "superalloy",
       bendability: 1.7,
       requiresManualQuote: true,
@@ -3663,7 +3682,7 @@ export const CUTTING_METHODS: Record<string, CuttingMethodConfig> = {
     costPerMeter: 0.5,
     speedMmPerMin: 2500,
     setupCost: 35,
-    minThickness: 1.0,
+    minThickness: 1,
     maxThickness: 50,
     materialCompatibility: ["steel", "stainless", "aluminum"],
   },
@@ -3740,7 +3759,7 @@ const SHEET_METAL_COST_OPTIMIZATION = {
     superalloy: 1.55, // 55% for superalloys (exotic)
   },
   toleranceMultiplier: {
-    standard: 1.0,
+    standard: 1,
     precision: 1.12, // 12% for precision
     tight: 1.25, // 25% for tight tolerances
   },
@@ -3754,7 +3773,7 @@ const ADVANCED_PRICING = {
   // Demand-based price adjustments
   demandPricing: {
     low: 0.95, // <60% capacity: 5% discount
-    moderate: 1.0, // 60-80% capacity: normal pricing
+    moderate: 1, // 60-80% capacity: normal pricing
     high: 1.08, // 80-90% capacity: 8% premium
     veryHigh: 1.15, // >90% capacity: 15% premium
   },
@@ -3797,6 +3816,20 @@ const CNC_CONSTRAINTS = {
   maxPartVolume: 500000, // cm3 (500L)
 };
 
+function estimateBendCount(complexity: string | undefined): number {
+  if (complexity === "complex") return 4;
+  if (complexity === "moderate") return 2;
+  return 0;
+}
+
+function mapComplexityLevel(
+  complexity: string | undefined,
+): "simple" | "moderate" | "complex" {
+  if (complexity === "complex") return "complex";
+  if (complexity === "moderate") return "moderate";
+  return "simple";
+}
+
 /**
  * Generate default sheet metal features from geometry when CAD analysis didn't provide them.
  * This enables pricing when a user manually switches process to sheet-metal.
@@ -3826,12 +3859,7 @@ function generateDefaultSheetMetalFeatures(
   const perimeterLength = 2 * (width + length);
 
   // Estimate bends from complexity
-  const bendCount =
-    geometry.complexity === "complex"
-      ? 4
-      : geometry.complexity === "moderate"
-        ? 2
-        : 0;
+  const bendCount = estimateBendCount(geometry.complexity);
 
   // Estimate holes from surface area (roughly 1 hole per 5000mm² for typical parts)
   const holeCount = Math.min(Math.floor(flatArea / 5000), 50);
@@ -3842,9 +3870,9 @@ function generateDefaultSheetMetalFeatures(
     developedLength: perimeterLength * 1.1, // 10% extra for bends
     perimeterLength,
     bendCount,
-    bendAngles: Array(bendCount).fill(90),
-    minBendRadius: thickness * 1.0,
-    maxBendRadius: thickness * 3.0,
+    bendAngles: new Array(bendCount).fill(90),
+    minBendRadius: thickness * 1,
+    maxBendRadius: thickness * 3,
     hasSharptBends: false,
     holeCount,
     totalHoleDiameter: holeCount * Math.PI * 6, // Assume 6mm average hole
@@ -3867,28 +3895,37 @@ function generateDefaultSheetMetalFeatures(
     estimatedCuttingTime: (perimeterLength / 1000) * 0.5, // 0.5 min per meter
     estimatedFormingTime: bendCount * 0.5, // 0.5 min per bend
     partType: bendCount > 2 ? "bracket" : "flat-pattern",
-    complexity:
-      geometry.complexity === "complex"
-        ? "complex"
-        : geometry.complexity === "moderate"
-          ? "moderate"
-          : "simple",
+    complexity: mapComplexityLevel(geometry.complexity),
   };
+}
+
+interface SheetMetalPricingOptions {
+  geometry: GeometryData;
+  material: SheetMetalMaterialSpec;
+  finish: SheetMetalFinish;
+  quantity: number;
+  tolerance: PricingInput["tolerance"];
+  leadTimeType: PricingInput["leadTimeType"];
+  cuttingMethod: CuttingMethod;
+  hardware?: HardwareOption[];
 }
 
 /**
  * Sheet Metal Helper Functions
  */
 function calculateSheetMetalPricingInternal(
-  geometry: GeometryData,
-  material: SheetMetalMaterialSpec,
-  finish: SheetMetalFinish,
-  quantity: number,
-  tolerance: PricingInput["tolerance"],
-  leadTimeType: PricingInput["leadTimeType"],
-  cuttingMethod: "laser" | "plasma" | "waterjet" | "turret-punch",
-  hardware: HardwareOption[] = [],
+  options: SheetMetalPricingOptions,
 ): PricingBreakdown {
+  const {
+    geometry,
+    material,
+    finish,
+    quantity,
+    tolerance,
+    leadTimeType,
+    cuttingMethod,
+    hardware = [],
+  } = options;
   // Use existing sheet metal features or generate defaults from geometry
   const features =
     geometry.sheetMetalFeatures ||
@@ -3909,7 +3946,7 @@ function calculateSheetMetalPricingInternal(
   if (
     !features.flatArea ||
     features.flatArea <= 0 ||
-    isNaN(features.flatArea)
+    Number.isNaN(features.flatArea)
   ) {
     return manualQuoteBreakdown(
       leadTimeType,
@@ -4028,8 +4065,15 @@ function calculateSheetMetalPricingInternal(
   const sheetMetalMarkup = priceBeforeLeadTime * 0.05;
   const priceWithMarkup = priceBeforeLeadTime + sheetMetalMarkup;
 
-  const unitPrice = priceWithMarkup * leadTimePriceMultiplier;
+  // Minimum price floor: never go below material cost × 1.5 or $2
+  const minUnitPrice = Math.max(materialCostPerUnit * 1.5, 2);
+  const unitPrice = Math.max(priceWithMarkup * leadTimePriceMultiplier, minUnitPrice);
   const totalPrice = unitPrice * quantity;
+
+  // Guard: if price is still $0 or negative, push to manual quote
+  if (unitPrice <= 0) {
+    return manualQuoteBreakdown(leadTimeType, "Calculated sheet metal price is invalid — manual review required");
+  }
 
   return {
     materialCost: round2(materialCostPerUnit),
@@ -4063,7 +4107,7 @@ function calculateSheetMetalPricingInternal(
 function calculateCuttingCosts(
   features: NonNullable<GeometryData["sheetMetalFeatures"]>,
   material: SheetMetalMaterialSpec,
-  method: "laser" | "plasma" | "waterjet" | "turret-punch",
+  method: CuttingMethod,
   quantity: number,
 ): {
   setup: number;
@@ -4107,15 +4151,17 @@ function calculateSheetMetalQuantityDiscount(
   quantity: number,
   areaM2: number,
 ): number {
+  // Discount applies to setup/overhead portion only — keep rates moderate
+  // so material-heavy parts don't collapse in price at high quantities.
   let rate = 0;
-  if (quantity >= 1000) rate = 0.38;
-  else if (quantity >= 500) rate = 0.32;
-  else if (quantity >= 250) rate = 0.26;
-  else if (quantity >= 100) rate = 0.2;
-  else if (quantity >= 50) rate = 0.14;
-  else if (quantity >= 25) rate = 0.1;
-  else if (quantity >= 10) rate = 0.06;
-  else if (quantity >= 5) rate = 0.03;
+  if (quantity >= 1000) rate = 0.22;
+  else if (quantity >= 500) rate = 0.18;
+  else if (quantity >= 250) rate = 0.15;
+  else if (quantity >= 100) rate = 0.12;
+  else if (quantity >= 50) rate = 0.09;
+  else if (quantity >= 25) rate = 0.06;
+  else if (quantity >= 10) rate = 0.04;
+  else if (quantity >= 5) rate = 0.02;
 
   const totalAreaM2 = areaM2 * quantity;
   let areaBonus = 0;
@@ -4123,8 +4169,54 @@ function calculateSheetMetalQuantityDiscount(
   else if (totalAreaM2 >= 20) areaBonus = 0.02;
   else if (totalAreaM2 >= 10) areaBonus = 0.01;
 
-  const finalRate = Math.min(rate + areaBonus, 0.45);
+  const finalRate = Math.min(rate + areaBonus, 0.25);
   return subtotal * finalRate;
+}
+
+function getDemandMultiplier(capacity: number): number {
+  if (capacity < 0.6) return 0.96;
+  if (capacity > 0.85) return 1.12;
+  if (capacity > 0.75) return 1.06;
+  return 1;
+}
+
+function assessComplexity(
+  features: NonNullable<GeometryData["sheetMetalFeatures"]>,
+): { level: "simple" | "moderate" | "complex"; rate: number } {
+  const totalComplexity =
+    features.bendCount + features.complexCuts + features.holeCount * 0.1;
+  if (totalComplexity > 25 || features.bendCount > 12) {
+    return { level: "complex", rate: 0.1 };
+  }
+  if (totalComplexity > 12 || features.bendCount > 6) {
+    return { level: "moderate", rate: 0.06 };
+  }
+  if (totalComplexity > 5) {
+    return { level: "simple", rate: 0.03 };
+  }
+  return { level: "simple", rate: 0 };
+}
+
+function getMaterialDifficultyRate(material: SheetMetalMaterialSpec): number {
+  if (material.category === "stainless" && material.thickness >= 2.5) return 0.12;
+  if (material.category === "stainless" && material.thickness >= 2) return 0.1;
+  if (material.category === "stainless") return 0.06;
+  if (material.category === "copper" || material.category === "brass") return 0.05;
+  if (material.thickness >= 3) return 0.05;
+  if (material.thickness >= 2) return 0.03;
+  return 0;
+}
+
+function calculateDfmSurcharge(
+  dfmIssues: Array<{ severity: string }>,
+  subtotal: number,
+): number {
+  let surcharge = 0;
+  for (const issue of dfmIssues) {
+    if (issue.severity === "critical") surcharge += subtotal * 0.08;
+    else if (issue.severity === "warning") surcharge += subtotal * 0.03;
+  }
+  return Math.min(surcharge, subtotal * 0.3);
 }
 
 function calculateSheetMetalAdvancedAdjustments(
@@ -4141,73 +4233,27 @@ function calculateSheetMetalAdvancedAdjustments(
   qualityPremiumAdjustment: number;
   totalAdjustment: number;
 } {
-  const capacity = ADVANCED_PRICING.capacityUtilization;
-  let demandMultiplier = 1;
-  if (capacity < 0.6) demandMultiplier = 0.96;
-  else if (capacity > 0.85) demandMultiplier = 1.12;
-  else if (capacity > 0.75) demandMultiplier = 1.06;
+  const demandMultiplier = getDemandMultiplier(ADVANCED_PRICING.capacityUtilization);
   const demandAdjustment = subtotal * (demandMultiplier - 1);
 
   const features = geometry.sheetMetalFeatures!;
-
-  // Advanced complexity assessment with higher premiums
-  const totalComplexity =
-    features?.bendCount + features?.complexCuts + features?.holeCount * 0.1;
-  let complexityLevel: "simple" | "moderate" | "complex";
-  let complexityRate = 0;
-
-  if (totalComplexity > 25 || features?.bendCount > 12) {
-    complexityLevel = "complex";
-    complexityRate = 0.1;
-  } else if (totalComplexity > 12 || features?.bendCount > 6) {
-    complexityLevel = "moderate";
-    complexityRate = 0.06;
-  } else if (totalComplexity > 5) {
-    complexityLevel = "simple";
-    complexityRate = 0.03;
-  } else {
-    complexityLevel = "simple";
-  }
-
+  const { level: complexityLevel, rate: complexityRate } = assessComplexity(features);
   const complexityMultiplier =
     SHEET_METAL_COST_OPTIMIZATION.complexityMultiplier[complexityLevel];
-  const complexityRiskPremium =
-    subtotal * complexityRate * complexityMultiplier;
+  const complexityRiskPremium = subtotal * complexityRate * complexityMultiplier;
 
-  // Advanced material difficulty with category-specific multipliers
-  let difficultyRate = 0;
-  if (material.category === "stainless" && material.thickness >= 2.5)
-    difficultyRate = 0.12;
-  else if (material.category === "stainless" && material.thickness >= 2)
-    difficultyRate = 0.1;
-  else if (material.category === "stainless") difficultyRate = 0.06;
-  else if (material.category === "copper" || material.category === "brass")
-    difficultyRate = 0.05;
-  else if (material.thickness >= 3) difficultyRate = 0.05;
-  else if (material.thickness >= 2) difficultyRate = 0.03;
-
+  const difficultyRate = getMaterialDifficultyRate(material);
   const materialCategoryMultiplier =
     SHEET_METAL_COST_OPTIMIZATION.materialCategoryMultiplier[material.category];
-  const materialDifficultyPremium =
-    materialCost * difficultyRate * materialCategoryMultiplier;
+  const materialDifficultyPremium = materialCost * difficultyRate * materialCategoryMultiplier;
 
   const optimalQuantities = [5, 10, 20, 25, 50, 100, 250, 500, 1000];
-  const isOptimal = optimalQuantities.includes(quantity);
-  const batchOptimizationBonus = isOptimal ? subtotal * 0.018 : 0;
+  const batchOptimizationBonus = optimalQuantities.includes(quantity) ? subtotal * 0.018 : 0;
 
-  // Apply 20% quality premium base increase for sheet metal
   const qualityPremiumAdjustment =
     subtotal * (SHEET_METAL_COST_OPTIMIZATION.qualityPremium - 1);
 
-  // === DFM COST IMPACT ===
-  // If geometry has DFM issues, apply surcharge based on severity
-  let dfmSurcharge = 0;
-  const dfmIssues = geometry.dfmIssues ?? [];
-  for (const issue of dfmIssues) {
-    if (issue.severity === 'critical') dfmSurcharge += subtotal * 0.08;
-    else if (issue.severity === 'warning') dfmSurcharge += subtotal * 0.03;
-  }
-  dfmSurcharge = Math.min(dfmSurcharge, subtotal * 0.30); // cap at 30%
+  const dfmSurcharge = calculateDfmSurcharge(geometry.dfmIssues ?? [], subtotal);
 
   const totalAdjustment =
     demandAdjustment +
@@ -4235,7 +4281,7 @@ function computeSheetMetalLeadTime(
   geometry: GeometryData,
   material: SheetMetalMaterialSpec,
   quantity: number,
-  cuttingMethod: "laser" | "plasma" | "waterjet" | "turret-punch",
+  cuttingMethod: CuttingMethod,
   leadTimeType: PricingInput["leadTimeType"],
   hasBends: boolean,
 ): {
@@ -4246,47 +4292,82 @@ function computeSheetMetalLeadTime(
     bufferDays: number;
     materialProcurementDays: number;
   };
+function getMaterialProcurementTime(
+  material: SheetMetalMaterialSpec,
+  leadTimeType: string,
+): number {
+  const procurementMap: Record<string, Record<string, number>> = {
+    exotic: { expedited: 7, standard: 10, economy: 14 },
+    special: { expedited: 2, standard: 3, economy: 5 },
+    thick_stainless: { expedited: 1, standard: 2, economy: 3 },
+  };
+
+  let tier: string | null = null;
+  if (material.category === "titanium" || material.category === "superalloy") {
+    tier = "exotic";
+  } else if (material.category === "copper" || material.category === "brass") {
+    tier = "special";
+  } else if (material.category === "stainless" && material.thickness >= 2.5) {
+    tier = "thick_stainless";
+  }
+
+  if (!tier) return 0;
+  return procurementMap[tier][leadTimeType] ?? 0;
+}
+
+function getProgrammingDays(complexity: number): number {
+  if (complexity > 25) return 2;
+  if (complexity > 15) return 1.5;
+  if (complexity > 8) return 1;
+  if (complexity > 5) return 0.5;
+  return 0;
+}
+
+function getQuantityEfficiency(quantity: number): number {
+  if (quantity >= 100) return 0.75;
+  if (quantity >= 50) return 0.8;
+  if (quantity >= 25) return 0.85;
+  if (quantity >= 10) return 0.9;
+  return 1;
+}
+
+function getLeadTimeConfig(leadTimeType: string): {
+  targetLeadTime: number;
+  shippingDays: number;
+} {
+  if (leadTimeType === "expedited") {
+    return {
+      targetLeadTime: SHEET_METAL_LEAD_TIME.expedited,
+      shippingDays: SHEET_METAL_LEAD_TIME.shippingDays.expedited,
+    };
+  }
+  if (leadTimeType === "standard") {
+    return {
+      targetLeadTime: SHEET_METAL_LEAD_TIME.standard,
+      shippingDays: SHEET_METAL_LEAD_TIME.shippingDays.standard,
+    };
+  }
+  return {
+    targetLeadTime: SHEET_METAL_LEAD_TIME.economy,
+    shippingDays: SHEET_METAL_LEAD_TIME.shippingDays.economy,
+  };
+}
+
 } {
   const features = geometry.sheetMetalFeatures!;
 
-  // Advanced material procurement optimization
-  let materialProcurementDays = 0;
-  // Exotic materials (titanium, superalloys) require special procurement
-  if (material.category === "titanium" || material.category === "superalloy") {
-    if (leadTimeType === "expedited") materialProcurementDays = 7;
-    else if (leadTimeType === "standard") materialProcurementDays = 10;
-    else materialProcurementDays = 14;
-  } else if (material.category === "copper" || material.category === "brass") {
-    if (leadTimeType === "expedited") materialProcurementDays = 2;
-    else if (leadTimeType === "standard") materialProcurementDays = 3;
-    else materialProcurementDays = 5;
-  } else if (material.category === "stainless" && material.thickness >= 2.5) {
-    if (leadTimeType === "expedited") materialProcurementDays = 1;
-    else if (leadTimeType === "standard") materialProcurementDays = 2;
-    else materialProcurementDays = 3;
-  }
+  const materialProcurementDays = getMaterialProcurementTime(material, leadTimeType);
 
-  // Advanced programming time based on complexity
   const totalComplexity =
     features?.complexCuts + features?.bendCount + features?.holeCount * 0.1;
-  let programmingDays = 0;
-  if (totalComplexity > 25) programmingDays = 2;
-  else if (totalComplexity > 15) programmingDays = 1.5;
-  else if (totalComplexity > 8) programmingDays = 1;
-  else if (totalComplexity > 5) programmingDays = 0.5;
+  const programmingDays = getProgrammingDays(totalComplexity);
 
   const config = CUTTING_METHODS[cuttingMethod];
   const totalCuttingLength =
     features?.perimeterLength + features?.totalHoleDiameter;
   const cuttingMinutes = totalCuttingLength / config.speedMmPerMin;
 
-  // Advanced quantity optimization - better efficiency for larger batches
-  let quantityEfficiencyFactor = 1;
-  if (quantity >= 100) quantityEfficiencyFactor = 0.75;
-  else if (quantity >= 50) quantityEfficiencyFactor = 0.8;
-  else if (quantity >= 25) quantityEfficiencyFactor = 0.85;
-  else if (quantity >= 10) quantityEfficiencyFactor = 0.9;
-
+  const quantityEfficiencyFactor = getQuantityEfficiency(quantity);
   const cuttingHours =
     (cuttingMinutes / 60) * quantity * quantityEfficiencyFactor;
   const baseCuttingDays = Math.ceil(cuttingHours / 8);
@@ -4300,57 +4381,28 @@ function computeSheetMetalLeadTime(
     baseFormingDays = Math.ceil(formingHours / 8);
   }
 
-  // Advanced finishing time based on part complexity and surface area
   const flatAreaM2 = features?.flatArea / 1_000_000;
   let finishingDays = 0.5;
   if (flatAreaM2 * quantity > 5) finishingDays = 1.5;
   else if (flatAreaM2 * quantity > 2) finishingDays = 1;
 
-  // Quality inspection time for precision work
   const inspectionDays =
     features?.bendCount > 8 || features?.complexCuts > 10 ? 0.5 : 0;
 
-  // Use sheet metal specific lead times (expedited = 15 days base)
-  let targetLeadTime: number;
-  let shippingDays: number;
+  const { targetLeadTime, shippingDays } = getLeadTimeConfig(leadTimeType);
 
-  if (leadTimeType === "expedited") {
-    targetLeadTime = SHEET_METAL_LEAD_TIME.expedited;
-    shippingDays = SHEET_METAL_LEAD_TIME.shippingDays.expedited;
-  } else if (leadTimeType === "standard") {
-    targetLeadTime = SHEET_METAL_LEAD_TIME.standard;
-    shippingDays = SHEET_METAL_LEAD_TIME.shippingDays.standard;
-  } else {
-    targetLeadTime = SHEET_METAL_LEAD_TIME.economy;
-    shippingDays = SHEET_METAL_LEAD_TIME.shippingDays.economy;
-  }
-
-  // Calculate actual production time needed
   const actualProductionDays = Math.ceil(
-    baseCuttingDays +
-      baseFormingDays +
-      finishingDays +
-      programmingDays +
-      inspectionDays,
+    baseCuttingDays + baseFormingDays + finishingDays + programmingDays + inspectionDays,
   );
 
-  // Use target lead time, adjusting if actual production needs more time
-  const availableProductionTime =
-    targetLeadTime - shippingDays - materialProcurementDays;
-  const productionDays = Math.max(
-    actualProductionDays,
-    availableProductionTime,
-  );
-
-  // Buffer days for expedited orders to ensure on-time delivery
+  const availableProductionTime = targetLeadTime - shippingDays - materialProcurementDays;
+  const productionDays = Math.max(actualProductionDays, availableProductionTime);
   const bufferDays = leadTimeType === "expedited" ? 1 : 0;
 
-  const totalDays =
-    materialProcurementDays + productionDays + shippingDays + bufferDays;
-  const leadTimeDays = Math.max(targetLeadTime, totalDays);
+  const totalDays = materialProcurementDays + productionDays + shippingDays + bufferDays;
 
   return {
-    leadTimeDays: leadTimeDays,
+    leadTimeDays: Math.max(targetLeadTime, totalDays),
     components: {
       productionDays: actualProductionDays,
       shippingDays,
@@ -4363,7 +4415,7 @@ function computeSheetMetalLeadTime(
 function checkSheetMetalFeasibility(
   geometry: GeometryData,
   material: SheetMetalMaterialSpec,
-  cuttingMethod: "laser" | "plasma" | "waterjet" | "turret-punch",
+  cuttingMethod: CuttingMethod,
   features?: SheetMetalFeatures | null, // Accept optional features for when defaults are generated
 ): { isFeasible: boolean; reason?: string } {
   // Features are now passed in (either from geometry or generated defaults)
@@ -4449,16 +4501,16 @@ export function calculatePricing(input: PricingInput): PricingBreakdown {
   // Route to sheet metal pricing if process is sheet-metal
   if (process.type === "sheet-metal" && "thickness" in material) {
     const cuttingMethod = input.cuttingMethod || "laser"; // Default to laser cutting
-    return calculateSheetMetalPricingInternal(
+    return calculateSheetMetalPricingInternal({
       geometry,
-      material as SheetMetalMaterialSpec,
-      finish as SheetMetalFinish,
+      material,
+      finish: finish as SheetMetalFinish,
       quantity,
       tolerance,
       leadTimeType,
       cuttingMethod,
-      input.hardware,
-    );
+      hardware: input.hardware,
+    });
   }
 
   // CNC Pricing Logic (existing)
@@ -4566,8 +4618,18 @@ export function calculatePricing(input: PricingInput): PricingBreakdown {
     advancedAdjustments.totalAdjustment;
 
   // Final unit price with lead time multiplier
-  const unitPrice = priceBeforeLeadTimeMultiplier * leadTimePriceMultiplier;
+  // Minimum CNC price floor: never go below material cost × 1.5 or $5
+  const minCncUnitPrice = Math.max(materialCostPerUnit * 1.5, 5);
+  const unitPrice = Math.max(
+    priceBeforeLeadTimeMultiplier * leadTimePriceMultiplier,
+    minCncUnitPrice,
+  );
   const totalPrice = unitPrice * quantity;
+
+  // Guard: if price is still $0 or negative, push to manual quote
+  if (unitPrice <= 0) {
+    return manualQuoteBreakdown(leadTimeType, "Calculated price is invalid — manual review required");
+  }
 
   return {
     materialCost: round2(materialCostPerUnit),
@@ -4625,7 +4687,7 @@ export async function calculatePricingWithLiveMaterial(
   // Only fetch pricing for CNC materials (MaterialSpec), not sheet metal
   if ("machinabilityFactor" in input.material) {
     const resolvedMaterial = await fetchMaterialPricing(
-      input.material as MaterialSpec,
+      input.material,
       options,
     );
     return calculatePricing({ ...input, material: resolvedMaterial });
@@ -4701,105 +4763,69 @@ function round2(value: number): number {
 /**
  * Enhanced CNC feasibility check
  */
+type ManualQuoteResult = { requiresManualQuote: boolean; reason?: string };
+
+function checkSizeConstraints(dims: number[]): ManualQuoteResult | null {
+  if (dims.some((d) => d < SIZE_LIMITS.min)) {
+    return { requiresManualQuote: true, reason: "Part too small for standard CNC (min 0.5mm)" };
+  }
+  if (dims.some((d) => d > SIZE_LIMITS.max)) {
+    return { requiresManualQuote: true, reason: "Part exceeds CNC envelope (max 700mm)" };
+  }
+  return null;
+}
+
+function checkCNCConstraints(
+  geometry: GeometryData,
+  material: MaterialSpec,
+  dims: number[],
+): ManualQuoteResult | null {
+  const minDim = Math.min(...dims);
+  if (minDim < CNC_CONSTRAINTS.minWallThickness && geometry.complexity !== "simple") {
+    return { requiresManualQuote: true, reason: "Features too thin for reliable CNC machining" };
+  }
+  const aspectRatio = Math.max(...dims) / minDim;
+  if (aspectRatio > CNC_CONSTRAINTS.maxAspectRatio) {
+    return { requiresManualQuote: true, reason: "Extreme aspect ratio requires specialized tooling" };
+  }
+  if (geometry.complexity === "complex" && material.machinabilityFactor > 2.5) {
+    return { requiresManualQuote: true, reason: "Complex geometry with difficult-to-machine material" };
+  }
+  if (geometry.estimatedMachiningTime > 1200) {
+    return { requiresManualQuote: true, reason: "Machining time exceeds standard production capacity" };
+  }
+  return null;
+}
+
 function shouldRequestManualQuote(
   geometry: GeometryData,
   process: ProcessConfig,
   material: MaterialSpec,
-): { requiresManualQuote: boolean; reason?: string } {
-  const dims = [
-    geometry.boundingBox.x,
-    geometry.boundingBox.y,
-    geometry.boundingBox.z,
-  ];
+): ManualQuoteResult {
+  const dims = [geometry.boundingBox.x, geometry.boundingBox.y, geometry.boundingBox.z];
 
-  // Size constraints
-  if (dims.some((d) => d < SIZE_LIMITS.min)) {
-    return {
-      requiresManualQuote: true,
-      reason: "Part too small for standard CNC (min 0.5mm)",
-    };
-  }
+  const sizeCheck = checkSizeConstraints(dims);
+  if (sizeCheck) return sizeCheck;
 
-  if (dims.some((d) => d > SIZE_LIMITS.max)) {
-    return {
-      requiresManualQuote: true,
-      reason: "Part exceeds CNC envelope (max 700mm)",
-    };
-  }
-
-  // Volume check
   const volumeCm3 =
-    (geometry.boundingBox.x * geometry.boundingBox.y * geometry.boundingBox.z) /
-    1000;
+    (geometry.boundingBox.x * geometry.boundingBox.y * geometry.boundingBox.z) / 1000;
   if (volumeCm3 > CNC_CONSTRAINTS.maxPartVolume) {
-    return {
-      requiresManualQuote: true,
-      reason: "Part volume exceeds CNC capacity",
-    };
+    return { requiresManualQuote: true, reason: "Part volume exceeds CNC capacity" };
   }
 
-  // Process-specific checks
   if (process.type === "cnc-milling" || process.type === "cnc-turning") {
-    // Check for extremely thin features
-    const minDim = Math.min(...dims);
-    if (
-      minDim < CNC_CONSTRAINTS.minWallThickness &&
-      geometry.complexity !== "simple"
-    ) {
-      return {
-        requiresManualQuote: true,
-        reason: "Features too thin for reliable CNC machining",
-      };
-    }
-
-    // Check aspect ratio for deep features
-    const maxDim = Math.max(...dims);
-    const aspectRatio = maxDim / minDim;
-    if (aspectRatio > CNC_CONSTRAINTS.maxAspectRatio) {
-      return {
-        requiresManualQuote: true,
-        reason: "Extreme aspect ratio requires specialized tooling",
-      };
-    }
-
-    // Complex geometry with difficult materials
-    if (
-      geometry.complexity === "complex" &&
-      material.machinabilityFactor > 2.5
-    ) {
-      return {
-        requiresManualQuote: true,
-        reason: "Complex geometry with difficult-to-machine material",
-      };
-    }
-
-    // Estimated machining time too high (over 20 hours)
-    if (geometry.estimatedMachiningTime > 1200) {
-      return {
-        requiresManualQuote: true,
-        reason: "Machining time exceeds standard production capacity",
-      };
-    }
+    const cncCheck = checkCNCConstraints(geometry, material, dims);
+    if (cncCheck) return cncCheck;
   }
 
   if (process.type === "sheet-metal" && !isSheetMetalCandidate(geometry)) {
-    return {
-      requiresManualQuote: true,
-      reason: "Geometry not suitable for sheet metal manufacturing",
-    };
+    return { requiresManualQuote: true, reason: "Geometry not suitable for sheet metal manufacturing" };
   }
 
-  // Check for undercuts or internal features that can't be machined
-  if (
-    geometry.complexity === "complex" &&
-    process.type !== "injection-molding"
-  ) {
+  if (geometry.complexity === "complex" && process.type !== "injection-molding") {
     const surfaceToVolumeRatio = geometry.surfaceArea / (volumeCm3 * 10);
     if (surfaceToVolumeRatio > 50) {
-      return {
-        requiresManualQuote: true,
-        reason: "Complex internal features may require multi-axis or EDM",
-      };
+      return { requiresManualQuote: true, reason: "Complex internal features may require multi-axis or EDM" };
     }
   }
 
@@ -4815,13 +4841,14 @@ function isSheetMetalCandidate(geometry: GeometryData): boolean {
   const thickness = dims[0];
   const longest = dims[2];
 
-  // Sheet metal typically 0.5mm to 6mm thick
-  if (thickness < SIZE_LIMITS.min || thickness > 6) return false;
+  // Sheet metal typically 0.5mm to 8mm thick (aligned with backend classification)
+  if (thickness < SIZE_LIMITS.min || thickness > 8) return false;
   if (longest > SIZE_LIMITS.max) return false;
 
   // Check if it's actually sheet-like (thin relative to area)
+  // Use aspect ratio > 5 (more permissive to match backend bent sheet metal detection)
   const aspectRatio = longest / thickness;
-  return aspectRatio > 10;
+  return aspectRatio > 5;
 }
 
 function manualQuoteBreakdown(
@@ -4841,7 +4868,7 @@ function manualQuoteBreakdown(
     subtotal: 0,
     quantityDiscount: 0,
     toleranceUpcharge: 0,
-    leadTimeMultiplier: 1.0,
+    leadTimeMultiplier: 1,
     unitPrice: 0,
     totalPrice: 0,
     leadTimeDays: 7,
@@ -4930,6 +4957,38 @@ function calculateAdvancedPriceAdjustments(
   };
 }
 
+const QUANTITY_TIER_RATES: [number, number][] = [
+  [1000, 0.48], [500, 0.44], [250, 0.4], [100, 0.35], [80, 0.31],
+  [60, 0.27], [50, 0.24], [40, 0.21], [30, 0.18], [25, 0.16],
+  [20, 0.14], [15, 0.11], [10, 0.09], [7, 0.06], [5, 0.04], [3, 0.02],
+];
+
+const MATERIAL_VALUE_RATES: [number, number][] = [
+  [5000, 0.08], [3000, 0.06], [2000, 0.04], [1000, 0.03], [500, 0.02], [250, 0.01],
+];
+
+const WEIGHT_EFFICIENCY_RATES: [number, number][] = [
+  [500, 0.06], [300, 0.04], [200, 0.03], [100, 0.02], [50, 0.01],
+];
+
+const SETUP_AMORTIZATION_RATES: [number, number][] = [
+  [0.02, 0.03], [0.05, 0.02], [0.1, 0.01],
+];
+
+function lookupRate(tiers: [number, number][], value: number): number {
+  for (const [threshold, rate] of tiers) {
+    if (value >= threshold) return rate;
+  }
+  return 0;
+}
+
+function lookupRateBelow(tiers: [number, number][], value: number): number {
+  for (const [threshold, rate] of tiers) {
+    if (value < threshold) return rate;
+  }
+  return 0;
+}
+
 /**
  * Advanced volume discount calculation matching Xometry's multi-factor approach
  * Considers: quantity tiers, material value, production efficiency, and setup amortization
@@ -4950,101 +5009,26 @@ function calculateVolumeDiscount(
     setupAmortization: number;
   };
 } {
-  // 1. BASE QUANTITY-TIER DISCOUNT (Primary Factor)
-  let tierRate = 0;
-  if (quantity >= 1000)
-    tierRate = 0.48; // 48% - Mass production
-  else if (quantity >= 500)
-    tierRate = 0.44; // 44%
-  else if (quantity >= 250)
-    tierRate = 0.4; // 40%
-  else if (quantity >= 100)
-    tierRate = 0.35; // 35%
-  else if (quantity >= 80)
-    tierRate = 0.31; // 31%
-  else if (quantity >= 60)
-    tierRate = 0.27; // 27%
-  else if (quantity >= 50)
-    tierRate = 0.24; // 24%
-  else if (quantity >= 40)
-    tierRate = 0.21; // 21%
-  else if (quantity >= 30)
-    tierRate = 0.18; // 18%
-  else if (quantity >= 25)
-    tierRate = 0.16; // 16%
-  else if (quantity >= 20)
-    tierRate = 0.14; // 14%
-  else if (quantity >= 15)
-    tierRate = 0.11; // 11%
-  else if (quantity >= 10)
-    tierRate = 0.09; // 9%
-  else if (quantity >= 7)
-    tierRate = 0.06; // 6%
-  else if (quantity >= 5)
-    tierRate = 0.04; // 4%
-  else if (quantity >= 3) tierRate = 0.02; // 2%
+  const tierRate = lookupRate(QUANTITY_TIER_RATES, quantity);
+  const materialRate = lookupRate(MATERIAL_VALUE_RATES, materialCostPerUnit * quantity);
+  const efficiencyRate = lookupRate(WEIGHT_EFFICIENCY_RATES, rawWeightKg * quantity);
 
-  // 2. MATERIAL VALUE DISCOUNT (Bulk Material Purchasing Power)
-  const totalMaterialValue = materialCostPerUnit * quantity;
-  let materialRate = 0;
-
-  if (totalMaterialValue >= 5000)
-    materialRate = 0.08; // $5K+ material order
-  else if (totalMaterialValue >= 3000)
-    materialRate = 0.06; // $3K+
-  else if (totalMaterialValue >= 2000)
-    materialRate = 0.04; // $2K+
-  else if (totalMaterialValue >= 1000)
-    materialRate = 0.03; // $1K+
-  else if (totalMaterialValue >= 500)
-    materialRate = 0.02; // $500+
-  else if (totalMaterialValue >= 250) materialRate = 0.01; // $250+
-
-  // 3. PRODUCTION EFFICIENCY DISCOUNT (Weight/Volume Economics)
-  const totalWeightKg = rawWeightKg * quantity;
-  let efficiencyRate = 0;
-
-  // Heavy/large orders get better machine utilization
-  if (totalWeightKg >= 500)
-    efficiencyRate = 0.06; // 500kg+ order
-  else if (totalWeightKg >= 300)
-    efficiencyRate = 0.04; // 300kg+
-  else if (totalWeightKg >= 200)
-    efficiencyRate = 0.03; // 200kg+
-  else if (totalWeightKg >= 100)
-    efficiencyRate = 0.02; // 100kg+
-  else if (totalWeightKg >= 50) efficiencyRate = 0.01; // 50kg+
-
-  // 4. SETUP COST AMORTIZATION BENEFIT
-  // Higher quantities mean setup cost becomes negligible per part
   const setupCostPerUnit = setupCost / quantity;
   const setupAsPercentOfUnit = setupCostPerUnit / subtotalPerUnit;
+  const setupAmortizationBonus = lookupRateBelow(SETUP_AMORTIZATION_RATES, setupAsPercentOfUnit);
 
-  // If setup is < 5% of unit cost, give additional discount
-  let setupAmortizationBonus = 0;
-  if (setupAsPercentOfUnit < 0.02)
-    setupAmortizationBonus = 0.03; // Setup < 2% of cost
-  else if (setupAsPercentOfUnit < 0.05)
-    setupAmortizationBonus = 0.02; // Setup < 5% of cost
-  else if (setupAsPercentOfUnit < 0.1) setupAmortizationBonus = 0.01; // Setup < 10% of cost
+  const rawTotalRate = tierRate + materialRate + efficiencyRate + setupAmortizationBonus;
 
-  // 5. COMBINE ALL FACTORS (with diminishing returns logic)
-  // Use logarithmic stacking to prevent over-discounting
-  const rawTotalRate =
-    tierRate + materialRate + efficiencyRate + setupAmortizationBonus;
-
-  // Apply soft cap using logarithmic curve
-  const softCap = 0.55; // 55% maximum discount
+  // Cap CNC volume discount at 40% to prevent excessively low pricing
+  const softCap = 0.40;
   const finalRate = Math.min(
     rawTotalRate,
-    softCap * (1 - Math.exp(-rawTotalRate / 0.3)), // Logarithmic approach to cap
+    softCap * (1 - Math.exp(-rawTotalRate / 0.3)),
   );
-
-  const totalDiscount = subtotalPerUnit * finalRate;
 
   return {
     quantityDiscountRate: finalRate,
-    quantityDiscount: totalDiscount,
+    quantityDiscount: subtotalPerUnit * finalRate,
     breakdown: {
       tierDiscount: tierRate,
       materialDiscount: materialRate,
@@ -5115,12 +5099,7 @@ function computeLeadTime(
   const totalHours = perPartHours * quantity;
 
   // Daily capacity varies by process
-  const capacityHoursPerDay =
-    process.type === "sheet-metal"
-      ? 12
-      : process.type === "cnc-turning"
-        ? 10
-        : 8;
+  const capacityHoursPerDay = getCapacityHoursPerDay(process.type);
 
   // Calculate production days (with parallel processing for quantities > 5)
   let productionDays: number;
@@ -5164,12 +5143,9 @@ function computeLeadTime(
   const materialProcurementDays = getMaterialProcurementDays(material);
 
   // Capacity-based adjustment (if shop is busy, add 1-2 days)
-  const capacityDelayDays =
-    ADVANCED_PRICING.capacityUtilization > 0.85
-      ? 2
-      : ADVANCED_PRICING.capacityUtilization > 0.75
-        ? 1
-        : 0;
+  const capacityDelayDays = getCapacityDelayDays(
+    ADVANCED_PRICING.capacityUtilization,
+  );
 
   // Shipping days
   const shippingDays = shippingDaysByType[leadTimeType];
@@ -5279,73 +5255,67 @@ export function getSheetMetalFinish(
 }
 
 export function getMaterialByValue(value: string, process: string) {
-  // Clean up any malformed process strings (e.g., "\"sheet-metal\"" -> "sheet-metal")
-  const cleanProcess = process
+  const cleanProcess = cleanProcessString(process);
+
+  if (isCNCProcessString(cleanProcess)) {
+    return findCNCMaterial(value);
+  }
+  return findSheetMetalMaterial(value);
+}
+
+function cleanProcessString(process: string): string {
+  return process
     ? process
-        .replace(/^["'\s]+|["'\s]+$/g, "")
-        .replace(/\\"/g, "")
+        .replaceAll(/(?:^["'\s]+)|(?:["'\s]+$)/g, "")
+        .replaceAll(String.raw`\"`, "")
         .toLowerCase()
     : "";
+}
 
-  if (
+function isCNCProcessString(cleanProcess: string): boolean {
+  return (
     cleanProcess.includes("cnc") ||
     cleanProcess === "cnc-milling" ||
     cleanProcess === "cnc-turning"
-  ) {
-    // Search CNC materials
-    for (const materials of Object.values(CNC_MATERIALS)) {
-      const found = materials.find((m) => m.value === value);
-      if (found) return found;
+  );
+}
+
+function findCNCMaterial(value: string) {
+  for (const materials of Object.values(CNC_MATERIALS)) {
+    const found = materials.find((m) => m.value === value);
+    if (found) return found;
+  }
+  return null;
+}
+
+function findSheetMetalMaterial(value: string) {
+  // First try to find by material key (e.g., "aluminum-5052")
+  if (value in SHEET_METAL_MATERIALS) {
+    const materialFamily = SHEET_METAL_MATERIALS[value];
+    if (materialFamily && materialFamily.length > 0) {
+      const preferred = materialFamily.find((m: any) => m.thickness === 2);
+      return preferred || materialFamily[0];
     }
-  } else {
-    // Search Sheet Metal materials
-    // First try to find by material key (e.g., "aluminum-5052")
-    if (value in SHEET_METAL_MATERIALS) {
-      // Return first available thickness for this material family
-      const materialFamily = SHEET_METAL_MATERIALS[value];
-      if (materialFamily && materialFamily.length > 0) {
-        // Default to 2.0mm or closest available
-        const preferred = materialFamily.find((m: any) => m.thickness === 2.0);
-        return preferred || materialFamily[0];
-      }
-    }
-    // Then try to find by code or value (e.g., "AL5052-1.5")
-    for (const materials of Object.values(SHEET_METAL_MATERIALS)) {
-      const found = materials.find(
-        (m) => m.value === value || m.code === value,
-      );
-      if (found) return found;
-    }
-    // FALLBACK: If a CNC material code is used for sheet metal, map to closest sheet metal equivalent
-    // This handles cases where old parts have CNC materials like "aluminum-6061"
-    const cncToSheetMetalMapping: Record<string, string> = {
-      "aluminum-6061": "aluminum-5052", // 6061 is not good for bending, use 5052
-      "aluminum-7075": "aluminum-5052",
-      "stainless-steel-304": "stainless-304",
-      "stainless-steel-316": "stainless-316",
-      "mild-steel": "steel-cr",
-      "carbon-steel": "steel-cr",
-    };
-    const mappedKey = cncToSheetMetalMapping[value];
-    if (mappedKey && mappedKey in SHEET_METAL_MATERIALS) {
-      const materialFamily = SHEET_METAL_MATERIALS[mappedKey];
-      if (materialFamily && materialFamily.length > 0) {
-        const preferred = materialFamily.find((m: any) => m.thickness === 2.0);
-        console.log(
-          `⚠️ Mapped CNC material "${value}" to sheet metal "${mappedKey}"`,
-        );
-        return preferred || materialFamily[0];
-      }
-    }
-    // Final fallback: return default AL5052-2.0
-    console.log(
-      `⚠️ Sheet metal material "${value}" not found, using default AL5052-2.0`,
+  }
+  // Then try to find by code or value (e.g., "AL5052-1.5")
+  for (const materials of Object.values(SHEET_METAL_MATERIALS)) {
+    const found = materials.find(
+      (m) => m.value === value || m.code === value,
     );
-    const defaultFamily = SHEET_METAL_MATERIALS["aluminum-5052"];
-    if (defaultFamily && defaultFamily.length > 0) {
-      const preferred = defaultFamily.find((m: any) => m.thickness === 2.0);
-      return preferred || defaultFamily[0];
-    }
+    if (found) return found;
+  }
+  // FALLBACK: If a CNC material code is used for sheet metal, map to closest sheet metal equivalent
+  const sheetMaterial = findMappedSheetMetalMaterial(value);
+  if (sheetMaterial) return sheetMaterial;
+
+  // Final fallback: return default AL5052-2.0
+  console.log(
+    `\u26A0\uFE0F Sheet metal material "${value}" not found, using default AL5052-2.0`,
+  );
+  const defaultFamily = SHEET_METAL_MATERIALS["aluminum-5052"];
+  if (defaultFamily && defaultFamily.length > 0) {
+    const preferred = defaultFamily.find((m: any) => m.thickness === 2);
+    return preferred || defaultFamily[0];
   }
   return null;
 }
@@ -5355,12 +5325,7 @@ export function getMaterialForProcess(
   process: string,
 ): MaterialSpec | SheetMetalMaterialSpec | null {
   // Clean up any malformed process strings
-  const cleanProcess = process
-    ? process
-        .replace(/^["'\s]+|["'\s]+$/g, "")
-        .replace(/\\"/g, "")
-        .toLowerCase()
-    : "";
+  const cleanProcess = cleanProcessString(process);
 
   const material = getMaterialByValue(materialValue, process);
   if (material) {
@@ -5372,22 +5337,22 @@ export function getMaterialForProcess(
     ) {
       // This is a sheet metal material - return as SheetMetalMaterialSpec
       return {
-        code: (material as any).code,
-        name: (material as any).name,
+        code: material.code,
+        name: material.name,
         density: material.density,
         costPerKg: material.costPerKg,
-        thickness: (material as any).thickness,
-        category: (material as any).category,
-        bendability: (material as any).bendability || 1.0,
+        thickness: material.thickness,
+        category: material.category,
+        bendability: material.bendability || 1,
         // Pass manual quote flags for exotic materials
-        requiresManualQuote: (material as any).requiresManualQuote || false,
-        manualQuoteReason: (material as any).manualQuoteReason,
+        requiresManualQuote: material.requiresManualQuote || false,
+        manualQuoteReason: material.manualQuoteReason,
       } as SheetMetalMaterialSpec;
     }
 
     // CNC material
-    const label = (material as any).label || (material as any).name;
-    const value = (material as any).value || (material as any).code;
+    const label = material.label || material.name;
+    const value = material.value || material.code;
 
     return {
       code: value.toUpperCase(),
@@ -5396,8 +5361,8 @@ export function getMaterialForProcess(
       costPerKg: material.costPerKg,
       machinabilityFactor:
         "machinabilityFactor" in material
-          ? (material as any).machinabilityFactor
-          : 1.0,
+          ? material.machinabilityFactor
+          : 1,
     };
   }
   // Fallback to legacy materials (CNC only)

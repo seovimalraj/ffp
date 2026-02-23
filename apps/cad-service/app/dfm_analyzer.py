@@ -11,18 +11,61 @@ import math
 from .models import HoleFeature, PocketFeature, ThreadFeature, SlotFeature, UndercutFeature, FilletFeature
 
 
+def _classify_hole(
+    hole: HoleFeature,
+    min_tool_diameter: float,
+    max_depth_ratio: float,
+) -> Tuple[Dict, List[Dict]]:
+    """Classify a single hole and return (detail_dict, issues_list)."""
+    dia = hole.diameter_mm
+    depth = hole.depth_mm
+    depth_ratio = depth / dia if dia > 0 else 0
+    is_deep = depth_ratio > max_depth_ratio
+    is_small = dia < min_tool_diameter
+
+    detail = {
+        "id": hole.id,
+        "type": hole.type,
+        "diameter_mm": dia,
+        "depth_mm": depth,
+        "depth_ratio": round(depth_ratio, 2),
+        "is_deep": is_deep,
+        "is_very_deep": is_deep,
+        "is_small": is_small,
+        "axis": hole.axis,
+    }
+
+    issues: List[Dict] = []
+    if is_deep:
+        issues.append({
+            "hole_id": hole.id,
+            "issue": "very_deep_hole",
+            "severity": "warning",
+            "description": (
+                f"Hole depth/diameter ratio ({depth_ratio:.1f}) exceeds "
+                f"{max_depth_ratio}. May require gun drilling."
+            ),
+            "recommendation": "Reduce depth or use larger diameter",
+        })
+    if is_small:
+        issues.append({
+            "hole_id": hole.id,
+            "issue": "small_hole",
+            "severity": "warning" if dia >= 0.5 else "error",
+            "description": (
+                f"Hole diameter ({dia:.2f}mm) below minimum tool size "
+                f"({min_tool_diameter}mm)"
+            ),
+            "recommendation": (
+                f"Increase diameter to at least {min_tool_diameter}mm or use EDM"
+            ),
+        })
+    return detail, issues
+
+
 def transform_holes_to_advanced_features(holes: List[HoleFeature], process_config: Optional[Dict] = None) -> Dict:
     """
     Transform List[HoleFeature] to advancedFeatures.holes format expected by DFM analyzer.
-    
-    Returns dict with:
-        - totalCount: int
-        - deepHoleCount: int (depth > 5x diameter)
-        - smallHoleCount: int (diameter < min tool size)
-        - diameterRange: {min, max, avg}
-        - depthRange: {min, max, avg}
-        - holeDetails: list of individual hole info
-        - issues: list of potential manufacturability issues
     """
     if not holes:
         return {
@@ -32,100 +75,53 @@ def transform_holes_to_advanced_features(holes: List[HoleFeature], process_confi
             "diameterRange": None,
             "depthRange": None,
             "holeDetails": [],
-            "issues": []
+            "issues": [],
         }
-    
-    # Default thresholds
-    min_tool_diameter = 1.0  # mm
+
+    min_tool_diameter = 1.0
     max_depth_ratio = 10.0
     if process_config:
         min_tool_diameter = process_config.get("min_tool_diameter_mm", 1.0)
         max_depth_ratio = process_config.get("max_hole_depth_ratio", 10.0)
-    
-    total_count = len(holes)
+
+    diameters: List[float] = []
+    depths: List[float] = []
+    hole_details: List[Dict] = []
+    all_issues: List[Dict] = []
     deep_hole_count = 0
     small_hole_count = 0
-    issues = []
-    
-    diameters = []
-    depths = []
-    hole_details = []
-    
+
     for hole in holes:
-        dia = hole.diameter_mm
-        depth = hole.depth_mm
-        
-        diameters.append(dia)
-        depths.append(depth)
-        
-        # Calculate depth-to-diameter ratio
-        depth_ratio = depth / dia if dia > 0 else 0
-        
-        # Check for deep holes (depth > standard deep hole threshold)
-        is_deep = depth_ratio > max_depth_ratio
-        if is_deep:
+        detail, issues = _classify_hole(hole, min_tool_diameter, max_depth_ratio)
+        diameters.append(hole.diameter_mm)
+        depths.append(hole.depth_mm)
+        hole_details.append(detail)
+        all_issues.extend(issues)
+        if detail["is_deep"]:
             deep_hole_count += 1
-        
-        # Check for very deep holes (may require gun drilling)
-        is_very_deep = depth_ratio > max_depth_ratio
-        
-        # Check for small holes
-        is_small = dia < min_tool_diameter
-        if is_small:
+        if detail["is_small"]:
             small_hole_count += 1
-        
-        hole_detail = {
-            "id": hole.id,
-            "type": hole.type,
-            "diameter_mm": dia,
-            "depth_mm": depth,
-            "depth_ratio": round(depth_ratio, 2),
-            "is_deep": is_deep,
-            "is_very_deep": is_very_deep,
-            "is_small": is_small,
-            "axis": hole.axis
-        }
-        hole_details.append(hole_detail)
-        
-        # Track issues
-        if is_very_deep:
-            issues.append({
-                "hole_id": hole.id,
-                "issue": "very_deep_hole",
-                "severity": "warning",
-                "description": f"Hole depth/diameter ratio ({depth_ratio:.1f}) exceeds {max_depth_ratio}. May require gun drilling.",
-                "recommendation": "Reduce depth or use larger diameter"
-            })
-        
-        if is_small:
-            issues.append({
-                "hole_id": hole.id,
-                "issue": "small_hole",
-                "severity": "warning" if dia >= 0.5 else "error",
-                "description": f"Hole diameter ({dia:.2f}mm) below minimum tool size ({min_tool_diameter}mm)",
-                "recommendation": f"Increase diameter to at least {min_tool_diameter}mm or use EDM"
-            })
-    
+
     return {
-        "totalCount": total_count,
+        "totalCount": len(holes),
         "deepHoleCount": deep_hole_count,
         "smallHoleCount": small_hole_count,
         "diameterRange": {
             "min": round(min(diameters), 2),
             "max": round(max(diameters), 2),
-            "avg": round(sum(diameters) / len(diameters), 2)
+            "avg": round(sum(diameters) / len(diameters), 2),
         },
         "depthRange": {
             "min": round(min(depths), 2),
             "max": round(max(depths), 2),
-            "avg": round(sum(depths) / len(depths), 2)
+            "avg": round(sum(depths) / len(depths), 2),
         },
         "holeDetails": hole_details,
-        "issues": issues
+        "issues": all_issues,
     }
 
 
-def transform_pockets_to_advanced_features(pockets: List[PocketFeature], process_config: Optional[Dict] = None) -> Dict:
+def transform_pockets_to_advanced_features(pockets: List[PocketFeature], _process_config: Optional[Dict] = None) -> Dict:
     """Transform List[PocketFeature] to advancedFeatures.pockets format."""
     if not pockets:
         return {
@@ -195,6 +191,131 @@ def transform_pockets_to_advanced_features(pockets: List[PocketFeature], process
     }
 
 
+def _build_threads_data(threads: Optional[List[ThreadFeature]]) -> Optional[Dict]:
+    """Build threads summary dict."""
+    if not threads:
+        return None
+    return {
+        "totalCount": len(threads),
+        "threadDetails": [
+            {
+                "id": t.id,
+                "diameter_mm": t.diameter_mm,
+                "pitch_mm": t.pitch_mm,
+                "depth_mm": t.depth_mm,
+                "thread_type": t.thread_type,
+                "is_standard": t.is_standard,
+                "standard_name": t.standard_name,
+            }
+            for t in threads
+        ],
+    }
+
+
+def _build_slots_data(slots: Optional[List[SlotFeature]]) -> Optional[Dict]:
+    """Build slots summary dict."""
+    if not slots:
+        return None
+    return {
+        "totalCount": len(slots),
+        "slotDetails": [
+            {
+                "id": s.id,
+                "length_mm": s.length_mm,
+                "width_mm": s.width_mm,
+                "depth_mm": s.depth_mm,
+                "slot_type": s.slot_type,
+            }
+            for s in slots
+        ],
+    }
+
+
+def _build_undercuts_data(undercuts: Optional[List[UndercutFeature]]) -> Optional[Dict]:
+    """Build undercuts summary dict."""
+    if not undercuts:
+        return None
+    severity_counts = {"minor": 0, "moderate": 0, "severe": 0}
+    for u in undercuts:
+        sev = u.severity if u.severity in severity_counts else "minor"
+        severity_counts[sev] += 1
+    worst = "minor"
+    if severity_counts["severe"] > 0:
+        worst = "severe"
+    elif severity_counts["moderate"] > 0:
+        worst = "moderate"
+    return {
+        "totalCount": len(undercuts),
+        "severity": worst,
+        "severityCounts": severity_counts,
+        "requiresSpecialTooling": any(u.requires_special_tooling for u in undercuts),
+    }
+
+
+def _build_fillets_data(fillets: Optional[List[FilletFeature]]) -> Optional[Dict]:
+    """Build fillets/chamfers summary dict."""
+    if not fillets:
+        return None
+    fillet_list = [f for f in fillets if f.feature_type == "fillet"]
+    chamfer_list = [f for f in fillets if f.feature_type == "chamfer"]
+    return {
+        "filletCount": len(fillet_list),
+        "chamferCount": len(chamfer_list),
+        "minRadius": min((f.radius_mm for f in fillet_list), default=0),
+        "maxRadius": max((f.radius_mm for f in fillet_list), default=0),
+    }
+
+
+def _build_draft_data(draft_analysis: Optional[List]) -> Optional[Dict]:
+    """Build draft angle summary dict."""
+    if not draft_analysis:
+        return None
+    insufficient = [d for d in draft_analysis if not d.is_sufficient]
+    return {
+        "totalFaces": len(draft_analysis),
+        "insufficientCount": len(insufficient),
+        "minDraftDeg": min((d.draft_angle_deg for d in draft_analysis), default=0),
+        "avgDraftDeg": (sum(d.draft_angle_deg for d in draft_analysis)
+                        / max(len(draft_analysis), 1)),
+    }
+
+
+def _attach_sheet_metal_features(
+    geometry: Dict,
+    sorted_dims: List[float],
+    thickness: Optional[float],
+    bend_analysis: Optional[Dict],
+    grain_direction: Optional[Any],
+    nesting: Optional[Any],
+) -> None:
+    """Attach sheet-metal-specific sub-dicts to *geometry* in place."""
+    bends: List[Dict] = []
+    bend_count = 0
+    if bend_analysis:
+        bend_count = bend_analysis.get("bend_count", 0)
+        bends = bend_analysis.get("bends", [])
+
+    geometry["sheetMetalFeatures"] = {
+        "thickness": thickness or sorted_dims[0],
+        "bends": bends,
+        "bendCount": bend_count,
+    }
+
+    if grain_direction:
+        geometry["grainDirection"] = {
+            "recommended_direction": grain_direction.recommended_direction,
+            "alignment_score": grain_direction.alignment_score,
+            "notes": grain_direction.notes,
+        }
+    if nesting:
+        geometry["nestingEstimate"] = {
+            "sheet_width_mm": nesting.sheet_width_mm,
+            "sheet_height_mm": nesting.sheet_height_mm,
+            "parts_per_sheet": nesting.parts_per_sheet,
+            "utilization_pct": nesting.utilization_pct,
+        }
+
+
 def build_geometry_for_dfm(
     bbox_dims: List[float],
     volume_mm3: float,
@@ -206,104 +327,31 @@ def build_geometry_for_dfm(
     bend_analysis: Optional[Dict] = None,
     complexity: str = "moderate",
     process_config: Optional[Dict] = None,
-    threads: Optional[List[ThreadFeature]] = None,
-    slots: Optional[List[SlotFeature]] = None,
-    undercuts: Optional[List[UndercutFeature]] = None,
-    fillets: Optional[List[FilletFeature]] = None,
-    draft_analysis: Optional[List] = None,
-    grain_direction: Optional[Any] = None,
-    nesting: Optional[Any] = None,
+    **kwargs: Any,
 ) -> Dict[str, Any]:
     """
     Build the complete geometry dictionary for DFM analysis.
-    
+
     This transforms raw extracted features into the format expected by AdvancedDFMAnalyzer.
+
+    Extra keyword arguments:
+        threads, slots, undercuts, fillets, draft_analysis, grain_direction, nesting
     """
+    threads: Optional[List[ThreadFeature]] = kwargs.get("threads")
+    slots: Optional[List[SlotFeature]] = kwargs.get("slots")
+    undercuts: Optional[List[UndercutFeature]] = kwargs.get("undercuts")
+    fillets: Optional[List[FilletFeature]] = kwargs.get("fillets")
+    draft_analysis: Optional[List] = kwargs.get("draft_analysis")
+    grain_direction = kwargs.get("grain_direction")
+    nesting = kwargs.get("nesting")
+
     sorted_dims = sorted(bbox_dims)
-    
-    # Thread data
-    threads_data = None
-    if threads:
-        threads_data = {
-            "totalCount": len(threads),
-            "threadDetails": [
-                {
-                    "id": t.id,
-                    "diameter_mm": t.diameter_mm,
-                    "pitch_mm": t.pitch_mm,
-                    "depth_mm": t.depth_mm,
-                    "thread_type": t.thread_type,
-                    "is_standard": t.is_standard,
-                    "standard_name": t.standard_name,
-                }
-                for t in threads
-            ],
-        }
 
-    # Slot data
-    slots_data = None
-    if slots:
-        slots_data = {
-            "totalCount": len(slots),
-            "slotDetails": [
-                {
-                    "id": s.id,
-                    "length_mm": s.length_mm,
-                    "width_mm": s.width_mm,
-                    "depth_mm": s.depth_mm,
-                    "slot_type": s.slot_type,
-                }
-                for s in slots
-            ],
-        }
-
-    # Undercut data
-    undercuts_data = None
-    if undercuts:
-        severity_counts = {"minor": 0, "moderate": 0, "severe": 0}
-        for u in undercuts:
-            sev = u.severity if u.severity in severity_counts else "minor"
-            severity_counts[sev] += 1
-        worst = "minor"
-        if severity_counts["severe"] > 0:
-            worst = "severe"
-        elif severity_counts["moderate"] > 0:
-            worst = "moderate"
-        undercuts_data = {
-            "totalCount": len(undercuts),
-            "severity": worst,
-            "severityCounts": severity_counts,
-            "requiresSpecialTooling": any(u.requires_special_tooling for u in undercuts),
-        }
-
-    # Fillet data
-    fillets_data = None
-    if fillets:
-        fillet_list = [f for f in fillets if f.feature_type == "fillet"]
-        chamfer_list = [f for f in fillets if f.feature_type == "chamfer"]
-        fillets_data = {
-            "filletCount": len(fillet_list),
-            "chamferCount": len(chamfer_list),
-            "minRadius": min((f.radius_mm for f in fillet_list), default=0),
-            "maxRadius": max((f.radius_mm for f in fillet_list), default=0),
-        }
-
-    # Draft angle summary
-    draft_data = None
-    if draft_analysis:
-        insufficient = [d for d in draft_analysis if not d.is_sufficient]
-        draft_data = {
-            "totalFaces": len(draft_analysis),
-            "insufficientCount": len(insufficient),
-            "minDraftDeg": min((d.draft_angle_deg for d in draft_analysis), default=0),
-            "avgDraftDeg": sum(d.draft_angle_deg for d in draft_analysis) / max(len(draft_analysis), 1),
-        }
-
-    geometry = {
+    geometry: Dict[str, Any] = {
         "boundingBox": {
             "x": sorted_dims[2] if len(sorted_dims) == 3 else 0,
             "y": sorted_dims[1] if len(sorted_dims) >= 2 else 0,
-            "z": sorted_dims[0] if len(sorted_dims) >= 1 else 0
+            "z": sorted_dims[0] if len(sorted_dims) >= 1 else 0,
         },
         "volume": volume_mm3,
         "surfaceArea": surface_area_mm2,
@@ -311,44 +359,21 @@ def build_geometry_for_dfm(
         "advancedFeatures": {
             "holes": transform_holes_to_advanced_features(holes, process_config),
             "pockets": transform_pockets_to_advanced_features(pockets, process_config),
-            "threads": threads_data,
-            "slots": slots_data,
-            "undercuts": undercuts_data,
-            "fillets": fillets_data,
-            "draftAnalysis": draft_data,
-            "complexSurfaces": {"has3DContours": False}
-        }
+            "threads": _build_threads_data(threads),
+            "slots": _build_slots_data(slots),
+            "undercuts": _build_undercuts_data(undercuts),
+            "fillets": _build_fillets_data(fillets),
+            "draftAnalysis": _build_draft_data(draft_analysis),
+            "complexSurfaces": {"has3DContours": False},
+        },
     }
-    
-    # Add sheet metal features if applicable
-    if process_type == "sheet_metal":
-        bends = []
-        bend_count = 0
-        if bend_analysis:
-            bend_count = bend_analysis.get("bend_count", 0)
-            bends = bend_analysis.get("bends", [])
-        
-        geometry["sheetMetalFeatures"] = {
-            "thickness": thickness or sorted_dims[0],
-            "bends": bends,
-            "bendCount": bend_count
-        }
 
-        # Add grain direction and nesting
-        if grain_direction:
-            geometry["grainDirection"] = {
-                "recommended_direction": grain_direction.recommended_direction,
-                "alignment_score": grain_direction.alignment_score,
-                "notes": grain_direction.notes,
-            }
-        if nesting:
-            geometry["nestingEstimate"] = {
-                "sheet_width_mm": nesting.sheet_width_mm,
-                "sheet_height_mm": nesting.sheet_height_mm,
-                "parts_per_sheet": nesting.parts_per_sheet,
-                "utilization_pct": nesting.utilization_pct,
-            }
-    
+    if process_type == "sheet_metal":
+        _attach_sheet_metal_features(
+            geometry, sorted_dims, thickness, bend_analysis,
+            grain_direction, nesting,
+        )
+
     return geometry
 
 
@@ -599,7 +624,7 @@ class AdvancedDFMAnalyzer:
                 ))
                 report.overall_score -= 5
     
-    def _analyze_features(self, geometry: Dict, process_type: str, material: str, report: ManufacturabilityReport):
+    def _analyze_features(self, geometry: Dict, _process_type: str, material: str, report: ManufacturabilityReport):
         """Analyze manufacturability of geometric features"""
         material_config = self.config["materials"].get(material, self.config["materials"]["aluminum"])
         
@@ -676,7 +701,7 @@ class AdvancedDFMAnalyzer:
                     f"Part has {hole_count} holes - consider combining similar sizes to reduce tool changes"
                 )
     
-    def _analyze_tolerances(self, geometry: Dict, tolerance: str, report: ManufacturabilityReport):
+    def _analyze_tolerances(self, _geometry: Dict, tolerance: str, report: ManufacturabilityReport):
         """Analyze tolerance achievability and cost impact"""
         tolerance_impacts = {
             "standard": {"achievable": True, "cost_multiplier": 1.0, "score_penalty": 0},
@@ -698,7 +723,7 @@ class AdvancedDFMAnalyzer:
             report.overall_score -= impact["score_penalty"]
             report.estimated_cost_impact["tolerance_premium"] = impact["cost_multiplier"]
     
-    def _analyze_material_suitability(self, geometry: Dict, material: str, process_type: str, report: ManufacturabilityReport):
+    def _analyze_material_suitability(self, geometry: Dict, material: str, _process_type: str, report: ManufacturabilityReport):
         """Check if material is suitable for process and geometry"""
         complexity = geometry.get("complexity", "moderate")
         
@@ -713,7 +738,7 @@ class AdvancedDFMAnalyzer:
                 cost_impact="medium"
             ))
     
-    def _analyze_sheet_metal_specific(self, geometry: Dict, material: str, report: ManufacturabilityReport):
+    def _analyze_sheet_metal_specific(self, geometry: Dict, _material: str, report: ManufacturabilityReport):
         """Sheet metal specific DFM checks"""
         sm_features = geometry.get("sheetMetalFeatures", {})
         thickness = sm_features.get("thickness", 2.0)
@@ -776,140 +801,156 @@ class AdvancedDFMAnalyzer:
         """CNC machining specific DFM checks"""
         advanced_features = geometry.get("advancedFeatures", {})
         material_config = self.config["materials"].get(material, self.config["materials"]["aluminum"])
-        process_config = self.config["processes"].get("cnc_milling", {})
-        
-        # === COMPREHENSIVE HOLE ANALYSIS ===
+
+        self._cnc_check_holes(advanced_features, material_config, report)
+        self._cnc_check_pockets(advanced_features, report)
+        self._cnc_check_undercuts(advanced_features, report)
+        self._cnc_check_complex_surfaces(advanced_features, report)
+
+    # -- CNC sub-checks ---------------------------------------------------
+
+    def _cnc_check_holes(self, advanced_features: Dict, material_config: Dict,
+                         report: ManufacturabilityReport) -> None:
+        """Check holes for CNC manufacturability."""
         holes_data = advanced_features.get("holes", {})
         total_holes = holes_data.get("totalCount", 0)
-        
-        if total_holes > 0:
-            min_hole_dia = material_config.get("min_hole_diameter_mm", 1.0)
-            max_depth_ratio = process_config.get("max_hole_depth_ratio", 10.0)
-            
-            # Check for deep holes
-            deep_holes = holes_data.get("deepHoleCount", 0)
-            if deep_holes > 0:
+        if total_holes == 0:
+            return
+
+        min_hole_dia = material_config.get("min_hole_diameter_mm", 1.0)
+        self._cnc_check_deep_holes(holes_data, report)
+        self._cnc_check_small_holes(holes_data, min_hole_dia, report)
+        self._cnc_check_hole_issues(holes_data, report)
+
+        if total_holes > 20:
+            report.add_issue(DFMIssue(
+                category="cnc_milling", severity=Severity.INFO,
+                title="High hole count",
+                description=f"{total_holes} holes increase machining time and tool wear",
+                measurement=float(total_holes),
+                recommendation="Consider if all holes are necessary - combining or eliminating holes reduces cost",
+                cost_impact="low",
+            ))
+
+        self._cnc_check_hole_diameter_range(holes_data, report)
+
+    def _cnc_check_deep_holes(self, holes_data: Dict, report: ManufacturabilityReport) -> None:
+        deep_holes = holes_data.get("deepHoleCount", 0)
+        if deep_holes > 0:
+            report.add_issue(DFMIssue(
+                category="cnc_milling", severity=Severity.WARNING,
+                title="Deep holes detected",
+                description=f"{deep_holes} deep hole(s) with depth > 5\u00d7 diameter require peck drilling or gun drilling",
+                measurement=float(deep_holes),
+                recommendation="Consider reducing hole depth or use larger diameter for cost savings",
+                cost_impact="medium" if deep_holes <= 3 else "high",
+                lead_time_impact="medium",
+            ))
+            report.overall_score -= min(10, deep_holes * 2)
+
+    def _cnc_check_small_holes(self, holes_data: Dict, min_hole_dia: float,
+                               report: ManufacturabilityReport) -> None:
+        small_holes = holes_data.get("smallHoleCount", 0)
+        if small_holes == 0:
+            return
+        min_dia = holes_data.get("diameterRange", {}).get("min", 0)
+        report.add_issue(DFMIssue(
+            category="cnc_milling",
+            severity=Severity.WARNING if min_dia >= 0.5 else Severity.ERROR,
+            title="Small holes detected",
+            description=f"{small_holes} hole(s) with diameter < {min_hole_dia}mm may require EDM or micro-drilling",
+            measurement=min_dia,
+            recommendation=f"Increase hole diameter to at least {min_hole_dia}mm or accept cost premium for special tooling",
+            cost_impact="high" if min_dia < 0.5 else "medium",
+        ))
+        report.overall_score -= min(15, small_holes * 3)
+
+    def _cnc_check_hole_issues(self, holes_data: Dict, report: ManufacturabilityReport) -> None:
+        for issue in holes_data.get("issues", []):
+            if issue.get("issue") == "very_deep_hole":
                 report.add_issue(DFMIssue(
-                    category="cnc_milling",
-                    severity=Severity.WARNING,
-                    title="Deep holes detected",
-                    description=f"{deep_holes} deep hole(s) with depth > 5× diameter require peck drilling or gun drilling",
-                    measurement=float(deep_holes),
-                    recommendation="Consider reducing hole depth or use larger diameter for cost savings",
-                    cost_impact="medium" if deep_holes <= 3 else "high",
-                    lead_time_impact="medium"
+                    category="cnc_milling", severity=Severity.WARNING,
+                    title=f"Very deep hole {issue.get('hole_id', '')}",
+                    description=issue.get("description", "Hole requires special drilling technique"),
+                    recommendation=issue.get("recommendation", ""),
+                    cost_impact="high",
                 ))
-                report.overall_score -= min(10, deep_holes * 2)
-            
-            # Check for small holes
-            small_holes = holes_data.get("smallHoleCount", 0)
-            if small_holes > 0:
-                diameter_range = holes_data.get("diameterRange", {})
-                min_dia = diameter_range.get("min", 0)
-                report.add_issue(DFMIssue(
-                    category="cnc_milling",
-                    severity=Severity.WARNING if min_dia >= 0.5 else Severity.ERROR,
-                    title="Small holes detected",
-                    description=f"{small_holes} hole(s) with diameter < {min_hole_dia}mm may require EDM or micro-drilling",
-                    measurement=min_dia,
-                    recommendation=f"Increase hole diameter to at least {min_hole_dia}mm or accept cost premium for special tooling",
-                    cost_impact="high" if min_dia < 0.5 else "medium"
-                ))
-                report.overall_score -= min(15, small_holes * 3)
-            
-            # Analyze hole issues from transformation
-            hole_issues = holes_data.get("issues", [])
-            for issue in hole_issues:
-                if issue.get("issue") == "very_deep_hole":
-                    report.add_issue(DFMIssue(
-                        category="cnc_milling",
-                        severity=Severity.WARNING,
-                        title=f"Very deep hole {issue.get('hole_id', '')}",
-                        description=issue.get("description", "Hole requires special drilling technique"),
-                        recommendation=issue.get("recommendation", ""),
-                        cost_impact="high"
-                    ))
-            
-            # Check hole count for setup complexity
-            if total_holes > 20:
-                report.add_issue(DFMIssue(
-                    category="cnc_milling",
-                    severity=Severity.INFO,
-                    title="High hole count",
-                    description=f"{total_holes} holes increase machining time and tool wear",
-                    measurement=float(total_holes),
-                    recommendation="Consider if all holes are necessary - combining or eliminating holes reduces cost",
-                    cost_impact="low"
-                ))
-            
-            # Check diameter range for tool changes
-            diameter_range = holes_data.get("diameterRange", {})
-            if diameter_range:
-                min_dia = diameter_range.get("min", 0)
-                max_dia = diameter_range.get("max", 0)
-                if max_dia > 0 and min_dia > 0 and max_dia / min_dia > 5:
-                    report.add_issue(DFMIssue(
-                        category="cnc_milling",
-                        severity=Severity.INFO,
-                        title="Wide hole diameter range",
-                        description=f"Hole diameters range from {min_dia:.1f}mm to {max_dia:.1f}mm requiring multiple tools",
-                        recommendation="Standardize hole sizes where possible to reduce tool changes",
-                        cost_impact="low"
-                    ))
-        
-        # === POCKET ANALYSIS ===
+
+    def _cnc_check_hole_diameter_range(self, holes_data: Dict,
+                                       report: ManufacturabilityReport) -> None:
+        diameter_range = holes_data.get("diameterRange", {})
+        if not diameter_range:
+            return
+        min_dia = diameter_range.get("min", 0)
+        max_dia = diameter_range.get("max", 0)
+        if max_dia > 0 and min_dia > 0 and max_dia / min_dia > 5:
+            report.add_issue(DFMIssue(
+                category="cnc_milling", severity=Severity.INFO,
+                title="Wide hole diameter range",
+                description=f"Hole diameters range from {min_dia:.1f}mm to {max_dia:.1f}mm requiring multiple tools",
+                recommendation="Standardize hole sizes where possible to reduce tool changes",
+                cost_impact="low",
+            ))
+
+    def _cnc_check_pockets(self, advanced_features: Dict,
+                           report: ManufacturabilityReport) -> None:
+        """Check pockets for CNC manufacturability."""
         pockets_data = advanced_features.get("pockets", {})
         total_pockets = pockets_data.get("totalCount", 0)
-        
-        if total_pockets > 0:
-            deep_pockets = pockets_data.get("deepPocketCount", 0)
-            high_aspect_pockets = pockets_data.get("highAspectRatioCount", 0)
-            
-            if deep_pockets > 0:
-                report.add_issue(DFMIssue(
-                    category="cnc_milling",
-                    severity=Severity.WARNING,
-                    title="Deep pockets detected",
-                    description=f"{deep_pockets} pocket(s) with high depth ratio require long reach tooling",
-                    recommendation="Reduce pocket depth or increase opening size for standard tooling",
-                    cost_impact="medium"
-                ))
-                report.overall_score -= min(8, deep_pockets * 2)
-            
-            if high_aspect_pockets > 0:
-                report.add_issue(DFMIssue(
-                    category="cnc_milling",
-                    severity=Severity.WARNING,
-                    title="High aspect ratio pockets detected",
-                    description=f"{high_aspect_pockets} pocket(s) with aspect ratio > 6 may cause tool deflection",
-                    recommendation="Consider using shorter tools with multiple passes or redesign pocket geometry",
-                    cost_impact="medium"
-                ))
-                report.overall_score -= min(6, high_aspect_pockets * 2)
-        
-        # === UNDERCUT ANALYSIS ===
-        if advanced_features.get("undercuts"):
-            undercut_severity = advanced_features["undercuts"].get("severity", "minor")
-            if undercut_severity in ["moderate", "severe"]:
-                report.add_issue(DFMIssue(
-                    category="cnc_milling",
-                    severity=Severity.WARNING,
-                    title=f"{undercut_severity.capitalize()} undercuts detected",
-                    description="Undercuts require special tools or additional setups",
-                    recommendation="Remove undercuts or accept 20-40% cost increase for special tooling",
-                    cost_impact="high" if undercut_severity == "severe" else "medium"
-                ))
-                report.overall_score -= 8 if undercut_severity == "severe" else 5
-        
-        # === COMPLEX SURFACE ANALYSIS ===
+        if total_pockets == 0:
+            return
+
+        deep_pockets = pockets_data.get("deepPocketCount", 0)
+        if deep_pockets > 0:
+            report.add_issue(DFMIssue(
+                category="cnc_milling", severity=Severity.WARNING,
+                title="Deep pockets detected",
+                description=f"{deep_pockets} pocket(s) with high depth ratio require long reach tooling",
+                recommendation="Reduce pocket depth or increase opening size for standard tooling",
+                cost_impact="medium",
+            ))
+            report.overall_score -= min(8, deep_pockets * 2)
+
+        high_aspect_pockets = pockets_data.get("highAspectRatioCount", 0)
+        if high_aspect_pockets > 0:
+            report.add_issue(DFMIssue(
+                category="cnc_milling", severity=Severity.WARNING,
+                title="High aspect ratio pockets detected",
+                description=f"{high_aspect_pockets} pocket(s) with aspect ratio > 6 may cause tool deflection",
+                recommendation="Consider using shorter tools with multiple passes or redesign pocket geometry",
+                cost_impact="medium",
+            ))
+            report.overall_score -= min(6, high_aspect_pockets * 2)
+
+    @staticmethod
+    def _cnc_check_undercuts(advanced_features: Dict,
+                             report: ManufacturabilityReport) -> None:
+        """Check undercuts for CNC manufacturability."""
+        undercuts = advanced_features.get("undercuts")
+        if not undercuts:
+            return
+        undercut_severity = undercuts.get("severity", "minor")
+        if undercut_severity in ["moderate", "severe"]:
+            report.add_issue(DFMIssue(
+                category="cnc_milling", severity=Severity.WARNING,
+                title=f"{undercut_severity.capitalize()} undercuts detected",
+                description="Undercuts require special tools or additional setups",
+                recommendation="Remove undercuts or accept 20-40% cost increase for special tooling",
+                cost_impact="high" if undercut_severity == "severe" else "medium",
+            ))
+            report.overall_score -= 8 if undercut_severity == "severe" else 5
+
+    @staticmethod
+    def _cnc_check_complex_surfaces(advanced_features: Dict,
+                                    report: ManufacturabilityReport) -> None:
+        """Check for complex 3D surfaces."""
         if advanced_features.get("complexSurfaces", {}).get("has3DContours", False):
             report.add_issue(DFMIssue(
-                category="cnc_milling",
-                severity=Severity.INFO,
+                category="cnc_milling", severity=Severity.INFO,
                 title="3D contoured surfaces detected",
                 description="Complex 3D surfaces require 3-axis or 5-axis machining",
                 recommendation="Simplify to 2.5D features (pockets, holes, slots) for cost savings",
-                cost_impact="medium"
+                cost_impact="medium",
             ))
             report.overall_score -= 3
 
@@ -917,7 +958,7 @@ class AdvancedDFMAnalyzer:
     # Injection molding DFM
     # -----------------------------------------------------------------
     def _analyze_injection_molding_specific(
-        self, geometry: Dict, material: str, report: ManufacturabilityReport
+        self, geometry: Dict, _material: str, report: ManufacturabilityReport
     ):
         """Injection-molding specific DFM checks."""
         im_config = self.config.get("processes", {}).get("injection_molding", {})
@@ -936,15 +977,27 @@ class AdvancedDFMAnalyzer:
         bbox = geometry.get("boundingBox", {})
         dims = sorted([bbox.get("x", 0), bbox.get("y", 0), bbox.get("z", 0)])
         advanced = geometry.get("advancedFeatures", {})
+        min_wall = dims[0] if dims[0] > 0 else 0
 
-        # --- Machine envelope ---
+        self._im_check_envelope(bbox, im_config, report)
+        self._im_check_wall_thickness(min_wall, dims, im_config, report)
+        self._im_check_draft_angles(advanced, im_config, report)
+        self._im_check_undercuts(advanced, report)
+        self._im_check_fillets(advanced, min_wall, im_config, report)
+        self._im_check_flow_length(dims, im_config, report)
+
+    # -- Injection-molding sub-checks -------------------------------------
+
+    @staticmethod
+    def _im_check_envelope(bbox: Dict, im_config: Dict,
+                           report: ManufacturabilityReport) -> None:
         max_dims = im_config.get("max_dimensions", {})
-        for axis, val in zip(["x", "y", "z"], [bbox.get("x", 0), bbox.get("y", 0), bbox.get("z", 0)]):
+        for axis in ["x", "y", "z"]:
+            val = bbox.get(axis, 0)
             limit = max_dims.get(axis, 1000)
             if val > limit:
                 report.add_issue(DFMIssue(
-                    category="injection_molding",
-                    severity=Severity.CRITICAL,
+                    category="injection_molding", severity=Severity.CRITICAL,
                     title=f"Part exceeds mold {axis.upper()}-axis capacity",
                     description=f"{axis.upper()} dimension ({val:.1f}mm) exceeds mold capacity ({limit}mm)",
                     measurement=val,
@@ -953,107 +1006,115 @@ class AdvancedDFMAnalyzer:
                 ))
                 report.overall_score -= 15
 
-        # --- Wall thickness range ---
-        min_wall = dims[0] if dims[0] > 0 else 0
-        im_min_wall = im_config.get("min_wall_thickness_mm", 1.0)
-        im_max_wall = im_config.get("max_wall_thickness_mm", 6.0)
+    @staticmethod
+    def _im_check_wall_thickness(min_wall: float, dims: List[float],
+                                 im_config: Dict,
+                                 report: ManufacturabilityReport) -> None:
+        im_min = im_config.get("min_wall_thickness_mm", 1.0)
+        im_max = im_config.get("max_wall_thickness_mm", 6.0)
 
-        if 0 < min_wall < im_min_wall:
+        if 0 < min_wall < im_min:
             report.add_issue(DFMIssue(
-                category="injection_molding",
-                severity=Severity.ERROR,
+                category="injection_molding", severity=Severity.ERROR,
                 title="Wall too thin for injection molding",
-                description=f"Minimum wall ({min_wall:.2f}mm) below recommended ({im_min_wall}mm) — may cause short shots",
+                description=f"Minimum wall ({min_wall:.2f}mm) below recommended ({im_min}mm)",
                 measurement=min_wall,
-                recommendation=f"Increase wall thickness to ≥ {im_min_wall}mm",
+                recommendation=f"Increase wall thickness to \u2265 {im_min}mm",
                 cost_impact="medium",
             ))
             report.overall_score -= 8
 
-        if min_wall > im_max_wall:
+        if min_wall > im_max:
             report.add_issue(DFMIssue(
-                category="injection_molding",
-                severity=Severity.WARNING,
+                category="injection_molding", severity=Severity.WARNING,
                 title="Wall too thick for injection molding",
-                description=f"Maximum wall ({min_wall:.2f}mm) exceeds recommended ({im_max_wall}mm) — may cause sink marks & long cycle time",
+                description=f"Maximum wall ({min_wall:.2f}mm) exceeds recommended ({im_max}mm)",
                 measurement=min_wall,
                 recommendation="Core out thick sections to achieve uniform wall thickness",
                 cost_impact="medium",
             ))
             report.overall_score -= 5
 
-        # --- Wall uniformity (approximate from bbox) ---
         if dims[0] > 0 and dims[2] > 0:
             wall_ratio = dims[2] / dims[0]
             if wall_ratio > 3:
                 report.add_issue(DFMIssue(
-                    category="injection_molding",
-                    severity=Severity.WARNING,
+                    category="injection_molding", severity=Severity.WARNING,
                     title="Non-uniform wall thickness likely",
-                    description=f"Bounding-box aspect ratio ({wall_ratio:.1f}) suggests uneven wall thickness → warping/sink marks risk",
+                    description=f"Bounding-box aspect ratio ({wall_ratio:.1f}) suggests warping risk",
                     recommendation="Design for uniform 2-3mm wall thickness; core out thick sections",
                     cost_impact="medium",
                 ))
                 report.overall_score -= 4
 
-        # --- Draft angles ---
+    @staticmethod
+    def _im_check_draft_angles(advanced: Dict, im_config: Dict,
+                               report: ManufacturabilityReport) -> None:
         draft_data = advanced.get("draftAnalysis")
-        if draft_data:
-            insufficient = draft_data.get("insufficientCount", 0)
-            if insufficient > 0:
-                report.add_issue(DFMIssue(
-                    category="injection_molding",
-                    severity=Severity.ERROR,
-                    title="Insufficient draft angles",
-                    description=f"{insufficient} face(s) have draft < {im_config.get('min_draft_angle_deg', 1)}° — mold release problems",
-                    measurement=float(insufficient),
-                    recommendation="Add ≥ 1° draft on all vertical faces; 2° for textured surfaces",
-                    cost_impact="high",
-                ))
-                report.overall_score -= min(12, insufficient * 2)
-
-        # --- Undercuts ---
-        undercuts_data = advanced.get("undercuts")
-        if undercuts_data and undercuts_data.get("totalCount", 0) > 0:
-            cnt = undercuts_data["totalCount"]
-            sev = undercuts_data.get("severity", "minor")
+        if not draft_data:
+            return
+        insufficient = draft_data.get("insufficientCount", 0)
+        if insufficient > 0:
+            min_deg = im_config.get("min_draft_angle_deg", 1)
             report.add_issue(DFMIssue(
-                category="injection_molding",
-                severity=Severity.WARNING if sev != "severe" else Severity.ERROR,
-                title=f"{cnt} undercut(s) detected ({sev})",
-                description="Undercuts require side actions or slide cores in the mold, adding 15-30% to mold cost",
-                measurement=float(cnt),
-                recommendation="Eliminate undercuts by redesigning snap-fits or using sliding shutoffs",
-                cost_impact="high" if sev == "severe" else "medium",
+                category="injection_molding", severity=Severity.ERROR,
+                title="Insufficient draft angles",
+                description=f"{insufficient} face(s) have draft < {min_deg}\u00b0",
+                measurement=float(insufficient),
+                recommendation="Add \u2265 1\u00b0 draft on all vertical faces; 2\u00b0 for textured surfaces",
+                cost_impact="high",
             ))
-            report.overall_score -= 5 if sev != "severe" else 10
+            report.overall_score -= min(12, insufficient * 2)
 
-        # --- Fillets / sharp corners ---
+    @staticmethod
+    def _im_check_undercuts(advanced: Dict,
+                            report: ManufacturabilityReport) -> None:
+        undercuts_data = advanced.get("undercuts")
+        if not undercuts_data or undercuts_data.get("totalCount", 0) == 0:
+            return
+        cnt = undercuts_data["totalCount"]
+        sev = undercuts_data.get("severity", "minor")
+        report.add_issue(DFMIssue(
+            category="injection_molding",
+            severity=Severity.WARNING if sev != "severe" else Severity.ERROR,
+            title=f"{cnt} undercut(s) detected ({sev})",
+            description="Undercuts require side actions or slide cores, adding 15-30% to mold cost",
+            measurement=float(cnt),
+            recommendation="Eliminate undercuts by redesigning snap-fits or using sliding shutoffs",
+            cost_impact="high" if sev == "severe" else "medium",
+        ))
+        report.overall_score -= 5 if sev != "severe" else 10
+
+    @staticmethod
+    def _im_check_fillets(advanced: Dict, min_wall: float,
+                          im_config: Dict,
+                          report: ManufacturabilityReport) -> None:
         fillets_data = advanced.get("fillets")
-        if fillets_data:
-            min_r = fillets_data.get("minRadius", 0)
-            rec_r = im_config.get("min_corner_radius_ratio", 0.5) * max(min_wall, 1.0)
-            if min_r > 0 and min_r < rec_r:
-                report.add_issue(DFMIssue(
-                    category="injection_molding",
-                    severity=Severity.WARNING,
-                    title="Internal corner radius too small",
-                    description=f"Min radius ({min_r:.2f}mm) below recommended ({rec_r:.2f}mm) — stress concentration",
-                    measurement=min_r,
-                    recommendation=f"Add ≥ {rec_r:.1f}mm radius to internal corners",
-                    cost_impact="low",
-                ))
-                report.overall_score -= 3
+        if not fillets_data:
+            return
+        min_r = fillets_data.get("minRadius", 0)
+        rec_r = im_config.get("min_corner_radius_ratio", 0.5) * max(min_wall, 1.0)
+        if min_r > 0 and min_r < rec_r:
+            report.add_issue(DFMIssue(
+                category="injection_molding", severity=Severity.WARNING,
+                title="Internal corner radius too small",
+                description=f"Min radius ({min_r:.2f}mm) below recommended ({rec_r:.2f}mm)",
+                measurement=min_r,
+                recommendation=f"Add \u2265 {rec_r:.1f}mm radius to internal corners",
+                cost_impact="low",
+            ))
+            report.overall_score -= 3
 
-        # --- Flow length ---
+    @staticmethod
+    def _im_check_flow_length(dims: List[float], im_config: Dict,
+                              report: ManufacturabilityReport) -> None:
         max_flow = im_config.get("max_flow_length_mm", 300)
         longest_dim = dims[2] if len(dims) == 3 else 0
         if longest_dim > max_flow:
             report.add_issue(DFMIssue(
-                category="injection_molding",
-                severity=Severity.WARNING,
+                category="injection_molding", severity=Severity.WARNING,
                 title="Long flow length",
-                description=f"Longest dimension ({longest_dim:.0f}mm) exceeds typical flow length ({max_flow}mm) — may need multiple gates",
+                description=f"Longest dimension ({longest_dim:.0f}mm) exceeds typical flow length ({max_flow}mm)",
                 recommendation="Add multiple gates or reduce part length",
                 cost_impact="medium",
             ))
@@ -1153,8 +1214,6 @@ class AdvancedDFMAnalyzer:
     # -----------------------------------------------------------------
     def _analyze_hole_to_edge(self, geometry: Dict, report: ManufacturabilityReport):
         """Ensure sufficient hole-to-edge distance."""
-        sm = geometry.get("sheetMetalFeatures", {})
-        thickness = sm.get("thickness", 2.0)
         holes_data = geometry.get("advancedFeatures", {}).get("holes", {})
         hole_details = holes_data.get("holeDetails", [])
 
@@ -1163,7 +1222,6 @@ class AdvancedDFMAnalyzer:
 
         bbox = geometry.get("boundingBox", {})
         part_x = bbox.get("x", 0)
-        part_y = bbox.get("y", 0)
 
         for hd in hole_details:
             dia = hd.get("diameter_mm", 0)
@@ -1254,9 +1312,13 @@ class AdvancedDFMAnalyzer:
     # Config-driven rules engine
     # -----------------------------------------------------------------
     def _evaluate_rules(
-        self, geometry: Dict, process_type: str, material: str, report: ManufacturabilityReport
+        self, _geometry: Dict, process_type: str, _material: str, _report: ManufacturabilityReport
     ):
-        """Evaluate declarative rules from dfm_config.json."""
+        """Evaluate declarative rules from dfm_config.json.
+
+        Currently all conditions are handled by explicit analysis methods.
+        This framework exists for custom user-defined rules in the config.
+        """
         rules = self.config.get("rules", [])
         if not rules:
             return
@@ -1266,28 +1328,9 @@ class AdvancedDFMAnalyzer:
             if process_type not in applies_to:
                 continue
 
-            rule_id = rule.get("id", "?")
-            triggered = False
-            sev_map = {
-                "info": Severity.INFO,
-                "warning": Severity.WARNING,
-                "error": Severity.ERROR,
-                "critical": Severity.CRITICAL,
-            }
-            severity = sev_map.get(rule.get("severity", "warning"), Severity.WARNING)
-            penalty = rule.get("score_penalty", 0)
-
-            # Simple built-in condition evaluator
-            cond = rule.get("condition", "")
-            name = rule.get("name", "")
-
-            # We don't re-implement checks already done by explicit methods
-            # Only handle conditions that add value beyond existing analysis
-            # (The rules serve as documentation + future extensibility)
-
-            # Skip — all conditions are already covered by explicit methods above
-            # This framework is ready for custom user-defined rules in the config.
-            pass
+            # Rules framework ready for future custom condition evaluation.
+            # All built-in conditions are covered by explicit methods above.
+            _ = rule  # acknowledge rule is read but not evaluated further
     
     def _calculate_final_score(self, report: ManufacturabilityReport):
         """Calculate final manufacturability score and rating"""
@@ -1310,10 +1353,10 @@ class AdvancedDFMAnalyzer:
         critical_issues = [i for i in report.issues if i.severity == Severity.CRITICAL]
         report.is_manufacturable = len(critical_issues) == 0 and score >= 40
     
-    def _generate_recommendations(self, report: ManufacturabilityReport, geometry: Dict, process_type: str):
+    def _generate_recommendations(self, report: ManufacturabilityReport, _geometry: Dict, _process_type: str):
         """Generate prioritized recommendations for improvement"""
         # Group issues by category
-        issues_by_category = {}
+        issues_by_category: Dict[str, List[DFMIssue]] = {}
         for issue in report.issues:
             if issue.category not in issues_by_category:
                 issues_by_category[issue.category] = []

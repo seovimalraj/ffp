@@ -9,11 +9,83 @@ from __future__ import annotations
 
 import logging
 import math
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional
 
 from ..models import UndercutFeature
 
 logger = logging.getLogger(__name__)
+
+
+def _dot3(a, b):
+    return a[0] * b[0] + a[1] * b[1] + a[2] * b[2]
+
+
+def _compute_face_normal(surf, umin, umax, vmin, vmax):
+    """Compute outward normal at the face center. Returns 3-tuple or None."""
+    u_mid = (umin + umax) / 2
+    v_mid = (vmin + vmax) / 2
+    d1u = surf.DN(u_mid, v_mid, 1, 0)
+    d1v = surf.DN(u_mid, v_mid, 0, 1)
+    nx = d1u.Y() * d1v.Z() - d1u.Z() * d1v.Y()
+    ny = d1u.Z() * d1v.X() - d1u.X() * d1v.Z()
+    nz = d1u.X() * d1v.Y() - d1u.Y() * d1v.X()
+    mag = math.sqrt(nx * nx + ny * ny + nz * nz)
+    if mag < 1e-10:
+        return None
+    return (nx / mag, ny / mag, nz / mag)
+
+
+def _severity_from_access(max_access: float) -> str:
+    if max_access < 0.1:
+        return "severe"
+    if max_access < 0.2:
+        return "moderate"
+    return "minor"
+
+
+def _check_face_accessibility(
+    face, access_dirs, brep_tool, geom_plane,
+    geom_cyl_surface, uv_bounds_fn,
+    surface_props_fn, gprop_cls, face_map, idx,
+) -> Optional[UndercutFeature]:
+    """Return an UndercutFeature if *face* is inaccessible, else None."""
+    surf = brep_tool.Surface(face)
+    if geom_plane.DownCast(surf) is not None:
+        return None
+    if geom_cyl_surface.DownCast(surf) is not None:
+        return None
+
+    try:
+        umin, umax, vmin, vmax = uv_bounds_fn(face)
+        normal = _compute_face_normal(surf, umin, umax, vmin, vmax)
+    except Exception:
+        return None
+    if normal is None:
+        return None
+
+    max_access = max(abs(_dot3(normal, d)) for d in access_dirs)
+    if max_access >= 0.3:
+        return None
+
+    props = gprop_cls()
+    surface_props_fn(face, props)
+    area_mm2 = float(props.Mass()) * 1e6
+
+    u_span = abs(umax - umin)
+    v_span = abs(vmax - vmin)
+    severity = _severity_from_access(max_access)
+    fid = face_map.FindIndex(face)
+
+    return UndercutFeature(
+        id=f"UC-{idx:03d}",
+        undercut_type="internal" if area_mm2 < 500 else "external",
+        severity=severity,
+        depth_mm=float(min(u_span, v_span)),
+        width_mm=float(max(u_span, v_span)),
+        requires_special_tooling=severity in ("moderate", "severe"),
+        face_ids=[int(fid)],
+        description=f"Face at angle {math.degrees(math.acos(max_access)):.0f}° from nearest tool axis",
+    )
 
 
 def extract_undercuts_from_shape(shape) -> List[UndercutFeature]:
@@ -49,9 +121,6 @@ def extract_undercuts_from_shape(shape) -> List[UndercutFeature]:
         (0, 0, 1), (0, 0, -1),
     ]
 
-    def _dot(a, b):
-        return a[0] * b[0] + a[1] * b[1] + a[2] * b[2]
-
     undercuts: List[UndercutFeature] = []
     idx = 1
 
@@ -59,74 +128,16 @@ def extract_undercuts_from_shape(shape) -> List[UndercutFeature]:
     while exp.More():
         face = exp.Current()
         exp.Next()
-        surf = BRep_Tool.Surface(face)
-
-        # Skip planar faces (these are accessible from normal direction)
-        if Geom_Plane.DownCast(surf) is not None:
-            continue
-
-        # Skip simple cylinders (accessible for milling/turning)
-        cyl = Geom_CylindricalSurface.DownCast(surf)
-        if cyl is not None:
-            continue
-
-        # For non-planar, non-cylindrical faces: sample normal at face center
-        try:
-            umin, umax, vmin, vmax = breptools_UVBounds(face)
-            u_mid = (umin + umax) / 2
-            v_mid = (vmin + vmax) / 2
-            pnt = surf.Value(u_mid, v_mid)
-            # Compute normal at center via D1
-            d1u = surf.DN(u_mid, v_mid, 1, 0)
-            d1v = surf.DN(u_mid, v_mid, 0, 1)
-            # Cross product for normal
-            nx = d1u.Y() * d1v.Z() - d1u.Z() * d1v.Y()
-            ny = d1u.Z() * d1v.X() - d1u.X() * d1v.Z()
-            nz = d1u.X() * d1v.Y() - d1u.Y() * d1v.X()
-            mag = math.sqrt(nx * nx + ny * ny + nz * nz)
-            if mag < 1e-10:
-                continue
-            normal = (nx / mag, ny / mag, nz / mag)
-        except Exception:
-            continue
-
-        # Check accessibility from principal directions
-        max_access = max(abs(_dot(normal, d)) for d in access_dirs)
-
-        if max_access < 0.3:
-            # This face can't be reached by standard 3-axis tooling
-            props = GProp_GProps()
-            brepgprop_SurfaceProperties(face, props)
-            area_mm2 = float(props.Mass()) * 1e6
-
-            # Estimate depth/width from param bounds
-            u_span = abs(umax - umin)
-            v_span = abs(vmax - vmin)
-            depth = min(u_span, v_span)
-            width = max(u_span, v_span)
-
-            # Determine severity based on accessibility
-            if max_access < 0.1:
-                severity = "severe"
-            elif max_access < 0.2:
-                severity = "moderate"
-            else:
-                severity = "minor"
-
-            fid = face_map.FindIndex(face)
-            undercuts.append(UndercutFeature(
-                id=f"UC-{idx:03d}",
-                undercut_type="internal" if area_mm2 < 500 else "external",
-                severity=severity,
-                depth_mm=float(depth),
-                width_mm=float(width),
-                requires_special_tooling=severity in ("moderate", "severe"),
-                face_ids=[int(fid)],
-                description=f"Face at angle {math.degrees(math.acos(max_access)):.0f}° from nearest tool axis",
-            ))
+        result = _check_face_accessibility(
+            face, access_dirs, BRep_Tool, Geom_Plane,
+            Geom_CylindricalSurface, breptools_UVBounds,
+            brepgprop_SurfaceProperties, GProp_GProps, face_map, idx,
+        )
+        if result is not None:
+            undercuts.append(result)
             idx += 1
 
-    logger.info(f"Undercut detection: found {len(undercuts)} undercut(s)")
+    logger.info("Undercut detection: found %d undercut(s)", len(undercuts))
     return undercuts
 
 
@@ -165,7 +176,7 @@ def detect_undercuts_from_mesh(mesh) -> List[UndercutFeature]:
         return []
 
     undercuts: List[UndercutFeature] = []
-    undercut_indices = np.where(undercut_mask)[0]
+    undercut_indices = np.nonzero(undercut_mask)[0]
 
     # Group nearby undercut faces into clusters (simplified: by max-access band)
     severe_mask = max_access[undercut_mask] < 0.1
@@ -191,17 +202,26 @@ def detect_undercuts_from_mesh(mesh) -> List[UndercutFeature]:
             description=f"{count} triangle(s) inaccessible from standard tool axes (area ≈ {total_area:.1f} mm²)",
         ))
 
-    logger.info(f"Mesh undercut detection: found {len(undercuts)} region(s)")
+    logger.info("Mesh undercut detection: found %d region(s)", len(undercuts))
     return undercuts
 
 
-def undercuts_to_dfm_dict(undercuts: List[UndercutFeature]) -> Dict[str, Any]:
+def _severity_from_list(severities: List[str]) -> str:
+    """Pick the worst severity from a list."""
+    if "severe" in severities:
+        return "severe"
+    if "moderate" in severities:
+        return "moderate"
+    return "minor"
+
+
+def undercuts_to_dfm_dict(undercuts: List[UndercutFeature]) -> Optional[Dict[str, Any]]:
     """Convert undercut list to the advancedFeatures.undercuts dict used by DFM."""
     if not undercuts:
         return None
 
     severities = [uc.severity for uc in undercuts]
-    worst = "severe" if "severe" in severities else ("moderate" if "moderate" in severities else "minor")
+    worst = _severity_from_list(severities)
 
     return {
         "count": len(undercuts),

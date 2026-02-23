@@ -54,8 +54,8 @@ def test_hole_transformation_basic():
     assert result["totalCount"] == 2
     assert result["deepHoleCount"] == 1, "H-002 should be deep (depth > 5x dia)"
     assert result["smallHoleCount"] == 0, "No holes below 1mm"
-    assert result["diameterRange"]["min"] == 3.0
-    assert result["diameterRange"]["max"] == 6.0
+    assert abs(result["diameterRange"]["min"] - 3.0) < 0.01
+    assert abs(result["diameterRange"]["max"] - 6.0) < 0.01
     print("✅ test_hole_transformation_basic passed")
 
 
@@ -493,7 +493,7 @@ def test_dfm_very_thin_wall():
         material="aluminum"
     )
     
-    thin_issues = [i for i in result["issues"] if "thin" in i.get("title", "").lower() or "wall" in i.get("description", "").lower()]
+    _thin_issues = [i for i in result["issues"] if "thin" in i.get("title", "").lower() or "wall" in i.get("description", "").lower()]
     # Should flag thin wall
     print(f"✅ test_dfm_very_thin_wall passed (score: {result['overall_score']:.0f}, issues: {len(result['issues'])})")
 
