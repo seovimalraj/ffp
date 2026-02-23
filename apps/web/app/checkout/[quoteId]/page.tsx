@@ -1805,8 +1805,7 @@ export default function CheckoutPage() {
                           )}
                           <div className="flex items-center gap-2 text-blue-600 font-semibold text-sm">
                             <Clock className="w-4 h-4" />
-                            Est. Delivery:{" "}
-                            {estimatedDeliveryDate.toLocaleDateString()}
+                            Est. Delivery: Our Team will contact you
                           </div>
                         </div>
                       </div>
