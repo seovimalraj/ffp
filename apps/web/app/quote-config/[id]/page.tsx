@@ -564,177 +564,155 @@ export default function QuoteConfigPage() {
       setUploadingFiles(acceptedFiles.map((file) => file.name));
 
       try {
-        const newParts = [];
-
-        for (const file of acceptedFiles) {
-          let uploadedPath = `temp/${file.name}`;
+        const processFile = async (file: File) => {
           try {
-            const { url } = await upload(file);
-            uploadedPath = url;
-          } catch (error) {
-            console.error("File upload failed:", error);
-            notify.error(`Failed to upload ${file.name}`);
-            // Optionally continue with local path or return
-          }
-
-          console.log(`Analyzing CAD file: ${file.name}`);
-
-          // Use backend analysis for STEP/IGES/DXF files (advanced classification)
-          const extension = file.name.toLowerCase().split(".").pop();
-          const useBackendAnalysis = ["step", "stp", "iges", "igs", "dxf", "stl"].includes(
-            extension || "",
-          );
-
-          let geometry;
-          if (useBackendAnalysis && uploadedPath) {
-            console.log(
-              `🔬 Using backend analysis for ${file.name} (advanced thickness detection)`,
-            );
-            console.log(`📤 File uploaded to: ${uploadedPath}`);
-            console.log(`🔍 Calling backend API: /api/cad/analyze-geometry`);
-
+            // 1. Upload file (Fallback to temp path if upload fails)
+            let uploadedPath = `temp/${file.name}`;
             try {
-              const analysisResponse = await fetch(
-                "/api/cad/analyze-geometry",
-                {
-                  method: "POST",
-                  headers: { "Content-Type": "application/json" },
-                  body: JSON.stringify({
-                    fileUrl: uploadedPath,
-                    fileName: file.name,
-                  }),
-                },
-              );
+              const { url } = await upload(file);
+              uploadedPath = url;
+            } catch (error) {
+              console.error(`File upload failed for ${file.name}:`, error);
+              notify.error(`Failed to upload ${file.name}`);
+            }
 
-              console.log(
-                `📡 Backend API response status: ${analysisResponse.status}`,
-              );
+            // 2. Determine and perform geometry analysis
+            const extension = file.name.toLowerCase().split(".").pop();
+            const useBackendAnalysis = [
+              "step",
+              "stp",
+              "iges",
+              "igs",
+              "dxf",
+              "stl",
+            ].includes(extension || "");
 
-              if (analysisResponse.ok) {
-                geometry = await analysisResponse.json();
-                console.log("✅ Backend analysis complete:", {
-                  process: geometry.recommendedProcess,
-                  thickness: geometry.detectedWallThickness,
-                  confidence: geometry.thicknessConfidence,
-                  method: geometry.thicknessDetectionMethod,
-                  sheetMetalScore: geometry.sheetMetalScore,
-                  isAssembly: geometry.isAssembly,
-                  needsReview: geometry.needsReview,
-                });
-              } else {
-                const errorText = await analysisResponse.text();
-                console.error(
-                  "❌ Backend analysis failed:",
-                  analysisResponse.status,
-                  errorText,
+            let geometry;
+            if (useBackendAnalysis && uploadedPath) {
+              try {
+                const analysisResponse = await fetch(
+                  "/api/cad/analyze-geometry",
+                  {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                      fileUrl: uploadedPath,
+                      fileName: file.name,
+                    }),
+                  },
                 );
-                console.warn("⚠️ Falling back to client-side analysis");
+
+                if (analysisResponse.ok) {
+                  geometry = await analysisResponse.json();
+                } else {
+                  console.warn(
+                    `Backend analysis failed for ${file.name}, falling back to client-side`,
+                  );
+                  geometry = await analyzeCADFile(file);
+                }
+              } catch (error) {
+                console.error(
+                  `Backend analysis error for ${file.name}:`,
+                  error,
+                );
                 geometry = await analyzeCADFile(file);
               }
-            } catch (error) {
-              console.error("❌ Backend analysis error:", error);
-              console.warn("⚠️ Falling back to client-side analysis");
+            } else {
               geometry = await analyzeCADFile(file);
             }
-          } else {
-            console.log(`⚡ Using client-side analysis for ${file.name}`);
-            geometry = await analyzeCADFile(file);
-          }
 
-          console.log(`Geometry analysis complete:`, geometry);
+            // 3. Assembly check and process mapping
+            if (
+              geometry?.isAssembly &&
+              geometry.recommendedProcess !== "manual-quote"
+            ) {
+              geometry.recommendedProcess = "manual-quote";
+              geometry.requiresManualQuote = true;
+              geometry.manualQuoteReason =
+                geometry.manualQuoteReason ||
+                "Assembly detected — multiple bodies require manual review";
+            }
 
-          // Explicit assembly check — ensure assembly detection propagates
-          // even if client-side fallback was used
-          if (
-            geometry?.isAssembly &&
-            geometry.recommendedProcess !== "manual-quote"
-          ) {
-            console.log(
-              `🔧 Assembly detected for ${file.name} — forcing manual-quote`,
+            const processMap: Record<string, string> = {
+              "sheet-metal": "sheet-metal",
+              "cnc-milling": "cnc-milling",
+              "cnc-turning": "cnc-turning",
+              "injection-molding": "injection-molding",
+              "manual-quote": "manual-quote",
+            };
+
+            const detectedProcess = geometry?.recommendedProcess
+              ? processMap[geometry.recommendedProcess] || "cnc-milling"
+              : "cnc-milling";
+
+            // 4. Get process-specific defaults
+            const defaultMaterial =
+              getDefaultMaterialForProcess(detectedProcess);
+            const defaultFinish = getDefaultFinishForProcess(detectedProcess);
+            const defaultTolerance =
+              getDefaultToleranceForProcess(detectedProcess);
+            const defaultThicknessMm = detectedProcess?.includes("sheet")
+              ? parseFloat(getDefaultThickness()) || 2.0
+              : undefined;
+
+            // 5. Construct part object
+            const newPart: any = {
+              file_name: file.name,
+              cad_file_url: uploadedPath,
+              cad_file_type: file.type,
+              material: defaultMaterial,
+              quantity: 1,
+              status: "draft",
+              tolerance: defaultTolerance,
+              finish: defaultFinish,
+              sheet_thickness_mm: defaultThicknessMm,
+              threads: "none",
+              inspection: "standard",
+              notes: "",
+              lead_time_type: "standard",
+              process: detectedProcess,
+              geometry,
+              certificates: [],
+              final_price: 0,
+              lead_time: 0,
+            };
+
+            // 6. Calculate pricing and lead time
+            newPart.final_price = calculatePrice(newPart);
+            newPart.lead_time = calculateLeadTime(newPart, "standard");
+
+            return newPart;
+          } catch (error) {
+            console.error(
+              `Error processing individual file ${file.name}:`,
+              error,
             );
-            geometry.recommendedProcess = "manual-quote";
-            geometry.requiresManualQuote = true;
-            geometry.manualQuoteReason =
-              geometry.manualQuoteReason ||
-              "Assembly detected — multiple bodies require manual review";
+            notify.error(`Failed to process ${file.name}`);
+            return null;
           }
+        };
 
-          // Map recommendedProcess to process field
-          const processMap: Record<string, string> = {
-            "sheet-metal": "sheet-metal",
-            "cnc-milling": "cnc-milling",
-            "cnc-turning": "cnc-turning",
-            "injection-molding": "injection-molding",
-            "manual-quote": "manual-quote",
-          };
-          const detectedProcess = geometry?.recommendedProcess
-            ? processMap[geometry.recommendedProcess] || "cnc-milling"
-            : "cnc-milling";
+        // Run all file processing in parallel for massive speedup
+        const results = await Promise.all(acceptedFiles.map(processFile));
+        const finalNewParts = results.filter((p): p is any => p !== null);
 
-          console.log(`Process detection for ${file.name}:`, {
-            recommendedProcess: geometry?.recommendedProcess,
-            detectedProcess,
-            confidence: geometry?.processConfidence,
-            reasoning: geometry?.processReasoning,
-            sheetMetalScore: geometry?.sheetMetalScore,
-          });
+        if (finalNewParts.length === 0) return;
 
-          // Use process-specific defaults
-          const defaultMaterial = getDefaultMaterialForProcess(detectedProcess);
-          const defaultFinish = getDefaultFinishForProcess(detectedProcess);
-          const defaultTolerance =
-            getDefaultToleranceForProcess(detectedProcess);
-          // For sheet metal, get thickness as a number (not string)
-          const defaultThicknessMm = detectedProcess?.includes("sheet")
-            ? parseFloat(getDefaultThickness()) || 2.0
-            : undefined;
-
-          const newPart: any = {
-            file_name: file.name,
-            cad_file_url: uploadedPath,
-            cad_file_type: file.type,
-            material: defaultMaterial, // Process-specific default material
-            quantity: 1,
-            status: "draft",
-            tolerance: defaultTolerance,
-            finish: defaultFinish, // Process-specific default finish
-            // Use sheet_thickness_mm (numeric) instead of thickness (string) for database compatibility
-            sheet_thickness_mm: defaultThicknessMm,
-            threads: "none",
-            inspection: "standard",
-            notes: "",
-            lead_time_type: "standard",
-            lead_time: 0,
-            geometry,
-            pricing: undefined,
-            process: geometry?.recommendedProcess || "cnc-milling",
-            final_price: 0,
-            certificates: [],
-          };
-          // CRITICAL FIX: Use mapped detectedProcess, not raw recommendedProcess
-          // This ensures UI shows correct process (e.g., "sheet-metal" not "sheet_metal")
-          newPart.process = detectedProcess;
-
-          newPart.final_price = calculatePrice(newPart);
-
-          newPart.lead_time = calculateLeadTime(newPart, "standard");
-          newParts.push(newPart);
-        }
+        // 7. Add all parts to RFQ in one batch
         const { data } = await apiClient.post(`/rfq/${rfq.id}/add-parts`, {
-          parts: newParts,
+          parts: finalNewParts,
         });
 
         if (!data) {
-          notify.error("Failed to add parts");
+          notify.error("Failed to add parts to server");
           return;
         }
 
         const proccessedParts = processParts(data.parts);
-
         setParts((prev) => [...prev, ...proccessedParts]);
-        notify.success(`Successfully added ${newParts.length} part(s)`);
+        notify.success(`Successfully added ${finalNewParts.length} part(s)`);
       } catch (error) {
-        console.error("Error processing files:", error);
+        console.error("Error in onDropFiles batch processing:", error);
         notify.error("Failed to process files");
       } finally {
         setIs3DFileUploading(false);
@@ -2275,7 +2253,7 @@ export default function QuoteConfigPage() {
           </div>
         )}
       </div>
-        <Footer />
+      <Footer />
     </SuggestionProvider>
   );
 }
