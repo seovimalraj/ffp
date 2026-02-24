@@ -10,7 +10,7 @@ const Footer = () => {
         <Link href="#" className="hover:text-blue-600 transition-colors">
           Terms
         </Link>
-        <Link href="#" className="hover:text-blue-600 transition-colors">
+        <Link href="/support" className="hover:text-blue-600 transition-colors">
           Support
         </Link>
       </div>

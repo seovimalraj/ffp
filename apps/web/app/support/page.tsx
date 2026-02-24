@@ -25,6 +25,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { formatPhoneNumber } from "react-phone-number-input";
 
 const contactMethods = [
   {
@@ -36,6 +37,9 @@ const contactMethods = [
     icon: Mail,
     color: "text-blue-600",
     bgColor: "bg-blue-50",
+    onClick: () => {
+      window.location.href = "mailto:support@frigate.ai";
+    },
   },
   {
     image: "/support/phone.webp",
@@ -46,6 +50,9 @@ const contactMethods = [
     icon: Phone,
     color: "text-green-600",
     bgColor: "bg-green-50",
+    onClick: () => {
+      window.location.href = "tel:+919789022345";
+    },
   },
   {
     image: "/support/book-a-call.webp",
@@ -56,6 +63,8 @@ const contactMethods = [
     icon: Calendar,
     color: "text-purple-600",
     bgColor: "bg-purple-50",
+    onClick: () =>
+      window?.open("https://frigate.ai/book-a-call/", "_blank")?.focus(),
   },
   {
     image: "/support/technical-support.webp",
@@ -66,6 +75,7 @@ const contactMethods = [
     icon: ShieldCheck,
     color: "text-amber-600",
     bgColor: "bg-amber-50",
+    onClick: () => {},
   },
   {
     image: "/support/faq.webp",
@@ -75,6 +85,7 @@ const contactMethods = [
     icon: HelpCircle,
     color: "text-slate-600",
     bgColor: "bg-slate-50",
+    onClick: () => {},
   },
 ];
 
@@ -102,10 +113,20 @@ const SupportPage = () => {
           setMethods((prevMethods) => {
             return prevMethods.map((method) => {
               if (method.title === "Email Support" && emailConfig) {
-                return { ...method, value: emailConfig.value };
+                return {
+                  ...method,
+                  value: emailConfig.value,
+                  onClick: () =>
+                    (window.location.href = `mailto:${emailConfig.value}`),
+                };
               }
               if (method.title === "Phone Support" && phoneConfig) {
-                return { ...method, value: phoneConfig.value };
+                return {
+                  ...method,
+                  value: formatPhoneNumber(phoneConfig.value),
+                  onClick: () =>
+                    (window.location.href = `tel:${phoneConfig.value}`),
+                };
               }
               return method;
             });
@@ -208,11 +229,11 @@ const SupportPage = () => {
                   alt={method.title}
                   className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-700"
                 />
-                <div
+                {/* <div
                   className={`absolute top-4 right-4 p-2.5 rounded-xl backdrop-blur-md bg-white/90 shadow-sm ${method.color}`}
                 >
                   <method.icon className="w-5 h-5" />
-                </div>
+                </div> */}
               </div>
 
               {/* Content */}
@@ -223,7 +244,10 @@ const SupportPage = () => {
                 <p className="text-slate-500 text-sm leading-relaxed">
                   {method.description}
                 </p>
-                <p className="text-blue-600 font-medium text-lg tracking-tight">
+                <p
+                  onClick={() => method.onClick()}
+                  className="text-blue-600 font-medium text-lg tracking-tight cursor-pointer"
+                >
                   {method.value}
                 </p>
               </div>
