@@ -1,18 +1,43 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useCallback } from "react";
 import { CadViewer } from "@/components/cad/cad-viewer";
 import { Button } from "@/components/ui/button";
 import { Upload, X, FileCode, Maximize2, Move } from "lucide-react";
+import { useDropzone } from "react-dropzone";
+import { CAD_MIME_MAP } from "@cnc-quote/shared";
 
 export default function CadPage() {
   const [file, setFile] = useState<File | null>(null);
 
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files && e.target.files[0]) {
-      setFile(e.target.files[0]);
+  const onDrop = useCallback((acceptedFiles: File[]) => {
+    if (acceptedFiles && acceptedFiles[0]) {
+      setFile(acceptedFiles[0]);
     }
-  };
+  }, []);
+
+  const {
+    getRootProps: getMainRootProps,
+    getInputProps: getMainInputProps,
+    isDragActive: isMainDragActive,
+    open: openMain,
+  } = useDropzone({
+    onDrop,
+    accept: CAD_MIME_MAP,
+    multiple: false,
+    noClick: true, // We'll handle clicking on the button specifically or the whole area
+  });
+
+  const {
+    getRootProps: getHeaderRootProps,
+    getInputProps: getHeaderInputProps,
+    open: openHeader,
+  } = useDropzone({
+    onDrop,
+    accept: CAD_MIME_MAP,
+    multiple: false,
+    noDrag: true, // Header is just for clicking
+  });
 
   const clearFile = () => {
     setFile(null);
@@ -36,14 +61,12 @@ export default function CadPage() {
 
         <div className="flex items-center gap-4">
           {!file ? (
-            <div className="relative">
-              <input
-                type="file"
-                className="absolute inset-0 opacity-0 cursor-pointer z-10"
-                onChange={handleFileChange}
-                accept=".step,.stp,.stl,.obj,.dxf"
-              />
-              <Button className="bg-blue-600 hover:bg-blue-700 text-white rounded-full px-6 shadow-lg shadow-blue-600/20 transition-all active:scale-95">
+            <div {...getHeaderRootProps()}>
+              <input {...getHeaderInputProps()} />
+              <Button
+                onClick={openHeader}
+                className="bg-blue-600 hover:bg-blue-700 text-white rounded-full px-6 shadow-lg shadow-blue-600/20 transition-all active:scale-95"
+              >
                 <Upload className="w-4 h-4 mr-2" />
                 Upload CAD
               </Button>
@@ -77,50 +100,66 @@ export default function CadPage() {
           </div>
         ) : (
           <div
-            className="h-full flex flex-col items-center justify-center p-8"
-            onDragOver={(e) => {
-              e.preventDefault();
-              e.stopPropagation();
-            }}
-            onDrop={(e) => {
-              e.preventDefault();
-              e.stopPropagation();
-              if (e.dataTransfer.files && e.dataTransfer.files[0]) {
-                setFile(e.dataTransfer.files[0]);
-              }
-            }}
+            {...getMainRootProps()}
+            className={`h-full flex flex-col items-center justify-center p-8 transition-colors duration-300 ${
+              isMainDragActive ? "bg-blue-50/50" : ""
+            }`}
           >
-            <div className="max-w-md w-full p-12 rounded-3xl border-2 border-dashed border-slate-200 bg-white shadow-sm flex flex-col items-center text-center space-y-6 group hover:border-blue-500/50 hover:shadow-md transition-all duration-500">
+            <input {...getMainInputProps()} />
+            <div
+              className={`max-w-md w-full p-12 rounded-3xl border-2 border-dashed transition-all duration-500 flex flex-col items-center text-center space-y-6 group ${
+                isMainDragActive
+                  ? "border-blue-500 bg-blue-50/50 shadow-lg scale-105"
+                  : "border-slate-200 bg-white shadow-sm hover:border-blue-500/50 hover:shadow-md"
+              }`}
+            >
               <div className="relative">
-                <div className="w-20 h-20 bg-slate-50 rounded-2xl flex items-center justify-center group-hover:scale-110 group-hover:bg-blue-50 transition-all duration-500">
-                  <Upload className="w-8 h-8 text-slate-400 group-hover:text-blue-600" />
+                <div
+                  className={`w-20 h-20 rounded-2xl flex items-center justify-center transition-all duration-500 ${
+                    isMainDragActive
+                      ? "bg-blue-100 scale-110"
+                      : "bg-slate-50 group-hover:scale-110 group-hover:bg-blue-50"
+                  }`}
+                >
+                  <Upload
+                    className={`w-8 h-8 transition-colors duration-500 ${
+                      isMainDragActive
+                        ? "text-blue-600"
+                        : "text-slate-400 group-hover:text-blue-600"
+                    }`}
+                  />
                 </div>
-                <div className="absolute -bottom-2 -right-2 w-8 h-8 bg-blue-600 rounded-full flex items-center justify-center shadow-lg transform scale-0 group-hover:scale-100 transition-transform duration-500 delay-100">
+                <div
+                  className={`absolute -bottom-2 -right-2 w-8 h-8 bg-blue-600 rounded-full flex items-center justify-center shadow-lg transform transition-transform duration-500 delay-100 ${
+                    isMainDragActive
+                      ? "scale-100"
+                      : "scale-0 group-hover:scale-100"
+                  }`}
+                >
                   <Maximize2 className="w-4 h-4 text-white" />
                 </div>
               </div>
 
               <div className="space-y-2">
                 <h2 className="text-xl font-medium text-slate-900">
-                  No Model Loaded
+                  {isMainDragActive ? "Drop to Analysis" : "No Model Loaded"}
                 </h2>
                 <p className="text-sm text-slate-500 leading-relaxed">
-                  Drop a STEP, STL, OBJ, or DXF file here to begin your
-                  high-fidelity 3D analysis and inspection.
+                  {isMainDragActive
+                    ? "Release your file to begin the inspection process immediately."
+                    : "Drop a STEP, STL, OBJ, or DXF file here to begin your high-fidelity 3D analysis and inspection."}
                 </p>
               </div>
 
-              <div className="relative pt-4">
-                <input
-                  type="file"
-                  className="absolute inset-0 opacity-0 cursor-pointer z-10"
-                  onChange={handleFileChange}
-                  accept=".step,.stp,.stl,.obj,.dxf"
-                />
+              <div className="pt-4">
                 <Button
                   variant="outline"
                   size="lg"
-                  className="rounded-full px-8 border-slate-200 hover:bg-slate-50 text-slate-600"
+                  className="rounded-full px-8 border-slate-200 hover:bg-slate-50 text-slate-600 relative z-20"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    openMain();
+                  }}
                 >
                   Select File
                 </Button>
