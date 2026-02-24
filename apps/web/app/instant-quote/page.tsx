@@ -67,6 +67,7 @@ import {
   validatePassword,
 } from "@/lib/validation/email.validation";
 import { CAD_MIME_MAP } from "@cnc-quote/shared";
+import pLimit from "p-limit";
 
 interface UploadedFileData {
   file: File;
@@ -127,117 +128,68 @@ export default function InstantQuotePage() {
 
   const handleUploadAndAuth = async () => {
     if (files.length === 0) {
-      alert("Please select at least one file");
+      notify.error("Please select at least one file");
       return;
     }
 
     setIsUploading(true);
+    const limit = pLimit(3); // Process up to 3 files concurrently for better UX
 
     try {
-      // Analyze files and prepare for quote configuration
-      const uploadPromises = files.map(async (file) => {
-        // Upload file to Supabase first (needed for backend analysis)
-        let uploadedPath = `quotes/temp-${Date.now()}/${file.name}`;
-        try {
-          const { url } = await upload(file);
-          uploadedPath = url;
-        } catch (error) {
-          console.error(`Failed to upload ${file.name}:`, error);
-          notify.error(`Failed to upload ${file.name}`);
-          return;
-        }
+      const results = await Promise.all(
+        files.map((file) =>
+          limit(async () => {
+            try {
+              // 1. Upload to storage
+              const { url } = await upload(file);
 
-        // Analyze CAD geometry - use backend for STEP files
-        console.log(`🔬 Analyzing CAD file: ${file.name}`);
-        let geometry: GeometryData;
+              // 2. Geometry analysis
+              const fileExt = file.name.toLowerCase().split(".").pop();
+              const isBackendCompatible = [
+                "step",
+                "stp",
+                "iges",
+                "igs",
+                "dxf",
+                "stl",
+              ].includes(fileExt || "");
 
-        const fileExt = file.name.toLowerCase().split(".").pop();
-        const useBackendAnalysis =
-          fileExt === "step" ||
-          fileExt === "stp" ||
-          fileExt === "iges" ||
-          fileExt === "igs" ||
-          fileExt === "dxf" ||
-          fileExt === "stl";
-
-        if (useBackendAnalysis) {
-          // Use backend analysis for STEP/IGES/DXF files (accurate process classification)
-          console.log(`📡 Using backend analysis for ${file.name}`);
-          try {
-            const analysisResponse = await fetch("/api/cad/analyze-geometry", {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({
-                fileUrl: uploadedPath,
-                fileName: file.name,
-              }),
-            });
-
-            if (analysisResponse.ok) {
-              // Backend returns geometry data directly, NOT nested under .geometry
-              geometry = await analysisResponse.json();
-
-              // Check if this is an assembly (multi-body part)
-              if (geometry.isAssembly) {
-                console.log(
-                  `⚠️ Assembly detected for ${file.name}:`,
-                  geometry.assemblyInfo,
-                );
-                // Mark for manual quote - assemblies cannot be auto-quoted
-                geometry.requiresManualQuote = true;
-                geometry.manualQuoteReason =
-                  geometry.assemblyInfo?.reason || "Assembly detected";
+              let geometry: GeometryData;
+              if (isBackendCompatible) {
+                try {
+                  const res = await fetch("/api/cad/analyze-geometry", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ fileUrl: url, fileName: file.name }),
+                  });
+                  geometry = res.ok
+                    ? await res.json()
+                    : await analyzeCADFile(file);
+                } catch {
+                  geometry = await analyzeCADFile(file);
+                }
+              } else {
+                geometry = await analyzeCADFile(file);
               }
 
-              // Log with type assertion for custom backend properties
-              const features = geometry.sheetMetalFeatures as any;
-              console.log(`✅ Backend analysis complete for ${file.name}:`, {
-                process: geometry.recommendedProcess,
-                thickness: geometry.detectedWallThickness,
-                confidence: geometry.thicknessConfidence,
-                method: geometry.thicknessDetectionMethod,
-                sheetMetalScore: geometry.sheetMetalScore,
-                isAssembly: geometry.isAssembly,
-                requiresManualQuote: geometry.requiresManualQuote,
-                // Bend detection info from backend
-                bendCount: features?.bendCount,
-                isLikelyBent: features?.isLikelyBent,
-                bendConfidence: features?.bendConfidence,
-              });
-            } else {
-              const errorText = await analysisResponse.text();
-              console.error(
-                "❌ Backend analysis failed:",
-                analysisResponse.status,
-                errorText,
-              );
-              console.warn("⚠️ Falling back to client-side analysis");
-              geometry = await analyzeCADFile(file);
+              return { name: file.name, url, geometry };
+            } catch (err) {
+              console.error(`Processing error [${file.name}]:`, err);
+              notify.error(`Failed to process ${file.name}`);
+              return null;
             }
-          } catch (error) {
-            console.error("❌ Backend analysis error:", error);
-            console.warn("⚠️ Falling back to client-side analysis");
-            geometry = await analyzeCADFile(file);
-          }
-        } else {
-          // Use client-side analysis for STL files (faster)
-          console.log(`⚡ Using client-side analysis for ${file.name}`);
-          geometry = await analyzeCADFile(file);
-        }
+          }),
+        ),
+      );
 
-        console.log(`Geometry analysis complete:`, geometry);
+      const successfulUploads = results.filter(
+        (r): r is NonNullable<typeof r> => r !== null,
+      );
 
-        return {
-          file,
-          uploadedPath,
-          name: file.name,
-          size: file.size,
-          mimeType: file.type,
-          geometry,
-        } as UploadedFileData;
-      });
-
-      const uploadResults = await Promise.all(uploadPromises);
+      if (successfulUploads.length === 0) {
+        setIsUploading(false);
+        return;
+      }
 
       // Check authentication
       if (session.status !== "authenticated") {
@@ -247,21 +199,19 @@ export default function InstantQuotePage() {
         return;
       }
 
-      // Create RFQ via API
+      // 3. Create RFQ
       const rfqPayload = {
         user_id: session.data.user.id,
-        parts: uploadResults.map((r) => {
-          const process = r?.geometry?.recommendedProcess || "cnc-milling";
+        parts: successfulUploads.map(({ name, url, geometry }) => {
+          const process = geometry?.recommendedProcess || "cnc-milling";
           const isSheetMetal =
             process === "sheet-metal" || process.includes("sheet");
-          const isAssembly = r?.geometry?.isAssembly ?? false;
-          const requiresManualQuote =
-            r?.geometry?.requiresManualQuote ?? isAssembly;
+          const isAssembly = geometry?.isAssembly ?? false;
 
           return {
-            file_name: r?.name,
-            cad_file_url: r?.uploadedPath,
-            cad_file_type: r?.name.split(".").pop() || "unknown",
+            file_name: name,
+            cad_file_url: url,
+            cad_file_type: name.split(".").pop() || "unknown",
             material: isSheetMetal ? "AL5052-2.0" : "aluminum-6061",
             quantity: 1,
             tolerance: "standard",
@@ -269,48 +219,38 @@ export default function InstantQuotePage() {
             threads: "none",
             inspection: "standard",
             notes: isAssembly
-              ? `Assembly detected: ${r?.geometry?.assemblyInfo?.reason || "Multi-body part"}`
+              ? `Assembly detected: ${geometry?.assemblyInfo?.reason || "Multi-body part"}`
               : "",
             lead_time_type: "standard",
             lead_time: 7,
-            geometry: r?.geometry,
+            geometry,
             certificates: [],
             process: isAssembly ? "manual-quote" : process,
-            requires_manual_quote: requiresManualQuote,
-            manual_quote_reason: r?.geometry?.manualQuoteReason,
+            requires_manual_quote: geometry?.requiresManualQuote ?? isAssembly,
+            manual_quote_reason: geometry?.manualQuoteReason,
             is_assembly: isAssembly,
-            // Sheet metal specific fields
             ...(isSheetMetal &&
-              r?.geometry?.sheetMetalFeatures && {
-                sheet_thickness_mm: r.geometry.sheetMetalFeatures.thickness,
-                bend_count: r.geometry.sheetMetalFeatures.bendCount,
+              geometry?.sheetMetalFeatures && {
+                sheet_thickness_mm: geometry.sheetMetalFeatures.thickness,
+                bend_count: geometry.sheetMetalFeatures.bendCount,
               }),
           };
         }),
       };
 
-      try {
-        const response = await apiClient.post("/rfq", rfqPayload);
-        console.log(response, "response");
-        if (response.data?.success && response.data?.rfq_id) {
-          console.log("RFQ Created:", response.data.rfq_id);
-          notify.success("Quote created successfully");
-          router.push(`/quote-config/${response.data.rfq_id}`);
-        } else {
-          notify.error("Failed to create quote");
-          throw new Error("Failed to create quote");
-        }
-      } catch (apiError) {
-        console.error("Failed to create RFQ via API:", apiError);
-        notify.error("Failed to create quote. Please try again.");
-      } finally {
-        setIsUploading(false);
+      const { data } = await apiClient.post("/rfq", rfqPayload);
+      if (data?.success && data?.rfq_id) {
+        notify.success("Quote created successfully");
+        router.push(`/quote-config/${data.rfq_id}`);
+      } else {
+        throw new Error("Failed to create quote");
       }
     } catch (error: any) {
-      console.error("Upload error:", error);
+      console.error("RFQ creation failed:", error);
       notify.error(
-        "Failed to process files: " + error.message || "Please try again",
+        error.message || "An error occurred while creating your quote",
       );
+    } finally {
       setIsUploading(false);
     }
   };
@@ -480,159 +420,162 @@ export default function InstantQuotePage() {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-blue-50/20 font-sans selection:bg-blue-100">
-      {/* 1. Header: Clean, Simple Top Bar */}
-      <header className="sticky top-0 z-50 backdrop-blur-md bg-white/70 border-b border-blue-50 h-16 transition-all duration-300">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-full flex items-center justify-between">
-          {/* Left: Back to Home */}
-          <Link href="/" className="flex items-center space-x-2">
-            <div className="h-16 px-3 rounded flex items-center justify-center">
-              <Logo classNames="aspect-video w-full h-full object-contain" />
-            </div>
-          </Link>
+    <>
+      <div className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-blue-50/20 font-sans selection:bg-blue-100">
+        {/* 1. Header: Clean, Simple Top Bar */}
+        <header className="sticky top-0 z-50 backdrop-blur-md bg-white/70 border-b border-blue-50 h-16 transition-all duration-300">
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-full flex items-center justify-between">
+            {/* Left: Back to Home */}
+            <Link href="/" className="flex items-center space-x-2">
+              <div className="h-16 px-3 rounded flex items-center justify-center">
+                <Logo classNames="aspect-video w-full h-full object-contain" />
+              </div>
+            </Link>
 
-          {/* Right: Profile / Sign In */}
-          {session.status === "authenticated" ? (
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button
-                  variant="ghost"
-                  className="font-medium text-sm transition-all duration-300 text-slate-700 hover:bg-slate-100"
-                >
-                  <User className="w-4 h-4 mr-2" />
-                  {session.data.user.name}
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="w-56">
-                <DropdownMenuLabel className="font-normal">
-                  <div className="flex flex-col space-y-1">
-                    <p className="text-sm font-medium leading-none">
-                      {session.data.user.name}
-                    </p>
-                    <p className="text-xs leading-none text-muted-foreground">
-                      {session.data.user.email}
-                    </p>
-                  </div>
-                </DropdownMenuLabel>
-                <DropdownMenuSeparator />
-                <DropdownMenuItem
-                  onClick={() => signOut()}
-                  className="text-red-600 cursor-pointer"
-                >
-                  <LogOut className="w-4 h-4 mr-2" />
-                  Sign Out
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
-          ) : (
-            <Button
-              variant="ghost"
-              onClick={() => setShowAuthModal(true)}
-              className="font-medium text-sm transition-all duration-300 text-blue-700 hover:text-blue-800 hover:bg-blue-50"
-            >
-              Sign In
-            </Button>
-          )}
-        </div>
-      </header>
-
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10">
-        {/* 2. Main Attraction: File Upload Hero */}
-        <section className="relative z-10 max-w-4xl mx-auto mb-16">
-          <div className="text-center mb-10">
-            <h1 className="text-4xl md:text-5xl font-light text-slate-800 tracking-tight mb-4">
-              Instant Pricing.{" "}
-              <span className="text-blue-600 font-normal">
-                Production Speed.
-              </span>
-            </h1>
-            <p className="text-lg text-slate-500 max-w-2xl mx-auto font-light">
-              Upload your CAD files to get an AI-powered manufacturability
-              analysis and instant quote.
-            </p>
+            {/* Right: Profile / Sign In */}
+            {session.status === "authenticated" ? (
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    className="font-medium text-sm transition-all duration-300 text-slate-700 hover:bg-slate-100"
+                  >
+                    <User className="w-4 h-4 mr-2" />
+                    {session.data.user.name}
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="w-56">
+                  <DropdownMenuLabel className="font-normal">
+                    <div className="flex flex-col space-y-1">
+                      <p className="text-sm font-medium leading-none">
+                        {session.data.user.name}
+                      </p>
+                      <p className="text-xs leading-none text-muted-foreground">
+                        {session.data.user.email}
+                      </p>
+                    </div>
+                  </DropdownMenuLabel>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem
+                    onClick={() => signOut()}
+                    className="text-red-600 cursor-pointer"
+                  >
+                    <LogOut className="w-4 h-4 mr-2" />
+                    Sign Out
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            ) : (
+              <Button
+                variant="ghost"
+                onClick={() => setShowAuthModal(true)}
+                className="font-medium text-sm transition-all duration-300 text-blue-700 hover:text-blue-800 hover:bg-blue-50"
+              >
+                Sign In
+              </Button>
+            )}
           </div>
-          <section className="max-w-4xl mx-auto mb-10 px-4">
-            <div className="relative">
-              {/* Progress Line - Desktop */}
-              <div
-                className="absolute top-6 left-0 right-0 h-0.5 bg-gradient-to-r from-blue-200 via-slate-200 to-slate-200 -z-10"
-                style={{
-                  left: "calc(16.66% + 24px)",
-                  right: "calc(16.66% + 24px)",
-                }}
-              ></div>
+        </header>
 
-              {/* Steps Container */}
-              <div className="flex flex-row items-center justify-between gap-0">
-                {/* Step 1 */}
-                <div className="flex flex-col items-center group relative z-10 flex-1">
-                  <div className="relative">
-                    {/* Glow effect */}
-                    <div className="absolute inset-0 bg-blue-400 rounded-full blur-xl opacity-20 group-hover:opacity-40 transition-opacity duration-300"></div>
+        <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10">
+          {/* 2. Main Attraction: File Upload Hero */}
+          <section className="relative z-10 max-w-4xl mx-auto mb-16">
+            <div className="text-center mb-10">
+              <h1 className="text-4xl md:text-5xl font-light text-slate-800 tracking-tight mb-4">
+                Instant Pricing.{" "}
+                <span className="text-blue-600 font-normal">
+                  Production Speed.
+                </span>
+              </h1>
+              <p className="text-lg text-slate-500 max-w-2xl mx-auto font-light">
+                Upload your CAD files to get an AI-powered manufacturability
+                analysis and instant quote.
+              </p>
+            </div>
+            <section className="max-w-4xl mx-auto mb-10 px-4">
+              <div className="relative">
+                {/* Progress Line - Desktop */}
+                <div
+                  className="absolute top-6 left-0 right-0 h-0.5 bg-gradient-to-r from-blue-200 via-slate-200 to-slate-200 -z-10"
+                  style={{
+                    left: "calc(16.66% + 24px)",
+                    right: "calc(16.66% + 24px)",
+                  }}
+                ></div>
 
-                    {/* Main circle */}
-                    <div className="relative w-12 h-12 rounded-full bg-gradient-to-br from-blue-500 to-blue-600 flex items-center justify-center font-semibold text-base mb-3 shadow-lg transform group-hover:scale-110 transition-all duration-300">
-                      <span className="text-white">1</span>
+                {/* Steps Container */}
+                <div className="flex flex-row items-center justify-between gap-0">
+                  {/* Step 1 */}
+                  <div className="flex flex-col items-center group relative z-10 flex-1">
+                    <div className="relative">
+                      {/* Glow effect */}
+                      <div className="absolute inset-0 bg-blue-400 rounded-full blur-xl opacity-20 group-hover:opacity-40 transition-opacity duration-300"></div>
+
+                      {/* Main circle */}
+                      <div className="relative w-12 h-12 rounded-full bg-gradient-to-br from-blue-500 to-blue-600 flex items-center justify-center font-semibold text-base mb-3 shadow-lg transform group-hover:scale-110 transition-all duration-300">
+                        <span className="text-white">1</span>
+                      </div>
+                    </div>
+
+                    <div className="text-center">
+                      <h3 className="text-sm font-semibold text-slate-800 mb-0.5 group-hover:text-blue-600 transition-colors">
+                        Upload File
+                      </h3>
+                      <p className="text-xs text-slate-500">Instant Analysis</p>
                     </div>
                   </div>
 
-                  <div className="text-center">
-                    <h3 className="text-sm font-semibold text-slate-800 mb-0.5 group-hover:text-blue-600 transition-colors">
-                      Upload File
-                    </h3>
-                    <p className="text-xs text-slate-500">Instant Analysis</p>
-                  </div>
-                </div>
+                  {/* Step 2 */}
+                  <div className="flex flex-col items-center group relative z-10 flex-1">
+                    <div className="relative">
+                      {/* Glow effect */}
+                      <div className="absolute inset-0 bg-slate-300 rounded-full blur-xl opacity-0 group-hover:opacity-30 transition-opacity duration-300"></div>
 
-                {/* Step 2 */}
-                <div className="flex flex-col items-center group relative z-10 flex-1">
-                  <div className="relative">
-                    {/* Glow effect */}
-                    <div className="absolute inset-0 bg-slate-300 rounded-full blur-xl opacity-0 group-hover:opacity-30 transition-opacity duration-300"></div>
+                      {/* Main circle */}
+                      <div className="relative w-12 h-12 rounded-full bg-white border-3 border-slate-200 flex items-center justify-center font-semibold text-base mb-3 shadow-md transform group-hover:scale-110 group-hover:border-blue-400 transition-all duration-300">
+                        <span className="text-slate-400 group-hover:text-blue-600 transition-colors">
+                          2
+                        </span>
+                      </div>
+                    </div>
 
-                    {/* Main circle */}
-                    <div className="relative w-12 h-12 rounded-full bg-white border-3 border-slate-200 flex items-center justify-center font-semibold text-base mb-3 shadow-md transform group-hover:scale-110 group-hover:border-blue-400 transition-all duration-300">
-                      <span className="text-slate-400 group-hover:text-blue-600 transition-colors">
-                        2
-                      </span>
+                    <div className="text-center">
+                      <h3 className="text-sm font-semibold text-slate-800 mb-0.5 group-hover:text-blue-600 transition-colors">
+                        Review Quote
+                      </h3>
+                      <p className="text-xs text-slate-500">
+                        Real-time Pricing
+                      </p>
                     </div>
                   </div>
 
-                  <div className="text-center">
-                    <h3 className="text-sm font-semibold text-slate-800 mb-0.5 group-hover:text-blue-600 transition-colors">
-                      Review Quote
-                    </h3>
-                    <p className="text-xs text-slate-500">Real-time Pricing</p>
-                  </div>
-                </div>
+                  {/* Step 3 */}
+                  <div className="flex flex-col items-center group relative z-10 flex-1">
+                    <div className="relative">
+                      {/* Glow effect */}
+                      <div className="absolute inset-0 bg-slate-300 rounded-full blur-xl opacity-0 group-hover:opacity-30 transition-opacity duration-300"></div>
 
-                {/* Step 3 */}
-                <div className="flex flex-col items-center group relative z-10 flex-1">
-                  <div className="relative">
-                    {/* Glow effect */}
-                    <div className="absolute inset-0 bg-slate-300 rounded-full blur-xl opacity-0 group-hover:opacity-30 transition-opacity duration-300"></div>
-
-                    {/* Main circle */}
-                    <div className="relative w-12 h-12 rounded-full bg-white border-3 border-slate-200 flex items-center justify-center font-semibold text-base mb-3 shadow-md transform group-hover:scale-110 group-hover:border-blue-400 transition-all duration-300">
-                      <span className="text-slate-400 group-hover:text-blue-600 transition-colors">
-                        3
-                      </span>
+                      {/* Main circle */}
+                      <div className="relative w-12 h-12 rounded-full bg-white border-3 border-slate-200 flex items-center justify-center font-semibold text-base mb-3 shadow-md transform group-hover:scale-110 group-hover:border-blue-400 transition-all duration-300">
+                        <span className="text-slate-400 group-hover:text-blue-600 transition-colors">
+                          3
+                        </span>
+                      </div>
                     </div>
-                  </div>
 
-                  <div className="text-center">
-                    <h3 className="text-sm font-semibold text-slate-800 mb-0.5 group-hover:text-blue-600 transition-colors">
-                      Place Order
-                    </h3>
-                    <p className="text-xs text-slate-500">Start Production</p>
+                    <div className="text-center">
+                      <h3 className="text-sm font-semibold text-slate-800 mb-0.5 group-hover:text-blue-600 transition-colors">
+                        Place Order
+                      </h3>
+                      <p className="text-xs text-slate-500">Start Production</p>
+                    </div>
                   </div>
                 </div>
               </div>
-            </div>
-          </section>
+            </section>
 
-          <div
-            className={`
+            <div
+              className={`
               relative group rounded-3xl p-1
               cursor-pointer
               bg-gradient-to-br from-white/80 to-white/40
@@ -640,657 +583,666 @@ export default function InstantQuotePage() {
               transition-all duration-500
               ${isUploading ? "opacity-90 pointer-events-none" : "hover:shadow-[0_12px_48px_rgba(37,99,235,0.08)]"}
             `}
-          >
-            {/* Inner Upload Zone */}
-            <div
-              {...getRootProps()}
-              className={`
+            >
+              {/* Inner Upload Zone */}
+              <div
+                {...getRootProps()}
+                className={`
                 bg-white/50 rounded-[22px] min-h-[400px] flex flex-col items-center justify-center p-8
                 border-2 border-dashed border-slate-200 
                 transition-all duration-300
                 ${isDragActive ? "border-blue-500 bg-blue-50/10" : "hover:border-blue-400 group-hover:bg-white/80"}
               `}
-            >
-              <input {...getInputProps()} />
+              >
+                <input {...getInputProps()} />
 
-              {isDragActive && (
-                <div className="absolute inset-0 z-50 bg-blue-50/90 backdrop-blur-sm rounded-[22px] flex items-center justify-center border-2 border-blue-500 border-dashed animate-in fade-in duration-200">
-                  <div className="text-center">
-                    <div className="w-20 h-20 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-4 animate-bounce">
-                      <Upload className="w-8 h-8 text-blue-600" />
-                    </div>
-                    <h3 className="text-2xl font-semibold text-blue-700">
-                      Drop files here
-                    </h3>
-                    <p className="text-blue-500 mt-2">to instantly upload</p>
-                  </div>
-                </div>
-              )}
-
-              {files.length === 0 ? (
-                /* Empty State */
-                <div className="text-center space-y-6 animate-in fade-in zoom-in-95 duration-500 relative z-10">
-                  <div className="relative inline-flex mb-4 group-hover:scale-105 transition-transform duration-300">
-                    <div className="w-20 h-20 bg-blue-50 rounded-full flex items-center justify-center shadow-inner">
-                      <Upload className="w-8 h-8 text-blue-600" />
-                    </div>
-                    <div className="absolute -top-1 -right-1 w-6 h-6 bg-white rounded-full flex items-center justify-center shadow-md">
-                      <Sparkles className="w-3 h-3 text-amber-400" />
+                {isDragActive && (
+                  <div className="absolute inset-0 z-50 bg-blue-50/90 backdrop-blur-sm rounded-[22px] flex items-center justify-center border-2 border-blue-500 border-dashed animate-in fade-in duration-200">
+                    <div className="text-center">
+                      <div className="w-20 h-20 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-4 animate-bounce">
+                        <Upload className="w-8 h-8 text-blue-600" />
+                      </div>
+                      <h3 className="text-2xl font-semibold text-blue-700">
+                        Drop files here
+                      </h3>
+                      <p className="text-blue-500 mt-2">to instantly upload</p>
                     </div>
                   </div>
+                )}
 
-                  <div className="space-y-2">
-                    <h3 className="text-xl font-medium text-slate-800">
-                      Drag & Drop Your CAD Files
-                    </h3>
-                    <p className="text-sm text-slate-400">
-                      Supports STEP, IGES, STL, DXF • Max 50MB
-                    </p>
-                  </div>
+                {files.length === 0 ? (
+                  /* Empty State */
+                  <div className="text-center space-y-6 animate-in fade-in zoom-in-95 duration-500 relative z-10">
+                    <div className="relative inline-flex mb-4 group-hover:scale-105 transition-transform duration-300">
+                      <div className="w-20 h-20 bg-blue-50 rounded-full flex items-center justify-center shadow-inner">
+                        <Upload className="w-8 h-8 text-blue-600" />
+                      </div>
+                      <div className="absolute -top-1 -right-1 w-6 h-6 bg-white rounded-full flex items-center justify-center shadow-md">
+                        <Sparkles className="w-3 h-3 text-amber-400" />
+                      </div>
+                    </div>
 
-                  <div className="pt-2">
-                    <Button
-                      size="lg"
-                      className="bg-blue-600 hover:bg-blue-700 text-white rounded-full px-8 h-12 shadow-lg shadow-blue-600/20 hover:shadow-blue-600/30 transition-all active:scale-95"
-                    >
-                      Browse Files
-                    </Button>
-                  </div>
-                </div>
-              ) : (
-                /* File List State */
-                <div className="w-full max-w-2xl mx-auto space-y-4 animate-in slide-in-from-bottom-4 duration-500">
-                  <div className="flex items-center justify-between mb-6">
-                    <h3 className="text-slate-600 font-medium flex items-center gap-2">
-                      <FileText className="w-4 h-4" />
-                      {files.length} Files Selected
-                    </h3>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setFiles([]);
-                      }}
-                      className="text-red-400 hover:text-red-600 hover:bg-red-50 text-xs"
-                    >
-                      Clear All
-                    </Button>
-                  </div>
+                    <div className="space-y-2">
+                      <h3 className="text-xl font-medium text-slate-800">
+                        Drag & Drop Your CAD Files
+                      </h3>
+                      <p className="text-sm text-slate-400">
+                        Supports STEP, IGES, STL, DXF • Max 50MB
+                      </p>
+                    </div>
 
-                  <div className="space-y-3 max-h-[300px] overflow-y-auto pr-2 custom-scrollbar">
-                    {files.map((file, idx) => {
-                      const canPreview = ["stl", "step", "stp", "obj"].includes(
-                        file.name.toLowerCase().split(".").pop() || "",
-                      );
-                      return (
-                        <div
-                          key={idx}
-                          className="flex items-center justify-between p-4 bg-white rounded-xl border border-slate-100 shadow-sm hover:shadow-md transition-all group/file"
-                        >
-                          <div className="flex items-center gap-4 overflow-hidden">
-                            <div className="w-10 h-10 rounded-lg bg-slate-50 flex items-center justify-center flex-shrink-0 text-slate-400 group-hover/file:text-blue-600 group-hover/file:bg-blue-50 transition-colors">
-                              <Package className="w-5 h-5" />
+                    <div className="pt-2">
+                      <Button
+                        size="lg"
+                        className="bg-blue-600 hover:bg-blue-700 text-white rounded-full px-8 h-12 shadow-lg shadow-blue-600/20 hover:shadow-blue-600/30 transition-all active:scale-95"
+                      >
+                        Browse Files
+                      </Button>
+                    </div>
+                  </div>
+                ) : (
+                  /* File List State */
+                  <div className="w-full max-w-2xl mx-auto space-y-4 animate-in slide-in-from-bottom-4 duration-500">
+                    <div className="flex items-center justify-between mb-6">
+                      <h3 className="text-slate-600 font-medium flex items-center gap-2">
+                        <FileText className="w-4 h-4" />
+                        {files.length} Files Selected
+                      </h3>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setFiles([]);
+                        }}
+                        className="text-red-400 hover:text-red-600 hover:bg-red-50 text-xs"
+                      >
+                        Clear All
+                      </Button>
+                    </div>
+
+                    <div className="space-y-3 max-h-[300px] overflow-y-auto pr-2 custom-scrollbar">
+                      {files.map((file, idx) => {
+                        const canPreview = [
+                          "stl",
+                          "step",
+                          "stp",
+                          "obj",
+                        ].includes(
+                          file.name.toLowerCase().split(".").pop() || "",
+                        );
+                        return (
+                          <div
+                            key={idx}
+                            className="flex items-center justify-between p-4 bg-white rounded-xl border border-slate-100 shadow-sm hover:shadow-md transition-all group/file"
+                          >
+                            <div className="flex items-center gap-4 overflow-hidden">
+                              <div className="w-10 h-10 rounded-lg bg-slate-50 flex items-center justify-center flex-shrink-0 text-slate-400 group-hover/file:text-blue-600 group-hover/file:bg-blue-50 transition-colors">
+                                <Package className="w-5 h-5" />
+                              </div>
+                              <div className="min-w-0">
+                                <p className="text-sm font-medium text-slate-700 truncate">
+                                  {file.name}
+                                </p>
+                                <p className="text-xs text-slate-400">
+                                  {(file.size / (1024 * 1024)).toFixed(2)} MB
+                                </p>
+                              </div>
                             </div>
-                            <div className="min-w-0">
-                              <p className="text-sm font-medium text-slate-700 truncate">
-                                {file.name}
-                              </p>
-                              <p className="text-xs text-slate-400">
-                                {(file.size / (1024 * 1024)).toFixed(2)} MB
-                              </p>
-                            </div>
-                          </div>
 
-                          <div className="flex items-center gap-2">
-                            {canPreview && (
+                            <div className="flex items-center gap-2">
+                              {canPreview && (
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  className="h-8 w-8 text-slate-400 hover:text-blue-600 hover:bg-blue-50"
+                                  title="3D Preview"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setSelected3DFile(file);
+                                  }}
+                                >
+                                  <Eye className="w-4 h-4" />
+                                </Button>
+                              )}
                               <Button
                                 variant="ghost"
                                 size="icon"
-                                className="h-8 w-8 text-slate-400 hover:text-blue-600 hover:bg-blue-50"
-                                title="3D Preview"
+                                className="h-8 w-8 text-slate-300 hover:text-red-500 hover:bg-red-50"
                                 onClick={(e) => {
                                   e.stopPropagation();
-                                  setSelected3DFile(file);
+                                  removeFile(idx);
                                 }}
                               >
-                                <Eye className="w-4 h-4" />
+                                <X className="w-4 h-4" />
                               </Button>
-                            )}
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              className="h-8 w-8 text-slate-300 hover:text-red-500 hover:bg-red-50"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                removeFile(idx);
-                              }}
-                            >
-                              <X className="w-4 h-4" />
-                            </Button>
+                            </div>
                           </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-
-                  <div
-                    className="pt-6 flex flex-col sm:flex-row gap-3 justify-end border-t border-slate-100 mt-4"
-                    onClick={(e) => e.stopPropagation()}
-                  >
-                    <Button
-                      variant="outline"
-                      className="w-full sm:w-auto text-slate-600"
-                      onClick={open}
-                    >
-                      Add More
-                    </Button>
-                    <Button
-                      onClick={handleUploadAndAuth}
-                      disabled={isUploading}
-                      className="w-full sm:w-auto bg-blue-600 hover:bg-blue-700 text-white shadow-lg shadow-blue-600/20"
-                    >
-                      {isUploading ? (
-                        <>
-                          <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                          Analysing Geometry...
-                        </>
-                      ) : (
-                        <>
-                          Get Quote
-                          <ArrowRight className="w-4 h-4 ml-2" />
-                        </>
-                      )}
-                    </Button>
-                  </div>
-                </div>
-              )}
-            </div>
-
-            {/* Corner Decorations */}
-            <div className="absolute top-0 left-0 -ml-4 -mt-4 w-24 h-24 bg-gradient-to-br from-blue-100/50 to-transparent rounded-full blur-2xl -z-10 opacity-60" />
-            <div className="absolute bottom-0 right-0 -mr-4 -mb-4 w-32 h-32 bg-gradient-to-tl from-blue-100/50 to-transparent rounded-full blur-2xl -z-10 opacity-60" />
-          </div>
-        </section>
-
-        {/* 3. Trusted By Strip (Subtler) */}
-        <div className="mb-20 text-center opacity-70">
-          <p className="text-xs font-semibold text-slate-400 mb-6 uppercase tracking-widest">
-            Trusted By
-          </p>
-          <div className="flex flex-wrap justify-center gap-8 md:gap-16 opacity-50 grayscale hover:grayscale-0 transition-all duration-700">
-            <img
-              src="https://frigate.ai/wp-content/uploads/2024/04/Reliance-1-150x90.png"
-              alt="Reliance"
-              className="aspect-auto h-20"
-            />
-            <img
-              src="https://frigate.ai/wp-content/uploads/2024/04/TATA-1-1-150x90.png"
-              alt="TATA"
-              className="aspect-auto h-20"
-            />
-            <img
-              src="https://frigate.ai/wp-content/uploads/2024/07/Indian-oil-logo-300x113.png"
-              alt=""
-              className="aspect-auto h-20"
-            />
-            <img
-              src="https://frigate.ai/wp-content/uploads/2024/07/MRG-logo-300x113.png"
-              alt=""
-              className="aspect-auto h-20"
-            />
-          </div>
-        </div>
-
-        {/* 5. Bento Grid Layout */}
-        <section className="mb-24 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {/* Box 1: Capabilities (Large) */}
-          <div className="lg:col-span-2 bg-white rounded-3xl p-8 border border-slate-100 shadow-sm hover:shadow-md transition-shadow">
-            <div className="flex flex-col h-full">
-              <div className="mb-6">
-                <h2 className="text-2xl font-light text-slate-800">
-                  Manufacturing Capabilities
-                </h2>
-                <p className="text-slate-500 text-sm mt-2">
-                  Comprehensive solutions for every stage of development.
-                </p>
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 flex-grow">
-                {[
-                  {
-                    icon: Settings,
-                    title: "CNC Machining",
-                    desc: "Start to finish precision, ±0.005mm.",
-                  },
-                  {
-                    icon: Layers,
-                    title: "Vacuum Casting",
-                    desc: "Production molds for scalable plastics.",
-                  },
-                  {
-                    icon: Box,
-                    title: "Sheet Metal",
-                    desc: "Laser cutting & bending for durable parts.",
-                  },
-                  {
-                    icon: Package,
-                    title: "Injection Molding",
-                    desc: "Production molds for scalable plastics.",
-                  },
-                ].map((item, i) => (
-                  <div
-                    key={i}
-                    className="p-4 rounded-xl bg-slate-50 border border-slate-100 hover:border-blue-200 hover:bg-blue-50/30 transition-colors group"
-                  >
-                    <div className="flex items-center gap-3 mb-2">
-                      <div className="p-2 bg-white rounded-lg shadow-sm text-blue-600 group-hover:text-blue-700">
-                        <item.icon className="w-4 h-4" />
-                      </div>
-                      <span className="font-semibold text-slate-700 text-sm">
-                        {item.title}
-                      </span>
+                        );
+                      })}
                     </div>
-                    <p className="text-xs text-slate-500 leading-relaxed pl-1">
-                      {item.desc}
-                    </p>
-                  </div>
-                ))}
-              </div>
-            </div>
-          </div>
 
-          {/* Box 2: Quality (Tall) */}
-          <div className="bg-gradient-to-b from-slate-900 to-slate-800 text-white rounded-3xl p-8 shadow-xl relative overflow-hidden group">
-            <div className="absolute top-0 right-0 w-64 h-64 bg-blue-500/20 rounded-full blur-3xl -mr-16 -mt-16 group-hover:bg-blue-500/30 transition-colors"></div>
-
-            <div className="relative z-10 h-full flex flex-col justify-between space-y-8">
-              <div>
-                <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-blue-500/20 text-blue-300 text-xs font-medium mb-4 border border-blue-500/20">
-                  <Award className="w-3 h-3" /> Premium Quality
-                </div>
-                <h3 className="text-2xl font-light leading-tight">
-                  ISO 9001
-                  <br />
-                  <span className="font-semibold text-blue-400">
-                    Certified Precision
-                  </span>
-                </h3>
-              </div>
-
-              <div className="space-y-6">
-                <div className="flex gap-4">
-                  <div className="w-10 h-10 rounded-full bg-white/10 flex items-center justify-center flex-shrink-0">
-                    <Clock className="w-5 h-5 text-blue-300" />
-                  </div>
-                  <div>
-                    <p className="font-medium text-sm">Lightning Fast</p>
-                    <p className="text-xs text-slate-400 mt-1">
-                      Standard lead times from 3 days. Rush options available.
-                    </p>
-                  </div>
-                </div>
-                <div className="flex gap-4">
-                  <div className="w-10 h-10 rounded-full bg-white/10 flex items-center justify-center flex-shrink-0">
-                    <Shield className="w-5 h-5 text-purple-300" />
-                  </div>
-                  <div>
-                    <p className="font-medium text-sm">Full IP Protection</p>
-                    <p className="text-xs text-slate-400 mt-1">
-                      Strict NDAs and encrypted storage for your designs.
-                    </p>
-                  </div>
-                </div>
-              </div>
-
-              <Button
-                variant="outline"
-                className="w-full transition-transform duration-300 ease-in-out border-white/20 bg-white/10 text-white hover:scale-105"
-              >
-                View Certifications
-              </Button>
-            </div>
-          </div>
-        </section>
-
-        {/* Footer Area - Minimal */}
-        <Footer />
-      </main>
-
-      {/* Auth Modal - Preserves functionality, updates style */}
-      <Dialog open={showAuthModal} onOpenChange={setShowAuthModal}>
-        <DialogContent
-          onInteractOutside={(e) => e.preventDefault()}
-          onEscapeKeyDown={(e) => e.preventDefault()}
-          className="sm:max-w-md border-0 shadow-2xl bg-white/95 backdrop-blur-md"
-        >
-          <DialogHeader>
-            <DialogTitle className="text-2xl font-light text-center mb-2">
-              {authMode === "signup" ? "Create Account" : "Welcome Back"}
-            </DialogTitle>
-            <DialogDescription className="text-center">
-              {authMode === "signup"
-                ? "Save your quotes and track your orders."
-                : "Sign in to access your quotes and orders."}
-            </DialogDescription>
-          </DialogHeader>
-
-          <form onSubmit={handleAuth} className="space-y-4 mt-4" noValidate>
-            {authMode === "signup" && (
-              <>
-                <div className="space-y-2">
-                  <Label htmlFor="name" className="flex items-center gap-2">
-                    <User className="w-4 h-4 text-slate-400" /> Full Name
-                  </Label>
-                  <Input
-                    id="name"
-                    placeholder="John Doe"
-                    value={authForm.name}
-                    onChange={(e) =>
-                      setAuthForm((prev) => ({ ...prev, name: e.target.value }))
-                    }
-                    className={`bg-slate-50 border-slate-200 focus:border-blue-500 focus:ring-blue-500/20 ${errors.name ? "border-red-500" : ""}`}
-                  />
-                  {errors.name && (
-                    <p className="text-red-500 text-xs">{errors.name}</p>
-                  )}
-                </div>
-
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <Label
-                      htmlFor="organization_name"
-                      className="flex items-center gap-2"
-                    >
-                      <Building2 className="w-4 h-4 text-slate-400" /> Org Name
-                    </Label>
-                    <Input
-                      id="organization_name"
-                      placeholder="Acme Inc."
-                      value={authForm.organization_name}
-                      onChange={(e) =>
-                        setAuthForm((prev) => ({
-                          ...prev,
-                          organization_name: e.target.value,
-                        }))
-                      }
-                      className={`bg-slate-50 border-slate-200 focus:border-blue-500 focus:ring-blue-500/20 ${errors.organization_name ? "border-red-500" : ""}`}
-                    />
-                    {errors.organization_name && (
-                      <p className="text-red-500 text-xs">
-                        {errors.organization_name}
-                      </p>
-                    )}
-                  </div>
-                  <div className="space-y-2">
-                    <Label
-                      htmlFor="phone_number"
-                      className="flex items-center gap-2"
-                    >
-                      <Phone className="w-4 h-4 text-slate-400" /> Phone
-                    </Label>
                     <div
-                      className={`phone-input-container ${errors.phone_number ? "phone-input-error" : ""}`}
+                      className="pt-6 flex flex-col sm:flex-row gap-3 justify-end border-t border-slate-100 mt-4"
+                      onClick={(e) => e.stopPropagation()}
                     >
-                      <PhoneInput
-                        placeholder="Enter phone number"
-                        value={authForm.phone_number}
-                        onChange={handlePhoneChange}
-                        onCountryChange={(v) => setCountry(v as CountryCode)}
-                        defaultCountry="IN"
-                        className="h-12"
-                      />
+                      <Button
+                        variant="outline"
+                        className="w-full sm:w-auto text-slate-600"
+                        onClick={open}
+                      >
+                        Add More
+                      </Button>
+                      <Button
+                        onClick={handleUploadAndAuth}
+                        disabled={isUploading}
+                        className="w-full sm:w-auto bg-blue-600 hover:bg-blue-700 text-white shadow-lg shadow-blue-600/20"
+                      >
+                        {isUploading ? (
+                          <>
+                            <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                            Analysing Geometry...
+                          </>
+                        ) : (
+                          <>
+                            Get Quote
+                            <ArrowRight className="w-4 h-4 ml-2" />
+                          </>
+                        )}
+                      </Button>
                     </div>
-                    {errors.phone_number && (
-                      <p className="text-red-500 text-xs">
-                        {errors.phone_number}
-                      </p>
-                    )}
                   </div>
-                </div>
-              </>
-            )}
-
-            <div className="space-y-2">
-              <Label htmlFor="email" className="flex items-center gap-2">
-                Email Address
-              </Label>
-              <Input
-                id="email"
-                type="email"
-                placeholder="you@company.com"
-                value={authForm.email}
-                onChange={(e) =>
-                  setAuthForm((prev) => ({ ...prev, email: e.target.value }))
-                }
-                className={`bg-slate-50 border-slate-200 focus:border-blue-500 focus:ring-blue-500/20 ${errors.email ? "border-red-500" : ""}`}
-              />
-              {errors.email && (
-                <p className="text-red-500 text-xs">{errors.email}</p>
-              )}
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="password">Password</Label>
-              <div className="relative">
-                <Input
-                  id="password"
-                  type={showPassword ? "text" : "password"}
-                  placeholder="••••••••"
-                  value={authForm.password}
-                  onChange={(e) =>
-                    setAuthForm((prev) => ({
-                      ...prev,
-                      password: e.target.value,
-                    }))
-                  }
-                  className={`bg-slate-50 border-slate-200 focus:border-blue-500 focus:ring-blue-500/20 pr-10 ${errors.password ? "border-red-500" : ""}`}
-                />
-                <button
-                  type="button"
-                  onClick={() => setShowPassword(!showPassword)}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
-                >
-                  {showPassword ? (
-                    <EyeOff className="w-4 h-4" />
-                  ) : (
-                    <Eye className="w-4 h-4" />
-                  )}
-                </button>
-              </div>
-              {errors.password && (
-                <p className="text-red-500 text-xs">{errors.password}</p>
-              )}
-            </div>
-
-            {authMode === "signup" && (
-              <div className="pt-2">
-                <div className="flex items-start gap-3 p-3 bg-slate-50 rounded-lg border border-slate-100">
-                  <Checkbox
-                    id="terms"
-                    checked={authForm.agreeToTerms}
-                    onCheckedChange={(checked) =>
-                      setAuthForm((prev) => ({
-                        ...prev,
-                        agreeToTerms: Boolean(checked),
-                      }))
-                    }
-                    className="mt-1"
-                  />
-                  <label
-                    htmlFor="terms"
-                    className="text-xs text-slate-500 leading-relaxed cursor-pointer select-none"
-                  >
-                    By creating an account, you agree to our{" "}
-                    <Link
-                      href="/terms"
-                      className="text-blue-600 font-medium hover:underline"
-                    >
-                      Terms
-                    </Link>{" "}
-                    and{" "}
-                    <Link
-                      href="/privacy"
-                      className="text-blue-600 font-medium hover:underline"
-                    >
-                      Privacy Policy
-                    </Link>
-                    .
-                  </label>
-                </div>
-                {errors.agreeToTerms && (
-                  <p className="text-red-500 text-xs mt-1">
-                    {errors.agreeToTerms}
-                  </p>
                 )}
               </div>
-            )}
 
-            <Button
-              type="submit"
-              loading={isAuthLoading}
-              className="w-full bg-blue-600 hover:bg-blue-700 text-white font-medium h-11"
-            >
-              {authMode === "signup" ? "Create Account" : "Sign In"}
-            </Button>
-
-            <div className="text-center text-white text-sm pt-2">
-              {authMode === "signup" ? (
-                <p className="text-slate-500">
-                  Already have an account?{" "}
-                  <Button
-                    type="button"
-                    variant="link"
-                    onClick={() => {
-                      setAuthMode("signin");
-                      setShowAuthModal(true);
-                    }}
-                    className="text-blue-600 hover:text-blue-700 hover:underline font-medium p-0 h-auto"
-                  >
-                    Sign in
-                  </Button>
-                </p>
-              ) : (
-                <p className="text-slate-500">
-                  Don't have an account?{" "}
-                  <Button
-                    type="button"
-                    variant="link"
-                    onClick={() => {
-                      setAuthMode("signup");
-                      setShowAuthModal(true);
-                    }}
-                    className="text-blue-600 hover:text-blue-700 hover:underline font-medium p-0 h-auto"
-                  >
-                    Sign up
-                  </Button>
-                </p>
-              )}
+              {/* Corner Decorations */}
+              <div className="absolute top-0 left-0 -ml-4 -mt-4 w-24 h-24 bg-gradient-to-br from-blue-100/50 to-transparent rounded-full blur-2xl -z-10 opacity-60" />
+              <div className="absolute bottom-0 right-0 -mr-4 -mb-4 w-32 h-32 bg-gradient-to-tl from-blue-100/50 to-transparent rounded-full blur-2xl -z-10 opacity-60" />
             </div>
-          </form>
-        </DialogContent>
-      </Dialog>
+          </section>
 
-      {/* OTP Modal */}
-      <Dialog open={showOTPModal} onOpenChange={setShowOTPModal}>
-        <DialogContent
-          onInteractOutside={(e) => e.preventDefault()}
-          className="sm:max-w-[440px] border-0 shadow-2xl bg-white/95 backdrop-blur-md p-0 overflow-hidden"
-        >
-          <div className="bg-blue-600 h-2 w-full" />
-          <div className="p-8">
-            <DialogHeader className="mb-8">
-              <div className="w-16 h-16 bg-blue-50 rounded-2xl flex items-center justify-center mx-auto mb-4 border border-blue-100 shadow-inner">
-                <Shield className="w-8 h-8 text-blue-600" />
+          {/* 3. Trusted By Strip (Subtler) */}
+          <div className="mb-20 text-center opacity-70">
+            <p className="text-xs font-semibold text-slate-400 mb-6 uppercase tracking-widest">
+              Trusted By
+            </p>
+            <div className="flex flex-wrap justify-center gap-8 md:gap-16 opacity-50 grayscale hover:grayscale-0 transition-all duration-700">
+              <img
+                src="https://frigate.ai/wp-content/uploads/2024/04/Reliance-1-150x90.png"
+                alt="Reliance"
+                className="aspect-auto h-20"
+              />
+              <img
+                src="https://frigate.ai/wp-content/uploads/2024/04/TATA-1-1-150x90.png"
+                alt="TATA"
+                className="aspect-auto h-20"
+              />
+              <img
+                src="https://frigate.ai/wp-content/uploads/2024/07/Indian-oil-logo-300x113.png"
+                alt=""
+                className="aspect-auto h-20"
+              />
+              <img
+                src="https://frigate.ai/wp-content/uploads/2024/07/MRG-logo-300x113.png"
+                alt=""
+                className="aspect-auto h-20"
+              />
+            </div>
+          </div>
+
+          {/* 5. Bento Grid Layout */}
+          <section className="mb-24 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {/* Box 1: Capabilities (Large) */}
+            <div className="lg:col-span-2 bg-white rounded-3xl p-8 border border-slate-100 shadow-sm hover:shadow-md transition-shadow">
+              <div className="flex flex-col h-full">
+                <div className="mb-6">
+                  <h2 className="text-2xl font-light text-slate-800">
+                    Manufacturing Capabilities
+                  </h2>
+                  <p className="text-slate-500 text-sm mt-2">
+                    Comprehensive solutions for every stage of development.
+                  </p>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 flex-grow">
+                  {[
+                    {
+                      icon: Settings,
+                      title: "CNC Machining",
+                      desc: "Start to finish precision, ±0.005mm.",
+                    },
+                    {
+                      icon: Layers,
+                      title: "Vacuum Casting",
+                      desc: "Production molds for scalable plastics.",
+                    },
+                    {
+                      icon: Box,
+                      title: "Sheet Metal",
+                      desc: "Laser cutting & bending for durable parts.",
+                    },
+                    {
+                      icon: Package,
+                      title: "Injection Molding",
+                      desc: "Production molds for scalable plastics.",
+                    },
+                  ].map((item, i) => (
+                    <div
+                      key={i}
+                      className="p-4 rounded-xl bg-slate-50 border border-slate-100 hover:border-blue-200 hover:bg-blue-50/30 transition-colors group"
+                    >
+                      <div className="flex items-center gap-3 mb-2">
+                        <div className="p-2 bg-white rounded-lg shadow-sm text-blue-600 group-hover:text-blue-700">
+                          <item.icon className="w-4 h-4" />
+                        </div>
+                        <span className="font-semibold text-slate-700 text-sm">
+                          {item.title}
+                        </span>
+                      </div>
+                      <p className="text-xs text-slate-500 leading-relaxed pl-1">
+                        {item.desc}
+                      </p>
+                    </div>
+                  ))}
+                </div>
               </div>
-              <DialogTitle className="text-2xl font-semibold text-center text-slate-900">
-                Verify Your Email
+            </div>
+
+            {/* Box 2: Quality (Tall) */}
+            <div className="bg-gradient-to-b from-slate-900 to-slate-800 text-white rounded-3xl p-8 shadow-xl relative overflow-hidden group">
+              <div className="absolute top-0 right-0 w-64 h-64 bg-blue-500/20 rounded-full blur-3xl -mr-16 -mt-16 group-hover:bg-blue-500/30 transition-colors"></div>
+
+              <div className="relative z-10 h-full flex flex-col justify-between space-y-8">
+                <div>
+                  <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-blue-500/20 text-blue-300 text-xs font-medium mb-4 border border-blue-500/20">
+                    <Award className="w-3 h-3" /> Premium Quality
+                  </div>
+                  <h3 className="text-2xl font-light leading-tight">
+                    ISO 9001
+                    <br />
+                    <span className="font-semibold text-blue-400">
+                      Certified Precision
+                    </span>
+                  </h3>
+                </div>
+
+                <div className="space-y-6">
+                  <div className="flex gap-4">
+                    <div className="w-10 h-10 rounded-full bg-white/10 flex items-center justify-center flex-shrink-0">
+                      <Clock className="w-5 h-5 text-blue-300" />
+                    </div>
+                    <div>
+                      <p className="font-medium text-sm">Lightning Fast</p>
+                      <p className="text-xs text-slate-400 mt-1">
+                        Standard lead times from 3 days. Rush options available.
+                      </p>
+                    </div>
+                  </div>
+                  <div className="flex gap-4">
+                    <div className="w-10 h-10 rounded-full bg-white/10 flex items-center justify-center flex-shrink-0">
+                      <Shield className="w-5 h-5 text-purple-300" />
+                    </div>
+                    <div>
+                      <p className="font-medium text-sm">Full IP Protection</p>
+                      <p className="text-xs text-slate-400 mt-1">
+                        Strict NDAs and encrypted storage for your designs.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
+                <Button
+                  variant="outline"
+                  className="w-full transition-transform duration-300 ease-in-out border-white/20 bg-white/10 text-white hover:scale-105"
+                >
+                  View Certifications
+                </Button>
+              </div>
+            </div>
+          </section>
+        </main>
+
+        {/* Auth Modal - Preserves functionality, updates style */}
+        <Dialog open={showAuthModal} onOpenChange={setShowAuthModal}>
+          <DialogContent
+            onInteractOutside={(e) => e.preventDefault()}
+            onEscapeKeyDown={(e) => e.preventDefault()}
+            className="sm:max-w-md border-0 shadow-2xl bg-white/95 backdrop-blur-md"
+          >
+            <DialogHeader>
+              <DialogTitle className="text-2xl font-light text-center mb-2">
+                {authMode === "signup" ? "Create Account" : "Welcome Back"}
               </DialogTitle>
-              <DialogDescription className="text-center text-slate-500 mt-2 text-balance">
-                We've sent a 6-digit verification code to{" "}
-                <span className="text-slate-900 font-medium">
-                  {authForm.email}
-                </span>
-                . Please enter it below to continue with your quote.
+              <DialogDescription className="text-center">
+                {authMode === "signup"
+                  ? "Save your quotes and track your orders."
+                  : "Sign in to access your quotes and orders."}
               </DialogDescription>
             </DialogHeader>
 
-            <div className="flex flex-col items-center space-y-8">
-              <InputOTP
-                maxLength={6}
-                value={otpValue}
-                onChange={(value) => setOtpValue(value)}
-                onComplete={() => handleVerifyOTP()}
-              >
-                <InputOTPGroup className="gap-2 sm:gap-3">
-                  <InputOTPSlot
-                    index={0}
-                    className="w-12 h-14 text-lg rounded-xl border-slate-200 bg-slate-50/50"
-                  />
-                  <InputOTPSlot
-                    index={1}
-                    className="w-12 h-14 text-lg rounded-xl border-slate-200 bg-slate-50/50"
-                  />
-                  <InputOTPSlot
-                    index={2}
-                    className="w-12 h-14 text-lg rounded-xl border-slate-200 bg-slate-50/50"
-                  />
-                  <InputOTPSlot
-                    index={3}
-                    className="w-12 h-14 text-lg rounded-xl border-slate-200 bg-slate-50/50"
-                  />
-                  <InputOTPSlot
-                    index={4}
-                    className="w-12 h-14 text-lg rounded-xl border-slate-200 bg-slate-50/50"
-                  />
-                  <InputOTPSlot
-                    index={5}
-                    className="w-12 h-14 text-lg rounded-xl border-slate-200 bg-slate-50/50"
-                  />
-                </InputOTPGroup>
-              </InputOTP>
+            <form onSubmit={handleAuth} className="space-y-4 mt-4" noValidate>
+              {authMode === "signup" && (
+                <>
+                  <div className="space-y-2">
+                    <Label htmlFor="name" className="flex items-center gap-2">
+                      <User className="w-4 h-4 text-slate-400" /> Full Name
+                    </Label>
+                    <Input
+                      id="name"
+                      placeholder="John Doe"
+                      value={authForm.name}
+                      onChange={(e) =>
+                        setAuthForm((prev) => ({
+                          ...prev,
+                          name: e.target.value,
+                        }))
+                      }
+                      className={`bg-slate-50 border-slate-200 focus:border-blue-500 focus:ring-blue-500/20 ${errors.name ? "border-red-500" : ""}`}
+                    />
+                    {errors.name && (
+                      <p className="text-red-500 text-xs">{errors.name}</p>
+                    )}
+                  </div>
 
-              <div className="w-full space-y-4">
-                <Button
-                  onClick={() => handleVerifyOTP()}
-                  disabled={isVerifyingOTP || otpValue.length !== 6}
-                  className="w-full h-12 bg-blue-600 hover:bg-blue-700 text-white rounded-xl shadow-lg shadow-blue-600/20 transition-all active:scale-[0.98]"
-                >
-                  {isVerifyingOTP ? (
-                    <>
-                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                      Verifying...
-                    </>
-                  ) : (
-                    "Verify & Continue"
-                  )}
-                </Button>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <Label
+                        htmlFor="organization_name"
+                        className="flex items-center gap-2"
+                      >
+                        <Building2 className="w-4 h-4 text-slate-400" /> Org
+                        Name
+                      </Label>
+                      <Input
+                        id="organization_name"
+                        placeholder="Acme Inc."
+                        value={authForm.organization_name}
+                        onChange={(e) =>
+                          setAuthForm((prev) => ({
+                            ...prev,
+                            organization_name: e.target.value,
+                          }))
+                        }
+                        className={`bg-slate-50 border-slate-200 focus:border-blue-500 focus:ring-blue-500/20 ${errors.organization_name ? "border-red-500" : ""}`}
+                      />
+                      {errors.organization_name && (
+                        <p className="text-red-500 text-xs">
+                          {errors.organization_name}
+                        </p>
+                      )}
+                    </div>
+                    <div className="space-y-2">
+                      <Label
+                        htmlFor="phone_number"
+                        className="flex items-center gap-2"
+                      >
+                        <Phone className="w-4 h-4 text-slate-400" /> Phone
+                      </Label>
+                      <div
+                        className={`phone-input-container ${errors.phone_number ? "phone-input-error" : ""}`}
+                      >
+                        <PhoneInput
+                          placeholder="Enter phone number"
+                          value={authForm.phone_number}
+                          onChange={handlePhoneChange}
+                          onCountryChange={(v) => setCountry(v as CountryCode)}
+                          defaultCountry="IN"
+                          className="h-12"
+                        />
+                      </div>
+                      {errors.phone_number && (
+                        <p className="text-red-500 text-xs">
+                          {errors.phone_number}
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                </>
+              )}
 
-                <div className="text-center">
-                  <p className="text-sm text-slate-500">
-                    Didn't receive the code?{" "}
-                    <button
-                      type="button"
-                      onClick={handleResendOTP}
-                      className="text-blue-600 font-semibold hover:text-blue-700 hover:underline transition-colors"
+              <div className="space-y-2">
+                <Label htmlFor="email" className="flex items-center gap-2">
+                  Email Address
+                </Label>
+                <Input
+                  id="email"
+                  type="email"
+                  placeholder="you@company.com"
+                  value={authForm.email}
+                  onChange={(e) =>
+                    setAuthForm((prev) => ({ ...prev, email: e.target.value }))
+                  }
+                  className={`bg-slate-50 border-slate-200 focus:border-blue-500 focus:ring-blue-500/20 ${errors.email ? "border-red-500" : ""}`}
+                />
+                {errors.email && (
+                  <p className="text-red-500 text-xs">{errors.email}</p>
+                )}
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="password">Password</Label>
+                <div className="relative">
+                  <Input
+                    id="password"
+                    type={showPassword ? "text" : "password"}
+                    placeholder="••••••••"
+                    value={authForm.password}
+                    onChange={(e) =>
+                      setAuthForm((prev) => ({
+                        ...prev,
+                        password: e.target.value,
+                      }))
+                    }
+                    className={`bg-slate-50 border-slate-200 focus:border-blue-500 focus:ring-blue-500/20 pr-10 ${errors.password ? "border-red-500" : ""}`}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword(!showPassword)}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                  >
+                    {showPassword ? (
+                      <EyeOff className="w-4 h-4" />
+                    ) : (
+                      <Eye className="w-4 h-4" />
+                    )}
+                  </button>
+                </div>
+                {errors.password && (
+                  <p className="text-red-500 text-xs">{errors.password}</p>
+                )}
+              </div>
+
+              {authMode === "signup" && (
+                <div className="pt-2">
+                  <div className="flex items-start gap-3 p-3 bg-slate-50 rounded-lg border border-slate-100">
+                    <Checkbox
+                      id="terms"
+                      checked={authForm.agreeToTerms}
+                      onCheckedChange={(checked) =>
+                        setAuthForm((prev) => ({
+                          ...prev,
+                          agreeToTerms: Boolean(checked),
+                        }))
+                      }
+                      className="mt-1"
+                    />
+                    <label
+                      htmlFor="terms"
+                      className="text-xs text-slate-500 leading-relaxed cursor-pointer select-none"
                     >
-                      Resend Code
-                    </button>
+                      By creating an account, you agree to our{" "}
+                      <Link
+                        href="/terms"
+                        className="text-blue-600 font-medium hover:underline"
+                      >
+                        Terms
+                      </Link>{" "}
+                      and{" "}
+                      <Link
+                        href="/privacy"
+                        className="text-blue-600 font-medium hover:underline"
+                      >
+                        Privacy Policy
+                      </Link>
+                      .
+                    </label>
+                  </div>
+                  {errors.agreeToTerms && (
+                    <p className="text-red-500 text-xs mt-1">
+                      {errors.agreeToTerms}
+                    </p>
+                  )}
+                </div>
+              )}
+
+              <Button
+                type="submit"
+                loading={isAuthLoading}
+                className="w-full bg-blue-600 hover:bg-blue-700 text-white font-medium h-11"
+              >
+                {authMode === "signup" ? "Create Account" : "Sign In"}
+              </Button>
+
+              <div className="text-center text-white text-sm pt-2">
+                {authMode === "signup" ? (
+                  <p className="text-slate-500">
+                    Already have an account?{" "}
+                    <Button
+                      type="button"
+                      variant="link"
+                      onClick={() => {
+                        setAuthMode("signin");
+                        setShowAuthModal(true);
+                      }}
+                      className="text-blue-600 hover:text-blue-700 hover:underline font-medium p-0 h-auto"
+                    >
+                      Sign in
+                    </Button>
                   </p>
+                ) : (
+                  <p className="text-slate-500">
+                    Don't have an account?{" "}
+                    <Button
+                      type="button"
+                      variant="link"
+                      onClick={() => {
+                        setAuthMode("signup");
+                        setShowAuthModal(true);
+                      }}
+                      className="text-blue-600 hover:text-blue-700 hover:underline font-medium p-0 h-auto"
+                    >
+                      Sign up
+                    </Button>
+                  </p>
+                )}
+              </div>
+            </form>
+          </DialogContent>
+        </Dialog>
+
+        {/* OTP Modal */}
+        <Dialog open={showOTPModal} onOpenChange={setShowOTPModal}>
+          <DialogContent
+            onInteractOutside={(e) => e.preventDefault()}
+            className="sm:max-w-[440px] border-0 shadow-2xl bg-white/95 backdrop-blur-md p-0 overflow-hidden"
+          >
+            <div className="bg-blue-600 h-2 w-full" />
+            <div className="p-8">
+              <DialogHeader className="mb-8">
+                <div className="w-16 h-16 bg-blue-50 rounded-2xl flex items-center justify-center mx-auto mb-4 border border-blue-100 shadow-inner">
+                  <Shield className="w-8 h-8 text-blue-600" />
+                </div>
+                <DialogTitle className="text-2xl font-semibold text-center text-slate-900">
+                  Verify Your Email
+                </DialogTitle>
+                <DialogDescription className="text-center text-slate-500 mt-2 text-balance">
+                  We've sent a 6-digit verification code to{" "}
+                  <span className="text-slate-900 font-medium">
+                    {authForm.email}
+                  </span>
+                  . Please enter it below to continue with your quote.
+                </DialogDescription>
+              </DialogHeader>
+
+              <div className="flex flex-col items-center space-y-8">
+                <InputOTP
+                  maxLength={6}
+                  value={otpValue}
+                  onChange={(value) => setOtpValue(value)}
+                  onComplete={() => handleVerifyOTP()}
+                >
+                  <InputOTPGroup className="gap-2 sm:gap-3">
+                    <InputOTPSlot
+                      index={0}
+                      className="w-12 h-14 text-lg rounded-xl border-slate-200 bg-slate-50/50"
+                    />
+                    <InputOTPSlot
+                      index={1}
+                      className="w-12 h-14 text-lg rounded-xl border-slate-200 bg-slate-50/50"
+                    />
+                    <InputOTPSlot
+                      index={2}
+                      className="w-12 h-14 text-lg rounded-xl border-slate-200 bg-slate-50/50"
+                    />
+                    <InputOTPSlot
+                      index={3}
+                      className="w-12 h-14 text-lg rounded-xl border-slate-200 bg-slate-50/50"
+                    />
+                    <InputOTPSlot
+                      index={4}
+                      className="w-12 h-14 text-lg rounded-xl border-slate-200 bg-slate-50/50"
+                    />
+                    <InputOTPSlot
+                      index={5}
+                      className="w-12 h-14 text-lg rounded-xl border-slate-200 bg-slate-50/50"
+                    />
+                  </InputOTPGroup>
+                </InputOTP>
+
+                <div className="w-full space-y-4">
+                  <Button
+                    onClick={() => handleVerifyOTP()}
+                    disabled={isVerifyingOTP || otpValue.length !== 6}
+                    className="w-full h-12 bg-blue-600 hover:bg-blue-700 text-white rounded-xl shadow-lg shadow-blue-600/20 transition-all active:scale-[0.98]"
+                  >
+                    {isVerifyingOTP ? (
+                      <>
+                        <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                        Verifying...
+                      </>
+                    ) : (
+                      "Verify & Continue"
+                    )}
+                  </Button>
+
+                  <div className="text-center">
+                    <p className="text-sm text-slate-500">
+                      Didn't receive the code?{" "}
+                      <button
+                        type="button"
+                        onClick={handleResendOTP}
+                        className="text-blue-600 font-semibold hover:text-blue-700 hover:underline transition-colors"
+                      >
+                        Resend Code
+                      </button>
+                    </p>
+                  </div>
                 </div>
               </div>
             </div>
-          </div>
-        </DialogContent>
-      </Dialog>
+          </DialogContent>
+        </Dialog>
 
-      {/* 3D Viewer Dialog */}
-      {selected3DFile && (
-        <ExpandFileModal
-          expandedFile={selected3DFile}
-          setExpandedFile={setSelected3DFile}
-        />
-      )}
-    </div>
+        {/* 3D Viewer Dialog */}
+        {selected3DFile && (
+          <ExpandFileModal
+            expandedFile={selected3DFile}
+            setExpandedFile={setSelected3DFile}
+          />
+        )}
+      </div>
+      {/* Footer Area - Minimal */}
+      <Footer />
+    </>
   );
 }

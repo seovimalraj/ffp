@@ -56,6 +56,7 @@ import {
   getCountryCode,
 } from "@/lib/validation/postcode-validation";
 import { isValidPhone } from "@/lib/validation/phone-validation";
+import { validateEmail } from "@/lib/validation/email.validation";
 import { ManualExceededModal } from "../../quote-config/components/manual-exceeded-modal";
 
 /* ------------------------------------------------------------------ */
@@ -240,11 +241,9 @@ export default function CheckoutPage() {
     if (!newAddress.city) errors.city = "City is required";
     if (!newAddress.zip) errors.zip = "Zip code is required";
     if (!newAddress.phone) errors.phone = "Phone number is required";
-    if (!newAddress.email) {
-      errors.email = "Email is required";
-    } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(newAddress.email)) {
-      errors.email = "Invalid email format";
-    }
+
+    const emailError = validateEmail(newAddress.email);
+    if (emailError) errors.email = emailError;
 
     const countryCode = getCountryCode(newAddress.country);
     if (
@@ -2149,8 +2148,6 @@ export default function CheckoutPage() {
           </div>
         </main>
 
-        <Footer />
-
         {/* Confirmation Modal */}
         <AnimatePresence>
           {orderPlaced && (
@@ -2209,6 +2206,7 @@ export default function CheckoutPage() {
           )}
         </AnimatePresence>
       </div>
+      <Footer />
     </PayPalScriptProvider>
   );
 }

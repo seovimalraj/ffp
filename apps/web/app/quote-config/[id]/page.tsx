@@ -2139,7 +2139,6 @@ export default function QuoteConfigPage() {
         </div>
 
         {/* Footer Area - Minimal */}
-        <Footer />
 
         <ManualExceededModal
           isOpen={
@@ -2276,6 +2275,7 @@ export default function QuoteConfigPage() {
           </div>
         )}
       </div>
+        <Footer />
     </SuggestionProvider>
   );
 }
