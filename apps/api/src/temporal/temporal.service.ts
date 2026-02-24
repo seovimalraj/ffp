@@ -187,7 +187,7 @@ export class TemporalService implements OnModuleInit {
       const handle = await this.client.workflow.start(
         TemporalEvents.TechnicalSupportWorkflow,
         {
-          taskQueue: TaskQueues.SupportTaskQueue,
+          taskQueue: TaskQueues.CoreTaskQueue,
           workflowId: `ts-${Date.now()}-${data.email}`,
           args: [data],
         },

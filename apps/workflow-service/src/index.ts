@@ -7,8 +7,6 @@ import { cors } from "hono/cors";
 import { Worker, NativeConnection } from "@temporalio/worker";
 
 import { logger } from "./lib/logger.js";
-import { supabase } from "./lib/supabase.js";
-import { getTemporalClient } from "./temporal.js";
 import * as activities from "./activities/index.js";
 
 const app = new Hono();
@@ -53,28 +51,6 @@ app.get("/", (c) => {
   return c.text("FFP Workflow Service (Worker + API) is running!");
 });
 
-app.get("/health", async (c) => {
-  try {
-    const { error } = await supabase.from("rfq").select("id").limit(1);
-
-    if (error) throw error;
-
-    // Check Temporal connection health
-    const client = await getTemporalClient();
-    await client.workflowService.getSystemInfo({});
-
-    return c.json({
-      status: "ok",
-      supabase: "connected",
-      temporal: "connected",
-      role: "worker-api",
-    });
-  } catch (error: any) {
-    logger.error({ error: error.message }, "Health check failed");
-    return c.json({ status: "error", message: "Service unhealthy" }, 500);
-  }
-});
-
 /**
  * ======================
  * 4️⃣ TEMPORAL WORKER
@@ -103,6 +79,9 @@ async function startWorker(taskQueue: string) {
       workflowsPath,
       activities,
       taskQueue,
+
+      maxConcurrentActivityTaskExecutions: 3,
+      maxConcurrentWorkflowTaskExecutions: 3,
     });
 
     logger.info(
@@ -121,8 +100,6 @@ async function startServer() {
 
   // Start Temporal Workers in background (one per task queue)
   startWorker("quote-tasks");
-  startWorker("support-tasks");
-
   // Start Hono Server (for health checks and potentially direct triggers)
   serve({
     fetch: app.fetch,
