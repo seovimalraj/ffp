@@ -11,22 +11,22 @@
  */
 export function formatDate(
   date: string | Date,
-  options?: Intl.DateTimeFormatOptions
+  options?: Intl.DateTimeFormatOptions,
 ): string {
-  const dateObj = typeof date === 'string' ? new Date(date) : date;
-  
+  const dateObj = typeof date === "string" ? new Date(date) : date;
+
   // Check for invalid date
   if (isNaN(dateObj.getTime())) {
-    return 'Invalid Date';
+    return "Invalid Date";
   }
-  
+
   const defaultOptions: Intl.DateTimeFormatOptions = {
-    year: 'numeric',
-    month: 'short',
-    day: 'numeric',
+    year: "numeric",
+    month: "short",
+    day: "numeric",
   };
-  
-  return dateObj.toLocaleDateString('en-US', options || defaultOptions);
+
+  return dateObj.toLocaleDateString("en-US", options || defaultOptions);
 }
 
 /**
@@ -36,11 +36,11 @@ export function formatDate(
  */
 export function formatDateTime(date: string | Date): string {
   return formatDate(date, {
-    year: 'numeric',
-    month: 'short',
-    day: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
   });
 }
 
@@ -51,9 +51,9 @@ export function formatDateTime(date: string | Date): string {
  */
 export function formatDateLong(date: string | Date): string {
   return formatDate(date, {
-    year: 'numeric',
-    month: 'long',
-    day: 'numeric',
+    year: "numeric",
+    month: "long",
+    day: "numeric",
   });
 }
 
@@ -64,9 +64,9 @@ export function formatDateLong(date: string | Date): string {
  */
 export function formatDateShort(date: string | Date): string {
   return formatDate(date, {
-    year: 'numeric',
-    month: 'numeric',
-    day: 'numeric',
+    year: "numeric",
+    month: "numeric",
+    day: "numeric",
   });
 }
 
@@ -76,27 +76,33 @@ export function formatDateShort(date: string | Date): string {
  * @returns Relative time string
  */
 export function formatRelativeTime(date: string | Date): string {
-  const dateObj = typeof date === 'string' ? new Date(date) : date;
-  
+  const dateObj = typeof date === "string" ? new Date(date) : date;
+
   if (isNaN(dateObj.getTime())) {
-    return 'Invalid Date';
+    return "Invalid Date";
   }
-  
+
   const now = new Date();
   const diffMs = dateObj.getTime() - now.getTime();
   const diffSec = Math.round(diffMs / 1000);
   const diffMin = Math.round(diffSec / 60);
   const diffHour = Math.round(diffMin / 60);
   const diffDay = Math.round(diffHour / 24);
-  
+
   if (Math.abs(diffSec) < 60) {
-    return 'just now';
+    return "just now";
   } else if (Math.abs(diffMin) < 60) {
-    return diffMin > 0 ? `in ${diffMin} minute${diffMin === 1 ? '' : 's'}` : `${Math.abs(diffMin)} minute${Math.abs(diffMin) === 1 ? '' : 's'} ago`;
+    return diffMin > 0
+      ? `in ${diffMin} minute${diffMin === 1 ? "" : "s"}`
+      : `${Math.abs(diffMin)} minute${Math.abs(diffMin) === 1 ? "" : "s"} ago`;
   } else if (Math.abs(diffHour) < 24) {
-    return diffHour > 0 ? `in ${diffHour} hour${diffHour === 1 ? '' : 's'}` : `${Math.abs(diffHour)} hour${Math.abs(diffHour) === 1 ? '' : 's'} ago`;
+    return diffHour > 0
+      ? `in ${diffHour} hour${diffHour === 1 ? "" : "s"}`
+      : `${Math.abs(diffHour)} hour${Math.abs(diffHour) === 1 ? "" : "s"} ago`;
   } else if (Math.abs(diffDay) < 7) {
-    return diffDay > 0 ? `in ${diffDay} day${diffDay === 1 ? '' : 's'}` : `${Math.abs(diffDay)} day${Math.abs(diffDay) === 1 ? '' : 's'} ago`;
+    return diffDay > 0
+      ? `in ${diffDay} day${diffDay === 1 ? "" : "s"}`
+      : `${Math.abs(diffDay)} day${Math.abs(diffDay) === 1 ? "" : "s"} ago`;
   } else {
     return formatDate(dateObj);
   }

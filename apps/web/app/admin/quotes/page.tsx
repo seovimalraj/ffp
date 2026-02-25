@@ -9,7 +9,11 @@ import { apiClient } from "@/lib/api";
 import { DataTable, Column, DataTableSubRow } from "@/components/ui/data-table";
 import { IRFQStatuses } from "@/types";
 import Link from "next/link";
-import { formatDate, formatCurrencyGeneric } from "@/lib/format";
+import {
+  formatDate,
+  formatCurrencyGeneric,
+  formatDateTime,
+} from "@/lib/format";
 import { useMetaStore } from "@/components/store/title-store";
 import { StatusCards, StatusItem } from "@/components/ui/status-cards";
 import {
@@ -394,7 +398,7 @@ function AdminQuotesContent() {
       render: (row) => (
         <div className="flex flex-col">
           <span className="text-gray-700 dark:text-gray-300 text-sm font-medium">
-            {formatDate(row.created_at)}
+            {formatDateTime(row.created_at)}
           </span>
           <span className="text-[10px] text-gray-400 capitalize">
             Updated {new Date(row.updated_at).toLocaleDateString()}

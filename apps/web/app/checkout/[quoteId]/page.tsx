@@ -1956,7 +1956,6 @@ export default function CheckoutPage() {
                             label: "pay",
                             height: 50,
                           }}
-                          disabled={isProcessing}
                           onClick={(data, actions) => {
                             if (!termsAccepted || !priceConcentAccepted) {
                               notify.error(
