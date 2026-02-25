@@ -5,13 +5,23 @@ import {
   Package,
   Clock,
   FileText,
-  ArrowUpRight,
   ArrowRight,
   Plus,
+  Rocket,
+  MessageSquare,
+  RefreshCw,
+  HelpCircle,
+  ChevronRight,
+  ExternalLink,
   Zap,
+  CreditCard,
+  Box,
 } from "lucide-react";
+import { StatusCards, StatusItem } from "@/components/ui/status-cards";
 import Link from "next/link";
 import { useEffect, useState } from "react";
+import { useSession } from "next-auth/react";
+import { useRouter } from "next/navigation";
 import {
   DashboardAPI,
   DashboardStats,
@@ -23,6 +33,7 @@ import CustomLoader from "@/components/ui/loader/CustomLoader";
 import { useMetaStore } from "@/components/store/title-store";
 import { motion, Variants } from "framer-motion";
 import { cn } from "@/lib/utils";
+import { Button } from "@/components/ui/button";
 
 // Animation variants
 const containerVariants: Variants = {
@@ -30,25 +41,27 @@ const containerVariants: Variants = {
   visible: {
     opacity: 1,
     transition: {
-      staggerChildren: 0.1,
+      staggerChildren: 0.08,
     },
   },
 };
 
 const itemVariants: Variants = {
-  hidden: { y: 20, opacity: 0 },
+  hidden: { y: 15, opacity: 0 },
   visible: {
     y: 0,
     opacity: 1,
     transition: {
       type: "spring",
-      stiffness: 100,
+      stiffness: 110,
       damping: 15,
     },
   },
 };
 
 export default function CustomerDashboardPage() {
+  const { data: session } = useSession();
+  const router = useRouter();
   const [loading, setLoading] = useState(true);
   const [stats, setStats] = useState<DashboardStats>({
     activeQuotes: 0,
@@ -92,99 +105,44 @@ export default function CustomerDashboardPage() {
     loadDashboardData();
   }, []);
 
-  const statItems = [
-    {
-      label: "Active Quotes",
-      value: stats.activeQuotes.toString(),
-      change: "Active now",
-      trend: "neutral",
-      icon: FileText,
-      color: "blue",
-      href: "/portal/quotes",
-    },
-    {
-      label: "Open Orders",
-      value: stats.openOrders.toString(),
-      change: "In progress",
-      trend: "neutral",
-      icon: (props: any) => (
-        <img src="/icons/package.png" className="w-8 h-8" {...props} />
-      ),
-      color: "orange",
-      href: "/portal/orders",
-    },
-    {
-      label: "Total Spent",
-      value: stats.totalSpent,
-      change: "Lifetime",
-      trend: "up",
-      icon: (props: any) => (
-        <img src="/icons/spending.png" className="w-8 h-8" {...props} />
-      ),
-      color: "purple",
-      href: "/portal/orders",
-    },
-    {
-      label: "Avg Lead Time",
-      value: stats.avgLeadTime,
-      change: "Target: 5 days",
-      trend: "neutral",
-      icon: (props: any) => (
-        <img src="/icons/lead-time.png" className="w-8 h-8" {...props} />
-      ),
-      color: "green",
-      href: "/portal/analytics",
-    },
-  ];
-
   const getStatusColor = (status: string) => {
     const colors: Record<string, string> = {
-      pending_review:
-        "bg-yellow-50 text-yellow-700 ring-1 ring-yellow-600/20 dark:bg-yellow-900/20 dark:text-yellow-400 dark:ring-yellow-500/30",
-      approved:
-        "bg-green-50 text-green-700 ring-1 ring-green-600/20 dark:bg-green-900/20 dark:text-green-400 dark:ring-green-500/30",
-      draft:
-        "bg-gray-50 text-gray-700 ring-1 ring-gray-600/20 dark:bg-gray-900/20 dark:text-gray-400 dark:ring-gray-500/30",
-      in_production:
-        "bg-blue-50 text-blue-700 ring-1 ring-blue-600/20 dark:bg-blue-900/20 dark:text-blue-400 dark:ring-blue-500/30",
-      quality_check:
-        "bg-purple-50 text-purple-700 ring-1 ring-purple-600/20 dark:bg-purple-900/20 dark:text-purple-400 dark:ring-purple-500/30",
-      shipped:
-        "bg-indigo-50 text-indigo-700 ring-1 ring-indigo-600/20 dark:bg-indigo-900/20 dark:text-indigo-400 dark:ring-indigo-500/30",
-      completed:
-        "bg-green-50 text-green-700 ring-1 ring-green-600/20 dark:bg-green-900/20 dark:text-green-400 dark:ring-green-500/30",
+      pending_review: "bg-amber-50 text-amber-700 border-amber-200",
+      approved: "bg-emerald-50 text-emerald-700 border-emerald-200",
+      draft: "bg-slate-50 text-slate-700 border-slate-200",
+      in_production: "bg-blue-50 text-blue-700 border-blue-200",
+      quality_check: "bg-violet-50 text-violet-700 border-violet-200",
+      shipped: "bg-indigo-50 text-indigo-700 border-indigo-200",
+      completed: "bg-emerald-50 text-emerald-700 border-emerald-200",
     };
-    return (
-      colors[status] ||
-      "bg-gray-50 text-gray-700 ring-1 ring-gray-600/20 dark:bg-gray-900/20 dark:text-gray-400 dark:ring-gray-500/30"
-    );
+    return colors[status] || "bg-slate-50 text-slate-700 border-slate-200";
   };
 
-  const getColorClasses = (color: string) => {
-    const colors: Record<string, { bg: string; text: string; ring: string }> = {
-      blue: {
-        bg: "bg-blue-500/10 dark:bg-blue-500/20",
-        text: "text-blue-600 dark:text-blue-400",
-        ring: "ring-blue-500/20",
-      },
-      green: {
-        bg: "bg-emerald-500/10 dark:bg-emerald-500/20",
-        text: "text-emerald-600 dark:text-emerald-400",
-        ring: "ring-emerald-500/20",
-      },
-      purple: {
-        bg: "bg-purple-500/10 dark:bg-purple-500/20",
-        text: "text-purple-600 dark:text-purple-400",
-        ring: "ring-purple-500/20",
-      },
-      orange: {
-        bg: "bg-orange-500/10 dark:bg-orange-500/20",
-        text: "text-orange-600 dark:text-orange-400",
-        ring: "ring-orange-500/20",
-      },
-    };
-    return colors[color] || colors.blue;
-  };
+  // Combine quotes and orders for the recent activity table
+  const unifiedActivity = [
+    ...recentQuotes.map((q) => ({
+      id: q.id,
+      code: q.rfq_code || q.id,
+      type: "Quote",
+      date: q.date,
+      service: "Analysis Pending",
+      parts: q.parts,
+      status: q.status,
+      href: `/quote-config/${q.id}`,
+    })),
+    ...recentOrders.map((o) => ({
+      id: o.id,
+      code: o.order_code || o.id,
+      type: "Order",
+      date: o.created_at || o.dueDate,
+      service: "Manufacturing",
+      parts: 1,
+      status: o.status,
+      href: `/portal/orders/${o.id}`,
+    })),
+  ]
+    .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
+    .slice(0, 8);
 
   if (loading) {
     return (
@@ -194,288 +152,477 @@ export default function CustomerDashboardPage() {
     );
   }
 
+  const firstName = session?.user?.name?.split(" ")[0] || "there";
+
+  const statsItems: StatusItem[] = [
+    {
+      label: "Active Quotes",
+      value: stats.activeQuotes,
+      icon: FileText,
+      color: "blue",
+    },
+    {
+      label: "Open Orders",
+      value: stats.openOrders,
+      icon: Box,
+      color: "indigo",
+    },
+    {
+      label: "Total Spent",
+      value: stats.totalSpent,
+      icon: CreditCard,
+      color: "emerald",
+    },
+    {
+      label: "Avg. Lead Time",
+      value: stats.avgLeadTime,
+      icon: Zap,
+      color: "amber",
+    },
+  ];
+
   return (
     <motion.div
       variants={containerVariants}
       initial="hidden"
       animate="visible"
-      className="space-y-8 p-6 lg:p-8 max-w-[1600px] mx-auto"
+      className="space-y-12 p-6 max-w-[1440px] mx-auto pb-24"
     >
-      {/* Stats Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-        {statItems.map((stat) => {
-          const Icon = stat.icon;
-          const colors = getColorClasses(stat.color);
-          return (
-            <motion.div variants={itemVariants} key={stat.label}>
-              <Link
-                href={stat.href}
-                className="group relative block bg-white dark:bg-gray-900/50 rounded-2xl p-6 border border-gray-100 dark:border-gray-800 shadow-sm hover:shadow-xl hover:shadow-gray-200/50 dark:hover:shadow-black/50 hover:-translate-y-1 transition-all duration-300"
-              >
-                <div className="flex items-start justify-between mb-6">
-                  <div
-                    className={cn(
-                      "p-3 rounded-xl transition-colors duration-300",
-                      colors.bg,
-                      colors.text,
-                    )}
-                  >
-                    <Icon strokeWidth={1.5} size={24} />
-                  </div>
-                  {stat.trend === "up" && (
-                    <span className="inline-flex items-center gap-1 text-xs font-semibold text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-900/30 px-2.5 py-1 rounded-full">
-                      <TrendingUp size={12} />
-                      {stat.change}
-                    </span>
-                  )}
-                  {stat.trend === "neutral" && (
-                    <span className="inline-flex items-center text-xs font-semibold text-gray-500 dark:text-gray-400 bg-gray-50 dark:bg-gray-800 px-2.5 py-1 rounded-full">
-                      {stat.change}
-                    </span>
-                  )}
-                </div>
-                <div className="space-y-1">
-                  <div className="text-3xl font-bold tracking-tight text-gray-900 dark:text-white">
-                    {stat.value}
-                  </div>
-                  <div className="text-sm font-medium text-gray-500 dark:text-gray-400">
-                    {stat.label}
-                  </div>
-                </div>
-                <div className="absolute top-6 right-6 opacity-0 group-hover:opacity-100 transition-all duration-300 transform group-hover:translate-x-1 group-hover:-translate-y-1">
-                  <ArrowUpRight
-                    className="text-gray-300 dark:text-gray-600"
-                    size={20}
-                  />
-                </div>
-              </Link>
-            </motion.div>
-          );
-        })}
-      </div>
-
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-        {/* Recent Quotes */}
-        <motion.div
-          variants={itemVariants}
-          className="flex flex-col bg-white dark:bg-gray-900/50 rounded-2xl border border-gray-100 dark:border-gray-800 shadow-sm overflow-hidden"
-        >
-          <div className="px-6 py-5 border-b border-gray-100 dark:border-gray-800 flex items-center justify-between bg-gray-50/50 dark:bg-gray-900/50">
-            <div className="flex items-center gap-3">
-              <div className="p-2 bg-blue-50 dark:bg-blue-900/20 rounded-lg">
-                <FileText
-                  size={18}
-                  className="text-blue-600 dark:text-blue-400"
-                />
-              </div>
-              <div>
-                <h2 className="text-base font-semibold text-gray-900 dark:text-white">
-                  Recent Quotes
-                </h2>
-                <p className="text-xs text-gray-500 dark:text-gray-400">
-                  Latest activity from your quotes
-                </p>
-              </div>
-            </div>
-            <Link
-              href="/portal/quotes"
-              className="text-sm font-medium text-blue-600 hover:text-blue-700 dark:text-blue-400 dark:hover:text-blue-300 flex items-center gap-1 hover:gap-1.5 transition-all"
+      {/* Hello Header */}
+      <section className="flex flex-col md:flex-row md:items-center justify-between gap-6">
+        <div className="space-y-1">
+          <h1 className="text-3xl md:text-4xl font-bold text-slate-900 tracking-tight">
+            Welcome back, {firstName}
+          </h1>
+          <p className="text-slate-500 text-lg">
+            Monitor your manufacturing projects and supply chain in real-time.
+          </p>
+        </div>
+        <div className="flex items-center gap-3">
+          <Link href="/support">
+            <Button
+              variant="outline"
+              className="h-11 px-6 rounded-xl border-slate-200 hover:bg-slate-50 shadow-sm text-slate-600 gap-2 font-medium transition-all"
             >
-              View all
-              <ArrowRight size={14} />
-            </Link>
-          </div>
-          <div className="flex-1 p-4">
-            {recentQuotes.length > 0 ? (
-              <div className="space-y-2">
-                {recentQuotes.map((quote) => (
-                  <Link
-                    key={quote.id}
-                    href={`/quote-config/${quote.id}`}
-                    className="group flex items-center justify-between p-4 rounded-xl hover:bg-gray-50 dark:hover:bg-gray-800 border border-transparent hover:border-gray-100 dark:hover:border-gray-700 transition-all cursor-pointer"
-                  >
-                    <div className="flex flex-col gap-1 min-w-0 pr-4">
-                      <div className="flex items-center gap-3">
-                        <span className="font-semibold text-sm text-gray-900 dark:text-white group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors">
-                          {quote.rfq_code || quote.id}
-                        </span>
-                        <span
-                          className={cn(
-                            "inline-flex items-center px-2 py-0.5 rounded-full text-[10px] uppercase font-bold tracking-wider",
-                            getStatusColor(quote.status),
-                          )}
-                        >
-                          {quote.status?.replace("_", " ")}
-                        </span>
-                      </div>
-                      <span className="text-xs text-gray-500 dark:text-gray-400 truncate max-w-[280px]">
-                        {quote.description || "No description provided"}
-                      </span>
-                      <div className="flex items-center gap-2 text-[11px] text-gray-400 mt-0.5">
-                        <span>{quote.date}</span>
-                        <span className="w-1 h-1 rounded-full bg-gray-300 dark:bg-gray-600" />
-                        <span>
-                          {quote.parts} {quote.parts === 1 ? "part" : "parts"}
-                        </span>
-                      </div>
-                    </div>
-                    <div className="text-right shrink-0">
-                      <span className="block text-sm font-bold text-gray-900 dark:text-white">
-                        {quote.amount}
-                      </span>
-                    </div>
-                  </Link>
-                ))}
-              </div>
-            ) : (
-              <div className="flex flex-col items-center justify-center h-64 text-center">
-                <div className="w-16 h-16 bg-gray-50 dark:bg-gray-800 rounded-full flex items-center justify-center mb-4">
-                  <FileText
-                    size={32}
-                    className="text-gray-300 dark:text-gray-600"
-                  />
-                </div>
-                <h3 className="text-sm font-medium text-gray-900 dark:text-white">
-                  No quotes yet
-                </h3>
-                <p className="text-xs text-gray-500 mt-1 max-w-[200px]">
-                  Start a new quote to see your activity here
-                </p>
-                <Link
-                  href="/instant-quote"
-                  className="mt-4 text-xs font-semibold text-blue-600 hover:text-blue-700 flex items-center gap-1"
-                >
-                  <Plus size={12} /> Create Quote
-                </Link>
-              </div>
-            )}
-          </div>
-        </motion.div>
-
-        {/* Recent Orders */}
-        <motion.div
-          variants={itemVariants}
-          className="flex flex-col bg-white dark:bg-gray-900/50 rounded-2xl border border-gray-100 dark:border-gray-800 shadow-sm overflow-hidden"
-        >
-          <div className="px-6 py-5 border-b border-gray-100 dark:border-gray-800 flex items-center justify-between bg-gray-50/50 dark:bg-gray-900/50">
-            <div className="flex items-center gap-3">
-              <div className="p-2 bg-orange-50 dark:bg-orange-900/20 rounded-lg">
-                <Package
-                  size={18}
-                  className="text-orange-600 dark:text-orange-400"
-                />
-              </div>
-              <div>
-                <h2 className="text-base font-semibold text-gray-900 dark:text-white">
-                  Recent Orders
-                </h2>
-                <p className="text-xs text-gray-500 dark:text-gray-400">
-                  Track your ongoing orders
-                </p>
-              </div>
-            </div>
-            <Link
-              href="/portal/orders"
-              className="text-sm font-medium text-orange-600 hover:text-orange-700 dark:text-orange-400 dark:hover:text-orange-300 flex items-center gap-1 hover:gap-1.5 transition-all"
-            >
-              View all
-              <ArrowRight size={14} />
-            </Link>
-          </div>
-          <div className="flex-1 p-4">
-            {recentOrders.length > 0 ? (
-              <div className="space-y-2">
-                {recentOrders.map((order) => (
-                  <Link
-                    key={order.id}
-                    href={`/portal/orders/${order.id}`}
-                    className="group flex items-center justify-between p-4 rounded-xl hover:bg-gray-50 dark:hover:bg-gray-800 border border-transparent hover:border-gray-100 dark:hover:border-gray-700 transition-all cursor-pointer"
-                  >
-                    <div className="flex flex-col gap-1 min-w-0 pr-4">
-                      <div className="flex items-center gap-3">
-                        <span className="font-semibold text-sm text-gray-900 dark:text-white group-hover:text-orange-600 dark:group-hover:text-orange-400 transition-colors">
-                          {order.order_code || order.id}
-                        </span>
-                        <span
-                          className={cn(
-                            "inline-flex items-center px-2 py-0.5 rounded-full text-[10px] uppercase font-bold tracking-wider",
-                            getStatusColor(order.status),
-                          )}
-                        >
-                          {order.status?.replace("_", " ")}
-                        </span>
-                      </div>
-                      <span className="text-xs text-gray-500 dark:text-gray-400 truncate max-w-[280px]">
-                        {order.description || "No description provided"}
-                      </span>
-                      <div className="flex items-center gap-4 mt-2">
-                        <div className="flex items-center gap-1.5 text-[11px] text-gray-400">
-                          <Clock size={12} />
-                          <span>Due: {order.dueDate}</span>
-                        </div>
-                        <div className="flex-1 h-1.5 w-24 bg-gray-100 dark:bg-gray-800 rounded-full overflow-hidden">
-                          <div
-                            className="h-full bg-emerald-500 rounded-full transition-all duration-500"
-                            style={{ width: `${order.progress}%` }}
-                          />
-                        </div>
-                      </div>
-                    </div>
-                    <div className="text-right shrink-0">
-                      <span className="block text-sm font-bold text-gray-900 dark:text-white">
-                        {order.amount}
-                      </span>
-                    </div>
-                  </Link>
-                ))}
-              </div>
-            ) : (
-              <div className="flex flex-col items-center justify-center h-64 text-center">
-                <div className="w-16 h-16 bg-gray-50 dark:bg-gray-800 rounded-full flex items-center justify-center mb-4">
-                  <Package
-                    size={32}
-                    className="text-gray-300 dark:text-gray-600"
-                  />
-                </div>
-                <h3 className="text-sm font-medium text-gray-900 dark:text-white">
-                  No active orders
-                </h3>
-                <p className="text-xs text-gray-500 mt-1 max-w-[200px]">
-                  Your placed orders will appear here
-                </p>
-              </div>
-            )}
-          </div>
-        </motion.div>
-      </div>
-
-      <motion.div
-        variants={itemVariants}
-        className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-gray-900 via-gray-800 to-black p-8 md:p-12 shadow-2xl group"
-      >
-        {/* Animated gradients */}
-        <div className="absolute top-0 right-0 -mt-20 -mr-20 w-80 h-80 bg-blue-500/20 rounded-full blur-3xl opacity-50 group-hover:opacity-75 transition-opacity duration-700" />
-        <div className="absolute bottom-0 left-0 -mb-20 -ml-20 w-80 h-80 bg-purple-500/20 rounded-full blur-3xl opacity-50 group-hover:opacity-75 transition-opacity duration-700" />
-
-        <div className="relative z-10 flex flex-col md:flex-row items-center justify-between gap-8">
-          <div className="max-w-xl text-center md:text-left">
-            <h2 className="text-3xl font-bold text-white mb-4">
-              Ready for your next project?
-            </h2>
-            <p className="text-gray-400 text-lg leading-relaxed">
-              Get instant pricing and lead times for CNC machining, Injection
-              Molding, Vacuum Casting, and sheet metal fabrication.
-            </p>
-          </div>
-          <Link
-            href="/instant-quote"
-            className="group/btn flex items-center gap-2 bg-white text-gray-900 hover:bg-gray-50 px-8 py-4 rounded-xl font-bold shadow-lg shadow-white/10 hover:shadow-white/20 hover:-translate-y-0.5 transition-all duration-300 whitespace-nowrap"
-          >
-            <Zap className="w-5 h-5 text-yellow-500 fill-yellow-500 group-hover/btn:scale-110 transition-transform" />
-            <span>Start New Quote</span>
+              <HelpCircle size={18} className="text-blue-500 mr-3" />
+              Support
+            </Button>
           </Link>
         </div>
-      </motion.div>
+      </section>
+
+      {/* Stats Overview */}
+      <section>
+        <StatusCards items={statsItems} />
+      </section>
+
+      {/* Main Action Cards */}
+      <section className="grid grid-cols-1 md:grid-cols-3 gap-6">
+        {[
+          {
+            title: "Get a new quote",
+            description:
+              "Instant pricing for CNC, Injection Molding, 3D Printing, and Sheet Metal.",
+            icon: Rocket,
+            href: "/instant-quote",
+            action: "New Quote",
+            color: "blue",
+          },
+          {
+            title: "Production project",
+            description:
+              "Engage our team for high-volume orders and large-scale manufacturing.",
+            icon: MessageSquare,
+            href: "/support",
+            action: "Start Project",
+            color: "indigo",
+          },
+          {
+            title: "Reorder parts",
+            description:
+              "Easily reorder previously manufactured parts and access history.",
+            icon: RefreshCw,
+            href: "/portal/orders",
+            action: "Find Parts",
+            color: "emerald",
+          },
+        ].map((card, idx) => (
+          <motion.div key={idx} variants={itemVariants}>
+            <Link
+              href={card.href}
+              className="group flex flex-col h-full bg-white rounded-3xl p-8 border border-slate-200/60 shadow-sm hover:shadow-xl hover:border-blue-500/30 transition-all duration-300 relative overflow-hidden"
+            >
+              <div
+                className={cn(
+                  "w-12 h-12 rounded-xl flex items-center justify-center mb-6 transition-colors duration-300",
+                  card.color === "blue" &&
+                    "bg-blue-50 text-blue-600 group-hover:bg-blue-600 group-hover:text-white",
+                  card.color === "indigo" &&
+                    "bg-indigo-50 text-indigo-600 group-hover:bg-indigo-600 group-hover:text-white",
+                  card.color === "emerald" &&
+                    "bg-emerald-50 text-emerald-600 group-hover:bg-emerald-600 group-hover:text-white",
+                )}
+              >
+                <card.icon size={24} />
+              </div>
+              <h3 className="text-xl font-bold text-slate-900 mb-2">
+                {card.title}
+              </h3>
+              <p className="text-slate-500 text-sm leading-relaxed mb-6 flex-grow">
+                {card.description}
+              </p>
+
+              <div className="flex items-center gap-1 text-xs font-bold text-blue-600 uppercase tracking-wider">
+                {card.action} <ChevronRight size={14} />
+              </div>
+
+              {/* Decorative background element */}
+              <div className="absolute -right-4 -bottom-4 opacity-[0.03] group-hover:opacity-[0.08] transition-all duration-500 group-hover:-rotate-12 group-hover:scale-110">
+                <card.icon size={120} />
+              </div>
+            </Link>
+          </motion.div>
+        ))}
+      </section>
+
+      {/* Recent Activity Table */}
+      <section className="space-y-4">
+        <div className="flex items-center justify-between px-1">
+          <h2 className="text-2xl font-bold text-slate-800 tracking-tight">
+            Recent Activity
+          </h2>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => router.push("/portal/quotes")}
+            className="text-blue-600 font-semibold hover:bg-blue-50 rounded-lg group"
+          >
+            View All Activity{" "}
+            <ArrowRight
+              size={14}
+              className="ml-2 group-hover:translate-x-1 transition-transform"
+            />
+          </Button>
+        </div>
+
+        <motion.div
+          variants={itemVariants}
+          className="bg-white rounded-2xl border border-slate-200/60 shadow-sm overflow-hidden"
+        >
+          <div className="overflow-x-auto text-nowrap">
+            <table className="w-full text-left">
+              <thead>
+                <tr className="bg-slate-50/50 border-b border-slate-100">
+                  <th className="px-6 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest">
+                    Last Active
+                  </th>
+                  <th className="px-6 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest">
+                    ID
+                  </th>
+                  <th className="px-6 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest">
+                    Type
+                  </th>
+                  <th className="px-6 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest">
+                    Service
+                  </th>
+                  <th className="px-6 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest text-center">
+                    Parts
+                  </th>
+                  <th className="px-6 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest">
+                    Status
+                  </th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {unifiedActivity.length > 0 ? (
+                  unifiedActivity.map((act, idx) => (
+                    <tr
+                      key={idx}
+                      className="hover:bg-slate-50/50 transition-colors group cursor-pointer"
+                      onClick={() => router.push(act.href)}
+                    >
+                      <td className="px-6 py-4 flex items-center gap-3">
+                        <div
+                          className={cn(
+                            "w-2 h-2 rounded-full",
+                            act.type === "Quote"
+                              ? "bg-amber-400"
+                              : "bg-blue-400",
+                          )}
+                        />
+                        <span className="text-sm text-slate-600">
+                          {act.date}
+                        </span>
+                      </td>
+                      <td className="px-6 py-4">
+                        <span className="text-sm font-semibold text-slate-900 group-hover:text-blue-600 transition-colors uppercase">
+                          {act.code}
+                        </span>
+                      </td>
+                      <td className="px-6 py-4">
+                        <span
+                          className={cn(
+                            "text-[10px] px-2 py-0.5 rounded-md font-bold uppercase tracking-wider",
+                            act.type === "Quote"
+                              ? "bg-amber-50 text-amber-600 border border-amber-100"
+                              : "bg-blue-50 text-blue-600 border border-blue-100",
+                          )}
+                        >
+                          {act.type}
+                        </span>
+                      </td>
+                      <td className="px-6 py-4">
+                        <span className="text-sm text-slate-500">
+                          {act.service}
+                        </span>
+                      </td>
+                      <td className="px-6 py-4 text-center">
+                        <span className="text-sm font-medium text-slate-700">
+                          {act.parts}
+                        </span>
+                      </td>
+                      <td className="px-6 py-4">
+                        <span
+                          className={cn(
+                            "text-[10px] px-2.5 py-1 rounded-full font-bold uppercase tracking-wider border",
+                            getStatusColor(act.status),
+                          )}
+                        >
+                          {act.status?.replace("_", " ")}
+                        </span>
+                      </td>
+                    </tr>
+                  ))
+                ) : (
+                  <tr>
+                    <td
+                      colSpan={6}
+                      className="px-6 py-12 text-center text-slate-400 text-sm"
+                    >
+                      No recent activity
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        </motion.div>
+      </section>
+
+      {/* Explore Section */}
+      <section className="space-y-6">
+        <h2 className="text-2xl font-bold text-slate-800 tracking-tight px-1">
+          Explore Manufacturing
+        </h2>
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          {[
+            {
+              title: "Mastering CNC Machining",
+              description:
+                "Optimize CAD designs for high-precision CNC milling and reduce lead times.",
+              image: "/dashboard/explore_cnc.png",
+              tag: "Best Practice",
+              link: "https://frigate.ai/blog/cnc-machining-guide/",
+            },
+            {
+              title: "Sheet Metal Design Guide",
+              description:
+                "Avoid common pitfalls with our guide on bend radii and material selection.",
+              image: "/dashboard/explore_sheetmetal.png",
+              tag: "DFM Guide",
+              link: "https://frigate.ai/blog/sheet-metal-design/",
+            },
+          ].map((item, idx) => (
+            <motion.div key={idx} variants={itemVariants}>
+              <div className="group bg-white rounded-2xl border border-slate-200/60 shadow-sm overflow-hidden flex flex-col sm:flex-row hover:shadow-lg transition-all duration-300">
+                <div className="flex-1 p-6 flex flex-col">
+                  <span className="text-[10px] font-black uppercase tracking-[0.2em] text-blue-600 mb-2">
+                    {item.tag}
+                  </span>
+                  <h3 className="text-lg font-bold text-slate-900 mb-2 group-hover:text-blue-600 transition-colors">
+                    {item.title}
+                  </h3>
+                  <p className="text-slate-500 text-sm leading-relaxed mb-4 flex-grow">
+                    {item.description}
+                  </p>
+                  <Link
+                    href={item.link}
+                    target="_blank"
+                    className="flex items-center gap-2 text-xs font-bold text-slate-900 hover:text-blue-600 transition-colors uppercase tracking-widest"
+                  >
+                    Read article <ArrowRight size={14} />
+                  </Link>
+                </div>
+                <div className="sm:w-1/3 h-48 sm:h-auto overflow-hidden">
+                  <img
+                    src={item.image}
+                    alt={item.title}
+                    className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
+                  />
+                </div>
+              </div>
+            </motion.div>
+          ))}
+        </div>
+      </section>
+
+      {/* Helpful Links */}
+      <section className="bg-slate-900 rounded-[2.5rem] p-12 text-white relative overflow-hidden group">
+        <div className="absolute top-0 right-0 w-[500px] h-[500px] bg-blue-500/10 rounded-full blur-[100px] -mr-40 -mt-40 transition-colors group-hover:bg-blue-500/20 duration-1000" />
+
+        <div className="relative z-10 grid grid-cols-2 lg:grid-cols-4 gap-10">
+          <div className="space-y-4">
+            <h4 className="text-[10px] font-black text-blue-400 uppercase tracking-[0.3em]">
+              Network
+            </h4>
+            <ul className="space-y-2">
+              {[
+                {
+                  label: "Frigate Network",
+                  href: "https://frigate.ai/",
+                  icon: ExternalLink,
+                },
+                {
+                  label: "About Frigate",
+                  href: "https://frigate.ai/about-frigate/",
+                },
+              ].map((link, idx) => (
+                <li key={idx}>
+                  <Link
+                    href={link.href}
+                    className="text-slate-400 hover:text-white transition-colors flex items-center gap-2 text-sm"
+                  >
+                    {link.label}{" "}
+                    {link.icon && (
+                      <link.icon size={12} className="opacity-50" />
+                    )}
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          </div>
+          <div className="space-y-4">
+            <h4 className="text-[10px] font-black text-blue-400 uppercase tracking-[0.3em]">
+              Resources
+            </h4>
+            <ul className="space-y-2">
+              {[
+                { label: "Platform Updates", href: "/updates" },
+                {
+                  label: "Manufacturing Blog",
+                  href: "https://frigate.ai/blog",
+                },
+                { label: "Help Center", href: "https://frigate.ai/faqs/" },
+              ].map((link, idx) => (
+                <li key={idx}>
+                  <Link
+                    href={link.href}
+                    className="text-slate-400 hover:text-white transition-colors text-sm"
+                  >
+                    {link.label}
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          </div>
+          <div className="space-y-4">
+            <h4 className="text-[10px] font-black text-blue-400 uppercase tracking-[0.3em]">
+              Legal
+            </h4>
+            <ul className="space-y-2">
+              {[
+                {
+                  label: "Conditions of Use",
+                  href: "https://frigate.ai/terms",
+                },
+                { label: "Privacy Policy", href: "https://frigate.ai/privacy" },
+              ].map((link, idx) => (
+                <li key={idx}>
+                  <Link
+                    href={link.href}
+                    className="text-slate-400 hover:text-white transition-colors text-sm"
+                  >
+                    {link.label}
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          </div>
+          {/* <div className="space-y-4">
+            <h4 className="text-[10px] font-black text-blue-400 uppercase tracking-[0.3em]">
+              Compliance
+            </h4>
+            <ul className="space-y-2">
+              {[
+                {
+                  label: "ISO Certifications",
+                  href: "https://frigate.ai/certifications",
+                  icon: Clock,
+                },
+                {
+                  label: "Data Protection",
+                  href: "https://frigate.ai/security",
+                },
+                {
+                  label: "ITAR & EAR",
+                  href: "https://frigate.ai/export-control",
+                },
+              ].map((link, idx) => (
+                <li key={idx}>
+                  <Link
+                    href={link.href}
+                    className="text-slate-400 hover:text-white transition-colors flex items-center gap-2 text-sm"
+                  >
+                    {link.label}{" "}
+                    {link.icon && (
+                      <link.icon size={12} className="opacity-50" />
+                    )}
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          </div> */}
+        </div>
+
+        <div className="mt-16 pt-8 border-t border-white/5 flex flex-col md:flex-row justify-between items-center gap-6">
+          <p className="text-slate-500 text-[10px] uppercase tracking-widest">
+            © {new Date().getFullYear()} Frigate Manufacturing. All rights
+            reserved.
+          </p>
+          <div className="flex gap-4">
+            {[
+              {
+                name: "LinkedIn",
+                imgUrl: "/logos/linkedinW.png",
+                href: "https://frigate.ai/linkedin",
+              },
+              {
+                name: "YouTube",
+                imgUrl: "/logos/ytW.png",
+                href: "https://frigate.ai/youtube",
+              },
+              {
+                name: "X",
+                imgUrl: "/logos/xW.png",
+                href: "https://frigate.ai/twitter",
+              },
+            ].map((social, idx) => (
+              <Link
+                key={idx}
+                href="#"
+                className="group flex items-center justify-center w-10 h-10 rounded-xl bg-white/5 border border-white/10 hover:bg-white/10 hover:border-white/20 hover:shadow-[0_0_15px_rgba(255,255,255,0.05)] transition-all duration-300"
+                aria-label={social.name}
+              >
+                <img
+                  src={social.imgUrl}
+                  alt={social.name}
+                  className="h-4 w-auto object-contain opacity-50 group-hover:opacity-100 group-hover:scale-110 transition-all duration-300"
+                />
+              </Link>
+            ))}
+          </div>
+        </div>
+      </section>
     </motion.div>
   );
 }
