@@ -80,6 +80,18 @@ export const sendEmail = async ({
       }
     }
 
+    console.log({
+      host: config.email.smtpHost,
+      port: config.email.smtpPort,
+      secure: config.email.smtpPort === 465,
+      auth: {
+        user: config.email.smtpUser,
+        pass: config.email.smtpPassword,
+      },
+      connectionTimeout: 5000,
+      socketTimeout: 5000,
+    });
+
     const mailOptions = {
       from: config.email.smtpFrom,
       to,
