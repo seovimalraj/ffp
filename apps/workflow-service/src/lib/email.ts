@@ -11,7 +11,8 @@ import { getOrderDocumentTemplate } from "../constants/email-templates/order-doc
 const transporter = nodemailer.createTransport({
   host: config.email.smtpHost,
   port: config.email.smtpPort,
-  secure: config.email.smtpPort === 2587,
+  secure: false,
+  requireTLS: true,
   auth: {
     user: config.email.smtpUser,
     pass: config.email.smtpPassword,
@@ -83,7 +84,7 @@ export const sendEmail = async ({
     console.log({
       host: config.email.smtpHost,
       port: config.email.smtpPort,
-      secure: config.email.smtpPort === 465,
+      secure: config.email.smtpPort === 2587,
       auth: {
         user: config.email.smtpUser,
         pass: config.email.smtpPassword,
