@@ -10,7 +10,7 @@ export enum MetaNames {
 
 export enum TaskQueues {
   CoreTaskQueue = 'quote-tasks',
-  SupportTaskQueue = 'support-tasks',
+  CADTaskQueue = 'cad-tasks',
 }
 
 /**

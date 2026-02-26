@@ -66,6 +66,7 @@ import {
   leadTimeMeta,
   markupMap,
   TWO_D_AND_IMAGE_MIME,
+  RFQPartStatus,
 } from "@cnc-quote/shared";
 import { Badge } from "@/components/ui/badge";
 import { useSuggestionContext } from "@/components/store/suggestion-store";
@@ -259,8 +260,6 @@ export function PartCardItem({
     const fileId =
       "id" in fileToDelete.file ? fileToDelete.file.id : fileToDelete.id;
 
-    console.log("in", fileId);
-
     if (fileId) {
       try {
         await apiClient.delete(
@@ -283,6 +282,14 @@ export function PartCardItem({
 
   // Disable interactive controls for manual-quote parts
   const isManual = part.process === "manual-quote";
+
+  const isProcessing =
+    part.status === RFQPartStatus.Queued ||
+    part.status === RFQPartStatus.Processing;
+
+  if (isProcessing) {
+    return <PartCardSkeleton fileName={part.fileName} part={part} />;
+  }
 
   /* New Layout Design */
   return (
@@ -1063,13 +1070,31 @@ export function PartCardItem({
   );
 }
 
-export function PartCardSkeleton({ fileName }: { fileName: string }) {
+export function PartCardSkeleton({
+  fileName,
+  part,
+}: {
+  fileName: string;
+  part?: PartConfig;
+}) {
   return (
     <Card className="overflow-hidden border border-slate-200 shadow-sm bg-white relative">
       <div className="flex flex-col md:flex-row">
         {/* LEFT SIDEBAR SKELETON */}
         <div className="w-full md:w-[340px] bg-slate-50/80 border-b md:border-b-0 md:border-r border-slate-100 p-6 flex flex-col gap-6 flex-shrink-0">
-          <Skeleton className="aspect-square w-full rounded-xl" />
+          {part ? (
+            <div className="aspect-square w-full bg-white rounded-xl border border-slate-200 overflow-hidden shadow-sm relative">
+              <CadViewer
+                file={part.fileObject || part.filePath}
+                className="h-full w-full"
+                zoom={0.8}
+                showViewCube={false}
+                showFlatParts={false}
+              />
+            </div>
+          ) : (
+            <Skeleton className="aspect-square w-full rounded-xl" />
+          )}
           <div className="flex flex-wrap gap-2">
             <Skeleton className="h-8 w-24 rounded-lg" />
             <Skeleton className="h-8 w-24 rounded-lg" />
@@ -1140,10 +1165,12 @@ export function PartCardSkeleton({ fileName }: { fileName: string }) {
           <Loader2 className="w-6 h-6 text-blue-600 animate-spin" />
           <div className="flex flex-col">
             <span className="font-bold text-slate-900">
-              Uploading & Analyzing...
+              {part ? "Analyzing Layout..." : "Uploading & Analyzing..."}
             </span>
             <span className="text-xs text-slate-500">
-              Processing geometry data
+              {part
+                ? "Running geometric feasibility checks"
+                : "Processing geometry data"}
             </span>
           </div>
         </div>

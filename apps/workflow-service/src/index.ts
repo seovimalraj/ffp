@@ -100,6 +100,7 @@ async function startServer() {
 
   // Start Temporal Workers in background (one per task queue)
   startWorker("quote-tasks");
+  startWorker("cad-tasks");
   // Start Hono Server (for health checks and potentially direct triggers)
   serve({
     fetch: app.fetch,

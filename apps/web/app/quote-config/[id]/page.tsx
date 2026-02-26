@@ -83,7 +83,7 @@ import { ManualQuoteWarningModal } from "../components/manual-quote-warning-moda
 import { SuggestionProvider } from "@/components/store/suggestion-store";
 import Footer from "@/components/ui/footer";
 import TechnicalSupportModal from "../components/technical-support-modal";
-import { CAD_MIME_MAP } from "@cnc-quote/shared";
+import { CAD_MIME_MAP, RFQPartStatus } from "@cnc-quote/shared";
 
 /**
  * Normalize process string from database/API to clean format.
@@ -477,6 +477,7 @@ export default function QuoteConfigPage() {
   const [showManualWarningModal, setShowManualWarningModal] = useState(false);
   const partsContainerRef = useRef<HTMLDivElement>(null);
   const idleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // const pollingRef = useRef<NodeJS.Timeout | null>(null);
 
   // Show the tooltip after 1 minute of no user activity
   useEffect(() => {
@@ -552,8 +553,6 @@ export default function QuoteConfigPage() {
   const session = useSession();
 
   const { upload } = useFileUpload();
-
-  console.log(session, "<--session");
 
   // Dropzone callback for drag and drop
   const onDropFiles = useCallback(
@@ -662,7 +661,7 @@ export default function QuoteConfigPage() {
               cad_file_type: file.type,
               material: defaultMaterial,
               quantity: 1,
-              status: "draft",
+              status: "processed",
               tolerance: defaultTolerance,
               finish: defaultFinish,
               sheet_thickness_mm: defaultThicknessMm,
@@ -680,6 +679,10 @@ export default function QuoteConfigPage() {
             // 6. Calculate pricing and lead time
             newPart.final_price = calculatePrice(newPart);
             newPart.lead_time = calculateLeadTime(newPart, "standard");
+
+            // if (["queued", "processing"].includes(newPart.status)) {
+            //   startPolling();
+            // }
 
             return newPart;
           } catch (error) {
@@ -757,8 +760,6 @@ export default function QuoteConfigPage() {
         metadata,
         rfqId: isFullManual ? rfq.id : undefined,
       });
-
-      console.log(data);
 
       if (!data) {
         notify.error("Failed to create manual quote");
@@ -953,7 +954,6 @@ export default function QuoteConfigPage() {
       notify.error("Cannot delete all parts. At least one part is required.");
       return;
     }
-    console.log(ids, typeof ids);
     try {
       await deleteParts(ids);
       setParts((prev) => prev.filter((p) => !ids?.includes(p.id)));
@@ -976,132 +976,136 @@ export default function QuoteConfigPage() {
 
   // Removed strict authentication check to allow guest access for temp quotes
 
-  useEffect(() => {
-    async function loadQuote() {
-      if (!quoteId) return;
+  async function loadQuote(isPolling: boolean = false) {
+    if (!quoteId) return;
+
+    try {
+      if (!isPolling) setLoading(true);
 
       try {
-        setLoading(true);
+        const response = await apiClient.get(`/rfq/${quoteId}`);
 
-        try {
-          const response = await apiClient.get(`/rfq/${quoteId}`);
+        if (response.data && response.data.parts) {
+          const apiPartsRaw = response.data.parts;
+          let currentRfq = response.data.rfq;
 
-          if (response.data && response.data.parts) {
-            const apiPartsRaw = response.data.parts;
-            let currentRfq = response.data.rfq;
+          // Map and Calculate
+          const partsToSync: {
+            id: string;
+            final_price: number;
+            lead_time: number;
+          }[] = [];
+          let rfqTotalCalculated = 0;
+          let syncNeeded = false;
 
-            // Map and Calculate
-            const partsToSync: {
-              id: string;
-              final_price: number;
-              lead_time: number;
-            }[] = [];
-            let rfqTotalCalculated = 0;
-            let syncNeeded = false;
+          const processedParts: PartConfig[] = apiPartsRaw.map((p: any) => {
+            // CRITICAL: Normalize process field from database using helper function
+            // Handles: double-encoded JSON, escaped quotes, underscore format, etc.
+            const normalizedProcess = normalizeProcessString(
+              p.process || p.geometry?.recommendedProcess,
+            );
 
-            const processedParts: PartConfig[] = apiPartsRaw.map((p: any) => {
-              // CRITICAL: Normalize process field from database using helper function
-              // Handles: double-encoded JSON, escaped quotes, underscore format, etc.
-              const normalizedProcess = normalizeProcessString(
-                p.process || p.geometry?.recommendedProcess,
-              );
+            // Determine if this is a sheet metal part for proper material defaulting
+            const isSheetMetalPart = isSheetMetalProcess(normalizedProcess);
+            const defaultMaterial = isSheetMetalPart
+              ? "AL5052-2.0"
+              : "aluminum-6061";
 
-              // Determine if this is a sheet metal part for proper material defaulting
-              const isSheetMetalPart = isSheetMetalProcess(normalizedProcess);
-              const defaultMaterial = isSheetMetalPart
-                ? "AL5052-2.0"
-                : "aluminum-6061";
-
-              // Check if current material is valid for the process type
-              // If sheet metal part has a CNC material (like aluminum-6061), replace with sheet metal default
-              let partMaterial = p.material;
-              if (isSheetMetalPart && partMaterial) {
-                // Check if material is a sheet metal code (e.g., AL5052-2.0) or CNC code (e.g., aluminum-6061)
-                const isSheetMetalMaterial =
-                  partMaterial.match(/^[A-Z]{2}\d+/i) ||
-                  (partMaterial.includes("-") &&
-                    partMaterial.match(/\d+\.\d+$/));
-                if (!isSheetMetalMaterial) {
-                  // CNC material on sheet metal part - replace with default
-                  partMaterial = defaultMaterial;
-                }
+            // Check if current material is valid for the process type
+            // If sheet metal part has a CNC material (like aluminum-6061), replace with sheet metal default
+            let partMaterial = p.material;
+            if (isSheetMetalPart && partMaterial) {
+              // Check if material is a sheet metal code (e.g., AL5052-2.0) or CNC code (e.g., aluminum-6061)
+              const isSheetMetalMaterial =
+                partMaterial.match(/^[A-Z]{2}\d+/i) ||
+                (partMaterial.includes("-") && partMaterial.match(/\d+\.\d+$/));
+              if (!isSheetMetalMaterial) {
+                // CNC material on sheet metal part - replace with default
+                partMaterial = defaultMaterial;
               }
+            }
 
-              const part: PartConfig = {
-                id: p.id,
-                rfqId: p.rfq_id,
-                status: p.status || "active",
-                fileName: p.file_name,
-                filePath: p.cad_file_url,
-                fileObject: undefined, // URL only
-                material: partMaterial || defaultMaterial,
-                quantity: p.quantity || 1,
-                tolerance: p.tolerance || "standard",
-                finish: p.finish || "as-machined",
-                threads: p.threads || "none",
-                inspection: p.inspection || "standard",
-                notes: p.notes || "",
-                leadTimeType: (p.lead_time_type as any) || "standard",
-                geometry: p.geometry,
-                pricing: undefined,
-                certificates: p.certificates || [],
-                final_price: undefined,
-                leadTime: undefined,
-                is_archived: p.is_archived,
-                snapshot_2d_url: p.snapshot_2d_url,
-                process: normalizedProcess as PartConfig["process"],
-                files2d: (p.files2d || []).map((f: any) => ({
-                  file: {
-                    name: f.file_name || "Drawing",
-                    type: f.mime_type || "application/pdf",
-                    size: 0,
-                    id: f.id,
-                  },
-                  preview: f.file_url,
-                })),
-                changeMeta: p.change_meta || {},
-              };
+            const part: PartConfig = {
+              id: p.id,
+              rfqId: p.rfq_id,
+              status: p.status || "draft",
+              fileName: p.file_name,
+              filePath: p.cad_file_url,
+              fileObject: undefined, // URL only
+              material: partMaterial || defaultMaterial,
+              quantity: p.quantity || 1,
+              tolerance: p.tolerance || "standard",
+              finish: p.finish || "as-machined",
+              threads: p.threads || "none",
+              inspection: p.inspection || "standard",
+              notes: p.notes || "",
+              leadTimeType: (p.lead_time_type as any) || "standard",
+              geometry: p.geometry,
+              pricing: undefined,
+              certificates: p.certificates || [],
+              final_price: undefined,
+              leadTime: undefined,
+              is_archived: p.is_archived,
+              snapshot_2d_url: p.snapshot_2d_url,
+              process: normalizedProcess as PartConfig["process"],
+              files2d: (p.files2d || []).map((f: any) => ({
+                file: {
+                  name: f.file_name || "Drawing",
+                  type: f.mime_type || "application/pdf",
+                  size: 0,
+                  id: f.id,
+                },
+                preview: f.file_url,
+              })),
+              changeMeta: p.change_meta || {},
+            };
 
-              // Recalculate Pricing Object
-              // Skip pricing for manual-quote parts (assemblies) — they must show $0
-              if (part.geometry && normalizedProcess !== "manual-quote") {
-                // CRITICAL: Use the already-normalized process, not the raw DB value
-                const processType = normalizedProcess;
-                const material = getMaterialForProcess(
-                  part.material,
-                  processType,
-                );
-                if (material) {
-                  const process =
-                    PROCESSES[processType as keyof typeof PROCESSES] ||
-                    PROCESSES["cnc-milling"];
-                  const finish = getFinish(part.finish);
-
-                  part.pricing = calculatePricing({
-                    geometry: part.geometry,
-                    material,
-                    process,
-                    finish,
-                    quantity: part.quantity,
-                    tolerance: part.tolerance as any,
-                    leadTimeType: "standard",
-                  });
-                }
-              }
-
-              // Recalculate Final Price and Lead Time
-              const calculatedPrice = calculatePrice(part, part.leadTimeType);
-              const calculatedLeadTime = calculateLeadTime(
-                part,
-                part.leadTimeType,
+            // Recalculate Pricing Object
+            // Skip pricing for manual-quote parts (assemblies) — they must show $0
+            if (
+              ![RFQPartStatus.Queued, RFQPartStatus.Processing].includes(
+                part.status,
+              ) &&
+              part.geometry &&
+              normalizedProcess !== "manual-quote"
+            ) {
+              // CRITICAL: Use the already-normalized process, not the raw DB value
+              const processType = normalizedProcess;
+              const material = getMaterialForProcess(
+                part.material,
+                processType,
               );
+              if (material) {
+                const process =
+                  PROCESSES[processType as keyof typeof PROCESSES] ||
+                  PROCESSES["cnc-milling"];
+                const finish = getFinish(part.finish);
 
-              part.final_price = calculatedPrice;
-              part.leadTime = calculatedLeadTime;
+                part.pricing = calculatePricing({
+                  geometry: part.geometry,
+                  material,
+                  process,
+                  finish,
+                  quantity: part.quantity,
+                  tolerance: part.tolerance as any,
+                  leadTimeType: "standard",
+                });
+              }
+            }
 
-              rfqTotalCalculated += calculatedPrice;
+            // Recalculate Final Price and Lead Time
+            const calculatedPrice = calculatePrice(part, part.leadTimeType);
+            const calculatedLeadTime = calculateLeadTime(
+              part,
+              part.leadTimeType,
+            );
 
-              // Check for discrepancies
+            part.final_price = calculatedPrice;
+            part.leadTime = calculatedLeadTime;
+
+            rfqTotalCalculated += calculatedPrice;
+
+            if (!isPolling) {
               const dbPrice = p.final_price ? Number(p.final_price) : 0;
               const dbLeadTime = p.lead_time ? Number(p.lead_time) : 0;
 
@@ -1116,76 +1120,116 @@ export default function QuoteConfigPage() {
                   lead_time: calculatedLeadTime,
                 });
               }
-
-              return part;
-            });
-
-            // Check RFQ Total Sync
-            const dbRfqTotal = currentRfq.final_price
-              ? Number(currentRfq.final_price)
-              : 0;
-            if (Math.abs(rfqTotalCalculated - dbRfqTotal) > 0.01) {
-              syncNeeded = true;
             }
+            return part;
+          });
 
-            if (syncNeeded) {
-              console.log("Syncing pricing with backend...", {
-                partsToSync,
-                rfqTotalCalculated,
-              });
-              await apiClient
-                .post(`/rfq/${quoteId}/sync-pricing`, {
-                  rfq_final_price: rfqTotalCalculated,
-                  parts: partsToSync,
-                })
-                .then(() => {
-                  notify.success(
-                    "Pricing updated based on recent material cost.",
-                  );
-                  currentRfq = {
-                    ...currentRfq,
-                    final_price: rfqTotalCalculated,
-                  };
-                })
-                .catch((err) => {
-                  console.error("Failed to sync pricing", err);
-                });
-            }
-
-            setRfq(currentRfq);
-            setParts(processedParts.filter((p) => !p.is_archived));
-            setArchivedParts(processedParts.filter((p) => p.is_archived));
-
-            // Check if technical support request exists
-            try {
-              const supportCheck = await apiClient.get(
-                `/rfq/${quoteId}/tech-support/exist`,
-              );
-              setSupportRequestExists(supportCheck.data.exists);
-            } catch (supportError) {
-              console.error(
-                "Failed to check support request existence:",
-                supportError,
-              );
-            }
-          } else {
-            throw new Error("Invalid API response");
+          // Check RFQ Total Sync
+          const dbRfqTotal = currentRfq.final_price
+            ? Number(currentRfq.final_price)
+            : 0;
+          if (Math.abs(rfqTotalCalculated - dbRfqTotal) > 0.01) {
+            syncNeeded = true;
           }
-        } catch (error) {
-          console.error("Error loading quote from API:", error);
-          notify.error("Failed to load quote. Please try again.");
-          // Don't auto-redirect immediately, let user see error or use back button
-          // router.push("/instant-quote");
+
+          if (!isPolling && syncNeeded) {
+            await apiClient
+              .post(`/rfq/${quoteId}/sync-pricing`, {
+                rfq_final_price: rfqTotalCalculated,
+                parts: partsToSync,
+              })
+              .then(() => {
+                notify.success(
+                  "Pricing updated based on recent material cost.",
+                );
+                currentRfq = {
+                  ...currentRfq,
+                  final_price: rfqTotalCalculated,
+                };
+              })
+              .catch((err) => {
+                console.error("Failed to sync pricing", err);
+              });
+          }
+
+          setRfq(currentRfq);
+          setParts(processedParts.filter((p) => !p.is_archived));
+          setArchivedParts(processedParts.filter((p) => p.is_archived));
+
+          // Check if technical support request exists
+          try {
+            const supportCheck = await apiClient.get(
+              `/rfq/${quoteId}/tech-support/exist`,
+            );
+            setSupportRequestExists(supportCheck.data.exists);
+          } catch (supportError) {
+            console.error(
+              "Failed to check support request existence:",
+              supportError,
+            );
+          }
+
+          return processedParts;
+        } else {
+          throw new Error("Invalid API response");
         }
       } catch (error) {
-        console.error("Error loading quote:", error);
-        alert("Failed to load quote. Please try again.");
-        router.push("/instant-quote");
-      } finally {
-        setLoading(false);
+        console.error("Error loading quote from API:", error);
+        notify.error("Failed to load quote. Please try again.");
+        // Don't auto-redirect immediately, let user see error or use back button
+        // router.push("/instant-quote");
       }
+    } catch (error) {
+      console.error("Error loading quote:", error);
+      alert("Failed to load quote. Please try again.");
+      router.push("/instant-quote");
+    } finally {
+      if (!isPolling) setLoading(false);
     }
+  }
 
+  // const startPolling = () => {
+  //   if (pollingRef.current) return; // already polling
+
+  //   pollingRef.current = setInterval(async () => {
+  //     const updatedParts = await loadQuote(true);
+  //     if (!updatedParts) return;
+
+  //     const stillPending = updatedParts.some((p) =>
+  //       ["queued", "processing"].includes(p.status),
+  //     );
+
+  //     if (!stillPending) {
+  //       stopPolling();
+  //     }
+  //   }, 5000);
+  // };
+
+  // const stopPolling = () => {
+  //   if (pollingRef.current) {
+  //     clearInterval(pollingRef.current);
+  //     pollingRef.current = null;
+  //   }
+  // };
+
+  // useEffect(() => {
+  //   if (!quoteId) return;
+
+  //   (async () => {
+  //     const parts = await loadQuote(false);
+  //     if (!parts) return;
+
+  //     const hasPending = parts.some((p) =>
+  //       ["queued", "processing"].includes(p.status),
+  //     );
+
+  //     if (hasPending) startPolling();
+  //   })();
+
+  //   return () => stopPolling();
+  // }, [quoteId]);
+
+  useEffect(() => {
     loadQuote();
   }, [quoteId, router, session.status]);
 
@@ -1994,6 +2038,10 @@ export default function QuoteConfigPage() {
                 <div className="space-y-3 max-h-[calc(100vh-85px)] overflow-y-auto custom-scrollbar pr-1">
                   {parts.map((p, i) => {
                     const isManual = p.process === "manual-quote";
+                    const isProcessing = [
+                      RFQPartStatus.Queued,
+                      RFQPartStatus.Processing,
+                    ].includes(p.status);
                     const pPrice = p.final_price || 0;
                     const calculatedLeadTime = p.leadTime || 0;
                     return (
@@ -2009,7 +2057,7 @@ export default function QuoteConfigPage() {
                               </span>
                             </span>
                           </div>
-                          {!isManual && (
+                          {(!isManual || !isProcessing) && (
                             <span className="text-xs text-slate-500">
                               Qty: {p.quantity} |{" "}
                               {LEAD_TIME_SHORT[p.leadTimeType]} (
@@ -2018,7 +2066,9 @@ export default function QuoteConfigPage() {
                           )}
                         </div>
                         <span className="font-semibold mt-0.5 text-slate-700">
-                          {isManual ? "-" : formatCurrencyFixed(pPrice)}
+                          {isManual || isProcessing
+                            ? "-"
+                            : formatCurrencyFixed(pPrice)}
                         </span>
                       </div>
                     );

@@ -96,6 +96,13 @@ export enum RFQStatuses {
   Paid = "paid",
 }
 
+export enum RFQPartStatus {
+  Queued = "queued",
+  Processing = "processing",
+  Processed = "processed",
+  Cancelled = "Cancelled",
+}
+
 /**
  * Materialized view names for optimized queries
  */

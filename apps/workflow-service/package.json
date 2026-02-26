@@ -27,6 +27,7 @@
   "dependencies": {
     "@hono/node-server": "^1.19.9",
     "@supabase/supabase-js": "^2.93.2",
+    "@temporalio/activity": "^1.15.0",
     "@temporalio/client": "^1.14.1",
     "@temporalio/worker": "^1.14.1",
     "@temporalio/workflow": "^1.14.1",

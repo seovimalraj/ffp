@@ -97,11 +97,11 @@ services:
       PORT: 3004
       FRONTEND_URL: "https://app.frigate.ai"
 
-      SMTP_HOST: smtp-pulse.com
-      SMTP_PORT: 465
-      SMTP_USER: vimalraj@frigate.ai
-      SMTP_PASSWORD: 6RdsKmEbmmWG
-      SMTP_FROM: vimalraj@frigate.ai
+      SMTP_HOST: next-smtp.useplunk.com
+      SMTP_PORT: 2587
+      SMTP_USER: plunk
+      SMTP_PASSWORD: sk_5f8f3ae3aec76052fd58891b5bfa00b4e4ed1f71112fa89cbd041b52a6f96c43
+      SMTP_FROM: noreply@mail.frigate.ai
 
       # Supabase Configuration
       SUPABASE_URL: https://supabase.frigate.ai
