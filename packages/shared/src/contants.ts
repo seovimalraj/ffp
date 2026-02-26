@@ -80,6 +80,13 @@ export enum StockMaterial {
   Plate = "plate",
 }
 
+export enum RFQPartStatus {
+  Queued = "queued",
+  Processing = "processing",
+  Processed = "processed",
+  Cancelled = "Cancelled",
+}
+
 export enum Tables {
   /** Table storing user account information */
   UserTable = "users",

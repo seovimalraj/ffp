@@ -1,254 +1,214 @@
-'use client';
+"use client";
 
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
-import { Building2, Search, Users, DollarSign, TrendingUp, Plus } from 'lucide-react';
+import React, { useState, useEffect, useMemo } from "react";
+import { Button } from "@/components/ui/button";
+import { Skeleton } from "@/components/ui/skeleton";
+import { Building2, Plus, ArrowUpFromLine } from "lucide-react";
+import { apiClient } from "@/lib/api";
+import { DataTable, Column } from "@/components/ui/data-table";
+import { formatDate } from "@/lib/format";
+import { useMetaStore } from "@/components/store/title-store";
+import { StatusCards, StatusItem } from "@/components/ui/status-cards";
+
+interface Organization {
+  id: string;
+  name: string;
+  display_name: string | null;
+  address: string | null;
+  organization_type: string;
+  created_at: string;
+  updated_at: string;
+  // Placeholder for future fields
+  users_count?: number;
+  quotes_count?: number;
+  orders_count?: number;
+  revenue?: string;
+}
 
 export default function AdminOrganizationsPage() {
-  const organizations = [
-    { 
-      id: 1, 
-      name: 'Acme Manufacturing', 
-      users: 12, 
-      plan: 'Enterprise', 
-      status: 'active', 
-      created: '2024-01-15',
-      revenue: '$45,200',
-      quotes: 156,
-      orders: 89
+  const [organizations, setOrganizations] = useState<Organization[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [totalCount, setTotalCount] = useState(0);
+  const [hasMore, setHasMore] = useState(false);
+  const [isFetchingMore, setIsFetchingMore] = useState(false);
+  const organizationsRef = React.useRef<Organization[]>([]);
+
+  const { setPageTitle, resetTitle } = useMetaStore();
+  const PAGE_LIMIT = 20;
+
+  useEffect(() => {
+    setPageTitle("Organizations");
+    return () => {
+      resetTitle();
+    };
+  }, [setPageTitle, resetTitle]);
+
+  // Keep ref in sync
+  useEffect(() => {
+    organizationsRef.current = organizations;
+  }, [organizations]);
+
+  const fetchOrganizations = React.useCallback(
+    async (isNext = false) => {
+      if (isNext) {
+        setIsFetchingMore(true);
+      } else {
+        setLoading(true);
+      }
+
+      try {
+        const params = {
+          limit: PAGE_LIMIT,
+          offset: isNext ? organizationsRef.current.length : 0,
+        };
+
+        const response = await apiClient.get("/admin", { params });
+        const { data, pagination } = response.data;
+
+        setOrganizations((prev) => (isNext ? [...prev, ...data] : data));
+        setHasMore(pagination.hasMore);
+        setTotalCount(pagination.total);
+      } catch (error) {
+        console.error("Failed to fetch organizations:", error);
+      } finally {
+        setLoading(false);
+        setIsFetchingMore(false);
+      }
     },
-    { 
-      id: 2, 
-      name: 'TechCorp Industries', 
-      users: 8, 
-      plan: 'Professional', 
-      status: 'active', 
-      created: '2024-03-20',
-      revenue: '$32,800',
-      quotes: 98,
-      orders: 67
+    [PAGE_LIMIT],
+  );
+
+  useEffect(() => {
+    fetchOrganizations();
+  }, [fetchOrganizations]);
+
+  const stats: StatusItem[] = useMemo(
+    () => [
+      {
+        label: "Total Organizations",
+        value: totalCount,
+        color: "blue",
+        icon: Building2,
+        priority: 1,
+      },
+      // We can add more stats here if the API provides them
+    ],
+    [totalCount],
+  );
+
+  const columns: Column<Organization>[] = [
+    {
+      key: "name",
+      header: "Organization Name",
+      render: (row) => (
+        <div className="flex flex-col">
+          <span className="font-semibold text-gray-900 dark:text-gray-100">
+            {row.name}
+          </span>
+          {row.display_name && (
+            <span className="text-xs text-gray-500">{row.display_name}</span>
+          )}
+        </div>
+      ),
     },
-    { 
-      id: 3, 
-      name: 'Precision Parts Ltd', 
-      users: 5, 
-      plan: 'Professional', 
-      status: 'active', 
-      created: '2024-02-10',
-      revenue: '$28,400',
-      quotes: 87,
-      orders: 54
+    {
+      key: "organization_type",
+      header: "Type",
+      render: (row) => (
+        <span className="capitalize px-2 py-1 rounded-md bg-gray-100 dark:bg-gray-800 text-xs font-medium">
+          {row.organization_type}
+        </span>
+      ),
     },
-    { 
-      id: 4, 
-      name: 'Global Engineering', 
-      users: 15, 
-      plan: 'Enterprise', 
-      status: 'active', 
-      created: '2023-11-05',
-      revenue: '$67,900',
-      quotes: 234,
-      orders: 145
+    {
+      key: "created_at",
+      header: "Created At",
+      render: (row) => formatDate(row.created_at),
     },
-    { 
-      id: 5, 
-      name: 'StartUp Co', 
-      users: 3, 
-      plan: 'Starter', 
-      status: 'trial', 
-      created: '2024-10-15',
-      revenue: '$1,200',
-      quotes: 12,
-      orders: 3
-    },
-    { 
-      id: 6, 
-      name: 'Manufacturing Solutions', 
-      users: 9, 
-      plan: 'Professional', 
-      status: 'active', 
-      created: '2024-04-22',
-      revenue: '$38,500',
-      quotes: 112,
-      orders: 78
+    {
+      key: "updated_at",
+      header: "Updated At",
+      render: (row) => formatDate(row.updated_at),
     },
   ];
 
-  const getStatusBadge = (status: string) => {
-    const variants: Record<string, { variant: 'default' | 'secondary' | 'outline', class: string }> = {
-      active: { variant: 'default', class: 'bg-green-100 text-green-700 hover:bg-green-100' },
-      trial: { variant: 'secondary', class: 'bg-yellow-100 text-yellow-700 hover:bg-yellow-100' },
-      suspended: { variant: 'outline', class: 'bg-red-100 text-red-700 hover:bg-red-100' },
-    };
-    const config = variants[status] || variants.active;
-    return (
-      <Badge variant={config.variant} className={config.class}>
-        {status.charAt(0).toUpperCase() + status.slice(1)}
-      </Badge>
-    );
-  };
-
-  const getPlanBadge = (plan: string) => {
-    const variants: Record<string, string> = {
-      Enterprise: 'bg-purple-100 text-purple-700',
-      Professional: 'bg-blue-100 text-blue-700',
-      Starter: 'bg-gray-100 text-gray-700',
-    };
-    return (
-      <Badge variant="outline" className={variants[plan] || variants.Starter}>
-        {plan}
-      </Badge>
-    );
-  };
-
-  const totalUsers = organizations.reduce((sum, org) => sum + org.users, 0);
-  const totalRevenue = organizations.reduce((sum, org) => {
-    const revenue = parseFloat(org.revenue.replace(/[$,]/g, ''));
-    return sum + revenue;
-  }, 0);
-
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
+    <div className="min-h-screen space-y-4">
+      {/* Header Section */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h1 className="text-3xl font-bold text-gray-900 dark:text-white">Organizations</h1>
-          <p className="text-gray-600 dark:text-gray-400 mt-1">
-            Manage organizations and subscriptions
+          <h1 className="text-2xl font-bold text-gray-900 dark:text-white flex items-center gap-2">
+            <Building2 className="w-6 h-6 text-blue-500" />
+            Organizations
+          </h1>
+          <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
+            Overview and management of all registered organizations
           </p>
         </div>
-        <Button disabled className="cursor-not-allowed opacity-50">
-          <Plus className="w-4 h-4 mr-2" />
-          New Organization
-        </Button>
+        <div className="flex items-center gap-3">
+          <Button
+            variant="outline"
+            size="sm"
+            className="h-9 px-4 transition-all flex items-center gap-2 font-semibold text-xs tracking-wide uppercase"
+          >
+            <ArrowUpFromLine size={14} className="opacity-60" />
+            <span>Export</span>
+          </Button>
+          <Button
+            variant="default"
+            size="sm"
+            className="h-9 px-4 bg-blue-600 hover:bg-blue-700 text-white transition-all flex items-center gap-2 font-semibold text-xs tracking-wide uppercase"
+            disabled
+          >
+            <Plus size={14} />
+            <span>New Organization</span>
+          </Button>
+        </div>
       </div>
 
-      {/* Stats Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-        <Card>
-          <CardContent className="p-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-gray-600 dark:text-gray-400">Total Organizations</p>
-                <p className="text-2xl font-bold text-gray-900 dark:text-white mt-1">
-                  {organizations.length}
-                </p>
-              </div>
-              <div className="p-3 bg-blue-50 dark:bg-blue-950 rounded-lg">
-                <Building2 className="w-6 h-6 text-blue-600 dark:text-blue-400" />
-              </div>
-            </div>
-          </CardContent>
-        </Card>
+      <StatusCards isLoading={loading} items={stats} minimal={true} />
 
-        <Card>
-          <CardContent className="p-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-gray-600 dark:text-gray-400">Total Users</p>
-                <p className="text-2xl font-bold text-gray-900 dark:text-white mt-1">
-                  {totalUsers}
-                </p>
+      {/* Content Section */}
+      <div className="pt-2">
+        {loading && organizations.length === 0 ? (
+          <div className="space-y-6">
+            {Array.from({ length: 5 }).map((_, i) => (
+              <div
+                key={i}
+                className="flex items-center justify-between gap-4 py-4 border-b border-gray-50 dark:border-gray-900/50"
+              >
+                <Skeleton className="w-48 h-4 rounded-full" />
+                <Skeleton className="w-24 h-4 rounded-full" />
+                <Skeleton className="w-32 h-4 rounded-full" />
+                <Skeleton className="w-32 h-4 rounded-full" />
               </div>
-              <div className="p-3 bg-green-50 dark:bg-green-950 rounded-lg">
-                <Users className="w-6 h-6 text-green-600 dark:text-green-400" />
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardContent className="p-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-gray-600 dark:text-gray-400">Total Revenue</p>
-                <p className="text-2xl font-bold text-gray-900 dark:text-white mt-1">
-                  ${totalRevenue.toLocaleString()}
-                </p>
-              </div>
-              <div className="p-3 bg-emerald-50 dark:bg-emerald-950 rounded-lg">
-                <DollarSign className="w-6 h-6 text-emerald-600 dark:text-emerald-400" />
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardContent className="p-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-gray-600 dark:text-gray-400">Avg Revenue/Org</p>
-                <p className="text-2xl font-bold text-gray-900 dark:text-white mt-1">
-                  ${Math.round(totalRevenue / organizations.length).toLocaleString()}
-                </p>
-              </div>
-              <div className="p-3 bg-purple-50 dark:bg-purple-950 rounded-lg">
-                <TrendingUp className="w-6 h-6 text-purple-600 dark:text-purple-400" />
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* Organizations Table */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center justify-between">
-            <span className="flex items-center gap-2">
-              <Building2 className="w-5 h-5" />
-              All Organizations
-            </span>
-            <div className="flex items-center gap-2">
-              <div className="relative">
-                <Search className="w-3.5 h-3.5 absolute left-2 top-2.5 text-gray-400" />
-                <input
-                  placeholder="Search organizations..."
-                  className="pl-7 pr-3 py-1 border rounded text-sm bg-background focus:outline-none focus:ring-1 focus:ring-primary cursor-not-allowed opacity-75"
-                  disabled
-                />
-              </div>
-            </div>
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead className="bg-gray-50 dark:bg-gray-800">
-                <tr>
-                  <th className="text-left p-3 font-medium">Organization</th>
-                  <th className="text-left p-3 font-medium">Plan</th>
-                  <th className="text-left p-3 font-medium">Users</th>
-                  <th className="text-left p-3 font-medium">Revenue</th>
-                  <th className="text-left p-3 font-medium">Quotes</th>
-                  <th className="text-left p-3 font-medium">Orders</th>
-                  <th className="text-left p-3 font-medium">Status</th>
-                  <th className="text-left p-3 font-medium">Created</th>
-                  <th className="text-left p-3 font-medium">Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                {organizations.map((org) => (
-                  <tr key={org.id} className="border-t hover:bg-gray-50 dark:hover:bg-gray-800/50">
-                    <td className="p-3 font-medium">{org.name}</td>
-                    <td className="p-3">{getPlanBadge(org.plan)}</td>
-                    <td className="p-3">{org.users}</td>
-                    <td className="p-3 font-medium">{org.revenue}</td>
-                    <td className="p-3">{org.quotes}</td>
-                    <td className="p-3">{org.orders}</td>
-                    <td className="p-3">{getStatusBadge(org.status)}</td>
-                    <td className="p-3 text-gray-600">{org.created}</td>
-                    <td className="p-3">
-                      <Button variant="ghost" size="sm" disabled className="cursor-not-allowed opacity-50">
-                        View
-                      </Button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+            ))}
           </div>
-        </CardContent>
-      </Card>
+        ) : (
+          <div className="animate-in fade-in duration-500">
+            <DataTable
+              columns={columns}
+              data={organizations}
+              keyExtractor={(m) => m.id}
+              emptyMessage="No Organizations Found"
+              isLoading={loading || isFetchingMore}
+              numbering={true}
+              hasMore={hasMore}
+              onEndReached={() => {
+                if (hasMore && !isFetchingMore) {
+                  fetchOrganizations(true);
+                }
+              }}
+              actions={[
+                {
+                  label: "View",
+                  onClick: (org) => console.log("View org", org.id),
+                },
+              ]}
+            />
+          </div>
+        )}
+      </div>
     </div>
   );
 }

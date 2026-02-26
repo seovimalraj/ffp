@@ -133,7 +133,7 @@ export default function InstantQuotePage() {
     }
 
     setIsUploading(true);
-    const limit = pLimit(3); // Process up to 3 files concurrently for better UX
+    const limit = pLimit(1); // Process up to 3 files concurrently for better UX
 
     try {
       const results = await Promise.all(

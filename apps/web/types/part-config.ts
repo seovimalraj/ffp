@@ -1,5 +1,6 @@
 import { GeometryData } from "@/lib/cad-analysis";
 import { PricingBreakdown } from "@/lib/pricing-engine";
+import { RFQPartStatus } from "@cnc-quote/shared";
 
 export interface File2D {
   id?: string;
@@ -10,7 +11,7 @@ export interface File2D {
 export interface PartConfig {
   id: string;
   rfqId: string;
-  status: "active" | "draft";
+  status: RFQPartStatus;
   fileName: string;
   filePath: string;
   fileObject?: File;

@@ -20,6 +20,7 @@ import { InngestModule } from './inngest/inngest.module';
 import { TemporalModule } from './temporal/temporal.module';
 import { AdminModule } from './admin/admin.module';
 import { SystemModule } from './system/system.module';
+import { TechnicalSupportModule } from './technical-support/technical-support.module';
 
 @Module({
   imports: [
@@ -59,6 +60,7 @@ import { SystemModule } from './system/system.module';
     TemporalModule,
     AdminModule,
     SystemModule,
+    TechnicalSupportModule,
   ],
   controllers: [AppController],
   providers: [AppService],

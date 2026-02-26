@@ -44,7 +44,7 @@ INSERT INTO rfq_parts (
 VALUES (
         v_rfq_id,
         v_organization_id,
-        'draft',
+        'queued',
         part->>'file_name',
         part->>'cad_file_url',
         part->>'cad_file_type',

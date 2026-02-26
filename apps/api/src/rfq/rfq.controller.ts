@@ -33,9 +33,10 @@ import { CurrentUser } from '../auth/user.decorator';
 import { CurrentUserDto } from '../auth/auth.dto';
 import { RFQStatuses } from './rfq.helpers';
 import { TemporalService } from '../temporal/temporal.service';
+import { RolesGuard } from 'src/auth/roles.guard';
 
 @Controller('rfq')
-@UseGuards(AuthGuard)
+@UseGuards(AuthGuard, RolesGuard)
 export class RfqController {
   constructor(
     private readonly supbaseService: SupabaseService,
@@ -575,6 +576,7 @@ export class RfqController {
         body.parts.map((part) => ({
           rfq_id: rfqId,
           ...part,
+          status: 'processed',
           organization_id: user.organizationId,
         })),
       )

@@ -209,8 +209,6 @@ export function EditPartModal({
     multiple: false,
   });
 
-  console.log(localPart, isCNCProcess(localPart.process));
-
   return (
     <Dialog
       open={isOpen}

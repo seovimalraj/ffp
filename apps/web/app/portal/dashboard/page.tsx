@@ -586,8 +586,8 @@ export default function CustomerDashboardPage() {
 
         <div className="mt-16 pt-8 border-t border-white/5 flex flex-col md:flex-row justify-between items-center gap-6">
           <p className="text-slate-500 text-[10px] uppercase tracking-widest">
-            © {new Date().getFullYear()} Frigate Manufacturing. All rights
-            reserved.
+            © {new Date().getFullYear()} Frigate Engineering Services. All
+            rights reserved.
           </p>
           <div className="flex gap-4">
             {[
@@ -598,7 +598,7 @@ export default function CustomerDashboardPage() {
               },
               {
                 name: "YouTube",
-                imgUrl: "/logos/ytW.png",
+                imgUrl: "/logos/ytIW.png",
                 href: "https://frigate.ai/youtube",
               },
               {
