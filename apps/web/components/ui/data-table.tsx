@@ -1,6 +1,6 @@
 "use client";
 import type { ReactNode } from "react";
-import { useState, useEffect } from "react";
+import { useState, useEffect, Fragment } from "react";
 import {
   ArrowUpIcon,
   ArrowDownIcon,
@@ -411,7 +411,7 @@ export function DataTable<T>({
                 if (selectable) cellLeftOffset += 44;
 
                 return (
-                  <>
+                  <Fragment key={rowKey}>
                     <tr
                       key={rowKey}
                       data-state={isSelected ? "selected" : undefined}
@@ -570,7 +570,7 @@ export function DataTable<T>({
                           </td>
                         </tr>
                       )}
-                  </>
+                  </Fragment>
                 );
               })
             )}

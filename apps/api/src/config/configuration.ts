@@ -19,7 +19,7 @@ export default () => ({
     password: process.env.REDIS_PASSWORD,
   },
   temporal: {
-    address: process.env.TEMPORAL_ADDRESS || '172.17.0.1:7233',
+    address: process.env.TEMPORAL_ADDRESS || 'localhost:7233',
     namespace: process.env.TEMPORAL_NAMESPACE || 'default',
   },
 });

@@ -10,9 +10,12 @@
  * @returns Formatted date string (e.g., "Nov 7, 2025")
  */
 export function formatDate(
-  date: string | Date,
+  date: string | Date | null | undefined,
   options?: Intl.DateTimeFormatOptions,
 ): string {
+  if (!date) {
+    return "N/A";
+  }
   const dateObj = typeof date === "string" ? new Date(date) : date;
 
   // Check for invalid date
@@ -34,7 +37,8 @@ export function formatDate(
  * @param date - Date string (ISO) or Date object
  * @returns Formatted date-time string (e.g., "Nov 7, 2025, 2:30 PM")
  */
-export function formatDateTime(date: string | Date): string {
+export function formatDateTime(date: string | Date | null | undefined): string {
+  if (!date) return "N/A";
   return formatDate(date, {
     year: "numeric",
     month: "short",
@@ -49,7 +53,8 @@ export function formatDateTime(date: string | Date): string {
  * @param date - Date string (ISO) or Date object
  * @returns Formatted date string (e.g., "November 7, 2025")
  */
-export function formatDateLong(date: string | Date): string {
+export function formatDateLong(date: string | Date | null | undefined): string {
+  if (!date) return "N/A";
   return formatDate(date, {
     year: "numeric",
     month: "long",
@@ -62,7 +67,10 @@ export function formatDateLong(date: string | Date): string {
  * @param date - Date string (ISO) or Date object
  * @returns Formatted date string (e.g., "11/7/2025")
  */
-export function formatDateShort(date: string | Date): string {
+export function formatDateShort(
+  date: string | Date | null | undefined,
+): string {
+  if (!date) return "N/A";
   return formatDate(date, {
     year: "numeric",
     month: "numeric",
@@ -75,7 +83,10 @@ export function formatDateShort(date: string | Date): string {
  * @param date - Date string (ISO) or Date object
  * @returns Relative time string
  */
-export function formatRelativeTime(date: string | Date): string {
+export function formatRelativeTime(
+  date: string | Date | null | undefined,
+): string {
+  if (!date) return "N/A";
   const dateObj = typeof date === "string" ? new Date(date) : date;
 
   if (isNaN(dateObj.getTime())) {

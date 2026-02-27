@@ -179,7 +179,7 @@ export function SuggestionSidebar({
     <>
       {/* Floating Button at Bottom */}
       <div className="fixed bottom-6 right-6 z-40">
-        <Button
+        {/* <Button
           onClick={toggleSidebar}
           className="animated-gradient-btn relative h-14 px-2 hover:px-6 group rounded-2xl shadow-[0_0_20px_rgba(59,130,246,0.3)] hover:shadow-[0_0_30px_rgba(59,130,246,0.5)] hover:scale-105 text-white font-bold gap-3 transition-all duration-300 group overflow-hidden"
         >
@@ -216,7 +216,7 @@ export function SuggestionSidebar({
                 : "Analyze Quote"}
             </span>
           </div>
-        </Button>
+        </Button> */}
       </div>
 
       {/* Overlay */}

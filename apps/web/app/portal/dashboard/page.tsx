@@ -75,7 +75,7 @@ export default function CustomerDashboardPage() {
   const { setPageTitle, resetTitle } = useMetaStore();
 
   useEffect(() => {
-    setPageTitle("Dashboard");
+    setPageTitle("Home");
     return () => {
       resetTitle();
     };

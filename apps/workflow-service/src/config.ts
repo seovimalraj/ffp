@@ -1,8 +1,19 @@
 import dotenv from "dotenv";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const envFile =
+  process.env.NODE_ENV === "production" ? ".env" : ".env.development";
 
 dotenv.config({
-  path: process.env.NODE_ENV === "production" ? ".env" : ".env.development",
+  path: path.join(__dirname, "..", envFile),
 });
+
+console.warn(`[Config] Loaded environment from ${envFile}`);
+console.warn(
+  `[Config] Temporal Address: ${process.env.TEMPORAL_ADDRESS || "localhost:7233"}`,
+);
 
 export const config = {
   port: Number(process.env.PORT) || 6001,
@@ -23,7 +34,7 @@ export const config = {
     ? process.env.ALLOWED_ORIGINS.split(",").map((o) => o.trim())
     : ["*"],
   temporal: {
-    address: process.env.TEMPORAL_ADDRESS || "172.17.0.1:7233",
+    address: process.env.TEMPORAL_ADDRESS || "localhost:7233",
     namespace: process.env.TEMPORAL_NAMESPACE || "default",
   },
 };

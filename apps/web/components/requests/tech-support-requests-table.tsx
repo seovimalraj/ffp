@@ -560,7 +560,7 @@ export default function TechSupportRequestsTable({
             role === "admin"
               ? `/admin/quotes/${row.quote_id}`
               : row.rfq.status === "draft"
-                ? `/quote-config/${row.id}`
+                ? `/quote-config/${row.quote_id}`
                 : row.rfq.status === "paid"
                   ? `/portal/orders/${row.rfq.order_id}`
                   : row.rfq.status === "submitted" ||

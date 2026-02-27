@@ -18,12 +18,23 @@ CREATE TABLE abandoned_rfq_parts (
     geometry JSONB,
     pricing JSONB,
     final_price NUMERIC(10, 2),
+    snapshot_2d_url text,
     abandoned_reason TEXT,
     abandoned_by UUID REFERENCES users(id),
     abandoned_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
+
+-- must exist
+ALTER TABLE abandoned_rfq_parts
+ADD CONSTRAINT fk_abandoned_rfq
+FOREIGN KEY (rfq_id) REFERENCES rfq(id);
+
+
+CREATE INDEX idx_abandoned_rfq_parts_abandoned_at
+ON abandoned_rfq_parts (abandoned_at DESC);
+
 CREATE TABLE abandoned_part_drawing_2d (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     abandoned_part_id UUID NOT NULL REFERENCES abandoned_rfq_parts(id) ON DELETE CASCADE,

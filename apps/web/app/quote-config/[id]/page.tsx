@@ -2102,6 +2102,14 @@ export default function QuoteConfigPage() {
                     <span className="text-slate-600 font-medium">Shipping</span>
                     <span className="font-semibold text-green-600">Free</span>
                   </div>
+                  <div className="flex justify-between items-center text-sm">
+                    <span className="text-slate-600 font-medium">
+                      Tax & Duties
+                    </span>
+                    <span className="font-semibold text-green-600">
+                      Included
+                    </span>
+                  </div>
                   <div className="pt-3 mt-3 border-t border-slate-200">
                     <div className="flex justify-between items-center">
                       <span className="text-base font-bold text-slate-900">

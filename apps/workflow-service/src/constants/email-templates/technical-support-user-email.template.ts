@@ -2,16 +2,8 @@ import { BaseEmailTemplate } from "./base.template.js";
 import { config } from "../../config.js";
 
 export const TechnicalSupportUserTemplate = (requestCode: string) => {
-  const url = `${config.frontendUrl}/requests/${requestCode}`;
+  const url = `${config.frontendUrl}/portal/requests`;
   const content = `
-    <mj-section padding="24px 0 10px 0">
-      <mj-column>
-
-        <mj-image width="140px" src="https://frigate.ai/wp-content/uploads/2025/03/FastParts-logo-1024x351.png" alt="FFP Logo" />
-
-      </mj-column>
-    </mj-section>
-
     <!-- Main content -->
     <mj-section padding="20px">
       <mj-column background-color="#ffffff" padding="32px" border-radius="12px">

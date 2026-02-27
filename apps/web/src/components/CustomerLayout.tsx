@@ -14,6 +14,7 @@ import {
   ChevronLeft,
   Library,
   BadgeInfo,
+  House,
 } from "lucide-react";
 import Logo from "@/components/ui/logo";
 import UserDropdown from "@/components/Header/UserDropdown";
@@ -25,7 +26,7 @@ interface CustomerLayoutProps {
 }
 
 const primaryNav = [
-  { label: "Dashboard", href: "/portal/dashboard", icon: LayoutDashboard },
+  { label: "Home", href: "/portal/dashboard", icon: House },
   { label: "Quotes", href: "/portal/quotes", icon: FileText },
   { label: "Orders", href: "/portal/orders", icon: ShoppingCart },
   { label: "Account", href: "/portal/account", icon: User },

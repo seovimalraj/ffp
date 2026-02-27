@@ -1,12 +1,21 @@
-'use client';
+"use client";
 
-import { useRouter, usePathname } from 'next/navigation';
-import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
-import { 
-  Home, Package, FileText, TrendingUp, Users, 
-  Settings, ShoppingCart, Kanban, Clock, LogOut
-} from 'lucide-react';
+import { useRouter, usePathname } from "next/navigation";
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import {
+  Home,
+  Package,
+  FileText,
+  TrendingUp,
+  Users,
+  Settings,
+  ShoppingCart,
+  Kanban,
+  Clock,
+  LogOut,
+  Newspaper as NewspaperIcon,
+} from "lucide-react";
 
 interface NavItem {
   label: string;
@@ -16,7 +25,7 @@ interface NavItem {
 }
 
 interface RoleNavigationProps {
-  role: 'customer' | 'supplier' | 'admin';
+  role: "customer" | "supplier" | "admin";
 }
 
 export default function RoleNavigation({ role }: RoleNavigationProps) {
@@ -25,29 +34,35 @@ export default function RoleNavigation({ role }: RoleNavigationProps) {
 
   const navigationConfig: Record<string, NavItem[]> = {
     customer: [
-      { label: 'Home', path: '/', icon: Home },
-      { label: 'New Quote', path: '/instant-quote-v2', icon: ShoppingCart },
-      { label: 'My Orders', path: '/portal/orders', icon: Package },
-      { label: 'Quotes', path: '/portal/quotes', icon: FileText },
+      { label: "Home", path: "/", icon: Home },
+      { label: "New Quote", path: "/instant-quote-v2", icon: ShoppingCart },
+      { label: "My Orders", path: "/portal/orders", icon: Package },
+      { label: "Quotes", path: "/portal/quotes", icon: FileText },
     ],
     supplier: [
-      { label: 'Dashboard', path: '/supplier', icon: Home },
-      { label: 'RFQs', path: '/supplier/rfqs', icon: FileText, badge: 3 },
-      { label: 'My Orders', path: '/supplier/orders', icon: Package },
-      { label: 'Production', path: '/supplier/production', icon: Kanban },
+      { label: "Dashboard", path: "/supplier", icon: Home },
+      { label: "RFQs", path: "/supplier/rfqs", icon: FileText, badge: 3 },
+      { label: "My Orders", path: "/supplier/orders", icon: Package },
+      { label: "Production", path: "/supplier/production", icon: Kanban },
     ],
     admin: [
-      { label: 'Dashboard', path: '/admin', icon: Home },
-      { label: 'Orders', path: '/admin/orders', icon: Package },
-      { label: 'Bids', path: '/admin/bids', icon: Clock, badge: 5 },
-      { label: 'Analytics', path: '/admin/analytics', icon: TrendingUp },
-      { label: 'Customers', path: '/admin/customers', icon: Users },
-      { label: 'Settings', path: '/admin/settings/organization', icon: Settings },
+      { label: "Dashboard", path: "/admin", icon: Home },
+      { label: "Orders", path: "/admin/orders", icon: Package },
+      { label: "Blogs", path: "/admin/blogs", icon: NewspaperIcon },
+      { label: "Bids", path: "/admin/bids", icon: Clock, badge: 5 },
+      { label: "Analytics", path: "/admin/analytics", icon: TrendingUp },
+      { label: "Customers", path: "/admin/customers", icon: Users },
+      {
+        label: "Settings",
+        path: "/admin/settings/organization",
+        icon: Settings,
+      },
     ],
   };
 
   const navItems = navigationConfig[role] || [];
-  const isActive = (path: string) => pathname === path || pathname?.startsWith(path + '/');
+  const isActive = (path: string) =>
+    pathname === path || pathname?.startsWith(path + "/");
 
   return (
     <nav className="bg-white border-b border-gray-200 shadow-sm sticky top-0 z-50">
@@ -69,13 +84,13 @@ export default function RoleNavigation({ role }: RoleNavigationProps) {
             {navItems.map((item) => {
               const Icon = item.icon;
               const active = isActive(item.path);
-              
+
               return (
                 <Button
                   key={item.path}
-                  variant={active ? 'default' : 'ghost'}
+                  variant={active ? "default" : "ghost"}
                   onClick={() => router.push(item.path)}
-                  className={`relative ${active ? 'bg-blue-600 hover:bg-blue-700' : ''}`}
+                  className={`relative ${active ? "bg-blue-600 hover:bg-blue-700" : ""}`}
                 >
                   <Icon className="w-4 h-4 mr-2" />
                   {item.label}
@@ -94,7 +109,7 @@ export default function RoleNavigation({ role }: RoleNavigationProps) {
             <Button
               variant="outline"
               size="sm"
-              onClick={() => router.push('/')}
+              onClick={() => router.push("/")}
             >
               <LogOut className="w-4 h-4 mr-2" />
               Switch Role
@@ -107,14 +122,14 @@ export default function RoleNavigation({ role }: RoleNavigationProps) {
           {navItems.map((item) => {
             const Icon = item.icon;
             const active = isActive(item.path);
-            
+
             return (
               <Button
                 key={item.path}
-                variant={active ? 'default' : 'ghost'}
+                variant={active ? "default" : "ghost"}
                 size="sm"
                 onClick={() => router.push(item.path)}
-                className={`relative flex-shrink-0 ${active ? 'bg-blue-600 hover:bg-blue-700' : ''}`}
+                className={`relative flex-shrink-0 ${active ? "bg-blue-600 hover:bg-blue-700" : ""}`}
               >
                 <Icon className="w-4 h-4 mr-1" />
                 {item.label}

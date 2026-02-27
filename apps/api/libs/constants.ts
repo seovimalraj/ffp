@@ -81,6 +81,8 @@ export enum Tables {
   TechnicalSupportRequest = 'technical_support_request ',
 
   UploadsTable = 'uploads',
+
+  BlogsTable = 'blogs',
 }
 
 /**

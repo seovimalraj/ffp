@@ -65,4 +65,127 @@ export class AdminController {
       );
     }
   }
+
+  @Get('/parts')
+  @Roles(RoleNames.Admin)
+  async getParts(@Query('limit') limit = '20', @Query('offset') offset = '0') {
+    const parsedLimitRaw = parseInt(limit, 10);
+    const parsedOffsetRaw = parseInt(offset, 10);
+
+    const parsedLimit = Math.min(
+      Number.isNaN(parsedLimitRaw) ? 20 : parsedLimitRaw,
+      100,
+    );
+
+    const parsedOffset = Number.isNaN(parsedOffsetRaw) ? 0 : parsedOffsetRaw;
+
+    const client = this.supabaseService.getClient();
+
+    try {
+      const { data, error, count } = await client
+        .from(Tables.RFQPartsTable)
+        .select(
+          `rfq_id, 
+          rfq(rfq_code, users(name, id), organizations(name)), 
+          snapshot_2d_url,
+          cad_file_url,
+          status,
+          file_name,
+          created_at`,
+          { count: 'exact' },
+        )
+        .order('created_at', { ascending: false })
+        .range(parsedOffset, parsedOffset + parsedLimit - 1);
+
+      if (error) {
+        this.logger.error({ error }, 'Failed to fetch parts');
+        throw new InternalServerErrorException('Failed to fetch parts');
+      }
+
+      const nextOffset =
+        parsedOffset + parsedLimit < (count ?? 0)
+          ? parsedOffset + parsedLimit
+          : null;
+
+      return {
+        success: true,
+        data: data ?? [],
+        pagination: {
+          offset: parsedOffset,
+          limit: parsedLimit,
+          nextOffset,
+          total: count ?? 0,
+          hasMore: nextOffset !== null,
+        },
+      };
+    } catch (error) {
+      this.logger.error({ error }, `Error while getting parts`);
+      throw new InternalServerErrorException('Error while getting parts');
+    }
+  }
+  @Get('/abandoned-rfq-parts')
+  @Roles(RoleNames.Admin)
+  async getAbandonedParts(
+    @Query('limit') limit = '20',
+    @Query('offset') offset = '0',
+  ) {
+    const parsedLimitRaw = parseInt(limit, 10);
+    const parsedOffsetRaw = parseInt(offset, 10);
+
+    const parsedLimit = Math.min(
+      Number.isNaN(parsedLimitRaw) ? 20 : parsedLimitRaw,
+      100,
+    );
+
+    const parsedOffset = Number.isNaN(parsedOffsetRaw) ? 0 : parsedOffsetRaw;
+
+    const client = this.supabaseService.getClient();
+
+    try {
+      const { data, error, count } = await client
+        .from(Tables.AbandonedRFQPartsTable)
+        .select(
+          `rfq_id,
+         rfq(rfq_code, users(name, id), organizations(name)),
+         snapshot_2d_url,
+         cad_file_url,
+         file_name,
+         abandoned_reason,
+         abandoned_at,
+         created_at`,
+          { count: 'exact' },
+        )
+        .order('abandoned_at', { ascending: false })
+        .range(parsedOffset, parsedOffset + parsedLimit - 1);
+
+      if (error) {
+        this.logger.error({ error }, 'Failed to fetch abandoned parts');
+        throw new InternalServerErrorException(
+          'Failed to fetch abandoned parts',
+        );
+      }
+
+      const total = count ?? 0;
+
+      const nextOffset =
+        parsedOffset + parsedLimit < total ? parsedOffset + parsedLimit : null;
+
+      return {
+        success: true,
+        data: data ?? [],
+        pagination: {
+          offset: parsedOffset,
+          limit: parsedLimit,
+          nextOffset,
+          total,
+          hasMore: nextOffset !== null,
+        },
+      };
+    } catch (error) {
+      this.logger.error({ error }, 'Error while getting abandoned parts');
+      throw new InternalServerErrorException(
+        'Error while getting abandoned parts',
+      );
+    }
+  }
 }
