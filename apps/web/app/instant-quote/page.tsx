@@ -142,6 +142,7 @@ export default function InstantQuotePage() {
             try {
               // 1. Upload to storage
               const { url } = await upload(file);
+              let status = "queued";
 
               // 2. Geometry analysis
               const fileExt = file.name.toLowerCase().split(".").pop();
@@ -154,25 +155,17 @@ export default function InstantQuotePage() {
                 "stl",
               ].includes(fileExt || "");
 
-              let geometry: GeometryData;
-              if (isBackendCompatible) {
+              let geometry: GeometryData | undefined = undefined;
+              if (!isBackendCompatible) {
                 try {
-                  const res = await fetch("/api/cad/analyze-geometry", {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({ fileUrl: url, fileName: file.name }),
-                  });
-                  geometry = res.ok
-                    ? await res.json()
-                    : await analyzeCADFile(file);
-                } catch {
                   geometry = await analyzeCADFile(file);
+                  status = "processed";
+                } catch (error) {
+                  console.warn(`Client-side analysis failed for ${file.name}`);
                 }
-              } else {
-                geometry = await analyzeCADFile(file);
               }
 
-              return { name: file.name, url, geometry };
+              return { name: file.name, url, geometry, status };
             } catch (err) {
               console.error(`Processing error [${file.name}]:`, err);
               notify.error(`Failed to process ${file.name}`);
@@ -202,7 +195,7 @@ export default function InstantQuotePage() {
       // 3. Create RFQ
       const rfqPayload = {
         user_id: session.data.user.id,
-        parts: successfulUploads.map(({ name, url, geometry }) => {
+        parts: successfulUploads.map(({ name, url, geometry, status }) => {
           const process = geometry?.recommendedProcess || "cnc-milling";
           const isSheetMetal =
             process === "sheet-metal" || process.includes("sheet");
@@ -212,28 +205,25 @@ export default function InstantQuotePage() {
             file_name: name,
             cad_file_url: url,
             cad_file_type: name.split(".").pop() || "unknown",
+            status: status,
             material: isSheetMetal ? "AL5052-2.0" : "aluminum-6061",
             quantity: 1,
             tolerance: "standard",
             finish: isSheetMetal ? "as-cut" : "as-machined",
+            sheet_thickness_mm: isSheetMetal
+              ? geometry?.sheetMetalFeatures?.thickness
+              : undefined,
             threads: "none",
             inspection: "standard",
             notes: isAssembly
               ? `Assembly detected: ${geometry?.assemblyInfo?.reason || "Multi-body part"}`
               : "",
             lead_time_type: "standard",
-            lead_time: 7,
-            geometry,
-            certificates: [],
+            lead_time: 0,
             process: isAssembly ? "manual-quote" : process,
-            requires_manual_quote: geometry?.requiresManualQuote ?? isAssembly,
-            manual_quote_reason: geometry?.manualQuoteReason,
-            is_assembly: isAssembly,
-            ...(isSheetMetal &&
-              geometry?.sheetMetalFeatures && {
-                sheet_thickness_mm: geometry.sheetMetalFeatures.thickness,
-                bend_count: geometry.sheetMetalFeatures.bendCount,
-              }),
+            geometry: geometry || null,
+            certificates: [],
+            final_price: 0,
           };
         }),
       };

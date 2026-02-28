@@ -282,6 +282,28 @@ export class RfqController {
     }
 
     const rfqId = data[0].out_rfq_id;
+    const partIds = data[0].out_part_ids;
+
+    // Trigger Temporal workflows for CAD processing only for non-processed parts
+    // Parts already processed by the client (e.g. non-backend compatible) are skipped
+    await Promise.all(
+      partIds.map((partId: string, index: number) => {
+        const part = body.parts[index];
+        if (part.status === 'processed') return Promise.resolve();
+
+        return this.temporalService.startProcessPartGeometryWorkflow({
+          partId,
+          filename: part.file_name,
+          fileUrl: part.cad_file_url,
+        });
+      }),
+    ).catch((err) => {
+      this.logger.error(
+        { err, rfqId },
+        'Failed to start CAD processing workflows for initial RFQ parts',
+      );
+    });
+
     await this.recalculateRfqTotal(rfqId);
 
     return {

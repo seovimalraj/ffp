@@ -14,6 +14,7 @@ export type InitialPartDto = {
   geometry: any;
   certificates: string[];
   is_archived: boolean;
+  status?: string;
   // Sheet metal support
   process?: string;
   sheet_thickness_mm?: number;
