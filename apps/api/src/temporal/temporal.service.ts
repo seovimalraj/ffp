@@ -1,4 +1,9 @@
-import { Injectable, OnModuleInit, Logger } from '@nestjs/common';
+import {
+  Injectable,
+  OnModuleInit,
+  Logger,
+  InternalServerErrorException,
+} from '@nestjs/common';
 import { Connection, Client } from '@temporalio/client';
 import { ConfigService } from '@nestjs/config';
 import { TaskQueues, TemporalEvents } from '../../libs/constants';
@@ -82,6 +87,33 @@ export class TemporalService implements OnModuleInit {
     } catch (error) {
       this.logger.error('Failed to start quote workflow:', error.message);
       throw error;
+    }
+  }
+
+  async startProcessPartGeometryflow(data: {
+    partId: string;
+    filename: string;
+    fileUrl: string;
+  }) {
+    try {
+      if (!this.client) {
+        throw new Error('Temporal client not initialized');
+      }
+
+      const handle = await this.client.workflow.start(
+        TemporalEvents.CADProcessingWorkflow,
+        {
+          taskQueue: TaskQueues.CADTaskQueue,
+          workflowId: `cad-process-${data.partId}`,
+          args: [data],
+        },
+      );
+
+      this.logger.log(`Started CAD workflow: ${handle.workflowId}`);
+      return handle;
+    } catch (error) {
+      this.logger.error('Failed to send review:', error.message);
+      throw new InternalServerErrorException({ error });
     }
   }
 

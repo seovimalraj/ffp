@@ -576,7 +576,6 @@ export class RfqController {
         body.parts.map((part) => ({
           rfq_id: rfqId,
           ...part,
-          status: 'processed',
           organization_id: user.organizationId,
         })),
       )
@@ -585,6 +584,18 @@ export class RfqController {
     if (error) {
       throw new HttpException(error.message, HttpStatus.BAD_REQUEST);
     }
+
+    await Promise.all(
+      data
+        .filter((part) => part.status !== 'processed')
+        .map((part) =>
+          this.temporalService.startProcessPartGeometryflow({
+            filename: part.file_name,
+            fileUrl: part.cad_file_url,
+            partId: part.id,
+          }),
+        ),
+    );
 
     await this.recalculateRfqTotal(rfqId);
 

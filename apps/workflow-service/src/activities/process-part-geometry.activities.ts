@@ -166,16 +166,11 @@ export async function analyzeGeometry(
 /* activity: save geometry */
 /* ---------------------------------------------------------- */
 
-export async function saveGeometry(partId: string, geometry: GeometryResult) {
-  logger.info({ partId }, "Saving geometry");
-
-  if (geometry?.isAssembly && geometry.recommendedProcess !== "manual-quote") {
-    geometry.recommendedProcess = "manual-quote";
-    geometry.requiresManualQuote = true;
-    geometry.manualQuoteReason =
-      geometry.manualQuoteReason ||
-      "Assembly detected — multiple bodies require manual review";
-  }
+export async function saveGeometryAndMarkProcessed(
+  partId: string,
+  geometry: GeometryResult,
+) {
+  logger.info({ partId }, "Saving geometry and marking as processed");
 
   const processMap: Record<string, string> = {
     "sheet-metal": "sheet-metal",
@@ -189,7 +184,6 @@ export async function saveGeometry(partId: string, geometry: GeometryResult) {
     ? processMap[geometry.recommendedProcess] || "cnc-milling"
     : "cnc-milling";
 
-  // 4. Get process-specific defaults
   const defaultMaterial = getDefaultMaterialForProcess(detectedProcess);
   const defaultFinish = getDefaultFinishForProcess(detectedProcess);
   const defaultTolerance = getDefaultToleranceForProcess(detectedProcess);
@@ -204,6 +198,7 @@ export async function saveGeometry(partId: string, geometry: GeometryResult) {
     finish: defaultFinish,
     sheet_thickness_mm: defaultThicknessMm,
     process: detectedProcess,
+    status: RFQPartStatus.Processed,
   });
 }
 
@@ -217,27 +212,4 @@ export async function markManualQuote(partId: string, reason: string) {
   return updatePart(partId, {
     manual_quote_reason: reason,
   });
-}
-
-/* ---------------------------------------------------------- */
-/* activity: mark processed */
-/* ---------------------------------------------------------- */
-
-export async function setPartStatusToProcessed(partId: string) {
-  logger.info({ partId }, "Setting part → processed");
-
-  const { data, error } = await supabase
-    .from(Tables.RFQPartsTable)
-    .update({ status: RFQPartStatus.Processed })
-    .eq("id", partId)
-    .eq("status", RFQPartStatus.Processing)
-    .select()
-    .single();
-
-  if (error && error.code !== "PGRST116") {
-    logger.error({ error, partId }, "Failed to set processed");
-    throw error;
-  }
-
-  return data;
 }

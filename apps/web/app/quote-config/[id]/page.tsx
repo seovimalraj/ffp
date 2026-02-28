@@ -48,7 +48,7 @@ import {
   getDefaultMaterialForProcess,
   getDefaultFinishForProcess,
   getDefaultToleranceForProcess,
-  getDefaultThickness,
+  // getDefaultThickness,
 } from "../../../lib/pricing-engine";
 import { PartCardItem, PartCardSkeleton } from "../components/part-card-item";
 import { useDropzone } from "react-dropzone";
@@ -477,7 +477,7 @@ export default function QuoteConfigPage() {
   const [showManualWarningModal, setShowManualWarningModal] = useState(false);
   const partsContainerRef = useRef<HTMLDivElement>(null);
   const idleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  // const pollingRef = useRef<NodeJS.Timeout | null>(null);
+  const pollingRef = useRef<NodeJS.Timeout | null>(null);
 
   // Show the tooltip after 1 minute of no user activity
   useEffect(() => {
@@ -577,112 +577,64 @@ export default function QuoteConfigPage() {
 
             // 2. Determine and perform geometry analysis
             const extension = file.name.toLowerCase().split(".").pop();
-            const useBackendAnalysis = [
+            const useBackendAnalysisList = [
               "step",
               "stp",
               "iges",
               "igs",
               "dxf",
               "stl",
-            ].includes(extension || "");
+            ];
+            const useBackendAnalysis = useBackendAnalysisList.includes(
+              extension || "",
+            );
 
             let geometry;
-            if (useBackendAnalysis && uploadedPath) {
+            let status: any = "queued";
+
+            if (!useBackendAnalysis) {
               try {
-                const analysisResponse = await fetch(
-                  "/api/cad/analyze-geometry",
-                  {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({
-                      fileUrl: uploadedPath,
-                      fileName: file.name,
-                    }),
-                  },
-                );
-
-                if (analysisResponse.ok) {
-                  geometry = await analysisResponse.json();
-                } else {
-                  console.warn(
-                    `Backend analysis failed for ${file.name}, falling back to client-side`,
-                  );
-                  geometry = await analyzeCADFile(file);
-                }
-              } catch (error) {
-                console.error(
-                  `Backend analysis error for ${file.name}:`,
-                  error,
-                );
                 geometry = await analyzeCADFile(file);
+                status = "processed";
+              } catch (error) {
+                console.warn(`Client-side analysis failed for ${file.name}`);
               }
-            } else {
-              geometry = await analyzeCADFile(file);
             }
 
-            // 3. Assembly check and process mapping
-            if (
-              geometry?.isAssembly &&
-              geometry.recommendedProcess !== "manual-quote"
-            ) {
-              geometry.recommendedProcess = "manual-quote";
-              geometry.requiresManualQuote = true;
-              geometry.manualQuoteReason =
-                geometry.manualQuoteReason ||
-                "Assembly detected — multiple bodies require manual review";
-            }
-
-            const processMap: Record<string, string> = {
-              "sheet-metal": "sheet-metal",
-              "cnc-milling": "cnc-milling",
-              "cnc-turning": "cnc-turning",
-              "injection-molding": "injection-molding",
-              "manual-quote": "manual-quote",
-            };
-
-            const detectedProcess = geometry?.recommendedProcess
-              ? processMap[geometry.recommendedProcess] || "cnc-milling"
-              : "cnc-milling";
-
-            // 4. Get process-specific defaults
-            const defaultMaterial =
-              getDefaultMaterialForProcess(detectedProcess);
-            const defaultFinish = getDefaultFinishForProcess(detectedProcess);
-            const defaultTolerance =
-              getDefaultToleranceForProcess(detectedProcess);
-            const defaultThicknessMm = detectedProcess?.includes("sheet")
-              ? parseFloat(getDefaultThickness()) || 2.0
-              : undefined;
-
-            // 5. Construct part object
+            // 1. Construct part object
             const newPart: any = {
               file_name: file.name,
               cad_file_url: uploadedPath,
-              cad_file_type: file.type,
-              material: defaultMaterial,
+              cad_file_type: file.type || "application/octet-stream",
+              material: "aluminum-6061",
               quantity: 1,
-              status: "processed",
-              tolerance: defaultTolerance,
-              finish: defaultFinish,
-              sheet_thickness_mm: defaultThicknessMm,
+              status: status,
+              tolerance: "standard",
+              finish: "as-machined",
+              sheet_thickness_mm: undefined,
               threads: "none",
               inspection: "standard",
               notes: "",
               lead_time_type: "standard",
-              process: detectedProcess,
-              geometry,
+              process: "cnc-milling",
+              geometry: geometry || null,
               certificates: [],
               final_price: 0,
               lead_time: 0,
             };
 
-            // 6. Calculate pricing and lead time
-            newPart.final_price = calculatePrice(newPart);
-            newPart.lead_time = calculateLeadTime(newPart, "standard");
-
-            // if (["queued", "processing"].includes(newPart.status)) {
-            //   startPolling();
-            // }
+            // If we have geometry, calculate initial pricing/defaults
+            if (geometry) {
+              const detectedProcess =
+                geometry?.recommendedProcess || "cnc-milling";
+              newPart.process = detectedProcess;
+              newPart.material = getDefaultMaterialForProcess(detectedProcess);
+              newPart.finish = getDefaultFinishForProcess(detectedProcess);
+              newPart.tolerance =
+                getDefaultToleranceForProcess(detectedProcess);
+              newPart.final_price = calculatePrice(newPart);
+              newPart.lead_time = calculateLeadTime(newPart, "standard");
+            }
 
             return newPart;
           } catch (error) {
@@ -713,6 +665,7 @@ export default function QuoteConfigPage() {
 
         const proccessedParts = processParts(data.parts);
         setParts((prev) => [...prev, ...proccessedParts]);
+        startPolling(); // Ensure polling starts after adding new parts
         notify.success(`Successfully added ${finalNewParts.length} part(s)`);
       } catch (error) {
         console.error("Error in onDropFiles batch processing:", error);
@@ -1188,50 +1141,50 @@ export default function QuoteConfigPage() {
     }
   }
 
-  // const startPolling = () => {
-  //   if (pollingRef.current) return; // already polling
+  const startPolling = () => {
+    if (pollingRef.current) return; // already polling
 
-  //   pollingRef.current = setInterval(async () => {
-  //     const updatedParts = await loadQuote(true);
-  //     if (!updatedParts) return;
+    pollingRef.current = setInterval(async () => {
+      const updatedParts = await loadQuote(true);
+      if (!updatedParts) return;
 
-  //     const stillPending = updatedParts.some((p) =>
-  //       ["queued", "processing"].includes(p.status),
-  //     );
+      const stillPending = updatedParts.some((p) =>
+        ["queued", "processing"].includes(p.status),
+      );
 
-  //     if (!stillPending) {
-  //       stopPolling();
-  //     }
-  //   }, 5000);
-  // };
+      if (!stillPending) {
+        stopPolling();
+      }
+    }, 5000);
+  };
 
-  // const stopPolling = () => {
-  //   if (pollingRef.current) {
-  //     clearInterval(pollingRef.current);
-  //     pollingRef.current = null;
-  //   }
-  // };
-
-  // useEffect(() => {
-  //   if (!quoteId) return;
-
-  //   (async () => {
-  //     const parts = await loadQuote(false);
-  //     if (!parts) return;
-
-  //     const hasPending = parts.some((p) =>
-  //       ["queued", "processing"].includes(p.status),
-  //     );
-
-  //     if (hasPending) startPolling();
-  //   })();
-
-  //   return () => stopPolling();
-  // }, [quoteId]);
+  const stopPolling = () => {
+    if (pollingRef.current) {
+      clearInterval(pollingRef.current);
+      pollingRef.current = null;
+    }
+  };
 
   useEffect(() => {
-    loadQuote();
-  }, [quoteId, router, session.status]);
+    if (!quoteId) return;
+
+    (async () => {
+      const parts = await loadQuote(false);
+      if (!parts) return;
+
+      const hasPending = parts.some((p) =>
+        ["queued", "processing"].includes(p.status),
+      );
+
+      if (hasPending) startPolling();
+    })();
+
+    return () => stopPolling();
+  }, [quoteId]);
+
+  // useEffect(() => {
+  //   loadQuote();
+  // }, [quoteId, router, session.status]);
 
   const exceeded = useMemo(() => hasManualPartExceededThreshold(4), [parts]);
 

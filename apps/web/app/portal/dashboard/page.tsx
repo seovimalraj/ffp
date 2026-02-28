@@ -34,6 +34,7 @@ import { useMetaStore } from "@/components/store/title-store";
 import { motion, Variants } from "framer-motion";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
+import StartProductionModal from "./components/StartProductionModal";
 
 // Animation variants
 const containerVariants: Variants = {
@@ -71,6 +72,7 @@ export default function CustomerDashboardPage() {
   });
   const [recentQuotes, setRecentQuotes] = useState<RecentQuote[]>([]);
   const [recentOrders, setRecentOrders] = useState<RecentOrder[]>([]);
+  const [showProductionModal, setShowProductionModal] = useState(false);
 
   const { setPageTitle, resetTitle } = useMetaStore();
 
@@ -236,6 +238,7 @@ export default function CustomerDashboardPage() {
             href: "/support",
             action: "Start Project",
             color: "indigo",
+            onClick: () => setShowProductionModal(true),
           },
           {
             title: "Reorder parts",
@@ -246,12 +249,9 @@ export default function CustomerDashboardPage() {
             action: "Find Parts",
             color: "emerald",
           },
-        ].map((card, idx) => (
-          <motion.div key={idx} variants={itemVariants}>
-            <Link
-              href={card.href}
-              className="group flex flex-col h-full bg-white rounded-3xl p-8 border border-slate-200/60 shadow-sm hover:shadow-xl hover:border-blue-500/30 transition-all duration-300 relative overflow-hidden"
-            >
+        ].map((card, idx) => {
+          const content = (
+            <div className="group flex flex-col h-full bg-white rounded-3xl p-8 border border-slate-200/60 shadow-sm hover:shadow-xl hover:border-blue-500/30 transition-all duration-300 relative overflow-hidden">
               <div
                 className={cn(
                   "w-12 h-12 rounded-xl flex items-center justify-center mb-6 transition-colors duration-300",
@@ -280,9 +280,23 @@ export default function CustomerDashboardPage() {
               <div className="absolute -right-4 -bottom-4 opacity-[0.03] group-hover:opacity-[0.08] transition-all duration-500 group-hover:-rotate-12 group-hover:scale-110">
                 <card.icon size={120} />
               </div>
-            </Link>
-          </motion.div>
-        ))}
+            </div>
+          );
+
+          return (
+            <motion.div key={idx} variants={itemVariants}>
+              {card.onClick ? (
+                <div onClick={card.onClick} className="cursor-pointer h-full">
+                  {content}
+                </div>
+              ) : (
+                <Link href={card.href} className="h-full">
+                  {content}
+                </Link>
+              )}
+            </motion.div>
+          );
+        })}
       </section>
 
       {/* Recent Activity Table */}
@@ -623,6 +637,11 @@ export default function CustomerDashboardPage() {
           </div>
         </div>
       </section>
+
+      <StartProductionModal
+        isOpen={showProductionModal}
+        onClose={() => setShowProductionModal(false)}
+      />
     </motion.div>
   );
 }

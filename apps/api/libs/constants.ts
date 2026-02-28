@@ -106,6 +106,7 @@ export enum TemporalEvents {
   OtpWorkflow = 'otpWorkflow',
   OrderPartStatusChangeWorkflow = 'orderPartStatusChangeWorkflow',
   TechnicalSupportWorkflow = 'technicalSupportWorkflow',
+  CADProcessingWorkflow = 'cadProcessingWorkflow',
 }
 
 /**

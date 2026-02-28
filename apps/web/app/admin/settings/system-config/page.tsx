@@ -18,8 +18,24 @@ import {
   DialogFooter,
 } from "@/components/ui/dialog";
 import { apiClient } from "@/lib/api";
-import { Settings2, Plus, Edit, Trash2, X } from "lucide-react";
+import {
+  Settings2,
+  Plus,
+  Edit,
+  Trash2,
+  X,
+  Eye,
+  EyeOff,
+  Calendar,
+  Mail,
+  FileText,
+  Code,
+  Palette,
+  Lock,
+  Key,
+} from "lucide-react";
 import { Badge } from "@/components/ui/badge";
+import { Textarea } from "@/components/ui/textarea";
 import {
   Select,
   SelectContent,
@@ -109,6 +125,7 @@ export default function SystemConfigPage() {
   const [loading, setLoading] = useState(true);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingVar, setEditingVar] = useState<SystemVariable | null>(null);
+  const [showSecret, setShowSecret] = useState(false);
 
   const [formData, setFormData] = useState({
     key: "",
@@ -148,6 +165,7 @@ export default function SystemConfigPage() {
       setEditingVar(null);
       setFormData({ key: "", value: "", type: "", description: "" });
     }
+    setShowSecret(false);
     setIsDialogOpen(true);
   };
 
@@ -225,6 +243,62 @@ export default function SystemConfigPage() {
             </div>
           );
         }
+
+        if (v.type === "flag") {
+          const isTrue = v.value === "true";
+          return (
+            <span
+              className={`inline-flex items-center rounded-md px-2 py-1 text-xs font-medium ring-1 ring-inset ${
+                isTrue
+                  ? "bg-green-50 text-green-700 ring-green-600/20 dark:bg-green-900/30 dark:text-green-400 dark:ring-green-400/20"
+                  : "bg-gray-50 text-gray-600 ring-gray-500/10 dark:bg-gray-400/10 dark:text-gray-400 dark:ring-gray-400/20"
+              }`}
+            >
+              {isTrue ? "True" : "False"}
+            </span>
+          );
+        }
+
+        if (v.type === "color") {
+          return (
+            <div className="flex items-center gap-2">
+              <div
+                className="w-4 h-4 rounded-full border border-gray-200"
+                style={{ backgroundColor: v.value }}
+              />
+              <span className="text-sm font-mono uppercase">{v.value}</span>
+            </div>
+          );
+        }
+
+        if (v.type === "secret") {
+          return (
+            <span className="text-gray-400 font-mono tracking-widest">
+              ••••••••
+            </span>
+          );
+        }
+
+        if (v.type === "json") {
+          return (
+            <span className="text-xs font-mono bg-gray-100 dark:bg-gray-800 px-1 py-0.5 rounded">
+              JSON Object
+            </span>
+          );
+        }
+
+        if (v.type === "date") {
+          try {
+            return (
+              <span className="text-sm">
+                {new Date(v.value).toLocaleDateString()}
+              </span>
+            );
+          } catch {
+            return <span className="text-sm">{v.value}</span>;
+          }
+        }
+
         return (
           <span className="max-w-[200px] truncate block" title={v.value}>
             {v.value}
@@ -236,11 +310,28 @@ export default function SystemConfigPage() {
       key: "type",
       header: "Type",
       sortable: true,
-      render: (v) => (
-        <span className="inline-flex items-center rounded-md bg-blue-50 px-2 py-1 text-xs font-medium text-blue-700 ring-1 ring-inset ring-blue-700/10 dark:bg-blue-900/30 dark:text-blue-400 dark:ring-blue-400/20">
-          {v.type || "string"}
-        </span>
-      ),
+      render: (v) => {
+        const typeIcons: Record<string, React.ReactNode> = {
+          string: <FileText className="w-3 h-3" />,
+          number: <span className="font-bold text-[10px]">#</span>,
+          phone: <Mail className="w-3 h-3" />,
+          group: <X className="w-3 h-3 rotate-45" />,
+          flag: <Lock className="w-3 h-3" />,
+          date: <Calendar className="w-3 h-3" />,
+          json: <Code className="w-3 h-3" />,
+          color: <Palette className="w-3 h-3" />,
+          email: <Mail className="w-3 h-3" />,
+          longtext: <FileText className="w-3 h-3" />,
+          secret: <Key className="w-3 h-3" />,
+        };
+
+        return (
+          <span className="inline-flex items-center gap-1.5 rounded-md bg-blue-50 px-2 py-1 text-xs font-medium text-blue-700 ring-1 ring-inset ring-blue-700/10 dark:bg-blue-900/30 dark:text-blue-400 dark:ring-blue-400/20">
+            {typeIcons[v.type] || <FileText className="w-3 h-3" />}
+            {v.type || "string"}
+          </span>
+        );
+      },
     },
     {
       key: "description",
@@ -339,7 +430,8 @@ export default function SystemConfigPage() {
                   setFormData({
                     ...formData,
                     type: val,
-                    value: val === "group" ? "[]" : "",
+                    value:
+                      val === "group" ? "[]" : val === "flag" ? "false" : "",
                   })
                 }
               >
@@ -350,7 +442,14 @@ export default function SystemConfigPage() {
                   <SelectItem value="string">String</SelectItem>
                   <SelectItem value="number">Number</SelectItem>
                   <SelectItem value="phone">Phone</SelectItem>
+                  <SelectItem value="email">Email</SelectItem>
                   <SelectItem value="group">Group</SelectItem>
+                  <SelectItem value="flag">Flag</SelectItem>
+                  <SelectItem value="date">Date</SelectItem>
+                  <SelectItem value="json">JSON</SelectItem>
+                  <SelectItem value="color">Color</SelectItem>
+                  <SelectItem value="longtext">Long Text</SelectItem>
+                  <SelectItem value="secret">Secret</SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -369,6 +468,89 @@ export default function SystemConfigPage() {
                     }
                     placeholder="e.g. 100"
                   />
+                ) : formData.type === "email" ? (
+                  <Input
+                    id="value"
+                    type="email"
+                    value={formData.value}
+                    onChange={(e) =>
+                      setFormData({ ...formData, value: e.target.value })
+                    }
+                    placeholder="e.g. support@example.com"
+                  />
+                ) : formData.type === "date" ? (
+                  <Input
+                    id="value"
+                    type="date"
+                    value={formData.value}
+                    onChange={(e) =>
+                      setFormData({ ...formData, value: e.target.value })
+                    }
+                  />
+                ) : formData.type === "color" ? (
+                  <div className="flex gap-2">
+                    <Input
+                      id="value"
+                      type="color"
+                      className="w-12 p-1 h-10"
+                      value={formData.value || "#000000"}
+                      onChange={(e) =>
+                        setFormData({ ...formData, value: e.target.value })
+                      }
+                    />
+                    <Input
+                      value={formData.value}
+                      placeholder="#000000"
+                      onChange={(e) =>
+                        setFormData({ ...formData, value: e.target.value })
+                      }
+                    />
+                  </div>
+                ) : formData.type === "longtext" ? (
+                  <Textarea
+                    id="value"
+                    value={formData.value}
+                    onChange={(e) =>
+                      setFormData({ ...formData, value: e.target.value })
+                    }
+                    placeholder="Enter long text..."
+                    className="min-h-[100px]"
+                  />
+                ) : formData.type === "json" ? (
+                  <Textarea
+                    id="value"
+                    value={formData.value}
+                    onChange={(e) =>
+                      setFormData({ ...formData, value: e.target.value })
+                    }
+                    placeholder='{"key": "value"}'
+                    className="font-mono min-h-[100px]"
+                  />
+                ) : formData.type === "secret" ? (
+                  <div className="relative">
+                    <Input
+                      id="value"
+                      type={showSecret ? "text" : "password"}
+                      value={formData.value}
+                      onChange={(e) =>
+                        setFormData({ ...formData, value: e.target.value })
+                      }
+                      placeholder="Enter secret value"
+                    />
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      className="absolute right-0 top-0 h-full px-3 py-2 hover:bg-transparent"
+                      onClick={() => setShowSecret(!showSecret)}
+                    >
+                      {showSecret ? (
+                        <EyeOff className="h-4 w-4 text-gray-400" />
+                      ) : (
+                        <Eye className="h-4 w-4 text-gray-400" />
+                      )}
+                    </Button>
+                  </div>
                 ) : formData.type === "phone" ? (
                   <PhoneInput
                     international
@@ -387,6 +569,21 @@ export default function SystemConfigPage() {
                     value={formData.value}
                     onChange={(val) => setFormData({ ...formData, value: val })}
                   />
+                ) : formData.type === "flag" ? (
+                  <Select
+                    value={formData.value}
+                    onValueChange={(val) =>
+                      setFormData({ ...formData, value: val })
+                    }
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select status" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="true">True</SelectItem>
+                      <SelectItem value="false">False</SelectItem>
+                    </SelectContent>
+                  </Select>
                 ) : (
                   <Input
                     id="value"

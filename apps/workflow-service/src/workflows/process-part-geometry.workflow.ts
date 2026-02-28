@@ -4,9 +4,8 @@ import type * as activities from "../activities/process-part-geometry.activities
 const {
   setPartStatusToProcessing,
   analyzeGeometry,
-  saveGeometry,
+  saveGeometryAndMarkProcessed,
   markManualQuote,
-  setPartStatusToProcessed,
 } = proxyActivities<typeof activities>({
   startToCloseTimeout: "10 minutes",
   heartbeatTimeout: "30 seconds",
@@ -43,13 +42,8 @@ export async function cadProcessingWorkflow(input: CADWorkflowInput) {
       return;
     }
 
-    // if (geometry.\)
-
-    // 3. persist geometry
-    await saveGeometry(partId, geometry);
-
-    // 4. mark processed
-    await setPartStatusToProcessed(partId);
+    // 3. persist geometry & mark processed
+    await saveGeometryAndMarkProcessed(partId, geometry);
   } catch (err: any) {
     // non-retryable
     if (err instanceof ApplicationFailure && err.nonRetryable) {
