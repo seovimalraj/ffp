@@ -881,7 +881,7 @@ export function* explodeDxfEntities(
         ) {
           const insertTransform = insertTransforms[instanceIndex];
           const nextUidPrefix = `${entityUid}/i${instanceIndex}:${blockName}/`;
-          yield* walk(
+          const child = walk(
             blockDef.entities,
             composeAffine(transform, insertTransform),
             insertLayer,
@@ -889,6 +889,9 @@ export function* explodeDxfEntities(
             [...blockStack, blockName],
             nextUidPrefix,
           );
+          for (let r = child.next(); !r.done; r = child.next()) {
+            yield r.value;
+          }
         }
         continue;
       }
@@ -908,7 +911,10 @@ export function* explodeDxfEntities(
     }
   }
 
-  yield* walk(dxf.entities ?? [], rootTransform, "0", 0, [], "r/");
+  const root = walk(dxf.entities ?? [], rootTransform, "0", 0, [], "r/");
+  for (let r = root.next(); !r.done; r = root.next()) {
+    yield r.value;
+  }
 }
 
 function appendUniquePoint(points: Vec2[], point: Vec2, eps: number): void {

@@ -375,7 +375,7 @@ function parsePolylineWithVerticesBounds(
 function parsePolylineWidthPatch(
   type: string,
   body: RawGroup[],
-  vertexBodies: RawGroup[] = [],
+  vertexBodies: RawGroup[][] = [],
 ): RawPolylineWidthPatch | null {
   if (type === "LWPOLYLINE") {
     const parsed = parseLwPolylineWidthPatch(body);
@@ -483,7 +483,10 @@ function parsePolylineHatchPath(
   }
 
   return {
-    path: vertices.length > 0 ? { vertices, closed } : null,
+    path:
+      vertices.length > 0
+        ? { type: "HATCH_PATH_POLYLINE", vertices, closed }
+        : null,
     nextIndex: cursor,
   };
 }
@@ -511,6 +514,7 @@ function parseLineHatchEdge(
 
   return {
     edge: {
+      type: "HATCH_EDGE_LINE",
       edgeType: "LINE",
       start: { x: x1, y: y1 },
       end: { x: x2, y: y2 },
@@ -552,6 +556,7 @@ function parseArcHatchEdge(
 
   return {
     edge: {
+      type: "HATCH_EDGE_ARC",
       edgeType: "ARC",
       center: { x: cx, y: cy },
       radius,
@@ -604,6 +609,7 @@ function parseEllipseHatchEdge(
 
   return {
     edge: {
+      type: "HATCH_EDGE_ELLIPSE",
       edgeType: "ELLIPSE",
       center: { x: cx, y: cy },
       majorAxis: { x: mx, y: my },
@@ -688,6 +694,7 @@ function parseSplineHatchEdge(
     edge:
       controlPoints.length > 0 || fitPoints.length > 0
         ? {
+            type: "HATCH_EDGE_SPLINE",
             edgeType: "SPLINE",
             degree,
             knotValues: knots,
@@ -745,7 +752,10 @@ function parseEdgeHatchPath(
   }
 
   return {
-    path: edges.length > 0 ? { edges, closed: true } : null,
+    path:
+      edges.length > 0
+        ? { type: "HATCH_PATH_EDGES", edges, closed: true }
+        : null,
     nextIndex: cursor,
   };
 }
@@ -828,7 +838,7 @@ function collectPolylineWidth(
   supplements: RawDxfSupplements,
   type: string,
   body: RawGroup[],
-  vertexBodies: RawGroup[] = [],
+  vertexBodies: RawGroup[][] = [],
 ): void {
   const { handle } = readEntityMetadata(body);
   if (!handle) return;
