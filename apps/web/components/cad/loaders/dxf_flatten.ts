@@ -1062,7 +1062,12 @@ export function flattenDxfEntities(
     blockStack: string[],
     uidPrefix: string,
   ) => {
-    for (const { entity, entityIndex } of iterateEntities(entities)) {
+    const entityIter = iterateEntities(entities);
+    for (let r = entityIter.next(); !r.done; r = entityIter.next()) {
+      const { entity, entityIndex } = r.value as {
+        entity: RawEntity & { type: string };
+        entityIndex: number;
+      };
       const type = entity.type!.toUpperCase();
       const entityUid = `${uidPrefix}e${entityIndex}`;
       incCount(diagnostics.preFlattenTypeCounts, type);

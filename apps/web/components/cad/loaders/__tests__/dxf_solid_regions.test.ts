@@ -34,9 +34,7 @@ function boundsOf(points: Vec2[]): { width: number; height: number } {
   return { width: maxX - minX, height: maxY - minY };
 }
 
-function largestRegion(
-  regions: Array<{ area: number }>,
-): { area: number } {
+function largestRegion<T extends { area: number }>(regions: T[]): T {
   return regions.reduce((best, region) =>
     region.area > best.area ? region : best,
   );

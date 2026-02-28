@@ -665,16 +665,16 @@ function buildLoopsFromSegments(
 
   if (halfEdges.length === 0) return [];
 
-  for (const list of outgoing.values()) {
-    list.sort((left, right) => halfEdges[left].angle - halfEdges[right].angle);
-  }
+  outgoing.forEach((list) => {
+    list.sort((left: number, right: number) => halfEdges[left].angle - halfEdges[right].angle);
+  });
 
   const orderByHalfEdge = new Map<number, number>();
-  for (const list of outgoing.values()) {
+  outgoing.forEach((list) => {
     for (let i = 0; i < list.length; i++) {
       orderByHalfEdge.set(list[i], i);
     }
-  }
+  });
 
   for (const edge of halfEdges) {
     const toOutgoing = outgoing.get(edge.to);
@@ -709,7 +709,7 @@ function buildLoopsFromSegments(
 
       const sources = sourceByKey.get(edge.undirectedKey);
       if (sources) {
-        for (const uid of sources) sourceUids.add(uid);
+        sources.forEach((uid) => sourceUids.add(uid));
       }
 
       const prev = points[points.length - 1];
@@ -776,7 +776,7 @@ function buildLoopsFromSegments(
       continue;
     }
 
-    for (const uid of cycle.sourceUids) existing.sourceUids.add(uid);
+    cycle.sourceUids.forEach((uid) => existing.sourceUids.add(uid));
 
     const absArea = Math.abs(cycle.area);
     const existingAbsArea = Math.abs(existing.area);
@@ -825,7 +825,7 @@ function cleanAndDedupeLoops(
     if (nextArea > existingArea + 1e-9) {
       existing.points = cleaned.points;
     }
-    for (const uid of candidate.sourceUids) existing.sourceUids.add(uid);
+    candidate.sourceUids.forEach((uid) => existing.sourceUids.add(uid));
   }
 
   return Array.from(bySignature.values());
@@ -991,9 +991,9 @@ function buildLoopsFromSegmentsByTurning(
 
   if (directedEdges.length === 0) return [];
 
-  for (const list of outgoingByNode.values()) {
-    list.sort((left, right) => directedEdges[left].angle - directedEdges[right].angle);
-  }
+  outgoingByNode.forEach((list) => {
+    list.sort((left: number, right: number) => directedEdges[left].angle - directedEdges[right].angle);
+  });
 
   const visited = new Array<boolean>(directedEdges.length).fill(false);
   const candidates: LoopCandidate[] = [];
@@ -1049,7 +1049,7 @@ function buildLoopsFromSegmentsByTurning(
                   directedEdges[edgeId].undirectedKey,
                 );
                 if (!sources) continue;
-                for (const uid of sources) sourceUids.add(uid);
+                sources.forEach((uid) => sourceUids.add(uid));
               }
               if (sourceUids.size > 0) {
                 candidates.push({ points, sourceUids });
@@ -1409,9 +1409,9 @@ function buildRegionsFromLoopCandidates(
       holesSubtracted += 1;
       const childInfo = infoByIndex.get(holeInfo.index);
       if (childInfo) {
-        for (const uid of childInfo.loop.sourceUids) {
+        childInfo.loop.sourceUids.forEach((uid) => {
           sourceUids.add(uid);
-        }
+        });
       }
     }
 
@@ -2171,13 +2171,13 @@ function buildRegionsFromLegacyClipperTree(
   const regions: DxfSolidRegion[] = [];
   for (const region of legacy.regions) {
     const sourceUids = new Set<string>();
-    for (const uid of inferSourceUidsForLoop(region.outer, polylines, tolerance)) {
+    inferSourceUidsForLoop(region.outer, polylines, tolerance).forEach((uid) => {
       sourceUids.add(uid);
-    }
+    });
     for (const hole of region.holes) {
-      for (const uid of inferSourceUidsForLoop(hole, polylines, tolerance)) {
+      inferSourceUidsForLoop(hole, polylines, tolerance).forEach((uid) => {
         sourceUids.add(uid);
-      }
+      });
     }
 
     const netArea = Math.max(
@@ -2622,7 +2622,7 @@ export function buildSolidFromDxfWithDebug(
   scaleToMm: number,
   opts: DxfSolidOptions = {},
 ): DxfSolidBuildWithDebugResult {
-  const debugInfo =
+  const debugInfo: DxfSolidBuildDebugInfo | undefined =
     opts.debugBuildInfo === true
       ? {
           usedRepairPass: false,
