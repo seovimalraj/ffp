@@ -589,7 +589,7 @@ export class RfqController {
       data
         .filter((part) => part.status !== 'processed')
         .map((part) =>
-          this.temporalService.startProcessPartGeometryflow({
+          this.temporalService.startProcessPartGeometryWorkflow({
             filename: part.file_name,
             fileUrl: part.cad_file_url,
             partId: part.id,

@@ -90,7 +90,7 @@ export class TemporalService implements OnModuleInit {
     }
   }
 
-  async startProcessPartGeometryflow(data: {
+  async startProcessPartGeometryWorkflow(data: {
     partId: string;
     filename: string;
     fileUrl: string;
@@ -112,7 +112,10 @@ export class TemporalService implements OnModuleInit {
       this.logger.log(`Started CAD workflow: ${handle.workflowId}`);
       return handle;
     } catch (error) {
-      this.logger.error('Failed to send review:', error.message);
+      this.logger.error(
+        'Failed to start CAD processing workflow:',
+        error.message,
+      );
       throw new InternalServerErrorException({ error });
     }
   }
