@@ -211,5 +211,6 @@ export async function markManualQuote(partId: string) {
 
   return updatePart(partId, {
     process: "manual-quote",
+    status: "processed",
   });
 }
