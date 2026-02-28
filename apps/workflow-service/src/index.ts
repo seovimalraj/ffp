@@ -56,7 +56,10 @@ app.get("/", (c) => {
  * 4️⃣ TEMPORAL WORKER
  * ======================
  */
-async function startWorker(taskQueue: string) {
+async function startWorker(
+  taskQueue: string,
+  options: { maxActivities?: number; maxWorkflows?: number } = {},
+) {
   try {
     // Establish connection to Temporal server
     const connection = await NativeConnection.connect({
@@ -80,8 +83,8 @@ async function startWorker(taskQueue: string) {
       activities,
       taskQueue,
 
-      maxConcurrentActivityTaskExecutions: 3,
-      maxConcurrentWorkflowTaskExecutions: 3,
+      maxConcurrentActivityTaskExecutions: options.maxActivities || 3,
+      maxConcurrentWorkflowTaskExecutions: options.maxWorkflows || 3,
     });
 
     logger.info(
@@ -100,7 +103,7 @@ async function startServer() {
 
   // Start Temporal Workers in background (one per task queue)
   startWorker("quote-tasks");
-  startWorker("cad-tasks");
+  startWorker("cad-tasks", { maxActivities: 2, maxWorkflows: 2 });
   // Start Hono Server (for health checks and potentially direct triggers)
   serve({
     fetch: app.fetch,

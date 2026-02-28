@@ -35,10 +35,7 @@ export async function cadProcessingWorkflow(input: CADWorkflowInput) {
 
     // manual quote path
     if (geometry.requiresManualQuote) {
-      await markManualQuote(
-        partId,
-        geometry.manualQuoteReason || "Manual review required",
-      );
+      await markManualQuote(partId);
       return;
     }
 
@@ -47,7 +44,7 @@ export async function cadProcessingWorkflow(input: CADWorkflowInput) {
   } catch (err: any) {
     // non-retryable
     if (err instanceof ApplicationFailure && err.nonRetryable) {
-      await markManualQuote(partId, err.message);
+      await markManualQuote(partId);
       return;
     }
 

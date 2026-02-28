@@ -206,10 +206,10 @@ export async function saveGeometryAndMarkProcessed(
 /* activity: mark manual quote */
 /* ---------------------------------------------------------- */
 
-export async function markManualQuote(partId: string, reason: string) {
-  logger.info({ partId, reason }, "Marking manual quote");
+export async function markManualQuote(partId: string) {
+  logger.info({ partId }, "Marking manual quote");
 
   return updatePart(partId, {
-    manual_quote_reason: reason,
+    proccess: "manual-quote",
   });
 }
