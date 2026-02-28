@@ -210,6 +210,6 @@ export async function markManualQuote(partId: string) {
   logger.info({ partId }, "Marking manual quote");
 
   return updatePart(partId, {
-    proccess: "manual-quote",
+    process: "manual-quote",
   });
 }
