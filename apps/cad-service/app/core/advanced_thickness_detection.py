@@ -292,8 +292,8 @@ class AdvancedThicknessDetector:
         clusters = []
         for bin_data in bins.values():
             if len(bin_data['distances']) >= 3:  # Minimum cluster size
-                distances_arr = np.array(bin_data['distances'])
-                areas_arr = np.array(bin_data['areas'])
+                distances_arr = np.array(bin_data['distances'], dtype=np.float32)
+                areas_arr = np.array(bin_data['areas'], dtype=np.float32)
                 
                 cluster = ThicknessCluster(
                     thickness=float(np.median(distances_arr)),
@@ -427,7 +427,7 @@ class AdvancedThicknessDetector:
 
 
 def enhanced_ray_casting_analysis(mesh, bbox_dims: List[float], 
-                                  samples: int = 8000) -> ThicknessAnalysisResult:
+                                  samples: int = 3000) -> ThicknessAnalysisResult:
     """
     Enhanced ray-casting based thickness analysis with proper validation.
     

@@ -300,7 +300,9 @@ def extract_surface_finish_from_mesh(mesh) -> SurfaceFinishAnalysis:
     except ImportError:
         return SurfaceFinishAnalysis()
     
-    vertices = mesh.vectors
+    # float32 halves memory for all derived arrays; more than adequate for
+    # surface finish heuristics (sub-micron precision at mm scale).
+    vertices = np.asarray(mesh.vectors, dtype=np.float32)
     if len(vertices) < 10:
         return SurfaceFinishAnalysis()
     
@@ -313,11 +315,11 @@ def extract_surface_finish_from_mesh(mesh) -> SurfaceFinishAnalysis:
     e2 = v2 - v0
     normals = np.cross(e1, e2)
     norms = np.linalg.norm(normals, axis=1, keepdims=True)
-    norms = np.where(norms < 1e-9, 1.0, norms)
+    norms = np.where(norms < np.float32(1e-9), np.float32(1.0), norms)
     normals = normals / norms
     
     # Compute face areas
-    areas = norms.flatten() / 2.0
+    areas = norms.flatten() / np.float32(2.0)
     total_area = np.sum(areas)
     
     # Analyze normal variance in local neighborhoods
@@ -325,7 +327,7 @@ def extract_surface_finish_from_mesh(mesh) -> SurfaceFinishAnalysis:
     # Low variance = flat surfaces
     
     # Compute centroids
-    centroids = (v0 + v1 + v2) / 3.0
+    centroids = (v0 + v1 + v2) / np.float32(3.0)
     
     # Simple heuristic: count sharp edges
     # Sharp edges between faces indicate machined features
@@ -361,7 +363,7 @@ def extract_surface_finish_from_mesh(mesh) -> SurfaceFinishAnalysis:
             continue
         
         # Estimate center
-        cluster_centroids = np.array(data['centroids'])
+        cluster_centroids = np.array(data['centroids'], dtype=np.float32)
         center = tuple(np.mean(cluster_centroids, axis=0))
         
         # Get average curvature for this cluster

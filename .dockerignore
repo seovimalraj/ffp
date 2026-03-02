@@ -12,3 +12,24 @@ yarn-error.log*
 .env.development.local
 .env.test.local
 .env.production.local
+
+# Test / coverage / docs — not needed in production images
+coverage/
+*.spec.ts
+*.test.ts
+tests/
+e2e/
+docs/
+ai/
+tools/
+sql/
+nginx/
+.vscode/
+*.md
+!README.md
+sonar-project.properties
+qa-config.json
+playwright.config.ts
+__pycache__/
+*.pyc
+.pytest_cache/
