@@ -58,6 +58,7 @@ type DataTableProps<T> = {
   numbering?: boolean;
   onEndReached?: () => void; // Function to call when end is reached
   hasMore?: boolean; // Whether there is more data to load from server
+  selectedIds?: Set<string | number>;
   renderExpansion?: (row: T) => ReactNode;
   isRowExpandable?: (row: T) => boolean;
 };
@@ -79,6 +80,7 @@ export function DataTable<T>({
   numbering = false,
   onEndReached,
   hasMore = false,
+  selectedIds: controlledSelectedIds,
   renderExpansion,
   isRowExpandable,
 }: DataTableProps<T>) {
@@ -89,13 +91,19 @@ export function DataTable<T>({
   } | null>(null);
   const [searchQuery, _setSearchQuery] = useState("");
   // Replaced currentPage with visibleCount for infinite scroll
+  // VisibleCount for infinite scroll
   const [visibleCount, setVisibleCount] = useState(pageSize);
-  const [selectedRows, setSelectedRows] = useState<Set<string | number>>(
-    new Set(),
-  );
+  const [internalSelectedRows, setInternalSelectedRows] = useState<
+    Set<string | number>
+  >(new Set());
   const [expandedRows, setExpandedRows] = useState<Set<string | number>>(
     new Set(),
   );
+
+  const selectedRows =
+    controlledSelectedIds !== undefined
+      ? controlledSelectedIds
+      : internalSelectedRows;
 
   const observerTarget = useRef(null);
 
@@ -223,7 +231,11 @@ export function DataTable<T>({
     } else {
       newSelected.add(rowKey);
     }
-    setSelectedRows(newSelected);
+
+    if (controlledSelectedIds === undefined) {
+      setInternalSelectedRows(newSelected);
+    }
+
     const selectedData = data.filter((row) =>
       newSelected.has(keyExtractor(row)),
     );
@@ -232,15 +244,21 @@ export function DataTable<T>({
 
   const handleSelectAll = () => {
     // Select all FILTERED data, not just visible
-    if (selectedRows.size === filteredData.length) {
-      setSelectedRows(new Set());
+    if (selectedRows.size === filteredData.length && filteredData.length > 0) {
+      if (controlledSelectedIds === undefined) {
+        setInternalSelectedRows(new Set());
+      }
       onSelectionChange?.([]);
     } else {
       const newSelected = new Set(selectedRows);
       filteredData.forEach((row) => {
         newSelected.add(keyExtractor(row));
       });
-      setSelectedRows(newSelected);
+
+      if (controlledSelectedIds === undefined) {
+        setInternalSelectedRows(newSelected);
+      }
+
       const selectedData = data.filter((row) =>
         newSelected.has(keyExtractor(row)),
       );
