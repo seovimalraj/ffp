@@ -2089,7 +2089,7 @@ export default function CheckoutPage() {
                         Shipping & Logistics
                       </span>
                       <span className="text-emerald-600 font-bold uppercase text-[10px] tracking-widest bg-emerald-50 px-2 py-1 rounded-lg border border-emerald-100 shadow-sm">
-                        Complimentary
+                        Complementary
                       </span>
                     </div>
                     <div className="flex justify-between text-sm items-center">
