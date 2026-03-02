@@ -780,9 +780,7 @@ export default function InstantQuotePage() {
             </div>
           </div>
 
-          {/* 5. Bento Grid Layout */}
-          <section className="mb-24 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {/* Box 1: Capabilities (Large) */}
+          {/* <section className="mb-24 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             <div className="lg:col-span-2 bg-white rounded-3xl p-8 border border-slate-100 shadow-sm hover:shadow-md transition-shadow">
               <div className="flex flex-col h-full">
                 <div className="mb-6">
@@ -838,7 +836,6 @@ export default function InstantQuotePage() {
               </div>
             </div>
 
-            {/* Box 2: Quality (Tall) */}
             <div className="bg-gradient-to-b from-slate-900 to-slate-800 text-white rounded-3xl p-8 shadow-xl relative overflow-hidden group">
               <div className="absolute top-0 right-0 w-64 h-64 bg-blue-500/20 rounded-full blur-3xl -mr-16 -mt-16 group-hover:bg-blue-500/30 transition-colors"></div>
 
@@ -889,7 +886,7 @@ export default function InstantQuotePage() {
                 </Button>
               </div>
             </div>
-          </section>
+          </section> */}
         </main>
 
         {/* Auth Modal - Preserves functionality, updates style */}
