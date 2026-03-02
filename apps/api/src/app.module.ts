@@ -19,10 +19,13 @@ import { InngestModule } from './inngest/inngest.module';
 import { TemporalModule } from './temporal/temporal.module';
 import { AdminModule } from './admin/admin.module';
 import { SystemModule } from './system/system.module';
+import { MulterModule } from '@nestjs/platform-express';
 import { TechnicalSupportModule } from './technical-support/technical-support.module';
 
 @Module({
   imports: [
+    MulterModule.register({
+    }),
     ConfigModule.forRoot({
       isGlobal: true,
       load: [configuration],
