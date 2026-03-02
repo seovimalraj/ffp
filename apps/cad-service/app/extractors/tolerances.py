@@ -478,8 +478,7 @@ def extract_tolerance_from_mesh(
                 ))
     
     # Analyze mesh for large flat surfaces (potential datums)
-    # float32 halves memory; sub-micron precision is more than adequate.
-    vertices = np.asarray(mesh.vectors, dtype=np.float32)
+    vertices = mesh.vectors
     if len(vertices) < 10:
         return ToleranceAnalysis()
     
@@ -492,10 +491,10 @@ def extract_tolerance_from_mesh(
     e2 = v2 - v0
     normals = np.cross(e1, e2)
     norms = np.linalg.norm(normals, axis=1, keepdims=True)
-    norms = np.where(norms < np.float32(1e-9), np.float32(1.0), norms)
+    norms = np.where(norms < 1e-9, 1.0, norms)
     normals = normals / norms
-    areas = norms.flatten() / np.float32(2.0)
-    centroids = (v0 + v1 + v2) / np.float32(3.0)
+    areas = norms.flatten() / 2.0
+    centroids = (v0 + v1 + v2) / 3.0
     
     # Find large planar clusters
     normal_bins: Dict[Tuple, Dict] = {}
@@ -503,7 +502,7 @@ def extract_tolerance_from_mesh(
         n = normals[i]
         key = (round(n[0], 1), round(n[1], 1), round(n[2], 1))
         if key not in normal_bins:
-            normal_bins[key] = {'area': 0.0, 'center_sum': np.zeros(3, dtype=np.float32), 'count': 0}
+            normal_bins[key] = {'area': 0.0, 'center_sum': np.zeros(3), 'count': 0}
         normal_bins[key]['area'] += areas[i]
         normal_bins[key]['center_sum'] += centroids[i]
         normal_bins[key]['count'] += 1

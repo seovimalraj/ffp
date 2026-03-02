@@ -20,7 +20,6 @@ import logging
 import math
 import os
 import pickle
-import joblib
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
@@ -931,7 +930,7 @@ def _generate_synthetic_dataset(n_per_class: int = 500) -> Tuple[List[List[float
 _MODEL_DIR = Path(__file__).parent.parent / "ml_models"
 _MODEL_PATH = _MODEL_DIR / "process_classifier.pkl"
 _FEEDBACK_PATH = _MODEL_DIR / "feedback_log.jsonl"
-_MODEL_VERSION = "2.0.0-histgb"
+_MODEL_VERSION = "1.0.0"
 
 _cached_model = None
 _classifier_instance = None  # Singleton instance
@@ -962,13 +961,7 @@ def pretrain_ml_classifier() -> bool:
 
 
 class MLProcessClassifier:
-    """Wrapper around a HistGradientBoosting classifier for process type prediction.
-
-    Uses HistGradientBoostingClassifier which internally bins features into 256
-    histogram buckets (effectively uint8 quantization), providing ~10x less memory
-    usage than the legacy GradientBoostingClassifier while maintaining equivalent
-    or better accuracy.
-    """
+    """Wrapper around a GradientBoosting classifier for process type prediction."""
 
     def __init__(self):
         self.model = None
@@ -977,11 +970,7 @@ class MLProcessClassifier:
 
     # ------------------------------------------------------------------
     def _load_cached_only(self):
-        """Load cached model only - never train during analysis to avoid timeouts.
-
-        Rejects pickled models from older versions (e.g. GradientBoosting Pipeline)
-        to ensure the in-memory model matches the current HistGradientBoosting format.
-        """
+        """Load cached model only - never train during analysis to avoid timeouts."""
         global _cached_model
         if _cached_model is not None:
             self.model = _cached_model
@@ -991,29 +980,12 @@ class MLProcessClassifier:
         # Try loading cached model
         if _MODEL_PATH.exists():
             try:
-                # Try joblib first (new compressed format), fall back to pickle
-                try:
-                    loaded = joblib.load(_MODEL_PATH)
-                except Exception:
-                    with open(_MODEL_PATH, "rb") as f:
-                        loaded = pickle.load(f)
-                # Validate the loaded model is a HistGradientBoosting classifier,
-                # not an old Pipeline from a previous version.  If it's a Pipeline
-                # or any other unexpected type, discard it so _train_model() will
-                # retrain with the new architecture.
-                from sklearn.ensemble import HistGradientBoostingClassifier
-                if not isinstance(loaded, HistGradientBoostingClassifier):
-                    logger.warning(
-                        "Cached model is %s (expected HistGradientBoostingClassifier) "
-                        "— discarding stale pickle, will retrain.",
-                        type(loaded).__name__,
-                    )
-                else:
-                    self.model = loaded
-                    _cached_model = self.model
-                    self.is_ready = True
-                    logger.info("Loaded cached ML process classifier from %s", _MODEL_PATH)
-                    return
+                with open(_MODEL_PATH, "rb") as f:
+                    self.model = pickle.load(f)
+                _cached_model = self.model
+                self.is_ready = True
+                logger.info("Loaded cached ML process classifier from %s", _MODEL_PATH)
+                return
             except Exception as exc:
                 logger.warning("Failed loading cached model: %s", exc)
 
@@ -1023,42 +995,41 @@ class MLProcessClassifier:
 
     # ------------------------------------------------------------------
     def _train_model(self):
-        from sklearn.ensemble import HistGradientBoostingClassifier
+        from sklearn.ensemble import GradientBoostingClassifier
+        from sklearn.preprocessing import StandardScaler
+        from sklearn.pipeline import Pipeline
         from sklearn.model_selection import cross_val_score
         import numpy as np
 
-        logger.info("Training ML process classifier (HistGradientBoosting) on synthetic dataset ...")
+        logger.info("Training ML process classifier on synthetic dataset ...")
         X, y = _generate_synthetic_dataset(n_per_class=600)
 
-        # HistGradientBoosting internally bins features into 256 histogram
-        # buckets (effectively uint8 quantization) — no need for StandardScaler.
-        # Memory: ~2-5 MB vs ~20-50 MB for legacy GradientBoostingClassifier.
-        clf = HistGradientBoostingClassifier(
-            max_iter=150,
-            max_depth=5,
-            learning_rate=0.1,
-            max_leaf_nodes=31,
-            min_samples_leaf=5,
-            random_state=42,
-            early_stopping=False,
-        )
-        # float32 is sufficient — HistGB bins to 256 buckets anyway
-        X_arr = np.array(X, dtype=np.float32)
-        y_arr = np.array(y)
-        clf.fit(X_arr, y_arr)
+        pipe = Pipeline([
+            ("scaler", StandardScaler()),
+            ("clf", GradientBoostingClassifier(
+                n_estimators=200,
+                max_depth=5,
+                learning_rate=0.1,
+                subsample=0.8,
+                min_samples_leaf=5,
+                random_state=42,
+            )),
+        ])
+        pipe.fit(X, y)
 
         # Quick cross-val to log quality
-        scores = cross_val_score(clf, X_arr, y_arr, cv=5, scoring="accuracy")
+        scores = cross_val_score(pipe, X, y, cv=5, scoring="accuracy")
         logger.info("ML classifier CV accuracy: %.3f ± %.3f", scores.mean(), scores.std())
 
-        # Save with zlib compression (3-5x smaller, faster I/O)
+        # Save
         _MODEL_DIR.mkdir(parents=True, exist_ok=True)
-        joblib.dump(clf, _MODEL_PATH, compress=3)
+        with open(_MODEL_PATH, "wb") as f:
+            pickle.dump(pipe, f)
         logger.info("Saved ML model to %s", _MODEL_PATH)
 
-        self.model = clf
+        self.model = pipe
         global _cached_model
-        _cached_model = clf
+        _cached_model = pipe
         self.is_ready = True
 
     # ------------------------------------------------------------------
@@ -1079,9 +1050,10 @@ class MLProcessClassifier:
             sorted_probs = sorted(proba, reverse=True)
             is_borderline = (sorted_probs[0] - sorted_probs[1]) < 0.15
 
-            # Feature importances (directly from HistGradientBoosting, no pipeline)
+            # Feature importances (from the GBC inside the pipeline)
             try:
-                importances = self.model.feature_importances_
+                gbc = self.model.named_steps["clf"]
+                importances = gbc.feature_importances_
                 top_indices = np.argsort(importances)[::-1][:5]
                 feat_imp = {FEATURE_NAMES[i]: float(importances[i]) for i in top_indices}
             except Exception:
@@ -1155,29 +1127,32 @@ class MLProcessClassifier:
                 [1.0] * len(syn_X) + [3.0] * len(feedback_X)
             )
 
-            from sklearn.ensemble import HistGradientBoostingClassifier
+            from sklearn.ensemble import GradientBoostingClassifier
+            from sklearn.preprocessing import StandardScaler
+            from sklearn.pipeline import Pipeline
 
-            clf = HistGradientBoostingClassifier(
-                max_iter=200,
-                max_depth=6,
-                learning_rate=0.08,
-                max_leaf_nodes=31,
-                min_samples_leaf=4,
-                random_state=42,
-                early_stopping=False,
-            )
-            # float32 is sufficient — HistGB bins to 256 buckets anyway
-            X_arr = np.array(combined_X, dtype=np.float32)
+            pipe = Pipeline([
+                ("scaler", StandardScaler()),
+                ("clf", GradientBoostingClassifier(
+                    n_estimators=250,
+                    max_depth=6,
+                    learning_rate=0.08,
+                    subsample=0.8,
+                    min_samples_leaf=4,
+                    random_state=42,
+                )),
+            ])
+            X_arr = np.array(combined_X)
             y_arr = np.array(combined_y)
-            # Note: HistGradientBoosting supports sample_weight via fit()
-            clf.fit(X_arr, y_arr, sample_weight=sample_weight)
+            pipe.fit(X_arr, y_arr, clf__sample_weight=sample_weight)
 
-            # Save with zlib compression (3-5x smaller, faster I/O)
-            joblib.dump(clf, _MODEL_PATH, compress=3)
+            # Save
+            with open(_MODEL_PATH, "wb") as f:
+                pickle.dump(pipe, f)
 
-            self.model = clf
+            self.model = pipe
             global _cached_model
-            _cached_model = clf
+            _cached_model = pipe
             logger.info("Retrained with %d feedback samples", len(feedback_X))
 
         except Exception as exc:

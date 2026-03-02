@@ -551,7 +551,7 @@ def analyze_tool_accessibility(
             [-1, 0, 0],  # Left (-X)
             [0, 1, 0],   # Front (+Y)
             [0, -1, 0],  # Back (-Y)
-        ], dtype=np.float32)
+        ], dtype=float)
     else:
         # Full 26 directions (cube corners + edges + faces)
         directions = []
@@ -561,7 +561,7 @@ def analyze_tool_accessibility(
                     if x == 0 and y == 0 and z == 0:
                         continue
                     directions.append([x, y, z])
-        directions = np.array(directions, dtype=np.float32)
+        directions = np.array(directions, dtype=float)
         # Normalize
         directions = directions / np.linalg.norm(directions, axis=1, keepdims=True)
     
@@ -597,7 +597,7 @@ def analyze_tool_accessibility(
         return results
     
     for loc in feature_locations:
-        loc = np.array(loc, dtype=np.float32)
+        loc = np.array(loc)
         accessible_dirs = []
         blocked_dirs = []
         
@@ -605,8 +605,8 @@ def analyze_tool_accessibility(
             # Cast ray from feature outward
             # If it doesn't hit mesh (or hits at large distance), direction is accessible
             
-            origins = np.array([loc], dtype=np.float32)
-            ray_dirs = np.array([direction], dtype=np.float32)
+            origins = np.array([loc])
+            ray_dirs = np.array([direction])
             
             try:
                 # Use trimesh ray intersection
@@ -721,7 +721,7 @@ def analyze_machining_complexity_from_mesh(
             needs_4axis = True
     
     # Simplified axis analysis from mesh
-    vertices = np.asarray(mesh.vectors, dtype=np.float32)
+    vertices = mesh.vectors
     v0 = vertices[:, 0, :]
     v1 = vertices[:, 1, :]
     v2 = vertices[:, 2, :]
@@ -730,7 +730,7 @@ def analyze_machining_complexity_from_mesh(
     e2 = v2 - v0
     normals = np.cross(e1, e2)
     norms = np.linalg.norm(normals, axis=1, keepdims=True)
-    norms = np.where(norms < np.float32(1e-9), np.float32(1.0), norms)
+    norms = np.where(norms < 1e-9, 1.0, norms)
     normals = normals / norms
     
     # Count perpendicular to Z (horizontal normals)

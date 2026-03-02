@@ -6,9 +6,7 @@ import { SupabaseModule } from 'src/supabase/supabase.module';
 @Module({
   imports: [
     MulterModule.register({
-      // Memory storage: file.buffer is available for direct Supabase upload.
-      // Enforce 100 MB limit to prevent memory exhaustion from oversized uploads.
-      limits: { fileSize: 100 * 1024 * 1024 },
+      // No storage option defaults to memory storage (file.buffer is available)
     }),
     SupabaseModule,
   ],

@@ -50,5 +50,4 @@ WORKDIR /app/apps/workflow-service
 
 EXPOSE 3004
 
-# Cap V8 heap at 75% of container memory limit (512M) to prevent OOM kills
-CMD ["node", "--max-old-space-size=384", "dist/index.js"]
+CMD ["node", "dist/index.js"]
