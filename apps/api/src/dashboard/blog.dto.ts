@@ -19,6 +19,10 @@ export class CreateBlogDto {
   @IsNotEmpty()
   link: string;
 
+  @IsString()
+  @IsNotEmpty()
+  tag: string;
+
   @IsUrl()
   @IsNotEmpty()
   image_url: string;
@@ -40,6 +44,9 @@ export class UpdateBlogDto {
   @IsUrl()
   @IsOptional()
   link?: string;
+
+  @IsString()
+  tag?: string;
 
   @IsUrl()
   @IsOptional()

@@ -58,6 +58,7 @@ import {
 import { isValidPhone } from "@/lib/validation/phone-validation";
 import { validateEmail } from "@/lib/validation/email.validation";
 import { ManualExceededModal } from "../../quote-config/components/manual-exceeded-modal";
+import { COUNTRIES } from "@cnc-quote/shared";
 
 /* ------------------------------------------------------------------ */
 /* Types */
@@ -100,25 +101,6 @@ interface ShippingAddress {
   phoneExt: string;
   email: string;
 }
-
-const COUNTRIES = [
-  "United States",
-  "India",
-  "Canada",
-  "United Kingdom",
-  "Germany",
-  "France",
-  "Japan",
-  "Australia",
-  "Italy",
-  "Spain",
-  "Netherlands",
-  "Belgium",
-  "Denmark",
-  "Sweden",
-  "Norway",
-  "Singapore",
-];
 
 const INDUSTRIES = [
   "Aerospace",
@@ -2112,10 +2094,10 @@ export default function CheckoutPage() {
                     </div>
                     <div className="flex justify-between text-sm items-center">
                       <span className="text-slate-500 font-medium">
-                        Estimated Tax
+                        Tax & Duties
                       </span>
-                      <span className="font-bold text-slate-900 font-mono">
-                        ${tax.toFixed(2)}
+                      <span className="text-emerald-600 font-bold uppercase text-[10px] tracking-widest bg-emerald-50 px-2 py-1 rounded-lg border border-emerald-100 shadow-sm">
+                        Included
                       </span>
                     </div>
                   </div>
