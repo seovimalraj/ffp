@@ -141,7 +141,10 @@ const Page = () => {
     });
   };
 
-  const handleClearSelection = () => setSelectedIds(new Set());
+  const handleClearSelection = () => {
+    setSelectedIds(new Set());
+    setIsMakeQuoteModalOpen(false);
+  };
 
   useEffect(() => {
     handleClearSelection();
@@ -509,6 +512,7 @@ const Page = () => {
               keyExtractor={(row) => row.id}
               pageSize={30}
               selectable={true}
+              selectedIds={selectedIds}
               actions={[
                 {
                   label: "Download",
@@ -799,18 +803,18 @@ const Page = () => {
               await handleCreateQuote([group]);
             },
           },
-          {
-            label: "Delete",
-            icon: <Trash2 className="w-4 h-4" />,
-            variant: "outline",
-            onClick: async () => {
-              if (confirm("Are you sure you want to delete these items?")) {
-                // Implement delete logic here if needed or keep existing placeholder
-                // For now just clearing selection as per original code
-                handleClearSelection();
-              }
-            },
-          },
+          // {
+          //   label: "Delete",
+          //   icon: <Trash2 className="w-4 h-4" />,
+          //   variant: "outline",
+          //   onClick: async () => {
+          //     if (confirm("Are you sure you want to delete these items?")) {
+          //       // Implement delete logic here if needed or keep existing placeholder
+          //       // For now just clearing selection as per original code
+          //       handleClearSelection();
+          //     }
+          //   },
+          // },
         ]}
       />
 

@@ -1,6 +1,6 @@
 "use client";
 
-import { X, Cpu, ChevronDown } from "lucide-react";
+import { X, Cpu, ChevronDown, BrainCog } from "lucide-react";
 import type { PartConfig } from "@/types/part-config";
 import { cn } from "@/lib/utils";
 import { motion, AnimatePresence } from "framer-motion"; // Added Framer Motion
@@ -244,11 +244,7 @@ export function SuggestionSidebar({
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
               <div className="w-10 h-10 bg-blue-600 rounded-xl flex items-center justify-center shadow-blue-200 shadow-lg">
-                <img
-                  src="/icons/ai-suggestion.png"
-                  alt="AI"
-                  className="w-6 invert"
-                />
+                <BrainCog className="w-6 text-white" />
               </div>
               <div>
                 <h2 className="text-lg font-bold tracking-tight text-zinc-900 flex items-center gap-2">
@@ -404,7 +400,6 @@ export function SuggestionSidebar({
                           label: "Cost",
                           color: "emerald",
                         },
-                        { id: "dfm", label: "DFM", color: "amber" },
                         {
                           id: "quality-optimization",
                           label: "Quality",
