@@ -81,6 +81,9 @@ export async function analyzeGeometry(
 
   logger.info({ partId, filename }, "Analyzing CAD geometry");
 
+  // Set status explicitly here so "Processing" only shows up when we have an actual worker slot
+  await updatePart(partId, { status: RFQPartStatus.Processing });
+
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 120_000);
 

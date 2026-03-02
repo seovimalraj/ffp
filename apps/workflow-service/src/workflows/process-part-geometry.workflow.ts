@@ -1,21 +1,17 @@
 import { proxyActivities, ApplicationFailure } from "@temporalio/workflow";
 import type * as activities from "../activities/process-part-geometry.activities.js";
 
-const {
-  setPartStatusToProcessing,
-  analyzeGeometry,
-  saveGeometryAndMarkProcessed,
-  markManualQuote,
-} = proxyActivities<typeof activities>({
-  startToCloseTimeout: "10 minutes",
-  heartbeatTimeout: "30 seconds",
-  retry: {
-    maximumAttempts: 5,
-    initialInterval: "5 seconds",
-    maximumInterval: "2 minutes",
-    backoffCoefficient: 2,
-  },
-});
+const { analyzeGeometry, saveGeometryAndMarkProcessed, markManualQuote } =
+  proxyActivities<typeof activities>({
+    startToCloseTimeout: "10 minutes",
+    heartbeatTimeout: "30 seconds",
+    retry: {
+      maximumAttempts: 5,
+      initialInterval: "5 seconds",
+      maximumInterval: "2 minutes",
+      backoffCoefficient: 2,
+    },
+  });
 
 export type CADWorkflowInput = {
   partId: string;
@@ -27,10 +23,7 @@ export async function cadProcessingWorkflow(input: CADWorkflowInput) {
   const { partId, fileUrl, filename } = input;
 
   try {
-    // 1. mark processing
-    await setPartStatusToProcessing(partId);
-
-    // 2. analyze
+    // 1. analyze (now includes status update inside the activity slot)
     let geometry = await analyzeGeometry(partId, fileUrl, filename);
 
     // manual quote path
