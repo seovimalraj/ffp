@@ -27,6 +27,7 @@ import {
   DashboardStats,
   RecentOrder,
   RecentQuote,
+  Blog,
 } from "@/lib/api/dashboard";
 import { toast } from "sonner";
 import CustomLoader from "@/components/ui/loader/CustomLoader";
@@ -72,6 +73,7 @@ export default function CustomerDashboardPage() {
   });
   const [recentQuotes, setRecentQuotes] = useState<RecentQuote[]>([]);
   const [recentOrders, setRecentOrders] = useState<RecentOrder[]>([]);
+  const [blogs, setBlogs] = useState<Blog[]>([]);
   const [showProductionModal, setShowProductionModal] = useState(false);
 
   const { setPageTitle, resetTitle } = useMetaStore();
@@ -87,15 +89,18 @@ export default function CustomerDashboardPage() {
     const loadDashboardData = async () => {
       try {
         setLoading(true);
-        const [statsData, quotesData, ordersData] = await Promise.all([
-          DashboardAPI.getStats(),
-          DashboardAPI.getRecentQuotes(),
-          DashboardAPI.getRecentOrders(),
-        ]);
+        const [statsData, quotesData, ordersData, blogsData] =
+          await Promise.all([
+            DashboardAPI.getStats(),
+            DashboardAPI.getRecentQuotes(),
+            DashboardAPI.getRecentOrders(),
+            DashboardAPI.getBlogs(2),
+          ]);
 
         setStats(statsData);
         setRecentQuotes(quotesData);
         setRecentOrders(ordersData);
+        setBlogs(blogsData);
       } catch (error) {
         console.error("Failed to load dashboard data:", error);
         toast.error("Failed to load dashboard data");
@@ -245,7 +250,7 @@ export default function CustomerDashboardPage() {
             description:
               "Easily reorder previously manufactured parts and access history.",
             icon: RefreshCw,
-            href: "/portal/orders",
+            href: "/portal/library",
             action: "Find Parts",
             color: "emerald",
           },
@@ -424,61 +429,50 @@ export default function CustomerDashboardPage() {
       </section>
 
       {/* Explore Section */}
-      <section className="space-y-6">
-        <h2 className="text-2xl font-bold text-slate-800 tracking-tight px-1">
-          Explore Manufacturing
-        </h2>
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          {[
-            {
-              title: "Mastering CNC Machining",
-              description:
-                "Optimize CAD designs for high-precision CNC milling and reduce lead times.",
-              image: "/dashboard/explore_cnc.png",
-              tag: "Best Practice",
-              link: "https://frigate.ai/blog/cnc-machining-guide/",
-            },
-            {
-              title: "Sheet Metal Design Guide",
-              description:
-                "Avoid common pitfalls with our guide on bend radii and material selection.",
-              image: "/dashboard/explore_sheetmetal.png",
-              tag: "DFM Guide",
-              link: "https://frigate.ai/blog/sheet-metal-design/",
-            },
-          ].map((item, idx) => (
-            <motion.div key={idx} variants={itemVariants}>
-              <div className="group bg-white rounded-2xl border border-slate-200/60 shadow-sm overflow-hidden flex flex-col sm:flex-row hover:shadow-lg transition-all duration-300">
-                <div className="flex-1 p-6 flex flex-col">
-                  <span className="text-[10px] font-black uppercase tracking-[0.2em] text-blue-600 mb-2">
-                    {item.tag}
-                  </span>
-                  <h3 className="text-lg font-bold text-slate-900 mb-2 group-hover:text-blue-600 transition-colors">
-                    {item.title}
-                  </h3>
-                  <p className="text-slate-500 text-sm leading-relaxed mb-4 flex-grow">
-                    {item.description}
-                  </p>
-                  <Link
-                    href={item.link}
-                    target="_blank"
-                    className="flex items-center gap-2 text-xs font-bold text-slate-900 hover:text-blue-600 transition-colors uppercase tracking-widest"
-                  >
-                    Read article <ArrowRight size={14} />
-                  </Link>
+      {blogs.length > 0 && (
+        <section className="space-y-6">
+          <h2 className="text-2xl font-bold text-slate-800 tracking-tight px-1">
+            Explore Manufacturing
+          </h2>
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            {blogs.map((blog) => (
+              <motion.div key={blog.id} variants={itemVariants}>
+                <div className="group bg-white rounded-2xl border border-slate-200/60 shadow-sm overflow-hidden flex flex-col sm:flex-row hover:shadow-lg transition-all duration-300">
+                  <div className="flex-1 p-6 flex flex-col">
+                    {blog.tag && (
+                      <span className="text-[10px] font-black uppercase tracking-[0.2em] text-blue-600 mb-2">
+                        {blog.tag}
+                      </span>
+                    )}
+                    <h3 className="text-lg font-bold text-slate-900 mb-2 group-hover:text-blue-600 transition-colors">
+                      {blog.title}
+                    </h3>
+                    <p className="text-slate-500 text-sm leading-relaxed mb-4 flex-grow line-clamp-3">
+                      {blog.description}
+                    </p>
+                    <Link
+                      href={blog.link}
+                      target="_blank"
+                      className="flex items-center gap-2 text-xs font-bold text-slate-900 hover:text-blue-600 transition-colors uppercase tracking-widest"
+                    >
+                      Read article <ArrowRight size={14} />
+                    </Link>
+                  </div>
+                  {blog.image_url && (
+                    <div className="sm:w-1/3 h-48 sm:h-auto overflow-hidden">
+                      <img
+                        src={blog.image_url}
+                        alt={blog.title}
+                        className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
+                      />
+                    </div>
+                  )}
                 </div>
-                <div className="sm:w-1/3 h-48 sm:h-auto overflow-hidden">
-                  <img
-                    src={item.image}
-                    alt={item.title}
-                    className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
-                  />
-                </div>
-              </div>
-            </motion.div>
-          ))}
-        </div>
-      </section>
+              </motion.div>
+            ))}
+          </div>
+        </section>
+      )}
 
       {/* Helpful Links */}
       <section className="bg-slate-900 rounded-[2.5rem] p-12 text-white relative overflow-hidden group">
@@ -524,7 +518,7 @@ export default function CustomerDashboardPage() {
                 { label: "Platform Updates", href: "/updates" },
                 {
                   label: "Manufacturing Blog",
-                  href: "https://frigate.ai/blog",
+                  href: "https://frigate.ai/blogs",
                 },
                 { label: "Help Center", href: "https://frigate.ai/faqs/" },
               ].map((link, idx) => (
@@ -547,9 +541,12 @@ export default function CustomerDashboardPage() {
               {[
                 {
                   label: "Conditions of Use",
-                  href: "https://frigate.ai/terms",
+                  href: "https://frigate.ai/policy/terms-and-conditions/",
                 },
-                { label: "Privacy Policy", href: "https://frigate.ai/privacy" },
+                {
+                  label: "Privacy Policy",
+                  href: "https://frigate.ai/policy/privacy-policy/",
+                },
               ].map((link, idx) => (
                 <li key={idx}>
                   <Link

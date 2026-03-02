@@ -83,6 +83,8 @@ export enum Tables {
   UploadsTable = 'uploads',
 
   BlogsTable = 'blogs',
+
+  ProductionOrderRequest = 'production_order_request',
 }
 
 /**
@@ -107,6 +109,7 @@ export enum TemporalEvents {
   OrderPartStatusChangeWorkflow = 'orderPartStatusChangeWorkflow',
   TechnicalSupportWorkflow = 'technicalSupportWorkflow',
   CADProcessingWorkflow = 'cadProcessingWorkflow',
+  ProductionRequestWorkflow = 'productionRequestWorkflow',
 }
 
 /**

@@ -111,8 +111,7 @@ const StartProductionModal = ({
 
     setIsSubmitting(true);
     try {
-      // Endpoint typically for generic support or specialized production contact
-      await apiClient.post(`/technical-support/production`, {
+      await apiClient.post(`/technical-support/production-request`, {
         projectName,
         projectDescription,
         services: selectedServices,
@@ -122,16 +121,10 @@ const StartProductionModal = ({
       onSuccess?.();
     } catch (error: any) {
       console.error("Failed to submit production request:", error);
-      // Since it's a new feature, we'll simulate success if the endpoint doesn't exist yet (404)
-      if (error?.response?.status === 404) {
-        setIsSubmitted(true);
-        onSuccess?.();
-      } else {
-        notify.error(
-          error?.response?.data?.message ||
-            "Failed to submit your request. Please try again.",
-        );
-      }
+      notify.error(
+        error?.response?.data?.message ||
+          "Failed to submit your request. Please try again.",
+      );
     } finally {
       setIsSubmitting(false);
     }
@@ -171,6 +164,9 @@ const StartProductionModal = ({
       isSubmitting={isSubmitting}
       hideFooter={isSubmitted}
       hideSidebar={isSubmitted}
+      elementStyle={{
+        submitButtonColor: "bg-blue-600 hover:bg-blue-700 shadow-blue-500/20",
+      }}
     >
       <div className="h-full">
         <AnimatePresence mode="wait">

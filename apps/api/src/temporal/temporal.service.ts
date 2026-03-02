@@ -271,4 +271,39 @@ export class TemporalService implements OnModuleInit {
       throw error;
     }
   }
+
+  async startProductionRequestWorkflow(data: {
+    requestCode: string;
+    customerEmail: string;
+    customerName: string;
+    projectName: string;
+    projectDescription: string;
+    services: string[];
+  }) {
+    try {
+      if (!this.client) {
+        throw new Error('Temporal client not initialized');
+      }
+
+      const handle = await this.client.workflow.start(
+        TemporalEvents.ProductionRequestWorkflow,
+        {
+          taskQueue: TaskQueues.CoreTaskQueue,
+          workflowId: `production-req-${Date.now()}-${data.requestCode}`,
+          args: [data],
+        },
+      );
+
+      this.logger.log(
+        `Started Production Request workflow: ${handle.workflowId}`,
+      );
+      return handle;
+    } catch (error) {
+      this.logger.error(
+        'Failed to start Production Request workflow:',
+        error.message,
+      );
+      throw error;
+    }
+  }
 }

@@ -14,6 +14,7 @@ interface Blog {
   title: string;
   description: string;
   link: string;
+  tag: string;
   image_url: string;
   showcase: boolean;
   created_at: string;
@@ -125,6 +126,9 @@ export default function AdminBlogsPage() {
             title={row.description}
           >
             {row.description}
+          </span>
+          <span className="text-xs text-neutral-500 truncate" title={row.tag}>
+            {row.tag}
           </span>
         </div>
       ),

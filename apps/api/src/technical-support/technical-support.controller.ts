@@ -8,7 +8,7 @@ import {
   Post,
   UseGuards,
 } from '@nestjs/common';
-import { RoleNames } from '../../libs/constants';
+import { RoleNames, Tables } from '../../libs/constants';
 import { AuthGuard } from 'src/auth/auth.guard';
 import { RolesGuard } from 'src/auth/roles.guard';
 import { SupabaseService } from 'src/supabase/supabase.service';
@@ -26,7 +26,66 @@ export class TechnicalSupportController {
     private readonly logger: Logger,
   ) {}
 
-  @Post('technical-support/:rfqId')
+  @Post('production-request')
+  @Roles(RoleNames.Customer)
+  async createProductionRequest(
+    @CurrentUser() currentUser: CurrentUserDto,
+    @Body()
+    body: {
+      projectName: string;
+      projectDescription: string;
+      services: string[];
+    },
+  ) {
+    const client = this.supabaseService.getClient();
+
+    const { data, error } = await client
+      .from(Tables.ProductionOrderRequest)
+      .insert({
+        project_name: body.projectName,
+        project_description: body.projectDescription,
+        manufacturing_services: body.services,
+        organization_id: currentUser.organizationId,
+      })
+      .select()
+      .single();
+
+    if (error) {
+      this.logger.error(
+        { error, userId: currentUser.id },
+        'Failed to create production order request',
+      );
+      throw new HttpException(
+        error.message || 'Failed to create production request',
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
+
+    // Trigger email workflow (fire-and-forget, don't block the response)
+    try {
+      await this.temporalService.startProductionRequestWorkflow({
+        requestCode: data.code,
+        customerEmail: currentUser.email,
+        customerName: currentUser.name,
+        projectName: body.projectName,
+        projectDescription: body.projectDescription,
+        services: body.services,
+      });
+    } catch (workflowError) {
+      this.logger.error(
+        { workflowError, requestCode: data.code },
+        'Failed to start production request email workflow',
+      );
+      // Don't fail the request — the DB record was created successfully
+    }
+
+    return {
+      success: true,
+      productionRequest: data,
+    };
+  }
+
+  @Post(':rfqId')
   @Roles(RoleNames.Customer)
   async sendTechnicalSupportRequest(
     @Param('rfqId') rfqId: string,
@@ -53,8 +112,6 @@ export class TechnicalSupportController {
       });
     } catch (temporalError) {
       this.logger.error('Failed to start Temporal workflow', temporalError);
-      // Optional: Rollback status if workflow fail?
-      // For now, just throw error to let admin know it failed.
       throw new HttpException(
         'Failed to send technical support emails',
         HttpStatus.INTERNAL_SERVER_ERROR,

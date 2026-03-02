@@ -13,6 +13,10 @@ export interface Step {
   [key: string]: any; // Allow for custom properties like snapshot_2d_url
 }
 
+interface ElementStyle {
+  submitButtonColor?: string;
+}
+
 interface VerticalSteppedModalProps {
   isOpen: boolean;
   onClose: () => void;
@@ -28,6 +32,7 @@ interface VerticalSteppedModalProps {
   sidebarPosition?: "left" | "right";
   hideFooter?: boolean;
   hideSidebar?: boolean;
+  elementStyle?: ElementStyle;
 }
 
 /**
@@ -49,6 +54,7 @@ export function VerticalSteppedModal({
   sidebarPosition = "left", // Defaulted to left as requested
   hideFooter = false,
   hideSidebar = false,
+  elementStyle,
 }: VerticalSteppedModalProps) {
   if (!isOpen) return null;
 
@@ -250,9 +256,11 @@ export function VerticalSteppedModal({
                     loading={isSubmitting}
                     className={cn(
                       "rounded-2xl px-10 h-14 font-black min-w-[160px] text-white transition-all shadow-xl scale-100 hover:scale-[1.02] active:scale-[0.98]",
-                      isLastStep
-                        ? "bg-teal-600 hover:bg-teal-700 shadow-teal-500/20"
-                        : "bg-blue-600 hover:bg-blue-500 shadow-blue-600/20",
+                      elementStyle?.submitButtonColor
+                        ? elementStyle.submitButtonColor
+                        : isLastStep
+                          ? "bg-teal-600 hover:bg-teal-700 shadow-teal-500/20"
+                          : "bg-blue-600 hover:bg-blue-500 shadow-blue-600/20",
                     )}
                   >
                     <div className="flex items-center gap-2">
