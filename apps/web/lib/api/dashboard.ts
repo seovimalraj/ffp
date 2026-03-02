@@ -31,6 +31,17 @@ export interface RecentOrder {
   progress: number;
 }
 
+export interface Blog {
+  id: string;
+  title: string;
+  description: string;
+  link: string;
+  image_url: string;
+  tag: string;
+  showcase: boolean;
+  created_at: string;
+}
+
 export const DashboardAPI = {
   getStats: async (): Promise<DashboardStats> => {
     const { data } = await apiClient.get<DashboardStats>(
@@ -51,5 +62,12 @@ export const DashboardAPI = {
       "/portal/dashboard/recent-orders",
     );
     return data;
+  },
+
+  getBlogs: async (limit = 4): Promise<Blog[]> => {
+    const { data } = await apiClient.get<any>(
+      `/portal/dashboard/blogs?limit=${limit}`,
+    );
+    return data?.data ?? [];
   },
 };

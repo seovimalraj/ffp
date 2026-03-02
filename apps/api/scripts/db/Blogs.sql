@@ -8,6 +8,8 @@ CREATE TABLE IF NOT EXISTS blogs (
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
+alter table blogs add column tag text not null default ""
+
 CREATE INDEX IF NOT EXISTS idx_blogs_created_at_desc
 ON blogs (created_at DESC);
 

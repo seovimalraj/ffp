@@ -843,7 +843,7 @@ export function generateSuggestions(parts: PartConfig[]): Suggestion[] {
 
   parts.forEach((part) => {
     // Generate DFM recommendations
-    suggestions.push(...generateDFMSuggestions(part));
+    // suggestions.push(...generateDFMSuggestions(part));
 
     // Generate alternative material suggestions
     suggestions.push(...generateAlternativeMaterialSuggestions(part));

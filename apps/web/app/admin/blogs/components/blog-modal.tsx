@@ -14,6 +14,7 @@ const blogSchema = z.object({
   description: z.string().min(1, "Description is required"),
   link: z.string().url("Must be a valid URL"),
   image_url: z.string().url("Must be a valid image URL"),
+  tag: z.string().min(1, "Tag is required"),
   showcase: z.boolean().default(false),
 });
 
@@ -33,6 +34,7 @@ const INITIAL_STATE: BlogFormData = {
   description: "",
   link: "",
   image_url: "",
+  tag: "",
   showcase: false,
 };
 
@@ -54,6 +56,7 @@ export default function BlogModal({
         title: blog.title || "",
         description: blog.description || "",
         link: blog.link || "",
+        tag: blog.tag || "",
         image_url: blog.image_url || "",
         showcase: blog.showcase || false,
       });
@@ -145,6 +148,15 @@ export default function BlogModal({
                 className="min-h-[100px]"
                 value={formData.description}
                 onChange={(e) => handleChange("description", e.target.value)}
+              />
+            </FormField>
+
+            <FormField label="Tag" error={errors.tag} required>
+              <Input
+                placeholder="Tag for the blog"
+                className="min-h-[100px]"
+                value={formData.tag}
+                onChange={(e) => handleChange("tag", e.target.value)}
               />
             </FormField>
 

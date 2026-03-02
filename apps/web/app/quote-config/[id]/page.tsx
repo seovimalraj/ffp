@@ -1668,7 +1668,8 @@ export default function QuoteConfigPage() {
                 </Button>
 
                 <Button
-                  onClick={() => setShowUploadModal(true)}
+                  // onClick={() => setShowUploadModal(true)}
+                  onClick={() => router.push("/instant-quote")}
                   className="bg-blue-600 hover:bg-blue-700 text-white font-medium shadow-lg shadow-blue-600/20 transition-all hover:scale-[1.02] active:scale-[0.98] rounded-lg"
                 >
                   <Plus className="w-4 h-4 sm:mr-2" />
