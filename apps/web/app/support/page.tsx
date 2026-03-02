@@ -25,7 +25,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { formatPhoneNumber } from "react-phone-number-input";
+import { formatPhoneNumberIntl } from "react-phone-number-input";
 
 const contactMethods = [
   {
@@ -123,7 +123,7 @@ const SupportPage = () => {
               if (method.title === "Phone Support" && phoneConfig) {
                 return {
                   ...method,
-                  value: formatPhoneNumber(phoneConfig.value),
+                  value: formatPhoneNumberIntl(phoneConfig.value),
                   onClick: () =>
                     (window.location.href = `tel:${phoneConfig.value}`),
                 };
