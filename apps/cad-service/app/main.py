@@ -1,8 +1,10 @@
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
+from starlette.middleware.base import BaseHTTPMiddleware
 import os
 import threading
 import logging
+import psutil
 
 from .routers import analyze, gltf, health
 from .api import manufacturability_scoring, conversion
@@ -14,6 +16,9 @@ logger = logging.getLogger(__name__)
 
 # Initialize OpenTelemetry first
 otel_initialized = False
+
+# Memory threshold for warning logs (1.5 GB)
+_MEMORY_WARN_BYTES = 1.5 * 1024 ** 3
 
 
 def _background_ml_pretrain():
@@ -48,6 +53,26 @@ def create_app():
         # Instrument app with OpenTelemetry
         otel.instrument_app(app)
         otel_initialized = True
+
+    # ---- Memory monitoring middleware ----
+    # Logs a warning when RSS exceeds the threshold so operators get early
+    # visibility into memory pressure before OOM kills happen.
+    _process = psutil.Process()
+
+    class MemoryGuardMiddleware(BaseHTTPMiddleware):
+        async def dispatch(self, request: Request, call_next):
+            rss = _process.memory_info().rss
+            if rss > _MEMORY_WARN_BYTES:
+                logger.warning(
+                    "HIGH MEMORY before %s %s: %.0f MB RSS",
+                    request.method,
+                    request.url.path,
+                    rss / (1024 ** 2),
+                )
+            response = await call_next(request)
+            return response
+
+    app.add_middleware(MemoryGuardMiddleware)
 
     # CORS middleware
     ALLOWED_ORIGINS = [

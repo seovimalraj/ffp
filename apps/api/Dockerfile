@@ -43,4 +43,5 @@ WORKDIR /app/apps/api
 
 EXPOSE 3001
 
-CMD ["node", "dist/src/main.js"]
+# Cap V8 heap at 75% of container memory limit (512M) to prevent OOM kills
+CMD ["node", "--max-old-space-size=384", "dist/src/main.js"]

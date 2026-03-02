@@ -195,7 +195,7 @@ def detect_undercuts_from_mesh(mesh) -> List[UndercutFeature]:
         [1, 0, 0], [-1, 0, 0],
         [0, 1, 0], [0, -1, 0],
         [0, 0, 1], [0, 0, -1],
-    ], dtype=float)
+    ], dtype=np.float32)
 
     # Compute max accessibility for each face
     dots = np.abs(normals @ access_dirs.T)  # (n_faces, 6)

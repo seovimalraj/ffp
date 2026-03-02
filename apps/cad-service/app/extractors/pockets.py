@@ -362,12 +362,12 @@ def extract_pockets_from_mesh(mesh) -> List[PocketFeature]:
     pockets: List[PocketFeature] = []
     normals = mesh.face_normals
     centroids = mesh.triangles_center
-    areas = mesh.area_faces if hasattr(mesh, 'area_faces') else np.ones(len(normals))
+    areas = mesh.area_faces if hasattr(mesh, 'area_faces') else np.ones(len(normals), dtype=np.float32)
     
     # Find triangles facing upward (potential pocket floors)
     # and downward (potential ceiling of through-pockets)
-    up_axis = np.array([0, 0, 1])
-    down_axis = np.array([0, 0, -1])
+    up_axis = np.array([0, 0, 1], dtype=np.float32)
+    down_axis = np.array([0, 0, -1], dtype=np.float32)
     
     # Floor triangles: facing up (+Z)
     floor_dot = normals @ up_axis
@@ -448,7 +448,7 @@ def extract_pockets_from_mesh(mesh) -> List[PocketFeature]:
         # Check if through pocket (has bottom opening)
         # A through pocket would have no floor below it
         below_floor_mask = floor_z < (z_level - depth_mm * 0.5)
-        below_xy_dist = np.linalg.norm(floor_centroids[below_floor_mask][:, :2] - floor_center_xy, axis=1) if np.any(below_floor_mask) else np.array([])
+        below_xy_dist = np.linalg.norm(floor_centroids[below_floor_mask][:, :2] - floor_center_xy, axis=1) if np.any(below_floor_mask) else np.array([], dtype=np.float32)
         is_through = len(below_xy_dist) > 0 and np.min(below_xy_dist) < floor_extent * 0.5
         
         pockets.append(PocketFeature(

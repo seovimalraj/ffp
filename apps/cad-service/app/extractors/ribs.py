@@ -269,7 +269,7 @@ def extract_ribs_from_mesh(mesh) -> List[RibFeature]:
     ribs: List[RibFeature] = []
     normals = mesh.face_normals
     centroids = mesh.triangles_center
-    areas = mesh.area_faces if hasattr(mesh, 'area_faces') else np.ones(len(normals))
+    areas = mesh.area_faces if hasattr(mesh, 'area_faces') else np.ones(len(normals), dtype=np.float32)
     
     # Find pairs of nearby, anti-parallel triangle clusters
     # This indicates thin walls (potential ribs)

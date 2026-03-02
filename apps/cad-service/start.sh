@@ -7,4 +7,4 @@ cd /workspaces/cnc-quote/apps/cad-service
 pip install -r requirements.txt
 
 # Start the FastAPI server
-uvicorn main:app --host 0.0.0.0 --port 8001 --reload
+uvicorn main:app --host 0.0.0.0 --port 8001 --reload --limit-concurrency 5

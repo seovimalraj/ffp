@@ -9,7 +9,6 @@ import { validate } from './config/env.validation';
 import { MaterialsModule } from './materials/materials.module';
 import { SupplierModule } from './supplier/supplier.module';
 import { ToleranceModule } from './tolerance/tolerance.module';
-import { MulterModule } from '@nestjs/platform-express';
 import { FilesModule } from './files/files.module';
 import { RfqModule } from './rfq/rfq.module';
 import { OrdersModule } from './orders/orders.module';
@@ -20,12 +19,12 @@ import { InngestModule } from './inngest/inngest.module';
 import { TemporalModule } from './temporal/temporal.module';
 import { AdminModule } from './admin/admin.module';
 import { SystemModule } from './system/system.module';
+import { MulterModule } from '@nestjs/platform-express';
 import { TechnicalSupportModule } from './technical-support/technical-support.module';
 
 @Module({
   imports: [
     MulterModule.register({
-      // des
     }),
     ConfigModule.forRoot({
       isGlobal: true,

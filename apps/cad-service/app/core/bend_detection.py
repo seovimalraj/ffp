@@ -43,7 +43,7 @@ def analyze_mesh_normals_for_bends(mesh: Any, min_cluster_angle: float = 15.0) -
             return {'bend_count': 0, 'bend_angles': [], 'confidence': 0.0}
         
         normals = mesh.face_normals
-        areas = mesh.area_faces if hasattr(mesh, 'area_faces') else np.ones(len(normals))
+        areas = mesh.area_faces if hasattr(mesh, 'area_faces') else np.ones(len(normals), dtype=np.float32)
         
         # Normalize areas for weighting
         total_area = np.sum(areas)
@@ -284,7 +284,7 @@ def analyze_vertex_curvature_for_bends(mesh: Any, curvature_threshold: float = 0
                 return {'bend_count': 0, 'bend_angles': [], 'confidence': 0.0}
             
             adj_graph = mesh.vertex_adjacency_graph
-            curvatures = np.zeros(vertex_count)
+            curvatures = np.zeros(vertex_count, dtype=np.float32)
             
             for v_idx in range(vertex_count):
                 v_normal = normals[v_idx]
