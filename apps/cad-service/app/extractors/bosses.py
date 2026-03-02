@@ -213,7 +213,7 @@ def extract_bosses_from_mesh(mesh) -> List[BossFeature]:
     bosses: List[BossFeature] = []
     normals = mesh.face_normals
     centroids = mesh.triangles_center
-    areas = mesh.area_faces if hasattr(mesh, 'area_faces') else np.ones(len(normals), dtype=np.float32)
+    areas = mesh.area_faces if hasattr(mesh, 'area_faces') else np.ones(len(normals))
     
     # Boss detection: Find clusters of outward-pointing triangles
     # that form cylindrical patterns
@@ -221,7 +221,7 @@ def extract_bosses_from_mesh(mesh) -> List[BossFeature]:
     # For each principal axis, look for radially outward normals
     principal_axes = np.array([
         [1, 0, 0], [0, 1, 0], [0, 0, 1],
-    ], dtype=np.float32)
+    ], dtype=float)
     
     idx = 1
     

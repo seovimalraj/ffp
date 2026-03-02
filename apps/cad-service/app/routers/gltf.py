@@ -21,7 +21,7 @@ GLB_MIME_TYPE = "model/gltf-binary"
 CACHE_CONTROL_HEADER = "public, max-age=3600"
 CACHE_DIR = Path("/tmp/gltf-cache")
 DEFAULT_LODS: tuple[str, ...] = ("low", "med", "high")
-LOD_TARGETS: dict[str, int] = {"low": 20_000, "med": 75_000, "high": 200_000}
+LOD_TARGETS: dict[str, int] = {"low": 50_000, "med": 150_000, "high": 400_000}
 STEP_DEFLECTION_BY_LOD: dict[str, float] = {"low": 0.5, "med": 0.2, "high": 0.05}
 MISSING_FILE_URL_ERROR = "file_url is required"
 
@@ -124,7 +124,6 @@ def simplify_mesh(mesh, target: int):
 
 
 def load_step_tri_mesh(path: str, deflection: float):
-    import gc
     from OCC.Core.BRepMesh import BRepMesh_IncrementalMesh
     from OCC.Core.StlAPI import StlAPI_Writer
 
@@ -135,10 +134,6 @@ def load_step_tri_mesh(path: str, deflection: float):
     os.close(fd)
     try:
         StlAPI_Writer().Write(shape, tmp_path)
-        # Free OCC shape memory before loading the trimesh copy to avoid
-        # holding both representations simultaneously (~30-50% peak reduction).
-        del shape
-        gc.collect()
         return load_stl(tmp_path)
     finally:
         try:
@@ -164,7 +159,6 @@ def convert_to_gltf(file_id: str, file_path: str):
 
         if ext in (".step", ".stp"):
             try:
-                import gc
                 from ..loaders.step_loader import occ_available, load_step_shape
                 if not occ_available():
                     raise RuntimeError("OCC not available")
@@ -177,9 +171,6 @@ def convert_to_gltf(file_id: str, file_path: str):
                 try:
                     write_stl_file(shape, tmp_stl, mode="binary",
                                    linear_deflection=0.1, angular_deflection=0.5)
-                    # Free OCC shape before loading trimesh to halve peak memory
-                    del shape
-                    gc.collect()
                     mesh = load_stl(tmp_stl)
                     glb_bytes = mesh.export(file_type="glb")
                     out_path = file_path.rsplit(".", 1)[0] + ".glb"
@@ -192,7 +183,7 @@ def convert_to_gltf(file_id: str, file_path: str):
             except ImportError:
                 # Fallback: try trimesh import of STEP (limited)
                 import trimesh
-                mesh = trimesh.load(file_path, process=False)
+                mesh = trimesh.load(file_path)
                 if hasattr(mesh, "export"):
                     glb_bytes = mesh.export(file_type="glb")
                     out_path = file_path.rsplit(".", 1)[0] + ".glb"

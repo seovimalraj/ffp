@@ -43,13 +43,12 @@ def min_wall_mesh(mesh, *, samples: int = 5000, threshold_mm: float = 1.5) -> Mi
         return MinWallData(global_min_mm=0.0, samples=[])
 
     # Cast rays forward and backward and measure first hit distances
-    # Use float32 to halve memory for origins/directions arrays.
-    origins = pts.astype(np.float32) if pts.dtype != np.float32 else pts
-    directions_f = face_normals.astype(np.float32) if face_normals.dtype != np.float32 else face_normals
-    directions_b = -directions_f
+    origins = pts
+    directions_f = face_normals
+    directions_b = -face_normals
 
     # Add small epsilon to origins to avoid self-hit
-    eps = np.float32(1e-6)
+    eps = 1e-6
     origins_f = origins + directions_f * eps
     origins_b = origins + directions_b * eps
 
@@ -127,13 +126,13 @@ def min_wall_mesh(mesh, *, samples: int = 5000, threshold_mm: float = 1.5) -> Mi
 def _first_hit_distance(intersector, origins: np.ndarray, directions: np.ndarray) -> np.ndarray:
     # Query intersections; returns list per ray
     locations, index_ray, _ = intersector.intersects_location(origins, directions, multiple_hits=False)
-    # initialize with inf — float32 to match origin dtype and halve allocation
-    distances = np.full(len(origins), np.inf, dtype=np.float32)
+    # initialize with inf
+    distances = np.full(len(origins), np.inf, dtype=float)
     if len(index_ray) == 0:
         return distances
     # Map hits to first-hit distances
     vec = locations - origins[index_ray]
-    d = np.linalg.norm(vec, axis=1).astype(np.float32)
+    d = np.linalg.norm(vec, axis=1)
     distances[index_ray] = d
     return distances
 

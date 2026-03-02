@@ -16,20 +16,19 @@ try:
     from OCC.Core.STEPControl import STEPControl_Reader
     from OCC.Core.IGESControl import IGESControl_Reader
     from OCC.Core.StlAPI import StlAPI_Writer
-    # Defer heavy OCC imports to function scope to reduce baseline memory.
-    # Python caches modules after first import, so subsequent calls are free.
-    # BRepMesh_IncrementalMesh, BRepBuilderAPI_Transform, etc. are imported
-    # inside the functions that use them.
+    from OCC.Core.BRepMesh import BRepMesh_IncrementalMesh
+    from OCC.Core.BRepBuilderAPI import BRepBuilderAPI_Transform
+    from OCC.Extend.DataExchange import write_stl_file
     try:
         from OCC.Extend.DataExchange import write_obj_file
     except ImportError:
         write_obj_file = None  # not available in all pythonocc builds
+    from OCC.Core.gp import gp_Trsf, gp_Pnt
     from OCC.Core.Bnd import Bnd_Box
     from OCC.Core.BRepBndLib import brepbndlib_Add
     HAS_OCC = True
 except ImportError:
     HAS_OCC = False
-    write_obj_file = None
     logging.warning("OpenCASCADE (pythonocc) not installed. CAD conversion disabled.")
 
 router = APIRouter()
@@ -178,7 +177,6 @@ def mesh_shape(shape, linear_deflection: float, angular_deflection: float):
         linear_deflection: Maximum distance between mesh and actual surface (mm)
         angular_deflection: Maximum angular deviation (radians)
     """
-    from OCC.Core.BRepMesh import BRepMesh_IncrementalMesh
     try:
         # Create incremental mesh
         mesh = BRepMesh_IncrementalMesh(

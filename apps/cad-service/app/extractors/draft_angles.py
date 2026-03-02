@@ -168,9 +168,9 @@ def analyze_draft_from_mesh(
     if mesh is None or not hasattr(mesh, 'face_normals'):
         return []
 
-    pd = np.array(_normalize(pull_direction), dtype=np.float32)
-    normals = np.asarray(mesh.face_normals, dtype=np.float32)
-    areas = np.asarray(mesh.area_faces, dtype=np.float32) if hasattr(mesh, 'area_faces') else np.ones(len(normals), dtype=np.float32)
+    pd = np.array(_normalize(pull_direction))
+    normals = np.array(mesh.face_normals)
+    areas = np.array(mesh.area_faces) if hasattr(mesh, 'area_faces') else np.ones(len(normals))
 
     # Compute draft angle per triangle
     cos_angles = np.abs(normals @ pd)
@@ -322,7 +322,7 @@ def _detect_undercuts_for_casting(
     if not hasattr(mesh, 'face_normals'):
         return 0, False
     
-    pd = np.array(_normalize(pull_direction), dtype=np.float32)
+    pd = np.array(_normalize(pull_direction))
     normals = mesh.face_normals
     
     # Undercuts: faces where normal has negative component along pull

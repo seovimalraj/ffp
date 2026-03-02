@@ -367,13 +367,13 @@ def extract_holes_from_mesh(mesh) -> List[HoleFeature]:
     holes: List[HoleFeature] = []
     normals = mesh.face_normals
     centroids = mesh.triangles_center
-    areas = mesh.area_faces if hasattr(mesh, 'area_faces') else np.ones(len(normals), dtype=np.float32)
+    areas = mesh.area_faces if hasattr(mesh, 'area_faces') else np.ones(len(normals))
     
     # Principal axes for axis-aligned hole detection
     principal_axes = np.array([
         [1, 0, 0], [0, 1, 0], [0, 0, 1],
         [-1, 0, 0], [0, -1, 0], [0, 0, -1],
-    ], dtype=np.float32)
+    ], dtype=float)
     
     idx = 1
     
@@ -434,11 +434,11 @@ def extract_holes_from_mesh(mesh) -> List[HoleFeature]:
                 n = perp_normals[cell_mask][i]
                 # Project normal to 2D plane
                 if axis_idx == 0:
-                    n_2d = np.array([n[1], n[2]], dtype=np.float32)
+                    n_2d = np.array([n[1], n[2]])
                 elif axis_idx == 1:
-                    n_2d = np.array([n[0], n[2]], dtype=np.float32)
+                    n_2d = np.array([n[0], n[2]])
                 else:
-                    n_2d = np.array([n[0], n[1]], dtype=np.float32)
+                    n_2d = np.array([n[0], n[1]])
                 n_2d_norm = n_2d / (np.linalg.norm(n_2d) + 1e-9)
                 # Check if pointing toward center
                 if np.dot(n_2d_norm, to_center_norm[i]) > 0.5:
