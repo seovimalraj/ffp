@@ -1,4 +1,4 @@
-import { Tables } from "../constants/index.js";
+import { SocialLinks, Tables } from "../constants/index.js";
 import { config } from "../config.js";
 import { sendEmail, type SendEmailDetails } from "../lib/email.js";
 import { logger } from "../lib/logger.js";
@@ -332,8 +332,8 @@ const OrderCompletionEmailTemplate = (
     <mj-section padding="24px 24px 48px 24px">
       <mj-column>
         <mj-social font-size="12px" icon-size="24px" mode="horizontal" padding-bottom="20px">
-          <mj-social-element name="linkedin" href="https://www.linkedin.com/company/frigates/" background-color="#94a3b8"></mj-social-element>
-          <mj-social-element name="web" href="https://frigate.ai" background-color="#94a3b8"></mj-social-element>
+          <mj-social-element name="linkedin" href="${SocialLinks.LinkedinEmail}" background-color="#94a3b8"></mj-social-element>
+          <mj-social-element name="web" href="${SocialLinks.FrigateOfficialSiteEmail}" background-color="#94a3b8"></mj-social-element>
         </mj-social>
 
         <mj-text align="center" mj-class="footer-small">

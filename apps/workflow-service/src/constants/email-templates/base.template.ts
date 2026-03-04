@@ -1,3 +1,5 @@
+import { SocialLinks } from "../index.js";
+
 export const BaseEmailTemplate = (
   content: string,
   title: string = "Frigate",
@@ -40,9 +42,9 @@ export const BaseEmailTemplate = (
           You’re receiving this email because you created an account on Frigate Fast Parts.
         </mj-text>
         <mj-social font-size="12px" icon-size="24px" mode="horizontal" padding-top="10px">
-          <mj-social-element name="linkedin" href="https://www.linkedin.com/company/frigates/posts/?feedView=all" background-color="#94a3b8">
+          <mj-social-element name="linkedin" href="${SocialLinks.LinkedinEmail}" background-color="#94a3b8">
           </mj-social-element>
-          <mj-social-element name="web" href="https://frigate.ai" background-color="#94a3b8">
+          <mj-social-element name="web" href="${SocialLinks.FrigateOfficialSiteEmail}" background-color="#94a3b8">
           </mj-social-element>
         </mj-social>
       </mj-column>
