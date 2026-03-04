@@ -20,6 +20,10 @@ import {
   Download,
   Trash2,
   Ghost,
+  User2,
+  Mail,
+  Building2,
+  Phone,
 } from "lucide-react";
 import { motion } from "framer-motion";
 import { cn } from "@/lib/utils";
@@ -47,6 +51,14 @@ export type IRFQFull = {
     created_at: string;
     manual_quote_metadata?: Record<string, any>;
     user_id: string;
+    users?: {
+      email: string;
+      name: string;
+      phone: string;
+    };
+    organizations?: {
+      name: string;
+    };
   };
   parts: Array<{
     id: string;
@@ -404,6 +416,57 @@ export default function AdminQuoteDetailPage() {
           <p className="text-3xl font-black text-white">
             {formatCurrencyGeneric(totalCalculated)}
           </p>
+        </div>
+      </div>
+
+      {/* User & Organization Info */}
+      <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm">
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-8 items-center">
+          <div className="flex items-center gap-4">
+            <div className="bg-indigo-50 p-2.5 rounded-xl text-indigo-600">
+              <User2 className="w-5 h-5" />
+            </div>
+            <div className="min-w-0">
+              <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-0.5">
+                Customer
+              </p>
+              <p className="text-base font-bold text-slate-900 truncate">
+                {data.rfq.users?.name || "Unknown User"}
+              </p>
+            </div>
+          </div>
+
+          <div className="flex flex-col">
+            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">
+              Email Address
+            </p>
+            <p className="text-sm font-medium text-slate-600 truncate">
+              {data.rfq.users?.email || "N/A"}
+            </p>
+          </div>
+
+          <div className="flex flex-col">
+            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">
+              Phone Number
+            </p>
+            <p className="text-sm font-medium text-slate-600">
+              {data.rfq.users?.phone || "N/A"}
+            </p>
+          </div>
+
+          <div className="flex items-center gap-4 border-t md:border-t-0 md:border-l border-slate-100 pt-6 md:pt-0 md:pl-8">
+            <div className="bg-amber-50 p-2.5 rounded-xl text-amber-600">
+              <Building2 className="w-5 h-5" />
+            </div>
+            <div className="min-w-0">
+              <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-0.5">
+                Organization
+              </p>
+              <p className="text-base font-bold text-slate-900 truncate">
+                {data.rfq.organizations?.name || "Individual"}
+              </p>
+            </div>
+          </div>
         </div>
       </div>
 

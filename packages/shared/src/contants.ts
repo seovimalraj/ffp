@@ -274,6 +274,20 @@ export const leadTypeStyles = {
   },
 } as const;
 
+export enum SocialLinks {
+  YoutubeFFP = "https://www.youtube.com/@frigatemanufacturing?utm_source=ffp&utm_medium=ffp&utm_campaign=ffp",
+  YoutubeEmail = "https://www.youtube.com/@frigatemanufacturing?utm_source=ffp&utm_medium=email&utm_campaign=ffp-email",
+
+  LinkedinFFP = "https://www.linkedin.com/company/frigates/posts/?utm_source=ffp&utm_medium=ffp&utm_campaign=ffp",
+  LinkedinEmail = "https://www.linkedin.com/company/frigates/posts/?utm_source=ffp&utm_medium=email&utm_campaign=ffp-email",
+
+  XFFP = "https://x.com/Frigateindia/?utm_source=ffp&utm_medium=ffp&utm_campaign=ffp",
+  XEmail = "https://x.com/Frigateindia/?utm_source=ffp&utm_medium=email&utm_campaign=ffp-email",
+
+  FrigateOfficialSiteFFP = "https://frigate.ai/?utm_source=ffp&utm_medium=ffp&utm_campaign=ffp",
+  FrigateOfficialSiteEmail = "https://frigate.ai/?utm_source=ffp&utm_medium=email&utm_campaign=ffp-email",
+}
+
 export const metalTranslation = {
   "aluminum-6061": "Aluminum 6061",
   "aluminum-6063": "Aluminum 6063",

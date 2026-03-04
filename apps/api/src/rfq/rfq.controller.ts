@@ -853,7 +853,11 @@ export class RfqController {
   ) {
     const client = this.supbaseService.getClient();
 
-    let query = client.from(Tables.RFQTable).select('*');
+    let query = client.from(Tables.RFQTable).select(`
+      *,
+      users(email, name, phone),
+      organizations(name)
+    `);
 
     // Check if id is a UUID
     const isUUID =
@@ -917,7 +921,6 @@ export class RfqController {
       if (abandonedError) {
         throw abandonedError;
       }
-
       abandoned = abandonedQuotes;
     }
 

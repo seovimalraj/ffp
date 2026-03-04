@@ -33,9 +33,10 @@ import { toast } from "sonner";
 import CustomLoader from "@/components/ui/loader/CustomLoader";
 import { useMetaStore } from "@/components/store/title-store";
 import { motion, Variants } from "framer-motion";
-import { cn } from "@/lib/utils";
+import { buildUtmLink, cn, UtmMedium } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import StartProductionModal from "./components/StartProductionModal";
+import { SocialLinks } from "@cnc-quote/shared";
 
 // Animation variants
 const containerVariants: Variants = {
@@ -437,37 +438,62 @@ export default function CustomerDashboardPage() {
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
             {blogs.map((blog) => (
               <motion.div key={blog.id} variants={itemVariants}>
-                <div className="group bg-white rounded-2xl border border-slate-200/60 shadow-sm overflow-hidden flex flex-col sm:flex-row hover:shadow-lg transition-all duration-300">
-                  <div className="flex-1 p-6 flex flex-col">
-                    {blog.tag && (
-                      <span className="text-[10px] font-black uppercase tracking-[0.2em] text-blue-600 mb-2">
-                        {blog.tag}
-                      </span>
-                    )}
-                    <h3 className="text-lg font-bold text-slate-900 mb-2 group-hover:text-blue-600 transition-colors">
-                      {blog.title}
-                    </h3>
-                    <p className="text-slate-500 text-sm leading-relaxed mb-4 flex-grow line-clamp-3">
-                      {blog.description}
-                    </p>
-                    <Link
-                      href={blog.link}
-                      target="_blank"
-                      className="flex items-center gap-2 text-xs font-bold text-slate-900 hover:text-blue-600 transition-colors uppercase tracking-widest"
-                    >
-                      Read article <ArrowRight size={14} />
-                    </Link>
-                  </div>
+                <Link
+                  href={buildUtmLink(blog.link, UtmMedium.FFP)}
+                  target="_blank"
+                  className="group relative block aspect-[16/9] sm:aspect-[21/9] lg:aspect-auto lg:h-[320px] bg-black rounded-[2.5rem] overflow-hidden border border-white/10 shadow-sm transition-all duration-500"
+                >
+                  {/* Background Image */}
                   {blog.image_url && (
-                    <div className="sm:w-1/3 h-48 sm:h-auto overflow-hidden">
-                      <img
-                        src={blog.image_url}
-                        alt={blog.title}
-                        className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
-                      />
-                    </div>
+                    <img
+                      src={blog.image_url}
+                      alt={blog.title}
+                      className="absolute inset-0 w-full h-full object-cover transition-transform duration-700 group-hover:scale-110"
+                    />
                   )}
-                </div>
+
+                  {/* Bottom Gradient for Title Readability - Always visible for better contrast */}
+                  <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent pointer-events-none" />
+
+                  {/* Black Glass Overlay - Only on hover */}
+                  <div className="absolute inset-0 bg-black/0 backdrop-blur-0 transition-all duration-500 ease-in-out group-hover:bg-black/60 group-hover:backdrop-blur-xl" />
+
+                  {/* Content Overlay - Centered to fill space better */}
+                  <div className="absolute inset-0 p-10 flex flex-col justify-center items-start z-10">
+                    <div className="max-w-md w-full">
+                      {blog.tag && (
+                        <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-blue-500/20 border border-blue-400/30 text-blue-300 text-[10px] font-black uppercase tracking-[0.2em] mb-4 opacity-0 scale-95 group-hover:opacity-100 group-hover:scale-100 transition-all duration-500 delay-75">
+                          <Zap size={10} /> {blog.tag}
+                        </div>
+                      )}
+
+                      <h3 className="text-2xl md:text-3xl font-bold text-white mb-4 tracking-tight leading-[1.2] transition-all duration-500 group-hover:mb-2 text-balance">
+                        {blog.title}
+                      </h3>
+
+                      <p className="text-slate-300 text-sm leading-relaxed mb-8 line-clamp-2 opacity-0 translate-y-4 group-hover:opacity-100 group-hover:translate-y-0 transition-all duration-500 delay-150">
+                        {blog.description}
+                      </p>
+
+                      <div className="flex items-center gap-4 opacity-0 translate-y-4 group-hover:opacity-100 group-hover:translate-y-0 transition-all duration-500 delay-300">
+                        <div className="w-12 h-12 rounded-full bg-blue-600 flex items-center justify-center text-white shadow-lg shadow-blue-500/20">
+                          <ArrowRight size={20} />
+                        </div>
+                        <span className="text-xs font-bold text-white uppercase tracking-[0.2em]">
+                          Read Article
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Corner Indicator - Liquid glass effect */}
+                  <div className="absolute top-8 right-8 w-14 h-14 liquid-glass group-hover:opacity-0 transition-all duration-500">
+                    <ArrowRight
+                      size={24}
+                      className="-rotate-45 text-white/60 relative z-10"
+                    />
+                  </div>
+                </Link>
               </motion.div>
             ))}
           </div>
@@ -605,22 +631,22 @@ export default function CustomerDashboardPage() {
               {
                 name: "LinkedIn",
                 imgUrl: "/logos/linkedinW.png",
-                href: "https://frigate.ai/linkedin",
+                href: SocialLinks.LinkedinFFP,
               },
               {
                 name: "YouTube",
                 imgUrl: "/logos/ytIW.png",
-                href: "https://frigate.ai/youtube",
+                href: SocialLinks.YoutubeFFP,
               },
               {
                 name: "X",
                 imgUrl: "/logos/xW.png",
-                href: "https://frigate.ai/twitter",
+                href: SocialLinks.XFFP,
               },
             ].map((social, idx) => (
               <Link
                 key={idx}
-                href="#"
+                href={social.href}
                 className="group flex items-center justify-center w-10 h-10 rounded-xl bg-white/5 border border-white/10 hover:bg-white/10 hover:border-white/20 hover:shadow-[0_0_15px_rgba(255,255,255,0.05)] transition-all duration-300"
                 aria-label={social.name}
               >

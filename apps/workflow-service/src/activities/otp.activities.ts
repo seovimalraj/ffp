@@ -1,4 +1,4 @@
-import { SQLFunctions } from "../constants/index.js";
+import { SocialLinks, SQLFunctions } from "../constants/index.js";
 import { sendEmail, type SendEmailDetails } from "../lib/email.js";
 import { logger } from "../lib/logger.js";
 import { renderEmail } from "../lib/render-email.js";
@@ -82,8 +82,8 @@ const OTPEmailTemplate = (name: string = "Customer", code: string) => `
       <mj-column>
         <mj-divider />
         <mj-social font-size="12px" icon-size="24px" mode="horizontal" padding-top="15px">
-          <mj-social-element name="linkedin" href="https://www.linkedin.com/company/frigates/" background-color="#94a3b8"></mj-social-element>
-          <mj-social-element name="web" href="https://frigate.ai" background-color="#94a3b8"></mj-social-element>
+          <mj-social-element name="linkedin" href="${SocialLinks.LinkedinFFP}" background-color="#94a3b8"></mj-social-element>
+          <mj-social-element name="web" href="${SocialLinks.FrigateOfficialSiteEmail}" background-color="#94a3b8"></mj-social-element>
         </mj-social>
 
         <mj-text align="center" mj-class="footer-small" padding-top="15px">

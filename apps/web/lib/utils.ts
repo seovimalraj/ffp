@@ -172,6 +172,28 @@ export function dataURLtoFile(dataurl: string, filename: string): File {
   return new File([u8arr], filename, { type: mime });
 }
 
+export enum UtmMedium {
+  FFP = "ffp",
+  Email = "email",
+  Ads = "ads",
+  Social = "social",
+}
+
+export function buildUtmLink(
+  baseUrl: string,
+  medium: UtmMedium,
+  campaign = "ffp",
+  source = "ffp",
+): string {
+  const url = new URL(baseUrl);
+
+  url.searchParams.set("utm_source", source);
+  url.searchParams.set("utm_medium", medium);
+  url.searchParams.set("utm_campaign", campaign);
+
+  return url.toString();
+}
+
 export function getQuantityRange(val: number = 1): number[] {
   const base = [1, 5, 10, 25, 50];
 

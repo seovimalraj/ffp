@@ -565,6 +565,9 @@ importers:
 
   apps/workflow-service:
     dependencies:
+      '@cnc-quote/shared':
+        specifier: workspace:*
+        version: link:../../packages/shared
       '@hono/node-server':
         specifier: ^1.19.9
         version: 1.19.9(hono@4.11.7)

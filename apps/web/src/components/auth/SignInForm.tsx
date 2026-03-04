@@ -18,6 +18,7 @@ import {
   MessageCircle,
 } from "lucide-react";
 import { formatUrlForRole, useMetaStore } from "@/components/store/title-store";
+import { SocialLinks } from "@cnc-quote/shared";
 
 export function SignInForm() {
   const [showPassword, setShowPassword] = useState(false);
@@ -302,7 +303,7 @@ export function SignInForm() {
         {/* Navigation Buttons */}
         <div className="grid grid-cols-2 gap-4">
           <Link
-            href="https://frigate.ai"
+            href={SocialLinks.FrigateOfficialSiteFFP}
             target="_blank"
             rel="noopener noreferrer"
             className="h-12 border-2 border-gray-200 text-gray-700 rounded-lg hover:bg-gray-50 hover:border-gray-300 transition-all flex items-center justify-center gap-2 font-medium focus:outline-none focus:ring-2 focus:ring-purple-500 focus:ring-offset-2"
