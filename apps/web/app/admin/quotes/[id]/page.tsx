@@ -18,7 +18,12 @@ import {
   ArrowLeft,
   Settings2,
   Download,
+  Trash2,
+  Ghost,
 } from "lucide-react";
+import { motion } from "framer-motion";
+import { cn } from "@/lib/utils";
+import { formatDate } from "@/lib/format";
 import { CadViewer } from "@/components/cad/cad-viewer";
 import { metalTranslation } from "@cnc-quote/shared";
 import { Input } from "@/components/ui/input";
@@ -60,7 +65,29 @@ export type IRFQFull = {
     process?: string;
     certificates?: string[];
     sheet_thickness_mm?: number;
+    abandoned_reason?: string;
+    abandoned_at?: string;
   }>;
+  abandoned: Array<{
+    id: string;
+    file_name: string;
+    material: string;
+    finish: string;
+    tolerance: string;
+    inspection: string;
+    notes: string;
+    cad_file_url: string;
+    snapshot_2d_url: string | null;
+    quantity: number;
+    final_price: number | null;
+    lead_time: number | null;
+    lead_time_type: string | null;
+    process?: string;
+    certificates?: string[];
+    sheet_thickness_mm?: number;
+    abandoned_reason?: string;
+    abandoned_at?: string;
+  }> | null;
 };
 
 /* =======================
@@ -76,6 +103,7 @@ export default function AdminQuoteDetailPage() {
   const [selectedPart, setSelectedPart] = useState<
     IRFQFull["parts"][number] | null
   >(null);
+  const [activeTab, setActiveTab] = useState<"active" | "abandoned">("active");
 
   // Admin Editing State
   const [partPrices, setPartPrices] = useState<Record<string, number>>({});
@@ -416,239 +444,310 @@ export default function AdminQuoteDetailPage() {
         </div>
       )}
 
+      {/* TABS SECTION */}
+      <div className="flex items-center gap-1 p-1 bg-slate-100 rounded-xl relative border border-slate-200 w-fit">
+        {[
+          { id: "active", label: "Active Parts", icon: Package },
+          { id: "abandoned", label: "Abandoned", icon: Ghost },
+        ].map((tab) => (
+          <button
+            key={tab.id}
+            onClick={() => setActiveTab(tab.id as any)}
+            className={cn(
+              "relative px-6 py-2 rounded-lg text-sm font-bold transition-colors duration-200 flex items-center gap-2",
+              activeTab === tab.id
+                ? "text-white"
+                : "text-slate-500 hover:text-slate-900",
+            )}
+          >
+            {activeTab === tab.id && (
+              <motion.div
+                layoutId="active-tab-admin"
+                className="absolute inset-0 bg-slate-900 rounded-[8px] shadow-sm"
+                transition={{
+                  type: "spring",
+                  bounce: 0.15,
+                  duration: 0.5,
+                }}
+              />
+            )}
+            <tab.icon className="w-4 h-4 relative z-10" />
+            <span className="relative z-10">
+              {tab.label} (
+              {tab.id === "active"
+                ? data.parts.length
+                : data.abandoned?.length || 0}
+              )
+            </span>
+          </button>
+        ))}
+      </div>
+
       {/* PARTS LIST WITH EDITING */}
       <section className="space-y-4 mb-4">
-        <SectionTitle title="Parts & Quotation Details" />
+        <SectionTitle
+          title={
+            activeTab === "active"
+              ? "Parts & Quotation Details"
+              : "Abandoned Parts"
+          }
+        />
         <div className="grid grid-cols-1 gap-6">
-          {data.parts.map((part) => (
-            <div
-              key={part.id}
-              className="group flex bg-white border border-slate-200 rounded-2xl overflow-hidden hover:border-indigo-400/50 transition-all duration-300"
-            >
-              {/* Part Visual */}
+          {(activeTab === "active" ? data.parts : data.abandoned || []).map(
+            (part) => (
               <div
-                onClick={() => setSelectedPart(part)}
-                className="w-48 bg-slate-50 flex items-center justify-center cursor-pointer hover:bg-slate-100 transition-colors border-r"
-              >
-                {part.snapshot_2d_url ? (
-                  <img
-                    src={part.snapshot_2d_url}
-                    alt={part.file_name}
-                    className="max-h-full max-w-full object-contain p-4 mix-blend-multiply"
-                  />
-                ) : (
-                  <div className="w-12 h-12 rounded-2xl bg-slate-200 flex items-center justify-center text-slate-400">
-                    <Package className="w-6 h-6" />
-                  </div>
+                key={part.id}
+                className={cn(
+                  "group flex bg-white border border-slate-200 rounded-2xl overflow-hidden hover:border-indigo-400/50 transition-all duration-300",
+                  activeTab === "abandoned" && "opacity-80 grayscale-[0.5]",
                 )}
-              </div>
+              >
+                {/* Part Visual */}
+                <div
+                  onClick={() => setSelectedPart(part)}
+                  className="w-48 bg-slate-50 flex items-center justify-center cursor-pointer hover:bg-slate-100 transition-colors border-r"
+                >
+                  {part.snapshot_2d_url ? (
+                    <img
+                      src={part.snapshot_2d_url}
+                      alt={part.file_name}
+                      className="max-h-full max-w-full object-contain p-4 mix-blend-multiply"
+                    />
+                  ) : (
+                    <div className="w-12 h-12 rounded-2xl bg-slate-200 flex items-center justify-center text-slate-400">
+                      <Package className="w-6 h-6" />
+                    </div>
+                  )}
+                </div>
 
-              {/* Part Details */}
-              <div className="p-6 flex-1 grid grid-cols-1 xl:grid-cols-12 gap-8 items-center">
-                {/* Technical Specs - Cols 1-5 */}
-                <div className="xl:col-span-5 space-y-4">
-                  <div>
-                    <div className="flex items-center gap-2 mb-2">
-                      <h3 className="font-bold text-slate-900 truncate text-lg">
-                        {part.file_name}
-                      </h3>
-                      {part.process && (
-                        <Badge
-                          variant="outline"
-                          className="text-[10px] font-bold uppercase tracking-wider bg-slate-50 text-slate-600 border-slate-200"
-                        >
-                          {part.process.replace(/-/g, " ")}
-                        </Badge>
+                {/* Part Details */}
+                <div className="p-6 flex-1 grid grid-cols-1 xl:grid-cols-12 gap-8 items-center">
+                  {/* Technical Specs - Cols 1-5 */}
+                  <div className="xl:col-span-5 space-y-4">
+                    <div>
+                      <div className="flex items-center gap-2 mb-2">
+                        <h3 className="font-bold text-slate-900 truncate text-lg">
+                          {part.file_name}
+                        </h3>
+                        {part.process && (
+                          <Badge
+                            variant="outline"
+                            className="text-[10px] font-bold uppercase tracking-wider bg-slate-50 text-slate-600 border-slate-200"
+                          >
+                            {part.process.replace(/-/g, " ")}
+                          </Badge>
+                        )}
+                      </div>
+                      <div className="flex items-center gap-2 text-xs text-slate-500 font-medium">
+                        <span>Qty: {part.quantity} units</span>
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-y-3 gap-x-6 p-4 bg-slate-50/50 rounded-xl border border-slate-100">
+                      <div>
+                        <span className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">
+                          Material
+                        </span>
+                        <span className="text-sm font-semibold text-slate-700">
+                          {(metalTranslation as any)[part.material] ??
+                            part.material}
+                        </span>
+                      </div>
+                      <div>
+                        <span className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">
+                          Finish
+                        </span>
+                        <span className="text-sm font-semibold text-slate-700">
+                          {part.finish}
+                        </span>
+                      </div>
+                      <div>
+                        <span className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">
+                          {part.sheet_thickness_mm ? "Thickness" : "Tolerance"}
+                        </span>
+                        <span className="text-sm font-semibold text-slate-700">
+                          {part.sheet_thickness_mm
+                            ? `${part.sheet_thickness_mm} mm`
+                            : part.tolerance}
+                        </span>
+                      </div>
+                      <div>
+                        <span className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">
+                          Inspection
+                        </span>
+                        <span className="text-sm font-semibold text-slate-700">
+                          {part.inspection || "Standard"}
+                        </span>
+                      </div>
+                      {part.certificates && part.certificates.length > 0 && (
+                        <div className="col-span-2 border-t border-slate-100 pt-2 mt-1">
+                          <span className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">
+                            Certifications
+                          </span>
+                          <div className="flex flex-wrap gap-1.5">
+                            {part.certificates.map((cert) => (
+                              <span
+                                key={cert}
+                                className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-white border border-slate-200 text-slate-600 shadow-sm"
+                              >
+                                {cert.replace(/_/g, " ")}
+                              </span>
+                            ))}
+                          </div>
+                        </div>
                       )}
                     </div>
-                    <div className="flex items-center gap-2 text-xs text-slate-500 font-medium">
-                      <span>Qty: {part.quantity} units</span>
-                    </div>
                   </div>
 
-                  <div className="grid grid-cols-2 gap-y-3 gap-x-6 p-4 bg-slate-50/50 rounded-xl border border-slate-100">
-                    <div>
-                      <span className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">
-                        Material
-                      </span>
-                      <span className="text-sm font-semibold text-slate-700">
-                        {(metalTranslation as any)[part.material] ??
-                          part.material}
-                      </span>
-                    </div>
-                    <div>
-                      <span className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">
-                        Finish
-                      </span>
-                      <span className="text-sm font-semibold text-slate-700">
-                        {part.finish}
-                      </span>
-                    </div>
-                    <div>
-                      <span className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">
-                        {part.sheet_thickness_mm ? "Thickness" : "Tolerance"}
-                      </span>
-                      <span className="text-sm font-semibold text-slate-700">
-                        {part.sheet_thickness_mm
-                          ? `${part.sheet_thickness_mm} mm`
-                          : part.tolerance}
-                      </span>
-                    </div>
-                    <div>
-                      <span className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">
-                        Inspection
-                      </span>
-                      <span className="text-sm font-semibold text-slate-700">
-                        {part.inspection || "Standard"}
-                      </span>
-                    </div>
-                    {part.certificates && part.certificates.length > 0 && (
-                      <div className="col-span-2 border-t border-slate-100 pt-2 mt-1">
-                        <span className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">
-                          Certifications
-                        </span>
-                        <div className="flex flex-wrap gap-1.5">
-                          {part.certificates.map((cert) => (
-                            <span
-                              key={cert}
-                              className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-white border border-slate-200 text-slate-600 shadow-sm"
-                            >
-                              {cert.replace(/_/g, " ")}
-                            </span>
-                          ))}
+                  {/* Commercials - Cols 6-9 */}
+                  <div className="xl:col-span-4 flex flex-col justify-center space-y-4 border-t border-slate-100 pt-6 xl:border-t-0 xl:pt-0 xl:border-l xl:pl-8">
+                    {activeTab === "active" ? (
+                      isManual ? (
+                        <>
+                          <div className="space-y-2">
+                            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-1.5">
+                              <DollarSign className="w-3 h-3 text-indigo-500" />
+                              Unit Price (USD)
+                            </label>
+                            <Input
+                              type="number"
+                              value={partPrices[part.id] || ""}
+                              onChange={(e) =>
+                                setPartPrices((prev) => ({
+                                  ...prev,
+                                  [part.id]: parseFloat(e.target.value) || 0,
+                                }))
+                              }
+                              placeholder="0.00"
+                              className="h-11 rounded-xl border-slate-200 focus:ring-indigo-500 font-semibold text-base"
+                            />
+                            <div className="flex justify-between items-center text-xs">
+                              <span className="text-slate-500">Total:</span>
+                              <span className="font-bold text-slate-900 bg-slate-100 px-2 py-0.5 rounded">
+                                {formatCurrencyGeneric(
+                                  (partPrices[part.id] || 0) * part.quantity,
+                                )}
+                              </span>
+                            </div>
+                          </div>
+
+                          <div className="space-y-2">
+                            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-1.5">
+                              <Clock className="w-3 h-3 text-indigo-500" />
+                              Lead Time (Days)
+                            </label>
+                            <Input
+                              type="number"
+                              value={partLeadTimes[part.id] || ""}
+                              onChange={(e) =>
+                                setPartLeadTimes((prev) => ({
+                                  ...prev,
+                                  [part.id]: parseInt(e.target.value) || 0,
+                                }))
+                              }
+                              placeholder="0"
+                              className="h-11 rounded-xl border-slate-200 focus:ring-indigo-500 font-semibold"
+                            />
+                          </div>
+                        </>
+                      ) : (
+                        <>
+                          <div className="space-y-1">
+                            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-1.5">
+                              <DollarSign className="w-3 h-3 text-slate-400" />
+                              Quote Price
+                            </label>
+                            <div className="flex items-baseline gap-2">
+                              <span className="text-2xl font-bold text-slate-900">
+                                {formatCurrencyGeneric(part.final_price || 0)}
+                              </span>
+                              <span className="text-xs font-medium text-slate-500">
+                                / unit
+                              </span>
+                            </div>
+                            <div className="text-xs text-slate-500 font-medium">
+                              Total:{" "}
+                              {formatCurrencyGeneric(
+                                (part.final_price || 0) * part.quantity,
+                              )}
+                            </div>
+                          </div>
+
+                          <div className="space-y-1 mt-4">
+                            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-1.5">
+                              <Clock className="w-3 h-3 text-slate-400" />
+                              Lead Time
+                            </label>
+                            <div className="flex items-baseline gap-2">
+                              <span className="text-xl font-bold text-slate-900">
+                                {part.lead_time || "-"}
+                              </span>
+                              <span className="text-sm font-medium text-slate-500">
+                                days
+                              </span>
+                            </div>
+                          </div>
+                        </>
+                      )
+                    ) : (
+                      <div className="space-y-4">
+                        <div className="bg-rose-50 border border-rose-100 rounded-xl p-4">
+                          <span className="flex items-center gap-1.5 text-[10px] font-black text-rose-400 uppercase tracking-widest mb-1">
+                            <Trash2 className="w-3 h-3" />
+                            Abandonment Reason
+                          </span>
+                          <p className="text-sm text-rose-900 font-medium leading-relaxed">
+                            {part.abandoned_reason || "No reason provided"}
+                          </p>
+                        </div>
+                        <div className="flex items-center gap-2 text-[10px] text-slate-400 font-bold uppercase tracking-widest px-1">
+                          <Clock className="w-3 h-3" />
+                          Abandoned{" "}
+                          {part.abandoned_at
+                            ? formatDate(part.abandoned_at)
+                            : "N/A"}
                         </div>
                       </div>
                     )}
                   </div>
-                </div>
 
-                {/* Commercials - Cols 6-9 */}
-                <div className="xl:col-span-4 flex flex-col justify-center space-y-4 border-t border-slate-100 pt-6 xl:border-t-0 xl:pt-0 xl:border-l xl:pl-8">
-                  {isManual ? (
-                    <>
-                      <div className="space-y-2">
-                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-1.5">
-                          <DollarSign className="w-3 h-3 text-indigo-500" />
-                          Unit Price (USD)
-                        </label>
-                        <Input
-                          type="number"
-                          value={partPrices[part.id] || ""}
-                          onChange={(e) =>
-                            setPartPrices((prev) => ({
-                              ...prev,
-                              [part.id]: parseFloat(e.target.value) || 0,
-                            }))
-                          }
-                          placeholder="0.00"
-                          className="h-11 rounded-xl border-slate-200 focus:ring-indigo-500 font-semibold text-base"
-                        />
-                        <div className="flex justify-between items-center text-xs">
-                          <span className="text-slate-500">Total:</span>
-                          <span className="font-bold text-slate-900 bg-slate-100 px-2 py-0.5 rounded">
-                            {formatCurrencyGeneric(
-                              (partPrices[part.id] || 0) * part.quantity,
-                            )}
-                          </span>
-                        </div>
-                      </div>
-
-                      <div className="space-y-2">
-                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-1.5">
-                          <Clock className="w-3 h-3 text-indigo-500" />
-                          Lead Time (Days)
-                        </label>
-                        <Input
-                          type="number"
-                          value={partLeadTimes[part.id] || ""}
-                          onChange={(e) =>
-                            setPartLeadTimes((prev) => ({
-                              ...prev,
-                              [part.id]: parseInt(e.target.value) || 0,
-                            }))
-                          }
-                          placeholder="0"
-                          className="h-11 rounded-xl border-slate-200 focus:ring-indigo-500 font-semibold"
-                        />
-                      </div>
-                    </>
-                  ) : (
-                    <>
-                      <div className="space-y-1">
-                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-1.5">
-                          <DollarSign className="w-3 h-3 text-slate-400" />
-                          Quote Price
-                        </label>
-                        <div className="flex items-baseline gap-2">
-                          <span className="text-2xl font-bold text-slate-900">
-                            {formatCurrencyGeneric(part.final_price || 0)}
-                          </span>
-                          <span className="text-xs font-medium text-slate-500">
-                            / unit
-                          </span>
-                        </div>
-                        <div className="text-xs text-slate-500 font-medium">
-                          Total:{" "}
-                          {formatCurrencyGeneric(
-                            (part.final_price || 0) * part.quantity,
-                          )}
-                        </div>
-                      </div>
-
-                      <div className="space-y-1 mt-4">
-                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-1.5">
-                          <Clock className="w-3 h-3 text-slate-400" />
-                          Lead Time
-                        </label>
-                        <div className="flex items-baseline gap-2">
-                          <span className="text-xl font-bold text-slate-900">
-                            {part.lead_time || "-"}
-                          </span>
-                          <span className="text-sm font-medium text-slate-500">
-                            days
-                          </span>
-                        </div>
-                      </div>
-                    </>
-                  )}
-                </div>
-
-                {/* Actions - Cols 10-12 */}
-                <div className="xl:col-span-3 flex flex-col justify-center gap-3 border-t border-slate-100 pt-6 xl:border-t-0 xl:pt-0 xl:border-l xl:pl-8">
-                  <div className="flex gap-2">
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className="flex-1 h-10 text-indigo-600 hover:text-indigo-700 hover:bg-indigo-50 text-xs font-bold uppercase tracking-widest border-indigo-100"
-                      onClick={() => setSelectedPart(part)}
-                    >
-                      View 3D
-                    </Button>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className="h-10 w-10 p-0 text-slate-400 hover:text-indigo-600 border-slate-200 hover:border-indigo-200"
-                      onClick={() => handleDownload(part)}
-                      title="Download CAD File"
-                    >
-                      <Download className="w-4 h-4" />
-                    </Button>
+                  {/* Actions - Cols 10-12 */}
+                  <div className="xl:col-span-3 flex flex-col justify-center gap-3 border-t border-slate-100 pt-6 xl:border-t-0 xl:pt-0 xl:border-l xl:pl-8">
+                    <div className="flex gap-2">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="flex-1 h-10 text-indigo-600 hover:text-indigo-700 hover:bg-indigo-50 text-xs font-bold uppercase tracking-widest border-indigo-100"
+                        onClick={() => setSelectedPart(part)}
+                      >
+                        View 3D
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="h-10 w-10 p-0 text-slate-400 hover:text-indigo-600 border-slate-200 hover:border-indigo-200"
+                        onClick={() => handleDownload(part)}
+                        title="Download CAD File"
+                      >
+                        <Download className="w-4 h-4" />
+                      </Button>
+                    </div>
+                    {isManual && activeTab === "active" && (
+                      <Button
+                        variant="default"
+                        size="sm"
+                        className="h-10 bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold uppercase tracking-widest w-full gap-2 shadow-lg shadow-slate-200"
+                        onClick={() => setEditingPart(part)}
+                      >
+                        <Settings2 className="w-3 h-3" />
+                        Edit Specs
+                      </Button>
+                    )}
                   </div>
-                  {isManual && (
-                    <Button
-                      variant="default"
-                      size="sm"
-                      className="h-10 bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold uppercase tracking-widest w-full gap-2 shadow-lg shadow-slate-200"
-                      onClick={() => setEditingPart(part)}
-                    >
-                      <Settings2 className="w-3 h-3" />
-                      Edit Specs
-                    </Button>
-                  )}
                 </div>
               </div>
-            </div>
-          ))}
+            ),
+          )}
         </div>
       </section>
 
