@@ -33,7 +33,19 @@ export class AdminController {
     try {
       const { data, error, count } = await client
         .from(Tables.OrganizationTable)
-        .select('*', { count: 'exact' })
+        .select(
+          `*, 
+          users (
+          id,
+          email,
+          name,
+          phone,
+          role,
+          verified,
+          created_at
+    )`,
+          { count: 'exact' },
+        )
         .order('created_at', { ascending: false })
         .range(parsedOffset, parsedOffset + parsedLimit - 1);
 

@@ -24,24 +24,30 @@ export async function sendProductionRequestEmails(
   props: SendProductionRequestEmailsParams,
 ) {
   try {
-    // 1. Fetch Admin/Verifier Email from system_config
+    // 1. Fetch Admin/Verifier Email
     const { data: configData, error: configError } = await supabase
       .from(Tables.SystemConfig)
       .select("value")
-      .eq("key", "verifier_email")
+      .eq("key", "verifier_email_multi")
       .single();
 
-    if (configError) {
+    if (configError || !configData?.value) {
       logger.error(
         { configError },
-        "Failed to fetch verifier_email from system_config",
+        "Failed to fetch verifier_email_multi from system_config",
       );
-      throw configError;
+      throw configError || new Error("Config verifier_email_multi not found");
     }
 
-    const adminEmail = configData.value;
+    let adminEmails: string[] = [];
+    try {
+      adminEmails = JSON.parse(configData.value);
+      if (!Array.isArray(adminEmails)) adminEmails = [configData.value];
+    } catch (_e) {
+      adminEmails = [configData.value];
+    }
 
-    // 2. Send Notification to Admin
+    // 2. Send Notification to Admins
     const adminMjml = ProductionRequestAdminTemplate(
       props.customerName,
       props.customerEmail,
@@ -52,11 +58,21 @@ export async function sendProductionRequestEmails(
     );
     const adminHtml = renderEmail(adminMjml);
 
-    await sendEmail({
-      to: adminEmail,
-      subject: `New Production Request: ${props.projectName} (#${props.requestCode})`,
-      html: adminHtml,
-    });
+    await Promise.all(
+      adminEmails.map((email) =>
+        sendEmail({
+          to: email,
+          subject: `New Production Request: ${props.projectName} (#${props.requestCode})`,
+          html: adminHtml,
+        }).catch((err) => {
+          // Log error but don't stop the activity
+          logger.error(
+            { email, err },
+            "Failed to send production notification to admin",
+          );
+        }),
+      ),
+    );
 
     // 3. Send Acknowledgement to Customer
     const userMjml = ProductionRequestUserTemplate(

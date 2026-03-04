@@ -66,28 +66,40 @@ export async function sendTechnicalSupportEmails(
     const { data: configData, error: configError } = await supabase
       .from(Tables.SystemConfig)
       .select("value")
-      .eq("key", "verifier_email")
+      .eq("key", "verifier_email_multi")
       .single();
 
-    if (configError) {
-      logger.error(
-        { configError },
-        "Failed to fetch verifier_email from system_config",
-      );
-      throw configError;
+    if (configError || !configData?.value) {
+      logger.error({ configError }, "Failed to fetch verifier_email_multi");
+      throw configError || new Error("Config not found");
     }
 
-    const adminEmail = configData.value;
+    let adminEmails: string[] = [];
+    try {
+      adminEmails = JSON.parse(configData.value);
+      if (!Array.isArray(adminEmails)) adminEmails = [configData.value]; // Fallback if it's a single string
+    } catch (_e) {
+      adminEmails = [configData.value]; // Fallback if not JSON
+    }
+
+    const adminPromises = adminEmails.map((email: string) =>
+      sendNotificationToAdmin({
+        adminEmail: email,
+        customerName: props.customerName,
+        customerEmail: props.customerEmail,
+        customerPhone: props.customerPhone,
+        quoteId: props.quoteId,
+        quoteCode: props.quoteCode,
+      }).catch((err) => {
+        logger.error(
+          { email, err },
+          "Failed to send notification to specific admin",
+        );
+      }),
+    );
 
     // 2. Send Notification to Admin
-    await sendNotificationToAdmin({
-      adminEmail,
-      customerName: props.customerName,
-      customerEmail: props.customerEmail,
-      customerPhone: props.customerPhone,
-      quoteId: props.quoteId,
-      quoteCode: props.quoteCode,
-    });
+    await Promise.all(adminPromises);
 
     // 3. Send Acknowledgement to Customer
     await sendAcknowledgementToCustomer({

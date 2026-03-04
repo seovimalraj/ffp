@@ -847,7 +847,10 @@ export class RfqController {
 
   @Get(':rfqId')
   @Roles(RoleNames.Admin, RoleNames.Customer)
-  async getRfqById(@Param('rfqId') rfqId: string) {
+  async getRfqById(
+    @Param('rfqId') rfqId: string,
+    @CurrentUser() currentUser: CurrentUserDto,
+  ) {
     const client = this.supbaseService.getClient();
 
     let query = client.from(Tables.RFQTable).select('*');
@@ -903,6 +906,21 @@ export class RfqController {
       });
     });
 
+    let abandoned = null;
+
+    if (currentUser.role === RoleNames.Admin) {
+      const { data: abandonedQuotes, error: abandonedError } = await client
+        .from(Tables.AbandonedRFQPartsTable)
+        .select('*')
+        .eq('rfq_id', rfq.id);
+
+      if (abandonedError) {
+        throw abandonedError;
+      }
+
+      abandoned = abandonedQuotes;
+    }
+
     const complete = parts.map((part) => ({
       ...part,
       files2d: lookup.get(part.id) || [],
@@ -911,6 +929,7 @@ export class RfqController {
     return {
       rfq,
       parts: complete,
+      abandoned,
     };
   }
 

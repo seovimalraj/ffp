@@ -13,7 +13,7 @@ export class TemporalService implements OnModuleInit {
   private client: Client;
   private readonly logger = new Logger(TemporalService.name);
   private isConnected = false;
-  private readonly maxRetries = 15;
+  private readonly maxRetries = process.env.NODE_ENV === 'development' ? 1 : 15;
   private readonly baseDelayMs = 2000;
 
   constructor(private readonly configService: ConfigService) {}
