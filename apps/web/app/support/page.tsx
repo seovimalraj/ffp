@@ -277,6 +277,11 @@ const SupportPage = () => {
               </div>
               <Button
                 size="lg"
+                onClick={() =>
+                  window
+                    ?.open("https://frigate.ai/book-a-call/", "_blank")
+                    ?.focus()
+                }
                 className="bg-white text-slate-900 hover:bg-blue-50 px-10 py-7 text-lg rounded-2xl shadow-xl shadow-white/5 transition-all hover:scale-105 active:scale-95 group/live"
               >
                 Book a Call
