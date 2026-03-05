@@ -405,7 +405,9 @@ export default function InstantQuotePage() {
       if (files.length > 0) {
         pendingUploadRef.current = true;
       }
-      await session.update();
+      // Pass verified:true so the JWT callback (trigger === "update") merges it
+      // into the token → session.user.verified becomes true on next render.
+      await session.update({ verified: true });
     } catch (err: any) {
       console.error(err);
       notify.error(err.message || "Invalid verification code");
