@@ -9,7 +9,7 @@ import { supabase } from "../lib/supabase.js";
 type CreateTechnicalRequestParams = {
   userId: string;
   organizationId: string;
-  quote_id: string; // This is the UUID
+  quote_id?: string | undefined; // This is the UUID
   email: string;
   phone: string;
   text: string;
@@ -25,7 +25,7 @@ export async function createTechnicalRequest(
     const { data, error } = await supabase.rpc(SQLFunctions.createTechRequest, {
       p_user_id: props.userId,
       p_org_id: props.organizationId,
-      p_quote_id: props.quote_id,
+      p_quote_id: props?.quote_id || null,
       p_email: props.email,
       p_phone: props.phone,
       p_text: props.text,
@@ -51,8 +51,8 @@ export type SendTechnicalSupportEmailsParams = {
   customerEmail: string;
   customerName: string;
   customerPhone: string;
-  quoteId: string; // The UUID
-  quoteCode: string; // The human-readable code
+  quoteId?: string | undefined; // The UUID
+  quoteCode?: string | undefined; // The human-readable code
 };
 
 /**
@@ -125,8 +125,8 @@ async function sendNotificationToAdmin(params: {
   customerName: string;
   customerEmail: string;
   customerPhone: string;
-  quoteId: string;
-  quoteCode: string;
+  quoteId?: string | undefined;
+  quoteCode?: string | undefined;
 }) {
   const mjml = TechnicalSupportTemplate(
     params.customerName,
@@ -138,9 +138,13 @@ async function sendNotificationToAdmin(params: {
 
   const html = renderEmail(mjml);
 
+  const subject = params.quoteCode
+    ? `Technical Support Requested: Quote #${params.quoteCode}`
+    : `Technical Support Requested: General Inquiry`;
+
   return await sendEmail({
     to: params.adminEmail,
-    subject: `Technical Support Requested: Quote #${params.quoteCode}`,
+    subject,
     html,
   });
 }

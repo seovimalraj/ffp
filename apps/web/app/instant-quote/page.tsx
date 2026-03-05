@@ -383,10 +383,15 @@ export default function InstantQuotePage() {
       notify.success("Email verified successfully!");
       setShowOTPModal(false);
 
+      // Force-refresh the NextAuth session so the React context reflects the
+      // authenticated state immediately. Without this, session.status is still
+      // "unauthenticated" and handleUploadAndAuth would re-open the signup modal.
+      await session.update();
+
       // Trigger the quote creation process now that user is verified
-      // if (files.length > 0) {
-      //   handleUploadAndAuth();
-      // }
+      if (files.length > 0) {
+        handleUploadAndAuth();
+      }
     } catch (err: any) {
       console.error(err);
       notify.error(err.message || "Invalid verification code");
@@ -403,6 +408,7 @@ export default function InstantQuotePage() {
       const data = await res.json();
       if (!res.ok)
         throw new Error(data.error || data.message || "Failed to resend");
+      await session.update({ verified: true });
       notify.success("Verification code resent to your email");
     } catch (err: any) {
       notify.error(err.message || "Error resending code");

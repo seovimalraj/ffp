@@ -1,7 +1,7 @@
 import { BaseEmailTemplate } from "./base.template.js";
 import { config } from "../../config.js";
 
-export const TechnicalSupportUserTemplate = (requestCode: string) => {
+export const TechnicalSupportUserTemplate = (requestCode?: string) => {
   const url = `${config.frontendUrl}/portal/requests`;
   const content = `
     <!-- Main content -->
@@ -26,11 +26,16 @@ export const TechnicalSupportUserTemplate = (requestCode: string) => {
           Thank you for reaching out to <b>FFP Support</b>. We are reviewing your details and will get back to you with a solution shortly.
         </mj-text>
 
+        ${
+          requestCode &&
+          `
         <mj-text font-size="14px">
 
           <b>Request Reference:</b> #${requestCode}
 
         </mj-text>
+        `
+        }
 
         <mj-spacer height="24px" />
 

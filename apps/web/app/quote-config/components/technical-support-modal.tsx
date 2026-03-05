@@ -27,8 +27,8 @@ import { apiClient } from "@/lib/api";
 interface TechnicalSupportModalProps {
   isOpen: boolean;
   onClose: () => void;
-  rfqId: string;
-  rfqCode: string;
+  rfqId?: string;
+  rfqCode?: string;
   onSuccess?: () => void;
 }
 
@@ -121,12 +121,20 @@ const TechnicalSupportModal = ({
 
     setIsSubmitting(true);
     try {
-      await apiClient.post(`/rfq/technical-support/${rfqId}`, {
-        quoteCode: rfqCode,
-        email,
-        phone,
-        text: supportMessage,
-      });
+      if (rfqId) {
+        await apiClient.post(`/rfq/technical-support/${rfqId}`, {
+          quoteCode: rfqCode,
+          email,
+          phone,
+          text: supportMessage,
+        });
+      } else {
+        await apiClient.post(`/rfq/technical-support`, {
+          email,
+          phone,
+          text: supportMessage,
+        });
+      }
 
       setIsSubmitted(true);
       onSuccess?.();
@@ -173,7 +181,7 @@ const TechnicalSupportModal = ({
       isOpen={isOpen}
       onClose={handleClose}
       title="Technical Support"
-      subtitle={`Reference: ${rfqCode}`}
+      subtitle={rfqCode ? `Reference: ${rfqCode}` : "General Inquiry"}
       steps={steps}
       currentStep={currentStep}
       onStepChange={onStepChange}
@@ -388,8 +396,12 @@ const TechnicalSupportModal = ({
                 </h2>
                 <div className="bg-slate-50 p-6 rounded-3xl border border-slate-100 space-y-4">
                   <p className="text-slate-600 text-sm leading-relaxed">
-                    We've received your request for quote{" "}
-                    <span className="font-bold text-slate-900">{rfqCode}</span>.
+                    We've received your request{rfqCode ? ` for quote ` : "."}
+                    {rfqCode && (
+                      <span className="font-bold text-slate-900">
+                        {rfqCode}
+                      </span>
+                    )}
                   </p>
                   <div className="h-px bg-slate-200 w-12 mx-auto" />
                   <p className="text-slate-600 text-sm leading-relaxed">

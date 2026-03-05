@@ -42,6 +42,12 @@ const buttonVariants = cva(
           "before:absolute before:inset-0 before:-z-10 before:rounded-full " +
           "before:bg-[inherit] before:blur-xl before:opacity-50 " +
           "group-hover:before:opacity-100 group-hover:before:blur-2xl before:transition-all",
+        shiny:
+          "relative overflow-hidden bg-slate-900 text-white shadow-xl transition-all duration-300 active:scale-95 " +
+          "hover:bg-slate-800 hover:shadow-slate-200/50 " +
+          "before:absolute before:inset-0 before:-translate-x-full before:bg-gradient-to-r before:from-transparent before:via-white/20 before:to-transparent hover:before:animate-[shimmer_1.5s_infinite]",
+        glass:
+          "bg-white/10 backdrop-blur-md border border-white/20 text-slate-900 hover:bg-white/20 hover:border-white/30 transition-all duration-300",
         /** NEW */
         stroke:
           "bg-transparent p-0 w-[300px] h-[80px] text-[#98A5A6] " +
