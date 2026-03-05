@@ -26,8 +26,9 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { formatPhoneNumberIntl } from "react-phone-number-input";
+import TechnicalSupportModal from "../quote-config/components/technical-support-modal";
 
-const contactMethods = [
+const contactMethods = (setSupportOpen: (open: boolean) => void) => [
   {
     image: "/support/email.webp",
     title: "Email Support",
@@ -75,7 +76,9 @@ const contactMethods = [
     icon: ShieldCheck,
     color: "text-amber-600",
     bgColor: "bg-amber-50",
-    onClick: () => {},
+    onClick: () => {
+      setSupportOpen(true);
+    },
   },
   {
     image: "/support/faq.webp",
@@ -91,7 +94,8 @@ const contactMethods = [
 
 const SupportPage = () => {
   const session = useSession();
-  const [methods, setMethods] = useState(contactMethods);
+  const [isSupportOpen, setIsSupportOpen] = useState(false);
+  const [methods, setMethods] = useState(contactMethods(() => {}));
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
@@ -139,6 +143,7 @@ const SupportPage = () => {
       }
     };
 
+    setMethods(contactMethods(setIsSupportOpen));
     fetchSupportContacts();
   }, []);
 
@@ -245,12 +250,13 @@ const SupportPage = () => {
                   <p className="text-slate-500 text-sm leading-relaxed">
                     {method.description}
                   </p>
-                  <p
+                  <Button
                     onClick={() => method.onClick()}
-                    className="text-blue-600 font-medium text-lg tracking-tight cursor-pointer"
+                    variant="blueCta"
+                    className="mt-4 w-full h-12 rounded-2xl"
                   >
                     {method.value}
-                  </p>
+                  </Button>
                 </div>
               </div>
             ))}
@@ -291,6 +297,10 @@ const SupportPage = () => {
           </section>
         </main>
       </div>
+      <TechnicalSupportModal
+        isOpen={isSupportOpen}
+        onClose={() => setIsSupportOpen(false)}
+      />
       <Footer />
     </>
   );

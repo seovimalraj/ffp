@@ -15,14 +15,14 @@ export type TechnicalSupportWorkflowInput = {
   // DB Creation Params
   userId: string;
   organizationId: string;
-  quoteId: string;
+  quoteId?: string | undefined;
   email: string;
   phone: string;
   text: string;
 
   // Email Params
   customerName: string;
-  quoteCode: string;
+  quoteCode?: string | undefined;
 };
 
 export async function technicalSupportWorkflow(
@@ -34,15 +34,17 @@ export async function technicalSupportWorkflow(
   });
 
   try {
-    // 1. Create Request Record
-    const result = await createTechnicalRequest({
+    const props = {
       userId: input.userId,
       organizationId: input.organizationId,
-      quote_id: input.quoteId,
       email: input.email,
       phone: input.phone,
       text: input.text,
-    });
+      quote_id: input.quoteId,
+    };
+
+    // 1. Create Request Record
+    const result = await createTechnicalRequest({ ...props });
 
     if (!result || !result[0]) {
       throw new Error("Failed to create technical request record");

@@ -205,14 +205,14 @@ export class TemporalService implements OnModuleInit {
   async technicalSupportWorkflow(data: {
     userId: string;
     organizationId: string;
-    quoteId: string;
+    quoteId?: string;
     email: string;
     phone: string;
     text: string;
 
     // Email Params
     customerName: string;
-    quoteCode: string;
+    quoteCode?: string;
   }) {
     try {
       if (!this.client) {

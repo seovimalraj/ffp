@@ -5,8 +5,8 @@ export const TechnicalSupportTemplate = (
   username: string,
   userEmail: string,
   phoneNumber: string,
-  quoteId: string,
-  quoteCode: string,
+  quoteId?: string,
+  quoteCode?: string,
 ) => {
   const content = `
         <mj-text font-size="20px" font-weight="700" color="#334155" padding-bottom="20px">
@@ -17,9 +17,15 @@ export const TechnicalSupportTemplate = (
           Hello Team,
         </mj-text>
 
-        <mj-text padding-bottom="16px">
-          A technical support request has been submitted for quote <a href="${config.frontendUrl}/admin/orders/${quoteId}"><b>#${quoteCode}</b></a>.
-        </mj-text>
+        ${
+          quoteId &&
+          ` <mj-text padding-bottom="16px">
+              A technical support request has been submitted for quote <a href="${config.frontendUrl}/admin/orders/${quoteId}"><b>#${quoteCode}</b></a>.
+            </mj-text>
+          `
+        }
+
+       
 
         <mj-divider border-width="1px" border-color="#f1f5f9" padding="10px 0" />
 

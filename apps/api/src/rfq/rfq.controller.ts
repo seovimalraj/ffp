@@ -547,6 +547,35 @@ export class RfqController {
     };
   }
 
+  @Post('technical-support')
+  @Roles(RoleNames.Customer)
+  async sendGeneralTechnicalSupportRequest(
+    @CurrentUser() currentUser: CurrentUserDto,
+    @Body()
+    body: {
+      phone: string;
+      email: string;
+      text: string;
+    },
+  ) {
+    try {
+      await this.temporalService.technicalSupportWorkflow({
+        userId: currentUser.id,
+        organizationId: currentUser.organizationId,
+        email: body.email,
+        phone: body.phone,
+        text: body.text,
+        customerName: currentUser.name,
+      });
+    } catch (temporalError) {
+      this.logger.error('Failed to start Temporal workflow', temporalError);
+      throw new HttpException(
+        'Failed to send technical support emails',
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
+  }
+
   @Post('technical-support/:rfqId')
   @Roles(RoleNames.Customer)
   async sendTechnicalSupportRequest(
@@ -881,7 +910,8 @@ export class RfqController {
     const { data: parts, error: partsError } = await client
       .from(Tables.RFQPartsTable)
       .select('*')
-      .eq('rfq_id', rfq.id);
+      .eq('rfq_id', rfq.id)
+      .order('created_at', { ascending: true });
 
     if (error || partsError) {
       throw error || partsError;
