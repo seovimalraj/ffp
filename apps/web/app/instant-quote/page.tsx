@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { useDropzone } from "react-dropzone";
@@ -107,15 +107,30 @@ export default function InstantQuotePage() {
 
   const session = useSession();
   const { upload } = useFileUpload();
+  // Ref to track that we should trigger upload once session becomes authenticated
+  const pendingUploadRef = useRef(false);
 
-  const onDrop = useCallback((acceptedFiles: File[]) => {
-    setFiles((prev) => [...prev, ...acceptedFiles]);
-
-    if (session.status === "unauthenticated") {
-      setShowAuthModal(true);
-      return;
+  // After OTP verification, session.update() is async — the React session state
+  // won't be "authenticated" until the next render. This effect watches for that
+  // transition and fires handleUploadAndAuth() automatically.
+  useEffect(() => {
+    if (session.status === "authenticated" && pendingUploadRef.current) {
+      pendingUploadRef.current = false;
+      handleUploadAndAuth();
     }
-  }, []);
+  }, [session.status]);
+
+  const onDrop = useCallback(
+    (acceptedFiles: File[]) => {
+      setFiles((prev) => [...prev, ...acceptedFiles]);
+
+      if (session.status === "unauthenticated") {
+        setShowAuthModal(true);
+        return;
+      }
+    },
+    [session.status],
+  );
 
   const { getRootProps, getInputProps, isDragActive, open } = useDropzone({
     onDrop,
@@ -383,15 +398,14 @@ export default function InstantQuotePage() {
       notify.success("Email verified successfully!");
       setShowOTPModal(false);
 
-      // Force-refresh the NextAuth session so the React context reflects the
-      // authenticated state immediately. Without this, session.status is still
-      // "unauthenticated" and handleUploadAndAuth would re-open the signup modal.
-      await session.update();
-
-      // Trigger the quote creation process now that user is verified
+      // session.update() triggers a re-fetch but the React session state won't
+      // reflect "authenticated" until the next render cycle. We set a pending
+      // flag here; the useEffect above will call handleUploadAndAuth() once the
+      // session actually becomes authenticated in the React context.
       if (files.length > 0) {
-        handleUploadAndAuth();
+        pendingUploadRef.current = true;
       }
+      await session.update();
     } catch (err: any) {
       console.error(err);
       notify.error(err.message || "Invalid verification code");
