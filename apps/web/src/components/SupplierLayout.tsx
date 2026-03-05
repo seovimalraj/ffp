@@ -5,7 +5,8 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import AppHeader from "@/layout/AppHeader";
 import { cn } from "@/lib/utils";
-import { Factory, ChevronLeft, ChevronRight, X } from "lucide-react";
+import { Factory, ChevronLeft, ChevronRight, X, LogOut } from "lucide-react";
+import { signOut } from "next-auth/react";
 import { usePermissions } from "@/components/hooks/use-permissions";
 import { PermissionsNames } from "@cnc-quote/shared";
 import MegaMenu from "@/components/ui/mega-menu";
@@ -134,11 +135,18 @@ export default function SupplierLayout({
             })}
           </ul>
         </nav>
-        <div className="p-4 border-t border-gray-200/50 dark:border-gray-800/50 text-xs text-gray-500 dark:text-gray-400 bg-gray-50/50 dark:bg-gray-900/50">
+        <div className="p-4 border-t border-gray-200/50 dark:border-gray-800/50 text-xs text-gray-500 dark:text-gray-400 bg-gray-50/50 dark:bg-gray-900/50 space-y-3">
+          <button
+            onClick={() => signOut({ callbackUrl: "/signin" })}
+            className="w-full flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm font-medium text-red-600 hover:bg-red-50 dark:hover:bg-red-950/30 transition-colors duration-200"
+          >
+            <LogOut size={16} />
+            Sign Out
+          </button>
           <p className="font-semibold">
             &copy; {new Date().getFullYear()} Frigate Fast Parts
           </p>
-          <p className="mt-2 space-x-2">
+          <p className="space-x-2">
             <Link
               href="/legal/privacy"
               className="hover:text-emerald-600 transition-colors"
@@ -159,8 +167,8 @@ export default function SupplierLayout({
       <div className="flex flex-1 flex-col min-w-0 w-full">
         <AppHeader
           setOpen={() => setDesktopOpen((o) => !o)}
-          isMegaMenuOpen={isMegaMenuOpen}
-          setIsMegaMenuOpen={setIsMegaMenuOpen}
+          // isMegaMenuOpen={isMegaMenuOpen}
+          // setIsMegaMenuOpen={setIsMegaMenuOpen}
         />
         <main className="flex-1 overflow-y-auto w-full p-6 md:p-8">
           {children}
