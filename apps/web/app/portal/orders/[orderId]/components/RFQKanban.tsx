@@ -35,6 +35,7 @@ export function RFQKanban({ parts, onRefresh, onItemClick }: Props) {
         finish: part.rfq_part.finish,
         quantity: part.quantity,
         leadTime: part.lead_time,
+        leadTimeType: part.lead_time_type,
         unitPrice: part.unit_price,
         totalPrice: part.total_price,
         snapshot_2d_url: part.rfq_part.snapshot_2d_url,

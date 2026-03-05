@@ -353,6 +353,9 @@ export default function OrderPage() {
                           {part.rfq_part.material}
                         </span>
                         <span className="inline-flex items-center px-2 py-1 rounded-md text-[10px] font-medium bg-slate-100 text-slate-600 border border-slate-200">
+                          {part.lead_time_type}
+                        </span>
+                        <span className="inline-flex items-center px-2 py-1 rounded-md text-[10px] font-medium bg-slate-100 text-slate-600 border border-slate-200">
                           {part.rfq_part.finish}
                         </span>
                       </div>

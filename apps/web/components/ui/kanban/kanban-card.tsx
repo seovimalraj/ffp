@@ -96,13 +96,21 @@ export function KanbanCard({
         </div>
 
         {item.metadata && (
-          <div className="grid grid-cols-2 gap-2 pt-2 border-t border-slate-100 mt-auto">
+          <div className="grid grid-cols-3 gap-2 pt-2 border-t border-slate-100 mt-auto">
             <div>
               <div className="text-[9px] uppercase tracking-wider text-slate-400 font-bold">
                 Qty
               </div>
               <div className="text-xs font-medium text-slate-700">
                 {item.metadata.quantity || 0}
+              </div>
+            </div>
+            <div>
+              <div className="text-[9px] uppercase tracking-wider text-slate-400 font-bold">
+                Lead Type
+              </div>
+              <div className="text-xs font-medium text-slate-700">
+                {item.metadata.leadTimeType}
               </div>
             </div>
 
