@@ -1157,7 +1157,7 @@ export default function QuoteConfigPage() {
         // Processing just completed — run a full (non-polling) load so that
         // the sync-pricing API call fires and persists the newly calculated
         // prices (based on the fresh geometry) back to the DB.
-        await loadQuote(false);
+        await loadQuote(true);
       }
     }, 5000);
   };

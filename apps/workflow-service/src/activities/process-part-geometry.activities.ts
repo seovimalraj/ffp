@@ -77,46 +77,53 @@ export async function analyzeGeometry(
   filename: string,
 ): Promise<GeometryResult> {
   const ctx = Context.current();
-  ctx.heartbeat("starting-cad-analysis");
 
-  logger.info({ partId, filename }, "Analyzing CAD geometry");
+  logger.info({ partId, filename }, "Starting CAD geometry analysis");
 
-  // Set status explicitly here so "Processing" only shows up when we have an actual worker slot
-  await updatePart(partId, { status: RFQPartStatus.Processing });
+  // ensure worker keeps heartbeating during long external calls
+  const heartbeatInterval = setInterval(() => {
+    ctx.heartbeat({ partId, stage: "cad-analysis-running" });
+  }, 20000);
 
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 120_000);
-
-  let geometry: GeometryResult | null = null;
+  const timeout = setTimeout(() => controller.abort(), 5 * 60 * 1000); // 5 min
 
   try {
-    const res = await fetch(`${config.frontendUrl}/api/cad/analyze-geometry`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ fileUrl, fileName: filename }),
-      signal: controller.signal,
-    });
+    await updatePart(partId, { status: RFQPartStatus.Processing });
 
-    if (res.ok) {
-      geometry = await res.json();
-    } else {
-      const text = await res.text();
-      logger.warn({ partId, text }, "CAD API failed, attempting fallback");
-    }
-  } catch (err: any) {
-    if (err.name === "AbortError") {
-      clearTimeout(timeout);
-      logger.error({ partId }, "CAD timeout");
-      throw err;
-    }
-    logger.warn({ err, partId }, "CAD analysis failed, attempting fallback");
-  }
+    let geometry: GeometryResult | null = null;
 
-  // fallback to manual-cad-analysis if primary fails
-  if (!geometry) {
-    ctx.heartbeat("starting-fallback-cad-analysis");
+    /* ---------------- primary CAD service ---------------- */
+
     try {
+      const res = await fetch(
+        `${config.frontendUrl}/api/cad/analyze-geometry`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ fileUrl, fileName: filename }),
+          signal: controller.signal,
+        },
+      );
+
+      if (res.ok) {
+        geometry = await res.json();
+      } else {
+        const text = await res.text();
+        logger.warn({ partId, text }, "Primary CAD analysis failed");
+      }
+    } catch (err: any) {
+      if (err.name === "AbortError") {
+        throw ApplicationFailure.retryable("CAD analysis timeout");
+      }
+      logger.warn({ err, partId }, "Primary CAD analysis error");
+    }
+
+    /* ---------------- fallback CAD service ---------------- */
+
+    if (!geometry) {
       logger.info({ partId }, "Attempting fallback CAD analysis");
+
       const res = await fetch(
         `${config.frontendUrl}/api/cad/manual-cad-analysis`,
         {
@@ -127,44 +134,36 @@ export async function analyzeGeometry(
         },
       );
 
-      clearTimeout(timeout);
-
       if (!res.ok) {
         const text = await res.text();
         logger.error({ partId, text }, "Fallback CAD API failed");
-        throw new Error(`Fallback CAD API error: ${res.status}`);
+        throw ApplicationFailure.retryable("Fallback CAD analysis failed");
       }
 
       geometry = await res.json();
-    } catch (err: any) {
-      clearTimeout(timeout);
-      if (err.name === "AbortError") {
-        logger.error({ partId }, "Fallback CAD timeout");
-        throw err;
-      }
-      logger.error({ err, partId }, "Fallback CAD analysis failed");
-      throw err;
     }
+
+    if (!geometry) {
+      throw ApplicationFailure.nonRetryable("Empty geometry result");
+    }
+
+    /* ---------------- assembly detection ---------------- */
+
+    if (geometry.isAssembly) {
+      geometry.requiresManualQuote = true;
+      geometry.manualQuoteReason =
+        geometry.manualQuoteReason ||
+        "Assembly detected — manual review required";
+    }
+
+    logger.info({ partId }, "CAD analysis completed");
+
+    return geometry;
+  } finally {
+    clearTimeout(timeout);
+    clearInterval(heartbeatInterval);
   }
-
-  clearTimeout(timeout);
-  ctx.heartbeat("cad-analysis-complete");
-
-  if (!geometry) {
-    throw ApplicationFailure.nonRetryable("Empty geometry result");
-  }
-
-  // assembly detection → manual quote
-  if (geometry.isAssembly) {
-    geometry.requiresManualQuote = true;
-    geometry.manualQuoteReason =
-      geometry.manualQuoteReason ||
-      "Assembly detected — manual review required";
-  }
-
-  return geometry;
 }
-
 /* ---------------------------------------------------------- */
 /* activity: save geometry */
 /* ---------------------------------------------------------- */
