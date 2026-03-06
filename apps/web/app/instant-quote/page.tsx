@@ -1,7 +1,7 @@
 "use client";
 
-import { useState, useCallback, useEffect, useRef } from "react";
-import { useRouter } from "next/navigation";
+import { useState, useCallback, useEffect, useRef, Suspense } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { useDropzone } from "react-dropzone";
 import { Button } from "@/components/ui/button";
@@ -79,9 +79,72 @@ interface UploadedFileData {
   pricing?: PricingBreakdown;
 }
 
+interface FileWithUrl extends File {
+  alreadyUploadedUrl?: string;
+}
+
+function UploadIdHandler({
+  onFilesFetched,
+  setIsUploading,
+}: {
+  onFilesFetched: (files: FileWithUrl[]) => void;
+  setIsUploading: (loading: boolean) => void;
+}) {
+  const searchParams = useSearchParams();
+  const uploadId = searchParams?.get("uploadId");
+  const processedRef = useRef(false);
+
+  useEffect(() => {
+    if (uploadId && !processedRef.current) {
+      processedRef.current = true;
+      setIsUploading(true);
+
+      const fetchUploads = async () => {
+        try {
+          const res = await apiClient.get<any>(`/files/bulk/${uploadId}`);
+          const urls = res.data?.data || [];
+
+          if (urls.length === 0) return;
+
+          const downloadedFiles = await Promise.all(
+            urls.map(async (url: string) => {
+              const fetchRes = await fetch(url);
+              const blob = await fetchRes.blob();
+
+              // Extract filename
+              const parsedName = url.split("/").pop() || "file";
+              // Remove signature/query params if any
+              const cleanName = parsedName.split("?")[0];
+              const decodedName = decodeURIComponent(cleanName);
+
+              const file = new File([blob], decodedName, {
+                type: blob.type,
+              }) as FileWithUrl;
+              file.alreadyUploadedUrl = url;
+              return file;
+            }),
+          );
+
+          onFilesFetched(downloadedFiles);
+          window.history.replaceState({}, "", "/instant-quote");
+        } catch (error) {
+          console.error("Failed to fetch uploaded files:", error);
+          notify.error("Failed to load your uploaded widget files.");
+        } finally {
+          setIsUploading(false);
+        }
+      };
+
+      fetchUploads();
+    }
+  }, [uploadId, onFilesFetched, setIsUploading]);
+
+  return null;
+}
+
 export default function InstantQuotePage() {
   const router = useRouter();
-  const [files, setFiles] = useState<File[]>([]);
+  const [files, setFiles] = useState<FileWithUrl[]>([]);
   const [isUploading, setIsUploading] = useState(false);
   const [showAuthModal, setShowAuthModal] = useState(false);
   const [selected3DFile, setSelected3DFile] = useState<File | string | null>(
@@ -155,8 +218,12 @@ export default function InstantQuotePage() {
         files.map((file) =>
           limit(async () => {
             try {
-              // 1. Upload to storage
-              const { url } = await upload(file);
+              // 1. Upload to storage (reuse URL if already uploaded)
+              let url: string = (file as FileWithUrl).alreadyUploadedUrl || "";
+              if (!url) {
+                const uploadRes = await upload(file);
+                url = uploadRes.url;
+              }
               let status = "queued";
 
               // 2. Geometry analysis
@@ -433,6 +500,14 @@ export default function InstantQuotePage() {
 
   return (
     <>
+      <Suspense fallback={null}>
+        <UploadIdHandler
+          onFilesFetched={(downloadedFiles) => {
+            setFiles((prev) => [...prev, ...downloadedFiles]);
+          }}
+          setIsUploading={setIsUploading}
+        />
+      </Suspense>
       <div className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-blue-50/20 font-sans selection:bg-blue-100">
         {/* 1. Header: Clean, Simple Top Bar */}
         <header className="sticky top-0 z-50 backdrop-blur-md bg-white/70 border-b border-blue-50 h-16 transition-all duration-300">

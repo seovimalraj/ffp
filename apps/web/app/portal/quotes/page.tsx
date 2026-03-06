@@ -53,17 +53,17 @@ interface Filters {
 }
 
 enum StatusColor {
-  "total" = "blue",
-  "draft" = "gray",
-  "submitted" = "orange",
+  total = "blue",
+  draft = "gray",
+  submitted = "orange",
   "under review" = "lime",
-  "quoted" = "indigo",
+  quoted = "indigo",
   "payment pending" = "teal",
-  "paid" = "green",
-  "rejected" = "red",
+  paid = "green",
+  rejected = "red",
   "pending approval" = "amber",
-  "pending" = "sky",
-  "accepted" = "emerald",
+  pending = "sky",
+  accepted = "emerald",
 }
 
 enum StatusPriority {
