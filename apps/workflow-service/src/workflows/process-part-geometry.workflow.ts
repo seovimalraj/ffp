@@ -3,12 +3,12 @@ import type * as activities from "../activities/process-part-geometry.activities
 
 const { analyzeGeometry, saveGeometryAndMarkProcessed, markManualQuote } =
   proxyActivities<typeof activities>({
-    startToCloseTimeout: "10 minutes",
-    heartbeatTimeout: "30 seconds",
+    startToCloseTimeout: "20 minutes",
+    heartbeatTimeout: "1 minute",
     retry: {
       maximumAttempts: 5,
-      initialInterval: "5 seconds",
-      maximumInterval: "2 minutes",
+      initialInterval: "10 seconds",
+      maximumInterval: "5 minutes",
       backoffCoefficient: 2,
     },
   });
