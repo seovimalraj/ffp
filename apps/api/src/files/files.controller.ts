@@ -9,10 +9,12 @@ import {
   InternalServerErrorException,
   Query,
   Body,
+  UploadedFiles,
+  Param,
 } from '@nestjs/common';
 import { SupabaseService } from 'src/supabase/supabase.service';
-import { FileInterceptor } from '@nestjs/platform-express';
-import { BucketNames, SQLFunctions } from '../../libs/constants';
+import { FileInterceptor, FilesInterceptor } from '@nestjs/platform-express';
+import { BucketNames, SQLFunctions, Tables } from '../../libs/constants';
 import { CurrentUser } from 'src/auth/user.decorator';
 import { CurrentUserDto } from 'src/auth/auth.dto';
 import { AuthGuard } from 'src/auth/auth.guard';
@@ -94,6 +96,67 @@ export class FilesController {
       message: 'File uploaded successfully',
       url: meta.publicUrl,
       uploadId: meta.uploadId,
+    };
+  }
+
+  @Public()
+  @Post('bulk')
+  @UseInterceptors(FilesInterceptor('files'))
+  async uploadFilesWithUploadId(
+    // eslint-disable-next-line no-undef
+    @UploadedFiles() files: Express.Multer.File[],
+  ) {
+    if (!files?.length) {
+      throw new BadRequestException('No files were uploaded');
+    }
+
+    const uploadedFiles = await Promise.all(
+      files.map(async (file) => {
+        const meta = await this.supabaseService.uploadFile(
+          file,
+          BucketNames.rfqStore,
+          undefined,
+          false,
+        );
+        return meta.publicUrl;
+      }),
+    );
+
+    const { data, error } = await this.supabaseService
+      .getClient()
+      .from(Tables.UploadsTable)
+      .insert({
+        file_urls: uploadedFiles,
+      })
+      .select()
+      .single();
+
+    if (error) {
+      throw new InternalServerErrorException(error.message);
+    }
+
+    return {
+      message: 'Uploaded successfully',
+      uploadId: data.id,
+    };
+  }
+
+  @Public()
+  @Get('bulk/:uploadId')
+  async getUploads(@Param('uploadId') uploadId: string) {
+    const { data, error } = await this.supabaseService
+      .getClient()
+      .from(Tables.UploadsTable)
+      .select('file_urls')
+      .eq('id', uploadId)
+      .single();
+
+    if (error) {
+      throw new InternalServerErrorException(error);
+    }
+
+    return {
+      data: data.file_urls,
     };
   }
 }
