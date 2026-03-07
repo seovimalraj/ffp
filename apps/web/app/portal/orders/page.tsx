@@ -354,7 +354,7 @@ const Page = () => {
           </div>
         </div>
 
-        <div className="flex items-center self-end sm:self-center">
+        {/* <div className="flex items-center self-end sm:self-center">
           <Button
             variant="default"
             size="sm"
@@ -363,7 +363,7 @@ const Page = () => {
             <ArrowUpFromLine size={14} className="opacity-60 mr-1" />
             <span>Export</span>
           </Button>
-        </div>
+        </div> */}
       </div>
       <div className="mx-auto">
         <div>

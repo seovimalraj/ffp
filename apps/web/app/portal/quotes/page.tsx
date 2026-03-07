@@ -509,7 +509,7 @@ export default function QuotesListPage() {
           </div>
         </div>
 
-        <div className="flex items-center self-end sm:self-center">
+        {/* <div className="flex items-center self-end sm:self-center">
           <Button
             variant="default"
             size="sm"
@@ -518,7 +518,7 @@ export default function QuotesListPage() {
             <ArrowUpFromLine size={14} className="opacity-60 mr-1" />
             <span>Export</span>
           </Button>
-        </div>
+        </div> */}
       </div>
 
       {/* Content Section */}

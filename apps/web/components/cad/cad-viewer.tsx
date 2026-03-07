@@ -121,6 +121,7 @@ interface CadViewerProps {
   };
   backgroundColor?: string | number;
   showViewCube?: boolean;
+  showHomeButton?: boolean;
   showFlatParts?: boolean;
   assemblyLoadMode?: AssemblyLoadMode;
 }
@@ -143,6 +144,7 @@ export const CadViewer = forwardRef<CadViewerRef, CadViewerProps>(
       selectedHighlight,
       backgroundColor,
       showViewCube = true,
+      showHomeButton = true,
       showFlatParts: _showFlatParts = true,
       assemblyLoadMode: assemblyLoadModeProp,
     },
@@ -287,6 +289,9 @@ export const CadViewer = forwardRef<CadViewerRef, CadViewerProps>(
       if (viewerRef.current.setShowViewCube) {
         viewerRef.current.setShowViewCube(showViewCube);
       }
+      if (viewerRef.current.setShowHomeButton) {
+        viewerRef.current.setShowHomeButton(showHomeButton);
+      }
 
       // Initialize worker
       try {
@@ -351,6 +356,12 @@ export const CadViewer = forwardRef<CadViewerRef, CadViewerProps>(
         viewerRef.current.setShowViewCube(showViewCube);
       }
     }, [showViewCube]);
+
+    useEffect(() => {
+      if (viewerRef.current?.setShowHomeButton) {
+        viewerRef.current.setShowHomeButton(showHomeButton);
+      }
+    }, [showHomeButton]);
 
     useEffect(() => {
       if (backgroundColor && viewerRef.current?.setBackgroundColor) {
@@ -487,9 +498,12 @@ export const CadViewer = forwardRef<CadViewerRef, CadViewerProps>(
             }
 
             const assembly = await loadCadAssemblyFile(file, worker);
-            const meshCount = assembly.object.children.reduce((count, child) => {
-              return count + ((child as any)?.isMesh ? 1 : 0);
-            }, 0);
+            const meshCount = assembly.object.children.reduce(
+              (count, child) => {
+                return count + ((child as any)?.isMesh ? 1 : 0);
+              },
+              0,
+            );
             disposeObject3DSafe(assembly.object);
 
             if (isStale()) return;

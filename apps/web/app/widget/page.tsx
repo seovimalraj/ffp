@@ -28,7 +28,7 @@ export default function WidgetPage() {
 
       if (response.data?.uploadId) {
         window.open(
-          `${process.env.NEXTAUTH_URL}/instant-quote?uploadId=${response.data.uploadId}`,
+          `/instant-quote?uploadId=${response.data.uploadId}`,
           "_blank",
         );
       } else {
