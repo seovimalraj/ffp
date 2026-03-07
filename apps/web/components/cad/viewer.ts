@@ -68,6 +68,7 @@ export type Viewer = {
   ) => void;
   setBackgroundColor: (color: string | number) => void;
   setShowViewCube: (visible: boolean) => void;
+  setShowHomeButton: (visible: boolean) => void;
 };
 
 export function createStainlessSteelMaterial(): THREE.MeshPhysicalMaterial {
@@ -146,6 +147,58 @@ export function createViewer(container: HTMLElement): Viewer {
   );
   cubeWrapper.appendChild(cubeCanvas);
   container.appendChild(cubeWrapper);
+
+  // --- Home Button ---xx
+  const homeBtn = document.createElement("button");
+  homeBtn.style.position = "absolute";
+  homeBtn.style.top = "-30px";
+  homeBtn.style.right = "50px";
+  homeBtn.style.width = "34px";
+  homeBtn.style.height = "34px";
+  homeBtn.style.backgroundColor = "rgba(255, 255, 255, 0.4)";
+  homeBtn.style.backdropFilter = "blur(12px) saturate(180%)";
+  (homeBtn.style as any).webkitBackdropFilter = "blur(12px) saturate(180%)";
+  homeBtn.style.border = "1px solid rgba(255, 255, 255, 0.3)";
+  homeBtn.style.borderRadius = "12px";
+  homeBtn.style.boxShadow = "0 8px 32px 0 rgba(31, 38, 135, 0.1)";
+  homeBtn.style.cursor = "pointer";
+  homeBtn.style.display = "flex";
+  homeBtn.style.alignItems = "center";
+  homeBtn.style.justifyContent = "center";
+  homeBtn.style.transition = "all 0.2s cubic-bezier(0.4, 0, 0.2, 1)";
+  homeBtn.style.zIndex = "51";
+  homeBtn.title = "Original Position (Home)";
+
+  homeBtn.innerHTML = `
+   <svg xmlns="http://www.w3.org/2000/svg" x="0px" y="0px" width="100" height="100" viewBox="0 0 30 30">
+    <path d="M 15 2 A 1 1 0 0 0 14.300781 2.2851562 L 3.3925781 11.207031 A 1 1 0 0 0 3.3554688 11.236328 L 3.3183594 11.267578 L 3.3183594 11.269531 A 1 1 0 0 0 3 12 A 1 1 0 0 0 4 13 L 5 13 L 5 24 C 5 25.105 5.895 26 7 26 L 23 26 C 24.105 26 25 25.105 25 24 L 25 13 L 26 13 A 1 1 0 0 0 27 12 A 1 1 0 0 0 26.681641 11.267578 L 26.666016 11.255859 A 1 1 0 0 0 26.597656 11.199219 L 25 9.8925781 L 25 6 C 25 5.448 24.552 5 24 5 L 23 5 C 22.448 5 22 5.448 22 6 L 22 7.4394531 L 15.677734 2.2675781 A 1 1 0 0 0 15 2 z M 18 15 L 22 15 L 22 23 L 18 23 L 18 15 z"></path>
+</svg>
+  `;
+
+  homeBtn.onmouseenter = () => {
+    homeBtn.style.transform = "translateY(-2px)";
+    homeBtn.style.backgroundColor = "white";
+    homeBtn.style.borderColor = "#3b82f6";
+    const svg = homeBtn.querySelector("svg");
+    if (svg) svg.style.stroke = "#3b82f6";
+  };
+
+  homeBtn.onmouseleave = () => {
+    homeBtn.style.transform = "translateY(0)";
+    homeBtn.style.backgroundColor = "rgba(255, 255, 255, 0.9)";
+    homeBtn.style.borderColor = "#e2e8f0";
+    const svg = homeBtn.querySelector("svg");
+    if (svg) svg.style.stroke = "#64748b";
+  };
+
+  homeBtn.onclick = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setView("iso");
+    fitToScreen();
+  };
+
+  cubeWrapper.appendChild(homeBtn);
 
   const cubeRenderer = new THREE.WebGLRenderer({
     canvas: cubeCanvas,
@@ -945,7 +998,10 @@ export function createViewer(container: HTMLElement): Viewer {
     applyControlsPresetTo(orbitControls, controlsPreset);
     if (requestUpdateSilhouette) {
       try {
-        orbitControls.addEventListener("change", requestUpdateSilhouette as any);
+        orbitControls.addEventListener(
+          "change",
+          requestUpdateSilhouette as any,
+        );
       } catch {
         // ignore listener binding errors
       }
@@ -1242,7 +1298,8 @@ export function createViewer(container: HTMLElement): Viewer {
         );
         for (const overlay of overlayChildren) {
           try {
-            if ((overlay as any).geometry) (overlay as any).geometry.dispose?.();
+            if ((overlay as any).geometry)
+              (overlay as any).geometry.dispose?.();
           } catch {
             /* ignore */
           }
@@ -1584,7 +1641,8 @@ export function createViewer(container: HTMLElement): Viewer {
         0,
         Math.min(
           1,
-          new THREE.Vector3().subVectors(intr.point, endpoints.a).dot(seg) / segLen2,
+          new THREE.Vector3().subVectors(intr.point, endpoints.a).dot(seg) /
+            segLen2,
         ),
       );
     }
@@ -1763,7 +1821,8 @@ export function createViewer(container: HTMLElement): Viewer {
 
     let nearestVisibleMeshDistance: number | null | undefined = undefined;
     const getNearestVisibleMeshDistance = (): number | null => {
-      if (nearestVisibleMeshDistance !== undefined) return nearestVisibleMeshDistance;
+      if (nearestVisibleMeshDistance !== undefined)
+        return nearestVisibleMeshDistance;
       const meshTargets: THREE.Object3D[] = [];
       modelRoot.traverse((obj: any) => {
         if (!obj?.isMesh) return;
@@ -2258,8 +2317,10 @@ export function createViewer(container: HTMLElement): Viewer {
     const cross = new THREE.Vector3().crossVectors(aDir, bDir);
     const crossLenSq = cross.lengthSq();
     if (crossLenSq > 1e-16) {
-      return Math.abs(new THREE.Vector3().subVectors(bOrigin, aOrigin).dot(cross)) /
-        Math.sqrt(crossLenSq);
+      return (
+        Math.abs(new THREE.Vector3().subVectors(bOrigin, aOrigin).dot(cross)) /
+        Math.sqrt(crossLenSq)
+      );
     }
     return new THREE.Vector3()
       .subVectors(bOrigin, aOrigin)
@@ -2681,7 +2742,10 @@ export function createViewer(container: HTMLElement): Viewer {
         }
 
         // Build undirected edge map -> adjacent faces
-        const edgeMap = new Map<string, { a: number; b: number; faces: number[] }>();
+        const edgeMap = new Map<
+          string,
+          { a: number; b: number; faces: number[] }
+        >();
         for (let f = 0; f < faceCount; f++) {
           const ia = indexArr[f * 3];
           const ib = indexArr[f * 3 + 1];
@@ -2769,13 +2833,17 @@ export function createViewer(container: HTMLElement): Viewer {
             weightSum += w;
           }
           curvatureScore[fi] = weightSum > 0 ? weightedAngleSum / weightSum : 0;
-          if (neighbors[fi].length >= 2 && Number.isFinite(curvatureScore[fi])) {
+          if (
+            neighbors[fi].length >= 2 &&
+            Number.isFinite(curvatureScore[fi])
+          ) {
             scoreSamples.push(curvatureScore[fi]);
           }
         }
         if (scoreSamples.length === 0) {
           for (let fi = 0; fi < faceCount; fi++) {
-            if (Number.isFinite(curvatureScore[fi])) scoreSamples.push(curvatureScore[fi]);
+            if (Number.isFinite(curvatureScore[fi]))
+              scoreSamples.push(curvatureScore[fi]);
           }
         }
 
@@ -2883,7 +2951,10 @@ export function createViewer(container: HTMLElement): Viewer {
             );
           }
         }
-        const seamPositionsDeduped = dedupeSegmentPositions(seamPositions, epsSegment);
+        const seamPositionsDeduped = dedupeSegmentPositions(
+          seamPositions,
+          epsSegment,
+        );
 
         let seamObj: THREE.LineSegments | null = null;
         try {
@@ -2927,7 +2998,10 @@ export function createViewer(container: HTMLElement): Viewer {
         for (let fi = 0; fi < faceCount; fi++) {
           curvedFaceMask[fi] = isCurved[fi] === 1 ? 1 : 0;
         }
-        const curvedComponents = buildFaceComponents(curvedFaceMask, faceAdjacency);
+        const curvedComponents = buildFaceComponents(
+          curvedFaceMask,
+          faceAdjacency,
+        );
         const holeDepthPositions: number[] = [];
         const diagForFilters = Math.max(modelDiagonal, 1e-6);
         const axisClusterEps = Math.max(modelDiagonal * 1e-4, 1e-6);
@@ -3032,7 +3106,8 @@ export function createViewer(container: HTMLElement): Viewer {
           if (!(length > 0.1 * diagForFilters)) continue;
           if (!(radius < 0.25 * diagForFilters)) continue;
           if (!(length / radiusDenom > 1.0)) continue;
-          const avgConcavity = concavityCount > 0 ? concavitySum / concavityCount : 0;
+          const avgConcavity =
+            concavityCount > 0 ? concavitySum / concavityCount : 0;
           if (!(avgConcavity < -0.2)) continue;
 
           cylinderCandidates.push({
@@ -3079,13 +3154,19 @@ export function createViewer(container: HTMLElement): Viewer {
             up.set(1, 0, 0);
           }
           const u = up.sub(
-            vecTempB.copy(chosen.axisDir).multiplyScalar(up.dot(chosen.axisDir)),
+            vecTempB
+              .copy(chosen.axisDir)
+              .multiplyScalar(up.dot(chosen.axisDir)),
           );
           if (u.lengthSq() <= 1e-12) continue;
           u.normalize();
 
-          const axisMin = vecTempA.copy(chosen.axisDir).multiplyScalar(chosen.tMin);
-          const axisMax = vecTempB.copy(chosen.axisDir).multiplyScalar(chosen.tMax);
+          const axisMin = vecTempA
+            .copy(chosen.axisDir)
+            .multiplyScalar(chosen.tMin);
+          const axisMax = vecTempB
+            .copy(chosen.axisDir)
+            .multiplyScalar(chosen.tMax);
           const radial = u.clone().multiplyScalar(chosen.radius);
 
           const p0 = chosen.axisOrigin.clone().add(radial).add(axisMin);
@@ -3346,7 +3427,9 @@ export function createViewer(container: HTMLElement): Viewer {
         /* ignore */
       }
     };
-    const toMetallicDoubleSided = (material: THREE.Material): THREE.Material => {
+    const toMetallicDoubleSided = (
+      material: THREE.Material,
+    ): THREE.Material => {
       let next = material;
       const isCompatible =
         material instanceof THREE.MeshStandardMaterial ||
@@ -3364,9 +3447,7 @@ export function createViewer(container: HTMLElement): Viewer {
       if (!child.isMesh) return;
       const mesh = child as THREE.Mesh;
       if (Array.isArray(mesh.material)) {
-        mesh.material = mesh.material.map((mat) =>
-          toMetallicDoubleSided(mat),
-        );
+        mesh.material = mesh.material.map((mat) => toMetallicDoubleSided(mat));
       } else if (mesh.material) {
         mesh.material = toMetallicDoubleSided(mesh.material);
       }
@@ -4016,6 +4097,9 @@ export function createViewer(container: HTMLElement): Viewer {
     setControlsPreset,
     setShowViewCube: (visible: boolean) => {
       cubeWrapper.style.display = visible ? "block" : "none";
+    },
+    setShowHomeButton: (visible: boolean) => {
+      homeBtn.style.display = visible ? "flex" : "none";
     },
   };
 }

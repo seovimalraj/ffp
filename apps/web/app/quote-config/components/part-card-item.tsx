@@ -339,6 +339,7 @@ export function PartCardItem({
               className="h-full w-full"
               zoom={0.8}
               showViewCube={false}
+              showHomeButton={false}
               showFlatParts={false}
               {...(!part.snapshot_2d_url && {
                 onSnapshot: async (snapshot) => {
@@ -1088,6 +1089,7 @@ export function PartCardSkeleton({
                 file={part.fileObject || part.filePath}
                 className="h-full w-full"
                 zoom={0.8}
+                showHomeButton={false}
                 showViewCube={false}
                 showFlatParts={false}
               />

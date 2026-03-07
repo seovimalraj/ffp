@@ -85,9 +85,11 @@ interface FileWithUrl extends File {
 
 function UploadIdHandler({
   onFilesFetched,
+  handleUploadAndAuth,
   setIsUploading,
 }: {
   onFilesFetched: (files: FileWithUrl[]) => void;
+  handleUploadAndAuth: (files?: FileWithUrl[]) => void;
   setIsUploading: (loading: boolean) => void;
 }) {
   const searchParams = useSearchParams();
@@ -106,27 +108,36 @@ function UploadIdHandler({
 
           if (urls.length === 0) return;
 
-          const downloadedFiles = await Promise.all(
+          // Process files in parallel but report back as each one completes
+          const downloadedFiles: FileWithUrl[] = [];
+          await Promise.all(
             urls.map(async (url: string) => {
-              const fetchRes = await fetch(url);
-              const blob = await fetchRes.blob();
+              try {
+                const fetchRes = await fetch(url);
+                const blob = await fetchRes.blob();
 
-              // Extract filename
-              const parsedName = url.split("/").pop() || "file";
-              // Remove signature/query params if any
-              const cleanName = parsedName.split("?")[0];
-              const decodedName = decodeURIComponent(cleanName);
+                // Extract filename
+                const parsedName = url.split("/").pop() || "file";
+                // Remove signature/query params if any
+                const cleanName = parsedName.split("?")[0];
+                const decodedName = decodeURIComponent(cleanName);
 
-              const file = new File([blob], decodedName, {
-                type: blob.type,
-              }) as FileWithUrl;
-              file.alreadyUploadedUrl = url;
-              return file;
+                const file = new File([blob], decodedName, {
+                  type: blob.type,
+                }) as FileWithUrl;
+                file.alreadyUploadedUrl = url;
+                downloadedFiles.push(file);
+                onFilesFetched([file]);
+              } catch (err) {
+                console.error(`Failed to download file from ${url}:`, err);
+              }
             }),
           );
 
-          onFilesFetched(downloadedFiles);
           window.history.replaceState({}, "", "/instant-quote");
+          if (downloadedFiles.length > 0) {
+            await handleUploadAndAuth(downloadedFiles);
+          }
         } catch (error) {
           console.error("Failed to fetch uploaded files:", error);
           notify.error("Failed to load your uploaded widget files.");
@@ -172,6 +183,7 @@ export default function InstantQuotePage() {
   const { upload } = useFileUpload();
   // Ref to track that we should trigger upload once session becomes authenticated
   const pendingUploadRef = useRef(false);
+  const triggerUploadRef = useRef(false);
 
   // After OTP verification, session.update() is async — the React session state
   // won't be "authenticated" until the next render. This effect watches for that
@@ -182,6 +194,13 @@ export default function InstantQuotePage() {
       handleUploadAndAuth();
     }
   }, [session.status]);
+
+  useEffect(() => {
+    if (triggerUploadRef.current) {
+      triggerUploadRef.current = false;
+      handleUploadAndAuth();
+    }
+  }, [triggerUploadRef]);
 
   const onDrop = useCallback(
     (acceptedFiles: File[]) => {
@@ -204,8 +223,9 @@ export default function InstantQuotePage() {
     setFiles((prev) => prev.filter((_, i) => i !== index));
   };
 
-  const handleUploadAndAuth = async () => {
-    if (files.length === 0) {
+  const handleUploadAndAuth = async (passedFiles?: FileWithUrl[]) => {
+    const filesToUpload = passedFiles || files;
+    if (filesToUpload.length === 0) {
       notify.error("Please select at least one file");
       return;
     }
@@ -215,7 +235,7 @@ export default function InstantQuotePage() {
 
     try {
       const results = await Promise.all(
-        files.map((file) =>
+        filesToUpload.map((file) =>
           limit(async () => {
             try {
               // 1. Upload to storage (reuse URL if already uploaded)
@@ -505,6 +525,7 @@ export default function InstantQuotePage() {
           onFilesFetched={(downloadedFiles) => {
             setFiles((prev) => [...prev, ...downloadedFiles]);
           }}
+          handleUploadAndAuth={handleUploadAndAuth}
           setIsUploading={setIsUploading}
         />
       </Suspense>
@@ -697,7 +718,7 @@ export default function InstantQuotePage() {
                   </div>
                 )}
 
-                {files.length === 0 ? (
+                {files.length === 0 && !isUploading ? (
                   /* Empty State */
                   <div className="text-center space-y-6 animate-in fade-in zoom-in-95 duration-500 relative z-10">
                     <div className="relative inline-flex mb-4 group-hover:scale-105 transition-transform duration-300">
@@ -732,23 +753,52 @@ export default function InstantQuotePage() {
                   <div className="w-full max-w-2xl mx-auto space-y-4 animate-in slide-in-from-bottom-4 duration-500">
                     <div className="flex items-center justify-between mb-6">
                       <h3 className="text-slate-600 font-medium flex items-center gap-2">
-                        <FileText className="w-4 h-4" />
-                        {files.length} Files Selected
+                        {isUploading && files.length === 0 ? (
+                          <>
+                            <Loader2 className="w-4 h-4 animate-spin text-blue-600" />
+                            Fetching your files...
+                          </>
+                        ) : (
+                          <>
+                            <FileText className="w-4 h-4" />
+                            {files.length} Files Selected
+                          </>
+                        )}
                       </h3>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setFiles([]);
-                        }}
-                        className="text-red-400 hover:text-red-600 hover:bg-red-50 text-xs"
-                      >
-                        Clear All
-                      </Button>
+                      {files.length > 0 && (
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setFiles([]);
+                          }}
+                          className="text-red-400 hover:text-red-600 hover:bg-red-50 text-xs"
+                        >
+                          Clear All
+                        </Button>
+                      )}
                     </div>
 
                     <div className="space-y-3 max-h-[300px] overflow-y-auto pr-2 custom-scrollbar">
+                      {isUploading && files.length === 0 && (
+                        <>
+                          {[1, 2, 3].map((i) => (
+                            <div
+                              key={i}
+                              className="flex items-center justify-between p-4 bg-slate-50/50 rounded-xl border border-slate-100 animate-pulse"
+                            >
+                              <div className="flex items-center gap-4">
+                                <div className="w-10 h-10 rounded-lg bg-slate-200" />
+                                <div className="space-y-2">
+                                  <div className="h-4 w-32 bg-slate-200 rounded" />
+                                  <div className="h-3 w-16 bg-slate-200 rounded" />
+                                </div>
+                              </div>
+                            </div>
+                          ))}
+                        </>
+                      )}
                       {files.map((file, idx) => {
                         const canPreview = [
                           "stl",
@@ -821,14 +871,16 @@ export default function InstantQuotePage() {
                         Add More
                       </Button>
                       <Button
-                        onClick={handleUploadAndAuth}
+                        onClick={() => handleUploadAndAuth()}
                         disabled={isUploading}
                         className="w-full sm:w-auto bg-blue-600 hover:bg-blue-700 text-white shadow-lg shadow-blue-600/20"
                       >
                         {isUploading ? (
                           <>
                             <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                            Analysing Geometry...
+                            {files.length === 0
+                              ? "Fetching Files..."
+                              : "Analysing Geometry..."}
                           </>
                         ) : (
                           <>
