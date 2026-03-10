@@ -604,6 +604,12 @@ class ProcessClassifier:
         # A 6mm thick part needs AR >= 12 to be considered flat sheet
         thickness_penalty = max(0, (min_dim - 4.0) / 2.0)  # 0 for <=4mm, increases for thicker
         required_ar = 8.0 + thickness_penalty * 2.0
+        
+        # FIX: For parts > 6mm, they are ALWAYS plate/CNC, not sheet metal
+        if min_dim > SHEET_METAL_MAX_THICKNESS:
+            logger.info("Flat sheet rejected: thickness %.1fmm > max sheet thickness %.1fmm", min_dim, SHEET_METAL_MAX_THICKNESS)
+            return None
+
         is_flat_profile = aspect_ratio >= required_ar
 
         # 3. Very high aspect ratio is almost certainly sheet metal
@@ -1096,8 +1102,9 @@ class ProcessClassifier:
         # Only override to CNC if truly solid AND no bends detected
         # Bent sheet metal enclosures have high volume efficiency in bbox
         # Check both STEP-extracted bends and heuristic bends
-        is_truly_solid = (self.metrics.volume_efficiency > 0.75
-                          and aspect_ratio < 5
+        # REFINED: Larger AR parts (up to 12) can still be machined strips/rails
+        is_truly_solid = (self.metrics.volume_efficiency > 0.70
+                          and aspect_ratio < 12.0
                           and not has_actual_bends)
         if is_truly_solid:
             metadata['classification_method'] = 'advanced_analysis_cnc_guard'
@@ -1449,7 +1456,8 @@ class ProcessClassifier:
         A flat sheet (thin + high AR) naturally fills its bounding box,
         giving vol_eff ≈ 1.0, which should NOT trigger CNC classification.
         """
-        if min_dim >= 8 or aspect_ratio <= 5:
+        # REFINED: Standard sheet metal max is 6mm. Parts > 6mm are typically CNC/Plate.
+        if min_dim > SHEET_METAL_MAX_THICKNESS or aspect_ratio <= 5:
             return None
 
         # FIXED: Don't classify as CNC based on volume efficiency alone
@@ -1468,13 +1476,18 @@ class ProcessClassifier:
             })
 
         # Machining features override dimension-based sheet metal
-        if self._machining_feature_score >= 40:
+        # REFINED: Use feature_cnc_score if available for better sensitivity
+        feature_score = self._machining_feature_score
+        if hasattr(self, '_feature_signals') and self._feature_signals:
+            feature_score = max(feature_score, self._feature_signals.feature_cnc_score - 15)
+
+        if feature_score >= 40:
             return ('cnc_milling', 0.78, {
                 **metadata,
                 'classification_method': 'dimension_cnc_feature_override',
                 'reasoning': (
                     f"DIMENSION-BASED: Thin profile ({min_dim:.2f}mm) but "
-                    f"machining feature score {self._machining_feature_score:.0f} — CNC"
+                    f"machining feature score {feature_score:.0f} — CNC"
                 ),
             })
 
