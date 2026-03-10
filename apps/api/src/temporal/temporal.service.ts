@@ -306,4 +306,35 @@ export class TemporalService implements OnModuleInit {
       throw error;
     }
   }
+
+  async startSupplierAssignmentWorkflow(data: {
+    orderId: string;
+    supplierEmail: string;
+  }) {
+    try {
+      if (!this.client) {
+        throw new Error('Temporal client not initialized');
+      }
+
+      const handle = await this.client.workflow.start(
+        TemporalEvents.SupplierAssignmentWorkflow,
+        {
+          taskQueue: TaskQueues.CoreTaskQueue,
+          workflowId: `supplier-assign-${data.orderId}-${Date.now()}`,
+          args: [data],
+        },
+      );
+
+      this.logger.log(
+        `Started supplier assignment workflow: ${handle.workflowId}`,
+      );
+      return handle;
+    } catch (error) {
+      this.logger.error(
+        'Failed to start supplier assignment workflow:',
+        error.message,
+      );
+      throw error;
+    }
+  }
 }

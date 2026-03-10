@@ -16,9 +16,10 @@ import {
 } from "@/app/portal/orders/[orderId]/page";
 import Documents from "@/app/portal/orders/[orderId]/components/documents";
 import { AddressFlow } from "@/components/ui/animated-flow";
-import { Check, Pencil, X } from "lucide-react";
+import { Check, Pencil, UserPlus, X } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { notify } from "@/lib/toast";
+import { AssignSupplierModal } from "./components/AssignSupplierModal";
 
 /* =======================
    TYPES (FROM API)
@@ -100,6 +101,7 @@ export default function OrderPage() {
   // Tracking Edit State
   const [isEditingTracking, setIsEditingTracking] = useState(false);
   const [tempTracking, setTempTracking] = useState("");
+  const [isAssignModalOpen, setIsAssignModalOpen] = useState(false);
 
   const handleUpdateTracking = async () => {
     if (!tempTracking) return;
@@ -164,11 +166,21 @@ export default function OrderPage() {
     <div className="relative max-w-7xl h-full mx-auto px-2 py-3 space-y-10">
       {/* HEADER */}
       <div className="space-y-1">
-        <div className="flex items-center gap-3">
-          <h1 className="text-2xl font-semibold text-slate-900">
-            {data.order.order_code}
-          </h1>
-          <StatusPill status={data.order.status} />
+        <div className="flex items-center justify-between gap-3">
+          <div className="flex items-center gap-3">
+            <h1 className="text-2xl font-semibold text-slate-900">
+              {data.order.order_code}
+            </h1>
+            <StatusPill status={data.order.status} />
+          </div>
+          <button
+            onClick={() => setIsAssignModalOpen(true)}
+            className="flex items-center gap-2 px-3 py-1.5 text-xs font-semibold text-indigo-600 bg-indigo-50 hover:bg-indigo-100 rounded-lg transition-colors border border-indigo-200"
+            title="Assign Supplier"
+          >
+            <UserPlus className="w-4 h-4" />
+            <span>Assign Supplier</span>
+          </button>
         </div>
       </div>
       {/* TABS */}
@@ -486,6 +498,14 @@ export default function OrderPage() {
           onClose={() => setSelectedPart(null)}
         />
       )}
+
+      {/* ASSIGN SUPPLIER MODAL */}
+      <AssignSupplierModal
+        isOpen={isAssignModalOpen}
+        onClose={() => setIsAssignModalOpen(false)}
+        orderId={orderId}
+        onAssigned={() => fetchData(true)}
+      />
     </div>
   );
 }

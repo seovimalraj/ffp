@@ -21,13 +21,15 @@ create index idx_users_email on users (email);
 -- --
 -- Organizationsstock_material_type
 -- --
-CREATE TABLE IF NOT EXISTS organizations { id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-name VARCHAR(255) NOT NULL,
-display_name VARCHAR(255),
-address TEXT,
-organization_type TEXT NOT NULL DEFAULT 'customer',
-created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP };
+CREATE TABLE IF NOT EXISTS organizations ( 
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    name VARCHAR(255) NOT NULL,
+    display_name VARCHAR(255),
+    address TEXT,
+    organization_type TEXT NOT NULL DEFAULT 'customer',
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP 
+);
 -- --
 -- Refresh Tokens
 -- --
@@ -38,7 +40,9 @@ CREATE table IF NOT EXISTS refresh_tokens (
     created_at timestamp default now(),
     expires_at timestamp,
     updated_at timestamp default now()
-) CREATE TABLE IF NOT EXISTS referral_sources (
+);
+
+CREATE TABLE IF NOT EXISTS referral_sources (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     source TEXT NOT NULL,

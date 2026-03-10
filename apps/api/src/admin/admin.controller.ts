@@ -200,4 +200,22 @@ export class AdminController {
       );
     }
   }
+
+  @Get('suppliers')
+  @Roles(RoleNames.Admin)
+  async getSuppliers() {
+    const client = this.supabaseService.getClient();
+
+    const { data, error } = await client
+      .from(Tables.OrganizationTable)
+      .select('id, name, organization_type, users(email, name)')
+      .eq('organization_type', 'supplier');
+
+    if (error) {
+      this.logger.error({ error }, 'Failed to fetch suppliers');
+      throw new InternalServerErrorException('Failed to fetch suppliers');
+    }
+
+    return { suppliers: data ?? [] };
+  }
 }

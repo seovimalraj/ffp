@@ -1,12 +1,8 @@
 "use client";
 
 import {
-  TrendingUp,
-  Package,
-  Clock,
   FileText,
   ArrowRight,
-  Plus,
   Rocket,
   MessageSquare,
   RefreshCw,
@@ -229,8 +225,7 @@ export default function CustomerDashboardPage() {
         {[
           {
             title: "Get a new quote",
-            description:
-              "Instant pricing for CNC, Injection Molding, 3D Printing, and Sheet Metal.",
+            description: "Instant pricing for CNC and Sheet Metal.",
             icon: Rocket,
             href: "/instant-quote",
             action: "New Quote",

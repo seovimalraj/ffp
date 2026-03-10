@@ -12,7 +12,7 @@ export default function NotFoundPage() {
   };
 
   const handleGoHome = () => {
-    router.push("/portal");
+    router.push("/portal/dashboard");
   };
 
   return (

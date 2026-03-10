@@ -6,3 +6,4 @@ export * from "./order-part-status-change.workflow.js";
 export * from "./technical-support.workflow.js";
 export * from "./process-part-geometry.workflow.js";
 export * from "./production-request.workflow.js";
+export * from "./supplier-assignment.workflow.js";

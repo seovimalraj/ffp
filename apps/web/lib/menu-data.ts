@@ -43,72 +43,16 @@ export interface MenuSection {
 
 export const menuSections: MenuSection[] = [
   {
-    title: "Material Store",
-    slug: "material-store",
-    icon: Package,
+    title: "RFQ & Procurement",
+    slug: "rfq-procurement",
+    icon: FileQuestion,
     items: [
-      {
-        label: "Warehouses",
-        slug: "warehouse",
-        route: "/supplier/warehouse",
-        icon: Warehouse,
-      },
-      {
-        label: "Materials",
-        slug: "materials",
-        route: "/supplier/warehouse/materials",
-        icon: Package,
-      },
-      {
-        label: "Machines",
-        slug: "machines",
-        route: "/404?dev=true",
-        icon: Cog,
-      },
-      {
-        label: "Finishes",
-        slug: "finishes",
-        route: "/supplier/finishes",
-        icon: Sparkles,
-      },
       {
         label: "Dashboard",
         slug: "dashboard",
         route: "/supplier/dashboard",
         icon: LayoutDashboard,
       },
-    ],
-  },
-  {
-    title: "Capacity Management",
-    slug: "capacity",
-    icon: CalendarClock,
-    items: [
-      {
-        label: "Machine Details",
-        slug: "machine-details",
-        route: "/supplier/capacity/machines",
-        icon: Cog,
-      },
-      {
-        label: "Tolerance",
-        slug: "machine-details",
-        route: "/supplier/capacity/tolerance",
-        icon: Cog,
-      },
-      {
-        label: "Inspection",
-        slug: "inspection",
-        route: "/supplier/capacity/inspection",
-        icon: BadgeCheck,
-      },
-    ],
-  },
-  {
-    title: "RFQ & Procurement",
-    slug: "rfq-procurement",
-    icon: FileQuestion,
-    items: [
       {
         label: "RFQs",
         slug: "rfqs",
@@ -138,6 +82,62 @@ export const menuSections: MenuSection[] = [
         slug: "quote-history",
         route: "/rfq-procurement/quote-history",
         icon: History,
+      },
+    ],
+  },
+  {
+    title: "Material Store",
+    slug: "material-store",
+    icon: Package,
+    items: [
+      {
+        label: "Warehouses",
+        slug: "warehouse",
+        route: "/supplier/warehouse",
+        icon: Warehouse,
+      },
+      {
+        label: "Materials",
+        slug: "materials",
+        route: "/supplier/warehouse/materials",
+        icon: Package,
+      },
+      {
+        label: "Machines",
+        slug: "machines",
+        route: "/404?dev=true",
+        icon: Cog,
+      },
+      {
+        label: "Finishes",
+        slug: "finishes",
+        route: "/supplier/finishes",
+        icon: Sparkles,
+      },
+    ],
+  },
+  {
+    title: "Capacity Management",
+    slug: "capacity",
+    icon: CalendarClock,
+    items: [
+      {
+        label: "Machine Details",
+        slug: "machine-details",
+        route: "/supplier/capacity/machines",
+        icon: Cog,
+      },
+      {
+        label: "Tolerance",
+        slug: "machine-details",
+        route: "/supplier/capacity/tolerance",
+        icon: Cog,
+      },
+      {
+        label: "Inspection",
+        slug: "inspection",
+        route: "/supplier/capacity/inspection",
+        icon: BadgeCheck,
       },
     ],
   },

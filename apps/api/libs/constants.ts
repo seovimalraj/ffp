@@ -110,6 +110,7 @@ export enum TemporalEvents {
   TechnicalSupportWorkflow = 'technicalSupportWorkflow',
   CADProcessingWorkflow = 'cadProcessingWorkflow',
   ProductionRequestWorkflow = 'productionRequestWorkflow',
+  SupplierAssignmentWorkflow = 'supplierAssignmentWorkflow',
 }
 
 /**
