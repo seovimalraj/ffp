@@ -6,10 +6,8 @@ import { usePathname, useRouter } from "next/navigation";
 import AppHeader from "@/layout/AppHeader";
 import { cn } from "@/lib/utils";
 import {
-  LayoutDashboard,
   FileText,
   ShoppingCart,
-  User,
   Zap,
   Menu,
   ChevronLeft,
@@ -30,7 +28,7 @@ const primaryNav = [
   { label: "Home", href: "/portal/dashboard", icon: House },
   { label: "Quotes", href: "/portal/quotes", icon: FileText },
   { label: "Orders", href: "/portal/orders", icon: ShoppingCart },
-  { label: "Account", href: "/portal/account", icon: User },
+  // { label: "Account", href: "/portal/account", icon: User },
   { label: "Requests", href: "/portal/requests", icon: BadgeInfo },
   {
     label: "Part Library",

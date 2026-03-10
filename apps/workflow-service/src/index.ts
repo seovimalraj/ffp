@@ -9,14 +9,21 @@ import { Worker, NativeConnection } from "@temporalio/worker";
 import { logger } from "./lib/logger.js";
 import * as activities from "./activities/index.js";
 
+/**
+ * =========================
+ * 1️⃣ APP SETUP
+ * =========================
+ */
+
 const app = new Hono();
 const port = config.port;
 
 /**
- * ==========================
- * 1️⃣ LOGGER
- * ==========================
+ * =========================
+ * 2️⃣ LOGGER
+ * =========================
  */
+
 app.use(
   pinoLogger({
     pino: logger,
@@ -24,10 +31,11 @@ app.use(
 );
 
 /**
- * ======================
- * 2️⃣ CORS
- * ======================
+ * =========================
+ * 3️⃣ CORS
+ * =========================
  */
+
 app.use(
   "/*",
   cors({
@@ -43,36 +51,60 @@ app.use(
 );
 
 /**
- * =========
- * 3️⃣ ROUTES
- * =========
+ * =========================
+ * 4️⃣ ROUTES
+ * =========================
  */
+
 app.get("/", (c) => {
   return c.text("FFP Workflow Service (Worker + API) is running!");
 });
 
+app.get("/health", (c) => {
+  return c.json({
+    status: "ok",
+    service: "workflow-service",
+  });
+});
+
 /**
- * ======================
- * 4️⃣ TEMPORAL WORKER
- * ======================
+ * =========================
+ * 5️⃣ TEMPORAL CONNECTION
+ * =========================
  */
+
+let temporalConnection: NativeConnection | null = null;
+
+async function getTemporalConnection() {
+  if (!temporalConnection) {
+    temporalConnection = await NativeConnection.connect({
+      address: config.temporal.address,
+    });
+
+    logger.info("Connected to Temporal server");
+  }
+
+  return temporalConnection;
+}
+
+/**
+ * =========================
+ * 6️⃣ WORKER STARTUP
+ * =========================
+ */
+
 async function startWorker(
   taskQueue: string,
   options: { maxActivities?: number; maxWorkflows?: number } = {},
 ) {
   try {
-    // Establish connection to Temporal server
-    const connection = await NativeConnection.connect({
-      address: config.temporal.address,
-    });
+    const connection = await getTemporalConnection();
 
-    // Determine the absolute path to the workflow file
-    // Note: In development with tsx, we use .ts; in production (dist), we use .js
     const workflowsPath = fileURLToPath(
       new URL(
-        import.meta.url.endsWith(".ts")
-          ? "./workflows/index.ts"
-          : "./workflows/index.js",
+        process.env.NODE_ENV === "production"
+          ? "./workflows/index.js"
+          : "./workflows/index.ts",
         import.meta.url,
       ),
     );
@@ -83,34 +115,88 @@ async function startWorker(
       activities,
       taskQueue,
 
-      maxConcurrentActivityTaskExecutions: options.maxActivities || 3,
-      maxConcurrentWorkflowTaskExecutions: options.maxWorkflows || 3,
+      maxConcurrentActivityTaskExecutions: options.maxActivities ?? 3,
+      maxConcurrentWorkflowTaskExecutions: options.maxWorkflows ?? 3,
     });
 
-    logger.info(
-      `Temporal Worker [${taskQueue}] is online and listening for tasks...`,
-    );
+    logger.info({ taskQueue }, "Temporal worker started and polling for tasks");
+
     await worker.run();
   } catch (err: any) {
-    logger.error(
-      { err: err.message, taskQueue },
-      `Temporal Worker [${taskQueue}] failed to start`,
-    );
+    logger.error({ err, taskQueue }, "Temporal worker failed to start");
+
+    throw err;
   }
 }
-async function startServer() {
-  logger.info("Starting workflow service (Worker mode)...");
 
-  // Start Temporal Workers in background (one per task queue)
-  startWorker("quote-tasks");
-  startWorker("cad-tasks", { maxActivities: 2, maxWorkflows: 2 });
-  // Start Hono Server (for health checks and potentially direct triggers)
+/**
+ * =========================
+ * 7️⃣ WORKER CONFIG
+ * =========================
+ */
+
+const workers = [
+  {
+    name: "quote-tasks",
+    options: {
+      maxActivities: 4,
+      maxWorkflows: 4,
+    },
+  },
+  {
+    name: "cad-tasks",
+    options: {
+      maxActivities: 2,
+      maxWorkflows: 2,
+    },
+  },
+];
+
+/**
+ * =========================
+ * 8️⃣ SERVER START
+ * =========================
+ */
+
+async function startServer() {
+  logger.info("Starting workflow service (Worker + API mode)...");
+
+  // Start workers
+  for (const worker of workers) {
+    startWorker(worker.name, worker.options).catch((err) => {
+      logger.error({ err, worker: worker.name }, "Worker crashed");
+    });
+  }
+
+  // Start HTTP server
   serve({
     fetch: app.fetch,
     port,
   });
 
-  logger.info(`Server listening on ${port}`);
+  logger.info({ port }, "HTTP server started");
 }
+
+/**
+ * =========================
+ * 9️⃣ GRACEFUL SHUTDOWN
+ * =========================
+ */
+
+process.on("SIGTERM", () => {
+  logger.info("SIGTERM received. Shutting down service.");
+  process.exit(0);
+});
+
+process.on("SIGINT", () => {
+  logger.info("SIGINT received. Shutting down service.");
+  process.exit(0);
+});
+
+/**
+ * =========================
+ * 🔟 BOOT
+ * =========================
+ */
 
 startServer();

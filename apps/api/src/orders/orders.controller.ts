@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   Body,
   Controller,
   Delete,
@@ -27,6 +28,7 @@ import { ShippingAddressService } from './shipping-address.service';
 import { SupabaseService } from 'src/supabase/supabase.service';
 import { RoleNames, SQLFunctions, Tables } from '../../libs/constants';
 import { OrderService } from './order.service';
+import { TemporalService } from 'src/temporal/temporal.service';
 import { RolesGuard } from 'src/auth/roles.guard';
 import { Roles } from 'src/auth/roles.decorator';
 
@@ -39,6 +41,7 @@ export class OrdersController {
     private readonly supabaseService: SupabaseService,
     private readonly shippingAddressService: ShippingAddressService,
     private readonly ordersService: OrderService,
+    private readonly temporalService: TemporalService,
   ) {}
 
   @Get()
@@ -382,6 +385,71 @@ export class OrdersController {
       this.logger.error(`Webhook error: ${err.message}`);
       return { received: true }; // Always return 200 to PayPal
     }
+  }
+
+  @Post(':orderId/assign-supplier')
+  @Roles(RoleNames.Admin)
+  async assignSupplierToOrder(
+    @Param('orderId') orderId: string,
+    @Body() body: { supplierId: string; email: string },
+  ) {
+    const client = this.supabaseService.getClient();
+
+    const { supplierId, email } = body;
+
+    if (!supplierId) {
+      throw new BadRequestException('supplierId is required');
+    }
+
+    if (!email) {
+      throw new BadRequestException('email is required');
+    }
+
+    // Verify supplier exists
+    const { data: supplier, error: supplierError } = await client
+      .from(Tables.OrganizationTable)
+      .select('id')
+      .eq('id', supplierId)
+      .eq('organization_type', 'supplier')
+      .single();
+
+    if (supplierError || !supplier) {
+      throw new BadRequestException('Invalid supplier');
+    }
+
+    // Update order
+    const { data, error } = await client
+      .from(Tables.OrdersTable)
+      .update({
+        assigned_supplier: supplierId,
+      })
+      .eq('id', orderId)
+      .select('id')
+      .single();
+
+    if (error || !data) {
+      this.logger.error({ error }, 'Error assigning supplier to order');
+      throw new InternalServerErrorException('Failed to assign supplier');
+    }
+
+    // Start Workflow to send email
+    try {
+      await this.temporalService.startSupplierAssignmentWorkflow({
+        orderId,
+        supplierEmail: email,
+      });
+    } catch (workflowError) {
+      this.logger.error(
+        { workflowError },
+        'Error starting supplier assignment workflow',
+      );
+      // We don't throw here to ensure the API returns success as the assignment happened in DB
+    }
+
+    return {
+      success: true,
+      message: 'Supplier assigned successfully',
+    };
   }
 
   @Patch('/part/:partId')

@@ -23,11 +23,16 @@ CREATE TABLE orders (
   updated_at TIMESTAMP DEFAULT now(),
   confirmed_at TIMESTAMP
 );
+
+ALTER TABLE orders
+ADD COLUMN assigned_supplier UUID REFERENCES organizations(id);
+
 CREATE INDEX idx_orders_org_id ON orders(organization_id);
 CREATE INDEX idx_orders_status ON orders(status);
 CREATE INDEX idx_orders_payment_status ON orders(payment_status);
 CREATE INDEX idx_orders_created_at ON orders(created_at DESC);
 CREATE INDEX idx_orders_order_code ON orders(order_code);
+CREATE INDEX idx_orders_assigned_supplier ON orders(assigned_supplier);
 --
 -- -- Order Sequence
 --
