@@ -140,6 +140,10 @@ export enum Tables {
   OrganizationAgreementsTable = "organization_agreements",
 
   OrderDocumentsTable = "order_documents",
+
+  OrderStatusChangeRequests = "order_status_change_requests",
+
+  SupplierAssignments = "supplier_assignments",
 }
 
 export const LOGO_URL =

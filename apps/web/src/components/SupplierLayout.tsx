@@ -5,13 +5,16 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import AppHeader from "@/layout/AppHeader";
 import { cn } from "@/lib/utils";
-import { Factory, ChevronLeft, ChevronRight, X, LogOut } from "lucide-react";
-import { signOut } from "next-auth/react";
+import { ChevronLeft, X, LogOut, Menu } from "lucide-react";
+import { signOut, useSession } from "next-auth/react";
 import { usePermissions } from "@/components/hooks/use-permissions";
 import { PermissionsNames } from "@cnc-quote/shared";
 import MegaMenu from "@/components/ui/mega-menu";
 import { useMegaMenu } from "@/hooks/use-mega-menu";
 import { useActiveMenuSection } from "@/lib/hooks/use-active-menu-section";
+import Logo from "@/components/ui/logo";
+import UserDropdown from "@/components/Header/UserDropdown";
+import NotificationDropdown from "@/components/Header/NotificationDropdown";
 
 interface SupplierLayoutProps {
   readonly children: React.ReactNode;
@@ -37,6 +40,7 @@ export default function SupplierLayout({
   const pathname = usePathname();
   const [mobileOpen, setMobileOpen] = useState(false);
   const [desktopOpen, setDesktopOpen] = useState(true);
+  const { data: session } = useSession();
   const { isOpen: isMegaMenuOpen, setIsOpen: setIsMegaMenuOpen } =
     useMegaMenu();
   const { hasPermission, isLoading } = usePermissions();
@@ -56,139 +60,174 @@ export default function SupplierLayout({
   }
 
   return (
-    <div className="flex h-screen w-full overflow-hidden bg-gradient-to-br from-emerald-50 via-teal-50 to-green-50 dark:from-gray-950 dark:via-emerald-950 dark:to-teal-950">
+    <div className="flex h-screen w-full overflow-hidden bg-gradient-to-br from-gray-50 via-zinc-50 to-slate-50 dark:from-gray-950 dark:via-zinc-950 dark:to-gray-900">
       <aside
         className={cn(
-          "bg-white/80 backdrop-blur-xl dark:bg-gray-900/80 border-r border-gray-200/50 dark:border-gray-800/50 flex flex-col fixed top-0 left-0 h-full z-40 transition-all duration-300 shadow-xl",
+          "bg-white dark:bg-zinc-950 border-r border-zinc-200 dark:border-zinc-800 flex flex-col fixed top-0 left-0 h-full z-40 transition-all duration-300 ease-in-out shadow-[1px_0_10px_rgba(0,0,0,0.02)]",
           "lg:static lg:h-full",
           mobileOpen
-            ? "translate-x-0 w-64"
+            ? "translate-x-0 w-64 shadow-2xl"
             : "-translate-x-64 w-64 lg:translate-x-0",
-          desktopOpen ? "lg:w-64" : "lg:w-0 lg:overflow-hidden",
+          desktopOpen ? "lg:w-64" : "lg:w-[72px]",
         )}
       >
-        <div className="h-16 flex items-center px-6 font-bold text-lg tracking-tight border-b border-gray-200/50 dark:border-gray-800/50 bg-gradient-to-r from-emerald-600 to-teal-600 whitespace-nowrap">
+        <div className="h-16 flex items-center justify-between px-4 border-b border-zinc-50 dark:border-zinc-900">
           <Link
             href="/supplier/dashboard"
-            className="text-white flex items-center gap-2"
+            className={cn(
+              "flex items-center gap-2 transition-all duration-300 overflow-hidden",
+              desktopOpen ? "opacity-100 w-auto" : "lg:opacity-0 lg:w-0",
+            )}
           >
-            <Factory size={24} />
-            <span>Frigate Fast Parts</span>
+            <div className="h-10 w-auto flex-shrink-0">
+              <Logo classNames="h-full w-auto object-contain" />
+            </div>
           </Link>
 
-          <div className="ml-auto flex items-center gap-2">
-            {/* Mobile: close button inside sidebar header */}
+          <div className="flex items-center gap-1">
             <button
-              onClick={() => setMobileOpen(false)}
-              aria-label="Close menu"
-              className="lg:hidden inline-flex items-center justify-center rounded-md p-2 text-white hover:bg-white/10 transition"
+              onClick={() =>
+                mobileOpen ? setMobileOpen(false) : setDesktopOpen((o) => !o)
+              }
+              aria-label={desktopOpen ? "Collapse sidebar" : "Expand sidebar"}
+              className={cn(
+                "flex items-center justify-center w-8 h-8 rounded-lg hover:bg-zinc-50 dark:hover:bg-zinc-900 text-zinc-400 hover:text-zinc-600 transition-all duration-200",
+                !desktopOpen && "mx-auto lg:flex hidden",
+                mobileOpen && "lg:hidden flex",
+              )}
             >
-              <X size={16} />
-            </button>
-
-            {/* Desktop: collapse / expand the sidebar */}
-            <button
-              onClick={() => setDesktopOpen((o) => !o)}
-              aria-label="Toggle sidebar"
-              className="hidden lg:inline-flex items-center justify-center rounded-md p-2 text-white hover:bg-white/10 transition"
-            >
-              {desktopOpen ? (
-                <ChevronLeft size={18} />
+              {mobileOpen ? (
+                <X size={18} />
               ) : (
-                <ChevronRight size={18} />
+                <ChevronLeft
+                  size={18}
+                  className={cn(
+                    "transition-transform duration-300",
+                    !desktopOpen && "rotate-180",
+                  )}
+                />
               )}
             </button>
           </div>
         </div>
-        <nav className="flex-1 overflow-y-auto py-4 text-sm scrollbar-thin scrollbar-thumb-gray-300 dark:scrollbar-thumb-gray-700 invisible-scrollbar">
-          {filteredNav.section && (
-            <div className="px-6 pb-3">
-              <h2 className="text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">
-                {filteredNav.section.title}
-              </h2>
-            </div>
-          )}
 
-          <ul className="space-y-1 px-3">
-            {navItems.map((item) => {
-              const active =
-                pathname === item.route ||
-                pathname?.startsWith(item.route + "/");
-              const Icon = item.icon;
+        <nav className="flex-1 overflow-y-auto py-6 px-3 space-y-8 scrollbar-none invisible-scrollbar">
+          <div>
+            {filteredNav.section && desktopOpen && (
+              <div className="px-3 mb-2">
+                <h2 className="text-[11px] font-bold uppercase tracking-wider text-zinc-400 dark:text-zinc-500">
+                  {filteredNav.section.title}
+                </h2>
+              </div>
+            )}
 
-              return (
-                <li key={item.route}>
-                  <Link
-                    href={item.route}
-                    className={cn(
-                      "flex items-center gap-3 rounded-lg px-4 py-2.5 font-medium transition-all duration-200",
-                      active
-                        ? "bg-gradient-to-r from-emerald-600 to-teal-600 text-white shadow-lg shadow-emerald-500/30"
-                        : "text-gray-700 hover:bg-white dark:text-gray-300 dark:hover:bg-gray-800/50 hover:shadow-md",
-                    )}
-                  >
-                    <Icon size={18} className="size-5" />
-                    {item.label}
-                  </Link>
-                </li>
-              );
-            })}
-          </ul>
+            <ul className="space-y-1">
+              {navItems.map((item) => {
+                const active =
+                  pathname === item.route ||
+                  pathname?.startsWith(item.route + "/");
+                const Icon = item.icon;
+
+                return (
+                  <li key={item.route}>
+                    <Link
+                      href={item.route}
+                      className={cn(
+                        "flex items-center gap-3 rounded-xl px-3 py-2.5 text-[14px] font-medium transition-all duration-200 group relative",
+                        active
+                          ? "bg-violet-50/50 dark:bg-violet-900/10 text-violet-900 dark:text-violet-400"
+                          : "text-zinc-500 hover:bg-zinc-50 dark:hover:bg-zinc-900 hover:text-zinc-900 dark:hover:text-zinc-100",
+                        !desktopOpen && "lg:justify-center lg:px-0",
+                      )}
+                      title={!desktopOpen ? item.label : undefined}
+                    >
+                      <Icon
+                        size={20}
+                        className={cn(
+                          "flex-shrink-0 transition-colors",
+                          active
+                            ? "text-violet-900 dark:text-violet-400"
+                            : "text-zinc-400 group-hover:text-zinc-600 dark:group-hover:text-zinc-300",
+                        )}
+                      />
+                      <span
+                        className={cn(
+                          "transition-all duration-300 whitespace-nowrap overflow-hidden text-ellipsis",
+                          desktopOpen
+                            ? "opacity-100 max-w-[200px]"
+                            : "lg:opacity-0 lg:max-w-0 font-normal",
+                        )}
+                      >
+                        {item.label}
+                      </span>
+                      {active && desktopOpen && (
+                        <div className="absolute left-[-12px] top-1/2 -translate-y-1/2 w-1 h-6 bg-violet-600 rounded-r-full" />
+                      )}
+                    </Link>
+                  </li>
+                );
+              })}
+            </ul>
+          </div>
         </nav>
-        <div className="p-4 border-t border-gray-200/50 dark:border-gray-800/50 text-xs text-gray-500 dark:text-gray-400 bg-gray-50/50 dark:bg-gray-900/50 space-y-3">
-          <button
-            onClick={() => signOut({ callbackUrl: "/signin" })}
-            className="w-full flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm font-medium text-red-600 hover:bg-red-50 dark:hover:bg-red-950/30 transition-colors duration-200"
+
+        <div className="p-3 mt-auto border-t border-zinc-100 dark:border-zinc-900 bg-zinc-50/30">
+          <div
+            className={cn(
+              "flex items-center gap-2",
+              desktopOpen ? "justify-between" : "flex-col justify-center",
+            )}
           >
-            <LogOut size={16} />
-            Sign Out
-          </button>
-          <p className="font-semibold">
-            &copy; {new Date().getFullYear()} Frigate Fast Parts
-          </p>
-          <p className="space-x-2">
-            <Link
-              href="/legal/privacy"
-              className="hover:text-emerald-600 transition-colors"
-            >
-              Privacy
-            </Link>
-            <span>·</span>
-            <Link
-              href="/legal/terms"
-              className="hover:text-emerald-600 transition-colors"
-            >
-              Terms
-            </Link>
-          </p>
+            <div className="flex items-center gap-2">
+              <UserDropdown />
+              {desktopOpen && (
+                <div className="flex flex-col min-w-0">
+                  <span className="text-[13px] font-semibold text-zinc-900 dark:text-zinc-100 truncate">
+                    {session?.user?.name || "Account"}
+                  </span>
+                  <span className="text-[11px] text-zinc-500 truncate">
+                    Supplier Portal
+                  </span>
+                </div>
+              )}
+            </div>
+            {desktopOpen && (
+              <button
+                onClick={() => signOut({ callbackUrl: "/signin" })}
+                className="p-1.5 text-zinc-400 hover:text-red-500 transition-colors"
+                title="Sign Out"
+              >
+                <LogOut size={18} />
+              </button>
+            )}
+            <NotificationDropdown />
+          </div>
         </div>
       </aside>
 
-      <div className="flex flex-1 flex-col min-w-0 w-full">
-        <AppHeader
-          setOpen={() => setDesktopOpen((o) => !o)}
-          // isMegaMenuOpen={isMegaMenuOpen}
-          // setIsMegaMenuOpen={setIsMegaMenuOpen}
-        />
-        <main className="flex-1 overflow-y-auto w-full p-6 md:p-8">
-          {children}
+      <div className="flex flex-1 flex-col min-w-0 w-full overflow-hidden">
+        <AppHeader setOpen={() => setDesktopOpen((o) => !o)} />
+
+        <main className="flex-1 overflow-y-auto scroll-smooth">
+          <div className="max-w-[1600px] mx-auto p-4 lg:p-8">{children}</div>
         </main>
       </div>
 
+      {/* Mobile Floating Menu Button */}
       <button
         onClick={() => setMobileOpen((o) => !o)}
-        className="fixed bottom-6 left-6 z-50 rounded-full bg-gradient-to-r from-emerald-600 to-teal-600 text-white shadow-2xl px-6 py-3 lg:hidden hover:shadow-emerald-500/50 transition-all duration-300 hover:scale-105 font-medium"
+        className="fixed bottom-6 right-6 z-50 flex lg:hidden items-center justify-center w-12 h-12 rounded-full bg-violet-600 text-white shadow-lg shadow-violet-200 hover:bg-violet-700 transition-all active:scale-95"
       >
-        {mobileOpen ? "Close" : "Menu"}
+        {mobileOpen ? <ChevronLeft /> : <Menu />}
       </button>
 
-      <button
-        onClick={() => setDesktopOpen((o) => !o)}
-        className="hidden lg:fixed lg:flex bottom-6 left-6 right-auto z-50 rounded-full bg-gradient-to-r from-emerald-600 to-teal-600 text-white shadow-2xl px-4 py-3 hover:shadow-emerald-500/50 transition-all duration-300 hover:scale-105"
-        title="Toggle sidebar"
-      >
-        {desktopOpen ? "→" : "←"}
-      </button>
+      {/* Mobile Overlay */}
+      {mobileOpen && (
+        <div
+          className="fixed inset-0 bg-zinc-900/20 backdrop-blur-[2px] z-30 lg:hidden transition-all duration-300"
+          onClick={() => setMobileOpen(false)}
+        />
+      )}
 
       <MegaMenu
         isOpen={isMegaMenuOpen}

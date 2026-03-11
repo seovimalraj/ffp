@@ -1,5 +1,6 @@
 CREATE OR REPLACE FUNCTION get_orders (
-        p_organization_id UUID,
+        p_organization_id UUID DEFAULT NULL,
+        p_supplier_id UUID DEFAULT NULL,
         p_status TEXT DEFAULT NULL,
         p_payment_status TEXT DEFAULT NULL,
         p_rfq_id UUID DEFAULT NULL,
@@ -41,6 +42,10 @@ WHERE (
         OR o.organization_id = p_organization_id
     )
     AND (
+        p_supplier_id IS NULL
+        OR o.assigned_supplier = p_supplier_id
+    )
+    AND (
         p_status IS NULL
         OR o.status = p_status
     )
@@ -58,7 +63,8 @@ ORDER BY o.created_at DESC
 LIMIT p_limit OFFSET p_offset;
 $$;
 CREATE OR REPLACE FUNCTION get_orders_infinite (
-        p_organization_id UUID,
+        p_organization_id UUID DEFAULT NULL,
+        p_supplier_id UUID DEFAULT NULL,
         p_status TEXT DEFAULT NULL,
         p_payment_status TEXT DEFAULT NULL,
         p_rfq_id UUID DEFAULT NULL,
@@ -84,6 +90,10 @@ CREATE OR REPLACE FUNCTION get_orders_infinite (
         WHERE (
                 p_organization_id IS NULL
                 OR o.organization_id = p_organization_id
+            )
+            AND (
+                p_supplier_id IS NULL
+                OR o.assigned_supplier = p_supplier_id
             )
             AND (
                 p_status IS NULL
@@ -219,10 +229,11 @@ RETURN (
     WITH filtered_orders AS (
         SELECT status
         FROM orders
-        WHERE -- Admin sees everything
+        WHERE -- Admin sees everything, Customer sees their organization, Supplier sees assigned orders
             (
                 v_role = 'admin'
-                OR organization_id = v_organization_id
+                OR (v_role = 'customer' AND organization_id = v_organization_id)
+                OR (v_role = 'supplier' AND assigned_supplier = v_organization_id)
             )
             AND (
                 p_order_status IS NULL

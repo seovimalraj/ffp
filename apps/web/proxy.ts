@@ -123,7 +123,7 @@ function setSecurityHeaders(response: NextResponse, pathname: string): void {
   );
 }
 
-export async function middleware(request: NextRequest) {
+export async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
   // Skip middleware for API routes - they handle their own authentication

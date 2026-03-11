@@ -1,26 +1,22 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
-import { useParams, useSearchParams } from "next/navigation";
+import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { apiClient } from "@/lib/api";
 import { formatCurrencyGeneric } from "@/lib/format";
-import { RFQKanban } from "@/app/portal/orders/[orderId]/components/RFQKanban";
 import { generateRandomSlug } from "@/lib/utils";
 import CustomLoader from "@/components/ui/loader/CustomLoader";
-import RfqSideDrawer from "@/app/portal/orders/[orderId]/components/rfq-side-drawer";
 import { CommandBlock } from "@/components/ui/command-block";
+import { useMetaStore } from "@/components/store/title-store";
 import {
+  AddressCard,
   Meta,
   SectionTitle,
   StatusPill,
 } from "@/app/portal/orders/[orderId]/page";
+import { RFQKanban } from "@/app/portal/orders/[orderId]/components/RFQKanban";
 import Documents from "@/app/portal/orders/[orderId]/components/documents";
-import { AddressFlow } from "@/components/ui/animated-flow";
-import { Check, Pencil, UserPlus, X } from "lucide-react";
-import { Input } from "@/components/ui/input";
-import { notify } from "@/lib/toast";
-import { AssignSupplierModal } from "./components/AssignSupplierModal";
-import { useMetaStore } from "@/components/store/title-store";
+import RfqSideDrawer from "@/app/portal/orders/[orderId]/components/rfq-side-drawer";
 
 /* =======================
    TYPES (FROM API)
@@ -59,6 +55,11 @@ export type IOrderFull = {
     total_price: number;
     lead_time: number;
     lead_time_type: string;
+    drawings_2d: Array<{
+      file_name: string;
+      file_url: string;
+      mime_type: string;
+    }>;
     status: string;
     order_part_code: string;
     rfq_part: {
@@ -72,12 +73,6 @@ export type IOrderFull = {
       snapshot_2d_url: string | null;
     };
   }>;
-  supplier?: {
-    id: string;
-    name: string;
-    display_name: string;
-    address: string;
-  };
   shipping: {
     shipping_information: {
       service: string;
@@ -104,38 +99,14 @@ export default function OrderPage() {
   const [selectedPart, setSelectedPart] = useState<any>(null);
   const [data, setData] = useState<IOrderFull>();
   const [loading, setLoading] = useState(true);
-
-  // Tracking Edit State
-  const [isEditingTracking, setIsEditingTracking] = useState(false);
-  const [tempTracking, setTempTracking] = useState("");
-  const [isAssignModalOpen, setIsAssignModalOpen] = useState(false);
   const { setPageTitle, resetTitle } = useMetaStore();
+  const router = useRouter();
 
-  const handleUpdateTracking = async () => {
-    if (!tempTracking) return;
-    try {
-      await apiClient.post(`/orders/tracking/${orderId}`, {
-        trackingNumber: tempTracking,
-      });
-
-      // Update local state with new tracking number
-      setData((prevData) => {
-        if (!prevData) return prevData;
-        return {
-          ...prevData,
-          shipping: {
-            ...prevData.shipping,
-            tracking_number: tempTracking,
-          },
-        };
-      });
-
-      notify.success("Tracking number updated");
-      setIsEditingTracking(false);
-    } catch (error) {
-      console.error(error);
-      notify.error("Failed to update tracking");
-    }
+  const setUrlParam = (tab: string) => {
+    const params = new URLSearchParams(searchParams?.toString());
+    params.set("tab", tab);
+    const newUrl = `${window.location.pathname}?${params.toString()}`;
+    return newUrl;
   };
 
   const fetchData = useCallback(
@@ -155,15 +126,15 @@ export default function OrderPage() {
   );
 
   useEffect(() => {
-    fetchData();
-  }, [fetchData]);
-
-  useEffect(() => {
     setPageTitle("Order");
     return () => {
       resetTitle();
     };
   }, []);
+
+  useEffect(() => {
+    fetchData();
+  }, [fetchData]);
 
   if (loading) {
     return (
@@ -181,41 +152,11 @@ export default function OrderPage() {
     <div className="relative max-w-7xl h-full mx-auto px-2 py-3 space-y-10">
       {/* HEADER */}
       <div className="space-y-1">
-        <div className="flex items-center justify-between gap-3">
-          <div className="flex items-center gap-3">
-            <h1 className="text-2xl font-semibold text-slate-900">
-              {data.order.order_code}
-            </h1>
-            <StatusPill status={data.order.status} />
-          </div>
-          <div className="flex items-center gap-4">
-            {data.supplier ? (
-              <div className="flex items-center gap-3 bg-emerald-50 px-4 py-2 rounded-xl">
-                <div className="flex items-center justify-center w-8 h-8 rounded-full bg-emerald-500 text-white">
-                  <Check className="w-5 h-5" />
-                </div>
-                <div>
-                  <div className="text-[10px] font-bold uppercase tracking-wider text-emerald-600 leading-none mb-1">
-                    Supplier Assigned
-                  </div>
-                  <div className="text-sm font-semibold text-slate-900">
-                    {data.supplier.display_name || data.supplier.name}
-                  </div>
-                </div>
-              </div>
-            ) : (
-              data.order.status !== "payment pending" && (
-                <button
-                  onClick={() => setIsAssignModalOpen(true)}
-                  className="flex items-center gap-2 px-3 py-1.5 text-xs font-semibold text-indigo-600 bg-indigo-50 hover:bg-indigo-100 rounded-lg transition-colors border border-indigo-200"
-                  title="Assign Supplier"
-                >
-                  <UserPlus className="w-4 h-4" />
-                  <span>Assign Supplier</span>
-                </button>
-              )
-            )}
-          </div>
+        <div className="flex items-center gap-3">
+          <h1 className="text-2xl font-semibold text-slate-900">
+            {data.order.order_code}
+          </h1>
+          <StatusPill status={data.order.status} />
         </div>
       </div>
       {/* TABS */}
@@ -225,6 +166,7 @@ export default function OrderPage() {
             key={tab}
             onClick={() => {
               setActiveTab(tab as any);
+              router.push(setUrlParam(tab));
             }}
             className={`pb-3 capitalize ${
               activeTab === tab
@@ -256,41 +198,20 @@ export default function OrderPage() {
               />
             </div>
           </section>
-
-          {/* SUPPLIER */}
-          {data.supplier && (
-            <section className="space-y-2 w-[50%]">
-              <SectionTitle title="Supplier Info" />
-              <div className="grid items-center gap-6 bg-white border rounded-lg p-4 text-sm space-y-2">
-                <Meta
-                  label="Name"
-                  value={data.supplier.display_name || data.supplier.name}
-                />
-                <div className="col-span-2">
-                  <Meta
-                    label="Address"
-                    value={data.supplier.address || "No address specified"}
-                  />
-                </div>
-              </div>
-            </section>
-          )}
           {/* SHIPPING */}
           <section className="space-y-2">
             <SectionTitle title="Shipping" />
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <AddressFlow
-                to={{
-                  title: "Ship To",
-                  name: data.order.address_snapshot.name,
-                  address: [
-                    data.order.address_snapshot.street1,
-                    data.order.address_snapshot.street2,
-                    `${data.order.address_snapshot.city} - ${data.order.address_snapshot.zip}`,
-                    data.order.address_snapshot.country,
-                  ],
-                }}
+              <AddressCard
+                title="Ship To"
+                name={data.order.address_snapshot.name}
+                address={[
+                  data.order.address_snapshot.street1,
+                  data.order.address_snapshot.street2,
+                  `${data.order.address_snapshot.city} - ${data.order.address_snapshot.zip}`,
+                  data.order.address_snapshot.country,
+                ]}
               />
 
               <div className="bg-slate-50 border rounded-lg p-4 text-sm space-y-2">
@@ -306,57 +227,12 @@ export default function OrderPage() {
                 <div className="text-xs uppercase tracking-wide text-slate-400">
                   Tracking Number
                 </div>
-                <div className="font-medium max-w-[300px] text-slate-900 flex items-center gap-2">
-                  {isEditingTracking ? (
-                    <div className="flex items-center gap-2 w-full">
-                      <Input
-                        value={tempTracking}
-                        onChange={(e) => setTempTracking(e.target.value)}
-                        className="h-8 text-sm"
-                        placeholder="Enter tracking #"
-                        autoFocus
-                        onKeyDown={(e) => {
-                          if (e.key === "Enter") handleUpdateTracking();
-                          if (e.key === "Escape") setIsEditingTracking(false);
-                        }}
-                      />
-                      <button
-                        onClick={handleUpdateTracking}
-                        disabled={!tempTracking}
-                        className="p-1.5 rounded-md bg-green-50 text-green-600 hover:bg-green-100 transition-colors"
-                      >
-                        <Check className="w-4 h-4" />
-                      </button>
-                      <button
-                        onClick={() => setIsEditingTracking(false)}
-                        className="p-1.5 rounded-md bg-red-50 text-red-600 hover:bg-red-100 transition-colors"
-                      >
-                        <X className="w-4 h-4" />
-                      </button>
-                    </div>
-                  ) : (
-                    <>
-                      <CommandBlock
-                        key={data.shipping.tracking_number || "no-tracking"}
-                        command={
-                          data.shipping.tracking_number || generateRandomSlug()
-                        }
-                      />
-                      <button
-                        onClick={() => {
-                          setTempTracking(
-                            data.shipping.tracking_number ||
-                              generateRandomSlug(),
-                          );
-                          setIsEditingTracking(true);
-                        }}
-                        className="p-1 text-slate-400 hover:text-blue-600 transition-colors"
-                        title="Edit Tracking Number"
-                      >
-                        <Pencil className="w-3.5 h-3.5" />
-                      </button>
-                    </>
-                  )}
+                <div className="font-medium max-w-[200px] text-slate-900">
+                  <CommandBlock
+                    command={
+                      data.shipping.tracking_number ?? generateRandomSlug()
+                    }
+                  />
                 </div>
 
                 {data.shipping.shipping_information.accountNumber && (
@@ -417,9 +293,6 @@ export default function OrderPage() {
                       <div className="flex flex-wrap gap-1.5">
                         <span className="inline-flex items-center px-2 py-1 rounded-md text-[10px] font-medium bg-slate-100 text-slate-600 border border-slate-200">
                           {part.rfq_part.material}
-                        </span>
-                        <span className="inline-flex items-center px-2 py-1 rounded-md text-[10px] font-medium bg-slate-100 text-slate-600 border border-slate-200">
-                          {part.lead_time_type}
                         </span>
                         <span className="inline-flex items-center px-2 py-1 rounded-md text-[10px] font-medium bg-slate-100 text-slate-600 border border-slate-200">
                           {part.rfq_part.finish}
@@ -538,7 +411,7 @@ export default function OrderPage() {
         <RFQKanban
           parts={data.parts}
           onRefresh={() => fetchData(true)}
-          onItemClick={(part) => setSelectedPart(part)}
+          onItemClick={(part: any) => setSelectedPart(part)}
         />
       )}
       {/* DOCUMENTS */}
@@ -552,14 +425,6 @@ export default function OrderPage() {
           onClose={() => setSelectedPart(null)}
         />
       )}
-
-      {/* ASSIGN SUPPLIER MODAL */}
-      <AssignSupplierModal
-        isOpen={isAssignModalOpen}
-        onClose={() => setIsAssignModalOpen(false)}
-        orderId={orderId}
-        onAssigned={() => fetchData(true)}
-      />
     </div>
   );
 }

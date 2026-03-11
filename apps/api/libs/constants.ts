@@ -149,6 +149,8 @@ export enum SQLFunctions {
   regenerateOtp = 'regenerate_otp',
 
   createTechRequest = 'create_tech_request',
+  OrderStatusChangeRequests = 'order_status_change_requests',
+  SupplierAssignments = 'supplier_assignments',
 }
 
 /**

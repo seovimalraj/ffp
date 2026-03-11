@@ -6,11 +6,19 @@ import { PermissionGuard } from 'src/permissions/permission.guard';
 import { PermissionCheckService } from 'src/permissions/permisson-check.service';
 import { AuthGuard } from 'src/auth/auth.guard';
 import { WarehouseService } from './warehouse.service';
+import { SupplierOrderService } from './supplier-order.service';
 
 @Module({
     imports: [SupabaseModule],
-    providers: [AuthModule, PermissionGuard, PermissionCheckService, AuthGuard, WarehouseService],
+    providers: [
+        AuthModule,
+        PermissionGuard,
+        PermissionCheckService,
+        AuthGuard,
+        WarehouseService,
+        SupplierOrderService,
+    ],
     controllers: [SupplierController],
-    exports: [WarehouseService]
+    exports: [WarehouseService, SupplierOrderService]
 })
 export class SupplierModule { }

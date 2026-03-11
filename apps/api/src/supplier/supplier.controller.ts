@@ -9,7 +9,9 @@ import {
   BadRequestException,
   InternalServerErrorException,
   ForbiddenException,
+  Query,
 } from '@nestjs/common';
+import { SupplierOrderService } from './supplier-order.service';
 import {
   PermissionsNames,
   RoleNames,
@@ -33,12 +35,81 @@ import { PermissionGuard } from 'src/permissions/permission.guard';
 import { generateUUID } from '../../libs/helpers';
 
 @Controller('supplier')
-@UseGuards(AuthGuard, PermissionGuard)
+@UseGuards(AuthGuard)
 export class SupplierController {
   constructor(
     private readonly supabaseService: SupabaseService,
     private readonly warehouseService: WarehouseService,
+    private readonly supplierOrderService: SupplierOrderService,
   ) {}
+
+  @Get('orders')
+  @Roles(RoleNames.Supplier)
+  async getSupplierOrders(
+    @CurrentUser() currentUser: CurrentUserDto,
+    @Query('status') status?: string,
+    @Query('paymentStatus') paymentStatus?: string,
+    @Query('rfqId') rfqId?: string,
+    @Query('limit') limit = '20',
+    @Query('offset') offset = '0',
+  ) {
+    return this.supplierOrderService.getSupplierOrders({
+      supplierId: currentUser.organizationId,
+      status,
+      paymentStatus,
+      rfqId,
+      limit: Number(limit),
+      offset: Number(offset),
+    });
+  }
+
+  @Get('orders/infinite')
+  @Roles(RoleNames.Supplier)
+  async getSupplierOrdersInfinite(
+    @CurrentUser() currentUser: CurrentUserDto,
+    @Query('status') status?: string,
+    @Query('paymentStatus') paymentStatus?: string,
+    @Query('rfqId') rfqId?: string,
+    @Query('limit') limit = '20',
+    @Query('cursorCreatedAt') cursorCreatedAt?: string,
+    @Query('cursorId') cursorId?: string,
+    @Query('search') search?: string,
+  ) {
+    const data = await this.supplierOrderService.getSupplierOrdersInfinite({
+      supplierId: currentUser.organizationId,
+      status,
+      paymentStatus,
+      rfqId,
+      limit: Number(limit),
+      cursorCreatedAt,
+      cursorId,
+      search,
+    });
+
+    return {
+      success: true,
+      ...data,
+    };
+  }
+
+  @Get('orders-summary')
+  @Roles(RoleNames.Supplier)
+  async getOrdersSummary(@CurrentUser() user: CurrentUserDto) {
+    const client = this.supabaseService.getClient();
+
+    const { data, error } = await client.rpc(
+      SQLFunctions.getOrderStatusSummary,
+      {
+        p_user_id: user.id,
+      },
+    );
+
+    if (error) {
+      throw new InternalServerErrorException(error.message);
+    }
+
+    return { statuses: data, success: true };
+  }
 
   @Get('members')
   @Roles(RoleNames.Supplier, RoleNames.Admin)
