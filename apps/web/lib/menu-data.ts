@@ -60,9 +60,9 @@ export const menuSections: MenuSection[] = [
         icon: FileQuestion,
       },
       {
-        label: "Purchase Orders",
-        slug: "purchase-orders",
-        route: "/rfq-procurement/purchase-orders",
+        label: "Orders",
+        slug: "orders",
+        route: "/supplier/orders",
         icon: ShoppingCart,
       },
       {

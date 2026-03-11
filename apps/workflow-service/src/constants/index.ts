@@ -76,6 +76,10 @@ export enum Tables {
   TechnicalSupportRequest = "technical_support_request ",
 
   UploadsTable = "uploads",
+
+  OrderStatusChangeRequests = "order_status_change_requests",
+
+  SupplierAssignments = "supplier_assignments",
 }
 
 /**

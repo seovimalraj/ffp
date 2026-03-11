@@ -42,6 +42,17 @@ SELECT jsonb_build_object(
             'final_price',
             r.final_price
         ),
+        'supplier',
+        (
+            SELECT jsonb_build_object(
+                    'id', suorg.id,
+                    'name', suorg.name,
+                    'display_name', suorg.display_name,
+                    'address', suorg.address
+                )
+            FROM organizations suorg
+            WHERE suorg.id = o.assigned_supplier
+        ),
         'shipping',
         (
             SELECT jsonb_build_object(
@@ -191,6 +202,7 @@ WHERE o.id = p_order_id
     AND (
         p_organization_id IS NULL
         OR o.organization_id = p_organization_id
+        OR o.assigned_supplier = p_organization_id
     );
 IF v_result IS NULL THEN RAISE EXCEPTION 'Order % not found',
 p_order_id;

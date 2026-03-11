@@ -57,7 +57,7 @@ export default function SupplierDashboardPage() {
       change: loading ? "..." : `${stats.activeOrders} in progress`,
       trend: "up",
       icon: Package,
-      color: "emerald",
+      color: "violet",
       href: "/supplier/orders",
     },
     {
@@ -68,7 +68,7 @@ export default function SupplierDashboardPage() {
       change: "From active orders",
       trend: "up",
       icon: DollarSign,
-      color: "green",
+      color: "purple",
       href: "/supplier/analytics",
     },
     {
@@ -78,7 +78,7 @@ export default function SupplierDashboardPage() {
         stats.machineUtilization > 80 ? "High capacity" : "Capacity available",
       trend: stats.machineUtilization > 80 ? "up" : "neutral",
       icon: Factory,
-      color: "teal",
+      color: "fuchsia",
       href: "/supplier/capacity",
     },
     {
@@ -87,7 +87,7 @@ export default function SupplierDashboardPage() {
       change: "On target",
       trend: "neutral",
       icon: Clock,
-      color: "cyan",
+      color: "rose",
       href: "/supplier/analytics",
     },
   ];
@@ -138,36 +138,36 @@ export default function SupplierDashboardPage() {
 
   const getAlertColor = (type: string) => {
     if (type === "warning")
-      return "bg-yellow-50 border-yellow-200 dark:bg-yellow-900/20 dark:border-yellow-800 text-yellow-900 dark:text-yellow-100";
+      return "bg-amber-50 border-amber-200 dark:bg-amber-900/20 dark:border-amber-800 text-amber-900 dark:text-amber-100";
     if (type === "success")
-      return "bg-green-50 border-green-200 dark:bg-green-900/20 dark:border-green-800 text-green-900 dark:text-green-100";
-    return "bg-blue-50 border-blue-200 dark:bg-blue-900/20 dark:border-blue-800 text-blue-900 dark:text-blue-100";
+      return "bg-violet-50 border-violet-200 dark:bg-violet-900/20 dark:border-violet-800 text-violet-900 dark:text-violet-100";
+    return "bg-slate-50 border-slate-200 dark:bg-slate-900/20 dark:border-slate-800 text-slate-900 dark:text-slate-100";
   };
 
   const getColorClasses = (color: string) => {
     const colors: Record<string, { bg: string; text: string; ring: string }> = {
-      emerald: {
-        bg: "bg-emerald-500/10",
-        text: "text-emerald-600",
-        ring: "ring-emerald-500/20",
+      violet: {
+        bg: "bg-violet-500/10",
+        text: "text-violet-600",
+        ring: "ring-violet-500/20",
       },
-      green: {
-        bg: "bg-green-500/10",
-        text: "text-green-600",
-        ring: "ring-green-500/20",
+      purple: {
+        bg: "bg-purple-500/10",
+        text: "text-purple-600",
+        ring: "ring-purple-500/20",
       },
-      teal: {
-        bg: "bg-teal-500/10",
-        text: "text-teal-600",
-        ring: "ring-teal-500/20",
+      fuchsia: {
+        bg: "bg-fuchsia-500/10",
+        text: "text-fuchsia-600",
+        ring: "ring-fuchsia-500/20",
       },
-      cyan: {
-        bg: "bg-cyan-500/10",
-        text: "text-cyan-600",
-        ring: "ring-cyan-500/20",
+      rose: {
+        bg: "bg-rose-500/10",
+        text: "text-rose-600",
+        ring: "ring-rose-500/20",
       },
     };
-    return colors[color] || colors.emerald;
+    return colors[color] || colors.violet;
   };
 
   return (
@@ -175,7 +175,7 @@ export default function SupplierDashboardPage() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-4xl font-bold bg-gradient-to-r from-emerald-600 to-teal-600 bg-clip-text text-transparent">
+          <h1 className="text-4xl font-bold bg-gradient-to-r from-violet-900 to-violet-500 bg-clip-text text-transparent">
             Production Dashboard
           </h1>
           <p className="text-gray-600 dark:text-gray-400 mt-2 text-lg">
@@ -184,7 +184,7 @@ export default function SupplierDashboardPage() {
         </div>
         <Link
           href="/supplier/capacity"
-          className="flex items-center gap-2 px-6 py-3 bg-gradient-to-r from-emerald-600 to-teal-600 text-white rounded-xl hover:shadow-xl hover:shadow-emerald-500/30 transition-all duration-300 hover:scale-105 font-semibold"
+          className="flex items-center gap-2 px-6 py-3 bg-gradient-to-r from-violet-900 to-violet-500 text-white rounded-xl hover:shadow-xl hover:shadow-violet-500/30 transition-all duration-300 hover:scale-105 font-semibold"
         >
           <Factory size={20} />
           View Capacity
@@ -216,7 +216,7 @@ export default function SupplierDashboardPage() {
                   </div>
                   {!loading && (
                     <ArrowUpRight
-                      className="text-gray-400 group-hover:text-emerald-600 transition-colors"
+                      className="text-gray-400 group-hover:text-violet-900 transition-colors"
                       size={20}
                     />
                   )}
@@ -232,7 +232,7 @@ export default function SupplierDashboardPage() {
                       stat.value
                     )}
                   </p>
-                  <p className="text-sm text-green-600 dark:text-green-400 flex items-center gap-1">
+                  <p className="text-sm text-violet-900 dark:text-violet-400 flex items-center gap-1">
                     {!loading && stat.trend === "up" && (
                       <TrendingUp size={14} />
                     )}
@@ -279,15 +279,15 @@ export default function SupplierDashboardPage() {
 
       {/* Active Orders */}
       <div className="bg-white/70 dark:bg-gray-900/70 backdrop-blur-xl rounded-2xl border border-gray-200/50 dark:border-gray-800/50 shadow-lg overflow-hidden">
-        <div className="px-6 py-5 border-b border-gray-200/50 dark:border-gray-800/50 bg-gradient-to-r from-emerald-50 to-teal-50 dark:from-emerald-950/50 dark:to-teal-950/50">
+        <div className="px-6 py-5 border-b border-gray-200/50 dark:border-gray-800/50 bg-gradient-to-r from-violet-50 to-purple-50 dark:from-violet-950/50 dark:to-purple-950/50">
           <div className="flex items-center justify-between">
             <h2 className="text-xl font-bold text-gray-900 dark:text-white flex items-center gap-2">
-              <Package size={24} className="text-emerald-600" />
+              <Package size={24} className="text-violet-900" />
               Active Orders
             </h2>
             <Link
               href="/supplier/orders"
-              className="text-emerald-600 hover:text-emerald-700 text-sm font-semibold flex items-center gap-1 hover:gap-2 transition-all"
+              className="text-violet-900 hover:text-violet-700 text-sm font-semibold flex items-center gap-1 hover:gap-2 transition-all"
             >
               View All
               <ArrowRight size={16} />
@@ -297,7 +297,7 @@ export default function SupplierDashboardPage() {
         <div className="p-6">
           {loading ? (
             <div className="flex items-center justify-center py-12">
-              <Loader2 className="w-8 h-8 animate-spin text-emerald-600" />
+              <Loader2 className="w-8 h-8 animate-spin text-violet-900" />
             </div>
           ) : activeOrders.length === 0 ? (
             <div className="text-center py-12">
@@ -310,11 +310,11 @@ export default function SupplierDashboardPage() {
                 <Link
                   key={order.id}
                   href={`/supplier/production/${order.id}`}
-                  className="group flex items-center justify-between p-4 rounded-xl border border-gray-200 dark:border-gray-800 hover:border-emerald-300 dark:hover:border-emerald-700 hover:shadow-md transition-all duration-200 bg-white dark:bg-gray-900"
+                  className="group flex items-center justify-between p-4 rounded-xl border border-gray-200 dark:border-gray-800 hover:border-violet-300 dark:hover:border-violet-700 hover:shadow-md transition-all duration-200 bg-white dark:bg-gray-900"
                 >
                   <div className="flex-1">
                     <div className="flex items-center gap-3 mb-2">
-                      <p className="font-semibold text-gray-900 dark:text-white group-hover:text-emerald-600 transition-colors">
+                      <p className="font-semibold text-gray-900 dark:text-white group-hover:text-violet-900 transition-colors">
                         {order.id}
                       </p>
                     </div>
@@ -345,17 +345,17 @@ export default function SupplierDashboardPage() {
       </div>
 
       {/* Quick Actions */}
-      <div className="bg-gradient-to-r from-emerald-600 to-teal-600 rounded-2xl p-8 shadow-2xl shadow-emerald-500/30">
+      <div className="bg-gradient-to-r from-violet-900 to-violet-500 rounded-2xl p-8 shadow-2xl shadow-violet-500/30">
         <div className="flex items-center justify-between">
           <div className="text-white">
             <h2 className="text-2xl font-bold mb-2">Optimize Production</h2>
-            <p className="text-emerald-100">
+            <p className="text-violet-100">
               Manage machine capacity and schedule efficiently
             </p>
           </div>
           <Link
             href="/supplier/schedule"
-            className="px-8 py-4 bg-white text-emerald-600 rounded-xl hover:bg-emerald-50 transition-all duration-300 hover:scale-105 font-bold text-lg shadow-xl"
+            className="px-8 py-4 bg-white text-violet-600 rounded-xl hover:bg-violet-50 transition-all duration-300 hover:scale-105 font-bold text-lg shadow-xl"
           >
             View Schedule
           </Link>

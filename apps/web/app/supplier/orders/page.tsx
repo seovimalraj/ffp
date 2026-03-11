@@ -1,228 +1,461 @@
-export default function SupplierOrdersPage() {
-  const orders = [
-    {
-      id: 'ORD-2025-0045',
-      customer: 'Acme Manufacturing',
-      items: 3,
-      amount: '$2,450.00',
-      status: 'in_production',
-      created: '2025-10-23',
-      dueDate: '2025-11-05'
-    },
-    {
-      id: 'ORD-2025-0044',
-      customer: 'TechCorp Inc',
-      items: 1,
-      amount: '$1,875.50',
-      status: 'quality_check',
-      created: '2025-10-22',
-      dueDate: '2025-11-03'
-    },
-    {
-      id: 'ORD-2025-0043',
-      customer: 'Acme Manufacturing',
-      items: 2,
-      amount: '$3,200.00',
-      status: 'completed',
-      created: '2025-10-20',
-      dueDate: '2025-10-30'
-    },
-    {
-      id: 'ORD-2025-0042',
-      customer: 'Global Parts Ltd',
-      items: 5,
-      amount: '$890.00',
-      status: 'shipped',
-      created: '2025-10-18',
-      dueDate: '2025-10-28'
-    },
-    {
-      id: 'ORD-2025-0041',
-      customer: 'Precision Tools',
-      items: 2,
-      amount: '$1,650.00',
-      status: 'pending_approval',
-      created: '2025-10-25',
-      dueDate: '2025-11-10'
+"use client";
+
+import { useMetaStore } from "@/components/store/title-store";
+import { DataTable, Column, DataTableSubRow } from "@/components/ui/data-table";
+import { Skeleton } from "@/components/ui/skeleton";
+import { StatusCards, StatusItem } from "@/components/ui/status-cards";
+import { apiClient } from "@/lib/api";
+import { formatCurrency, formatDate } from "@/lib/format";
+import { toTitleCase, cn } from "@/lib/utils";
+import { CubeIcon } from "@heroicons/react/24/outline";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { EyeIcon } from "lucide-react";
+import Link from "next/link";
+import { useRouter, useSearchParams } from "next/navigation";
+import React, {
+  useState,
+  useEffect,
+  useCallback,
+  useRef,
+} from "react";
+import { motion } from "framer-motion";
+import ExpandFileModal from "@/app/quote-config/components/expand-file-modal";
+
+export type IOrder = {
+  order_id: string;
+  order_code: string;
+  total_amount: number | null;
+  confirmed_at: string;
+  payment_status: string;
+  status: string;
+  part_count: number;
+  created_at: string;
+  parts: {
+    cad_file_url: string;
+    file_name: string;
+    snapshot_2d_url: string;
+  }[];
+};
+
+interface Filters {
+  status: string;
+}
+
+enum StatusColor {
+  "total" = "slate",
+  "pending" = "orange",
+  "paid" = "violet",
+  "processing" = "fuchsia",
+  "shipped" = "amber",
+  "delivered" = "rose",
+  "completed" = "purple",
+  "cancelled" = "red",
+  "payment pending" = "pink",
+}
+
+enum StatusPriority {
+  "total" = 1,
+  "payment pending" = 2,
+  "paid" = 3,
+  "processing" = 4,
+  "shipped" = 5,
+  "delivered" = 6,
+  "completed" = 7,
+  "cancelled" = 8,
+}
+
+const Page = () => {
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const [orders, setOrders] = useState<IOrder[]>([]);
+  const [statuses, setStatuses] = useState<StatusItem[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [statusesLoading, setStatusesLoading] = useState(true);
+  const [isFetchingMore, setIsFetchingMore] = useState(false);
+  const [hasMore, setHasMore] = useState(false);
+  const ordersRef = useRef<IOrder[]>([]);
+  const [selectedFile, setSelectedFile] = useState<string | null>(null);
+
+  const [filters, setFilters] = useState<Filters>(() => {
+    const status = searchParams?.get("status") ?? "Any";
+    return { status };
+  });
+
+  const { setPageTitle, resetTitle } = useMetaStore();
+
+  useEffect(() => {
+    const params = new URLSearchParams();
+    if (filters.status && filters.status !== "Any") {
+      params.set("status", filters.status);
     }
+    const queryString = params.toString();
+    const newUrl = queryString ? `?${queryString}` : window.location.pathname;
+    if (window.location.search !== (queryString ? `?${queryString}` : "")) {
+      router.replace(newUrl, { scroll: false });
+    }
+  }, [filters, router]);
+
+  useEffect(() => {
+    ordersRef.current = orders;
+  }, [orders]);
+
+  const [rawStatusData, setRawStatusData] = useState<{
+    total: number;
+    by_status: { status: string; count: number }[];
+  } | null>(null);
+
+  const fetchStatuses = useCallback(async () => {
+    setStatusesLoading(true);
+    try {
+      const response = await apiClient.get("/supplier/orders-summary");
+      const statusData = response.data.statuses || {
+        total: 0,
+        by_status: [],
+      };
+      setRawStatusData(statusData);
+    } catch (error) {
+      console.error("Failed to fetch order summary:", error);
+    } finally {
+      setStatusesLoading(false);
+    }
+  }, []);
+
+  const buildStatusCards = useCallback(
+    (statusCounts: {
+      total: number;
+      by_status: { status: string; count: number }[];
+    }) => {
+      const countsMap = new Map(
+        statusCounts.by_status.map((s) => [s.status.toLowerCase(), s.count]),
+      );
+
+      const permittedStatuses = [
+        "payment pending",
+        "paid",
+        "processing",
+        "shipped",
+        "delivered",
+        "completed",
+        "cancelled",
+      ];
+
+      const cards: StatusItem[] = [
+        {
+          label: "Total Orders",
+          value: statusCounts.total || 0,
+          color: StatusColor["total"],
+          onClick: () => setFilters({ status: "Any" }),
+          priority: StatusPriority["total"],
+          highlight: filters.status === "Any",
+        },
+      ];
+
+      permittedStatuses.forEach((statusKey) => {
+        cards.push({
+          label: toTitleCase(statusKey),
+          value: countsMap.get(statusKey) || 0,
+          color: (StatusColor[statusKey as keyof typeof StatusColor] ??
+            "gray") as StatusItem["color"],
+          onClick: () => setFilters({ status: statusKey }),
+          priority:
+            StatusPriority[statusKey as keyof typeof StatusPriority] ?? 50,
+          highlight: filters.status.toLowerCase() === statusKey.toLowerCase(),
+        });
+      });
+
+      setStatuses(cards);
+    },
+    [filters.status],
+  );
+
+  const fetchOrders = useCallback(
+    async (isNext = false) => {
+      if (isNext) {
+        setIsFetchingMore(true);
+      } else {
+        setLoading(true);
+      }
+
+      try {
+        const currentOrders = ordersRef.current;
+        const lastOrder = isNext
+          ? currentOrders[currentOrders.length - 1]
+          : null;
+
+        const params = {
+          limit: 20,
+          cursorCreatedAt: lastOrder?.created_at,
+          cursorId: lastOrder?.order_id,
+          status:
+            filters.status !== "Any" ? filters.status.toLowerCase() : undefined,
+        };
+
+        const response = await apiClient.get("/supplier/orders/infinite", { params });
+        const newData = response.data.data || [];
+
+        setOrders((prev) => (isNext ? [...prev, ...newData] : newData));
+        setHasMore(response.data.hasMore);
+      } catch (error) {
+        console.error("Error fetching orders:", error);
+      } finally {
+        setLoading(false);
+        setIsFetchingMore(false);
+      }
+    },
+    [filters.status],
+  );
+
+  useEffect(() => {
+    fetchStatuses();
+    fetchOrders();
+  }, []);
+
+  useEffect(() => {
+    if (rawStatusData) {
+      buildStatusCards(rawStatusData);
+    }
+  }, [rawStatusData, buildStatusCards]);
+
+  useEffect(() => {
+    fetchOrders();
+    fetchStatuses();
+  }, [filters.status, fetchOrders, fetchStatuses]);
+
+  useEffect(() => {
+    setPageTitle("Orders");
+    return () => {
+      resetTitle();
+    };
+  }, []);
+
+  const columns: Column<IOrder>[] = [
+    {
+      key: "order_code",
+      header: "Order Code",
+      render: (row) => (
+        <Link
+          href={`/supplier/orders/${row.order_id}`}
+          className="text-violet-600 hover:text-violet-800 underline uppercase font-medium"
+        >
+          {row.order_code}
+        </Link>
+      ),
+    },
+    {
+      key: "total_amount",
+      header: "Total Amount",
+      render: (row) => formatCurrency(row.total_amount || 0, "USD"),
+    },
+    {
+      key: "status",
+      header: "Status",
+      render: (row) => <span className="capitalize">{row.status}</span>,
+    },
+    {
+      key: "payment_status",
+      header: "Payment Status",
+      render: (row) => <span className="capitalize">{row.payment_status}</span>,
+    },
+    {
+      key: "part_count",
+      header: "Parts Count",
+      render: (row, _, meta) => (
+        <div className="flex items-center gap-3">
+          <span>{row.part_count}</span>
+          {row.parts?.length > 0 && (
+            <button
+              onClick={() => meta?.toggleExpansion()}
+              className="text-violet-600 hover:text-violet-800 text-xs font-semibold underline underline-offset-2 transition-colors"
+            >
+              {meta?.isExpanded ? "Hide Parts" : "Show Parts"}
+            </button>
+          )}
+        </div>
+      ),
+    },
+    {
+      key: "created_at",
+      header: "Created At",
+      render: (row) => formatDate(row.created_at),
+    },
   ];
 
-  const getStatusColor = (status: string) => {
-    const colors: Record<string, string> = {
-      pending_approval: 'bg-gray-100 text-gray-700',
-      in_production: 'bg-blue-100 text-blue-700',
-      quality_check: 'bg-purple-100 text-purple-700',
-      completed: 'bg-green-100 text-green-700',
-      shipped: 'bg-teal-100 text-teal-700'
-    };
-    return colors[status] || 'bg-gray-100 text-gray-700';
-  };
-
-  const getStatusLabel = (status: string) => {
-    const labels: Record<string, string> = {
-      pending_approval: 'Pending Approval',
-      in_production: 'In Production',
-      quality_check: 'Quality Check',
-      completed: 'Completed',
-      shipped: 'Shipped'
-    };
-    return labels[status] || status;
-  };
-
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-3xl font-bold text-gray-900 dark:text-white">Orders</h1>
-          <p className="text-gray-600 dark:text-gray-400 mt-1">
-            Manage and track all your customer orders
-          </p>
-        </div>
-        <button className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg cursor-not-allowed opacity-50">
-          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-          </svg>
-          Export
-        </button>
-      </div>
-
-      {/* Filters */}
-      <div className="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 p-4">
-        <div className="flex flex-col md:flex-row gap-4">
-          <div className="flex-1 relative">
-            <svg
-              className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 w-4 h-4"
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
+    <div className="min-h-screen space-y-4">
+      <StatusCards
+        isLoading={loading || statusesLoading}
+        items={statuses}
+        minimal={true}
+      />
+      
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pt-4 pb-4 border-b border-gray-100 dark:border-gray-800/60 transition-all">
+        <div className="flex flex-1 flex-wrap items-center gap-8">
+          <div className="flex items-center gap-1 p-1 bg-gray-100/50 dark:bg-gray-800/40 rounded-xl relative border border-gray-200/50 dark:border-gray-700/50">
+            <span className="px-3 text-[10px] font-bold uppercase tracking-widest text-gray-400 dark:text-gray-500 whitespace-nowrap">
+              Status
+            </span>
+            <div className="h-4 w-px bg-gray-200 dark:bg-gray-700 mx-1" />
+            <Select
+              value={filters.status}
+              onValueChange={(val) =>
+                setFilters((prev) => ({ ...prev, status: val }))
+              }
             >
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-            </svg>
-            <input
-              type="text"
-              placeholder="Search by order ID or customer..."
-              className="w-full pl-10 pr-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-gray-50 dark:bg-gray-900 text-gray-900 dark:text-white cursor-not-allowed opacity-75"
-              disabled
-            />
+              <SelectTrigger
+                id="status"
+                className="h-8 min-w-[140px] bg-transparent border-none shadow-none focus:ring-0 hover:bg-gray-200/50 dark:hover:bg-gray-700/50 transition-all rounded-lg px-3 font-bold text-sm text-gray-900 dark:text-gray-100"
+              >
+                <div className="flex items-center gap-2">
+                  <div
+                    className={cn(
+                      "w-1.5 h-1.5 rounded-full shadow-sm",
+                      filters.status === "Any"
+                        ? "bg-slate-500"
+                        : "bg-violet-500",
+                    )}
+                  />
+                  <SelectValue placeholder="Select status" />
+                </div>
+              </SelectTrigger>
+              <SelectContent className="rounded-xl border-gray-200 dark:border-gray-800 shadow-2xl backdrop-blur-xl bg-white/90 dark:bg-gray-950/90">
+                <SelectItem value="Any" className="font-medium">
+                  All Statuses
+                </SelectItem>
+                {[
+                  "payment pending",
+                  "paid",
+                  "processing",
+                  "shipped",
+                  "delivered",
+                  "completed",
+                  "cancelled",
+                ].map((s) => (
+                  <SelectItem
+                    key={s}
+                    value={s}
+                    className="font-medium capitalize"
+                  >
+                    {s}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
-          <select
-            className="px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-gray-50 dark:bg-gray-900 text-gray-900 dark:text-white cursor-not-allowed opacity-75"
-            disabled
-          >
-            <option value="all">All Status</option>
-            <option value="pending_approval">Pending Approval</option>
-            <option value="in_production">In Production</option>
-            <option value="quality_check">Quality Check</option>
-            <option value="completed">Completed</option>
-            <option value="shipped">Shipped</option>
-          </select>
         </div>
       </div>
 
-      {/* Orders Table */}
-      <div className="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 overflow-hidden">
-        <div className="overflow-x-auto">
-          <table className="w-full">
-            <thead className="bg-gray-50 dark:bg-gray-900">
-              <tr>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                  Order ID
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                  Customer
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                  Items
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                  Amount
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                  Status
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                  Created
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                  Due Date
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                  Actions
-                </th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
-              {orders.map((order) => (
-                <tr
-                  key={order.id}
-                  className="cursor-not-allowed opacity-75"
-                >
-                  <td className="px-6 py-4 whitespace-nowrap">
-                    <span className="text-sm font-medium text-blue-600">
-                      {order.id}
-                    </span>
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-gray-100">
-                    {order.customer}
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600 dark:text-gray-400">
-                    {order.items} items
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900 dark:text-gray-100">
-                    {order.amount}
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap">
-                    <span
-                      className={`px-3 py-1 text-xs font-medium rounded-full ${getStatusColor(
-                        order.status
-                      )}`}
-                    >
-                      {getStatusLabel(order.status)}
-                    </span>
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600 dark:text-gray-400">
-                    {order.created}
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600 dark:text-gray-400">
-                    {order.dueDate}
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm">
-                    <button className="text-green-600 cursor-not-allowed opacity-50">
-                      View
-                    </button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+      <div className="mx-auto">
+        <div>
+          <div className="mt-4">
+            {loading ? (
+              <div className="space-y-4 mt-5">
+                {Array.from({ length: 5 }).map((_, i) => (
+                  <div key={i} className="flex items-center space-x-4">
+                    <Skeleton className="w-16 h-4" />
+                    <Skeleton className="w-24 h-4" />
+                    <Skeleton className="w-20 h-4" />
+                    <Skeleton className="w-16 h-4" />
+                    <Skeleton className="w-12 h-4" />
+                  </div>
+                ))}
+              </div>
+            ) : orders.length === 0 ? (
+              <div className="text-center py-12 text-[#111111]">
+                <CubeIcon className="w-12 h-12 text-gray-400 mx-auto mb-4" />
+                <h3 className="text-lg font-medium mb-2">No orders assigned yet</h3>
+                <p className="text-gray-500 mb-4">
+                  Orders will appear here once they are assigned to your organization.
+                </p>
+              </div>
+            ) : (
+              <>
+                <DataTable
+                  columns={columns}
+                  data={orders}
+                  keyExtractor={(m) => m.order_id}
+                  emptyMessage="No Orders Found"
+                  isLoading={loading || isFetchingMore}
+                  numbering={true}
+                  hasMore={hasMore}
+                  onEndReached={() => {
+                    if (hasMore && !isFetchingMore) {
+                      fetchOrders(true);
+                    }
+                  }}
+                  renderExpansion={(row) => (
+                    <div className="px-6 py-4 bg-gray-50/50 dark:bg-gray-900/20 border-t border-gray-100 dark:border-gray-800/50">
+                      <div className="flex flex-col gap-1">
+                        {row.parts?.map((part, idx) => (
+                          <motion.div
+                            key={idx}
+                            initial={{ opacity: 0, x: -10 }}
+                            animate={{ opacity: 1, x: 0 }}
+                            transition={{ delay: idx * 0.05 }}
+                          >
+                            <DataTableSubRow
+                              isLast={idx === (row.parts?.length ?? 0) - 1}
+                              className="hover:bg-white dark:hover:bg-gray-800/40 rounded-xl transition-all duration-300 px-4 py-1"
+                            >
+                              <div className="flex items-center group/part w-full pr-4">
+                                <div
+                                  onClick={() =>
+                                    setSelectedFile(part.cad_file_url)
+                                  }
+                                  className="flex items-center gap-4"
+                                >
+                                  <div className="relative w-12 h-12 rounded-lg cursor-pointer bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 flex items-center justify-center p-1.5 overflow-hidden group/thumb transition-transform hover:scale-105 active:scale-95 shadow-sm">
+                                    {part.snapshot_2d_url ? (
+                                      <img
+                                        src={part.snapshot_2d_url}
+                                        className="w-full h-full object-contain"
+                                        alt={part.file_name}
+                                      />
+                                    ) : (
+                                      <CubeIcon className="w-6 h-6 text-gray-400 group-hover/thumb:text-violet-500 transition-colors" />
+                                    )}
+                                  </div>
+                                  <div className="flex flex-col gap-0.5">
+                                    <span className="font-semibold text-gray-900 dark:text-gray-100 text-sm tracking-tight leading-none group-hover/part:text-violet-600 dark:group-hover/part:text-violet-400 transition-colors">
+                                      {part.file_name}
+                                    </span>
+                                  </div>
+                                </div>
+                              </div>
+                            </DataTableSubRow>
+                          </motion.div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                  actions={[
+                    {
+                      label: "Open",
+                      icon: <EyeIcon className="w-4 h-4" />,
+                      onClick: (order) =>
+                        router.push(`/supplier/orders/${order.order_id}`),
+                    },
+                  ]}
+                />
+              </>
+            )}
+          </div>
         </div>
       </div>
 
-      {/* Summary */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-        <div className="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 p-4">
-          <p className="text-sm text-gray-600 dark:text-gray-400">Total Orders</p>
-          <p className="text-2xl font-bold text-gray-900 dark:text-white mt-1">
-            {orders.length}
-          </p>
-        </div>
-        <div className="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 p-4">
-          <p className="text-sm text-gray-600 dark:text-gray-400">In Production</p>
-          <p className="text-2xl font-bold text-blue-600 mt-1">
-            {orders.filter((o) => o.status === 'in_production').length}
-          </p>
-        </div>
-        <div className="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 p-4">
-          <p className="text-sm text-gray-600 dark:text-gray-400">Completed</p>
-          <p className="text-2xl font-bold text-green-600 mt-1">
-            {orders.filter((o) => o.status === 'completed').length}
-          </p>
-        </div>
-        <div className="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 p-4">
-          <p className="text-sm text-gray-600 dark:text-gray-400">Total Value</p>
-          <p className="text-2xl font-bold text-gray-900 dark:text-white mt-1">$10,065</p>
-        </div>
-      </div>
+      {selectedFile && (
+        <ExpandFileModal
+          expandedFile={selectedFile}
+          setExpandedFile={() => setSelectedFile(null)}
+        />
+      )}
     </div>
   );
-}
+};
+
+export default Page;
