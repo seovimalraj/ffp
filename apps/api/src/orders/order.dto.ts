@@ -172,3 +172,11 @@ export class CapturePaypalDto {
   @IsNotEmpty()
   orderID: string;
 }
+
+export class ApproveStatusDto {}
+
+export class RejectStatusDto {
+  @IsString()
+  @IsNotEmpty()
+  rejection_reason: string;
+}

@@ -10,6 +10,8 @@ import {
   InternalServerErrorException,
   ForbiddenException,
   Query,
+  Logger,
+  ParseUUIDPipe,
 } from '@nestjs/common';
 import { SupplierOrderService } from './supplier-order.service';
 import {
@@ -28,15 +30,17 @@ import {
   CreateSupplierMaterialDto,
   CreateWarehouseDto,
   RemoveStockDto,
+  StatusChangeRequestDto,
   UpdateStockDto,
 } from './supplier.dto';
 import { WarehouseService } from './warehouse.service';
-import { PermissionGuard } from 'src/permissions/permission.guard';
 import { generateUUID } from '../../libs/helpers';
 
 @Controller('supplier')
 @UseGuards(AuthGuard)
 export class SupplierController {
+  private readonly logger = new Logger(SupplierController.name);
+
   constructor(
     private readonly supabaseService: SupabaseService,
     private readonly warehouseService: WarehouseService,
@@ -208,6 +212,55 @@ export class SupplierController {
     );
 
     return data;
+  }
+  @Post(':orderId/request-status-change/:partId')
+  @Roles(RoleNames.Supplier)
+  async requestOrderPartStatusChange(
+    @Param('partId', ParseUUIDPipe) partId: string, // Validates UUID format automatically
+    @Param('orderId', ParseUUIDPipe) orderId: string,
+    @CurrentUser() currentUser: CurrentUserDto,
+    @Body() body: StatusChangeRequestDto,
+  ) {
+    const client = this.supabaseService.getClient();
+
+    // Destructure from DTO
+    const { status_from, status_to, comments } = body;
+
+    this.logger.debug({
+      order_id: orderId,
+      part_id: partId,
+      supplier_id: currentUser.id,
+      status_from,
+      status_to,
+      comments,
+      status: 'active',
+    });
+
+    const { data, error } = await client
+      .from(Tables.OrderStatusChangeRequests)
+      .insert({
+        order_id: orderId,
+        part_id: partId,
+        supplier_id: currentUser.organizationId,
+        status_from,
+        status_to,
+        comments,
+        status: 'active',
+      })
+      .select() // REQUIRED to return the data
+      .single();
+
+    if (error) {
+      this.logger.error(`Status change error: ${error.message}`, error.stack);
+      throw new InternalServerErrorException(
+        'Error while creating Order status change request',
+      );
+    }
+
+    return {
+      success: true,
+      oscr: data,
+    };
   }
 
   @Delete('/permission')
