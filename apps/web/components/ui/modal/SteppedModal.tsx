@@ -104,7 +104,7 @@ export default function SteppedModal({
           {/* Header */}
           <div className="flex items-center justify-between px-6 py-5 border-b border-slate-200 dark:border-slate-700">
             <div className="flex items-center gap-3">
-              <div className="p-2.5 bg-gradient-to-br from-teal-500 to-cyan-600 rounded-xl shadow-md">
+              <div className="p-2.5 bg-violet-900 rounded-xl shadow-md">
                 {icon}
               </div>
               <div>
@@ -138,9 +138,9 @@ export default function SteppedModal({
                       className={cn(
                         "w-8 h-8 rounded-full flex items-center justify-center font-medium text-sm transition-all shadow-sm",
                         currentStep === step.id
-                          ? "bg-gradient-to-br from-teal-500 to-cyan-600 text-white"
+                          ? "bg-violet-900 text-white"
                           : currentStep > step.id
-                            ? "bg-teal-500 text-white"
+                            ? "bg-violet-700 text-white"
                             : "bg-slate-200 dark:bg-slate-700 text-slate-500 dark:text-slate-400",
                         isDisabled && "opacity-50"
                       )}
@@ -165,7 +165,7 @@ export default function SteppedModal({
                         className={cn(
                           "h-0.5 rounded-full transition-colors",
                           currentStep > step.id
-                            ? "bg-teal-500"
+                            ? "bg-violet-900"
                             : "bg-slate-200 dark:bg-slate-700",
                           isDisabled && "opacity-50"
                         )}
@@ -182,7 +182,7 @@ export default function SteppedModal({
             {isLoading ? (
               <div className="flex items-center justify-center py-12">
                 <div className="flex flex-col items-center gap-3">
-                  <div className="w-8 h-8 border-2 border-slate-200 dark:border-slate-700 border-t-teal-500 rounded-full animate-spin" />
+                  <div className="w-8 h-8 border-2 border-slate-200 dark:border-slate-700 border-t-violet-900 rounded-full animate-spin" />
                   <p className="text-sm text-slate-500 dark:text-slate-400">Loading...</p>
                 </div>
               </div>
@@ -233,7 +233,7 @@ export default function SteppedModal({
                   type="button"
                   onClick={handleNext}
                   disabled={isDisabled}
-                  className="px-5 py-2 rounded-lg font-medium flex items-center gap-1.5 transition-all bg-gradient-to-r from-teal-500 to-cyan-600 text-white hover:from-teal-600 hover:to-cyan-700 shadow-md hover:shadow-lg disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="px-5 py-2 rounded-lg font-medium flex items-center gap-1.5 transition-all bg-violet-900 text-white hover:bg-violet-800 shadow-md hover:shadow-lg disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   {isLoading ? (
                     <>
@@ -252,7 +252,7 @@ export default function SteppedModal({
                   type="submit"
                   onClick={handleSubmit}
                   disabled={isDisabled}
-                  className="px-5 py-2 rounded-lg font-medium flex items-center gap-1.5 transition-all bg-gradient-to-r from-teal-500 to-cyan-600 text-white hover:from-teal-600 hover:to-cyan-700 shadow-md hover:shadow-lg disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="px-5 py-2 rounded-lg font-medium flex items-center gap-1.5 transition-all bg-violet-900 text-white hover:bg-violet-800 shadow-md hover:shadow-lg disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   {isSubmitting ? (
                     <>

@@ -85,6 +85,10 @@ export enum Tables {
   BlogsTable = 'blogs',
 
   ProductionOrderRequest = 'production_order_request',
+
+  OrderStatusChangeRequests = 'order_status_change_requests',
+
+  SupplierAssignments = 'supplier_assignments',
 }
 
 /**
@@ -149,8 +153,7 @@ export enum SQLFunctions {
   regenerateOtp = 'regenerate_otp',
 
   createTechRequest = 'create_tech_request',
-  OrderStatusChangeRequests = 'order_status_change_requests',
-  SupplierAssignments = 'supplier_assignments',
+  assignSupplierToOrder = 'assign_supplier_to_order',
 }
 
 /**

@@ -18,12 +18,7 @@ import {
 import { EyeIcon } from "lucide-react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import React, {
-  useState,
-  useEffect,
-  useCallback,
-  useRef,
-} from "react";
+import React, { useState, useEffect, useCallback, useRef } from "react";
 import { motion } from "framer-motion";
 import ExpandFileModal from "@/app/quote-config/components/expand-file-modal";
 
@@ -196,7 +191,9 @@ const Page = () => {
             filters.status !== "Any" ? filters.status.toLowerCase() : undefined,
         };
 
-        const response = await apiClient.get("/supplier/orders/infinite", { params });
+        const response = await apiClient.get("/supplier/orders/infinite", {
+          params,
+        });
         const newData = response.data.data || [];
 
         setOrders((prev) => (isNext ? [...prev, ...newData] : newData));
@@ -248,21 +245,6 @@ const Page = () => {
       ),
     },
     {
-      key: "total_amount",
-      header: "Total Amount",
-      render: (row) => formatCurrency(row.total_amount || 0, "USD"),
-    },
-    {
-      key: "status",
-      header: "Status",
-      render: (row) => <span className="capitalize">{row.status}</span>,
-    },
-    {
-      key: "payment_status",
-      header: "Payment Status",
-      render: (row) => <span className="capitalize">{row.payment_status}</span>,
-    },
-    {
       key: "part_count",
       header: "Parts Count",
       render: (row, _, meta) => (
@@ -293,7 +275,7 @@ const Page = () => {
         items={statuses}
         minimal={true}
       />
-      
+
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pt-4 pb-4 border-b border-gray-100 dark:border-gray-800/60 transition-all">
         <div className="flex flex-1 flex-wrap items-center gap-8">
           <div className="flex items-center gap-1 p-1 bg-gray-100/50 dark:bg-gray-800/40 rounded-xl relative border border-gray-200/50 dark:border-gray-700/50">
@@ -368,9 +350,12 @@ const Page = () => {
             ) : orders.length === 0 ? (
               <div className="text-center py-12 text-[#111111]">
                 <CubeIcon className="w-12 h-12 text-gray-400 mx-auto mb-4" />
-                <h3 className="text-lg font-medium mb-2">No orders assigned yet</h3>
+                <h3 className="text-lg font-medium mb-2">
+                  No orders assigned yet
+                </h3>
                 <p className="text-gray-500 mb-4">
-                  Orders will appear here once they are assigned to your organization.
+                  Orders will appear here once they are assigned to your
+                  organization.
                 </p>
               </div>
             ) : (

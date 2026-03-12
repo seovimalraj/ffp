@@ -75,18 +75,51 @@ export class OrderService {
     return data;
   }
 
-  async getOrderById(id: string, organizationId: string) {
+  async getOrderById(id: string, organizationId: string, role?: string) {
     const client = this.supabaseService.getClient();
-    const { data, error } = await client.rpc(SQLFunctions.getOrderDetails, {
+
+    // 1. Parallelize the fetching (don't 'await' them one after another)
+    const orderPromise = client.rpc(SQLFunctions.getOrderDetails, {
       p_order_id: id,
       p_organization_id: organizationId,
     });
 
-    if (error) {
-      throw new InternalServerErrorException(error.message);
+    let requestsPromise: any = Promise.resolve({ data: [] as any[], error: null as any });
+
+    if (role !== 'customer') {
+      requestsPromise = client
+        .from(Tables.OrderStatusChangeRequests)
+        .select('*')
+        .eq('order_id', id)
+        .order('created_at', { ascending: false }); // <--- OPTIMIZATION 1: DB Sorting
+
+      if (role !== 'admin') {
+        // @ts-ignore - appending to the query
+        requestsPromise = requestsPromise.eq('supplier_id', organizationId);
+      }
     }
 
-    return data;
+    // OPTIMIZATION 2: Run both queries in parallel
+    const [
+      { data: orderData, error: orderErr },
+      { data: reqData, error: reqErr },
+    ] = await Promise.all([orderPromise, requestsPromise]);
+
+    if (orderErr || reqErr)
+      throw new InternalServerErrorException('Data fetch failed');
+
+    // OPTIMIZATION 3: O(n) Grouping (Linear time)
+    const partRequestsMap: Record<string, any[]> = {};
+    if (reqData) {
+      for (const req of reqData) {
+        if (!partRequestsMap[req.part_id]) {
+          partRequestsMap[req.part_id] = [];
+        }
+        partRequestsMap[req.part_id].push(req);
+      }
+    }
+
+    return { ...orderData, requests: partRequestsMap };
   }
 
   async updateOrderPartStatus(

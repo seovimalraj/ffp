@@ -8,14 +8,23 @@ import { apiClient } from "@/lib/api";
 import { useSession } from "next-auth/react";
 import { useMemo, useCallback, useState } from "react";
 import { UpdatePartStatusModal } from "@/components/modals/update-part-status-modal";
+import { RequestType } from "@/app/supplier/orders/[orderId]/page";
 
 interface Props {
   parts: IOrderFull["parts"];
   onRefresh?: () => void | Promise<void>;
   onItemClick?: (part: IOrderFull["parts"][number]) => void;
+  requests?: Record<string, RequestType>;
+  orderId?: string;
 }
 
-export function RFQKanban({ parts, onRefresh, onItemClick }: Props) {
+export function RFQKanban({
+  parts,
+  onRefresh,
+  onItemClick,
+  orderId,
+  requests,
+}: Props) {
   const session = useSession();
   const [pendingMove, setPendingMove] = useState<{
     itemId: string;
@@ -31,6 +40,7 @@ export function RFQKanban({ parts, onRefresh, onItemClick }: Props) {
       priority:
         part.lead_time <= 3 ? "high" : part.lead_time <= 7 ? "medium" : "low",
       metadata: {
+        orderId: orderId,
         material: part.rfq_part.material,
         finish: part.rfq_part.finish,
         quantity: part.quantity,
@@ -39,6 +49,7 @@ export function RFQKanban({ parts, onRefresh, onItemClick }: Props) {
         unitPrice: part.unit_price,
         totalPrice: part.total_price,
         snapshot_2d_url: part.rfq_part.snapshot_2d_url,
+        requests: requests,
       },
     }));
   }, [parts]);
@@ -138,6 +149,7 @@ export function RFQKanban({ parts, onRefresh, onItemClick }: Props) {
         }}
         onItemMove={handleItemMove}
         onItemClick={handleCardClick}
+        onRefresh={onRefresh}
         readOnly={session.data?.user?.role !== "admin"}
         className="bg-transparent"
       />

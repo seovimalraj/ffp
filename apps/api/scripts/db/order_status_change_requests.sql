@@ -5,11 +5,15 @@ CREATE TABLE order_status_change_requests (
 
     supplier_id UUID NOT NULL REFERENCES organizations(id),
 
+    part_id UUID NOT NULL REFERENCES order_parts(id),
+
     status_to TEXT NOT NULL,
+
+    status_from TEXT NOT NULL,
 
     comments TEXT,
 
-    approved_by UUID NOT NULL REFERENCES user(id),
+    approved_by UUID REFERENCES user(id),
 
     reviwed_at TIMESTAMPTZ,
 

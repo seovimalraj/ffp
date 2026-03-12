@@ -33,6 +33,7 @@ interface KanbanBoardProps {
     fromStatus: string,
     toStatus: string,
   ) => void | Promise<void>;
+  onRefresh: (() => void | Promise<void>) | undefined;
   onItemClick?: (item: KanbanItem) => void;
   className?: string;
 }
@@ -44,6 +45,7 @@ export function KanbanBoard({
   onItemMove,
   onAddTask,
   onStatusChange,
+  onRefresh,
   onItemClick,
   className = "",
 }: KanbanBoardProps) {
@@ -377,6 +379,7 @@ export function KanbanBoard({
                 config={config}
                 readOnly={readOnly}
                 onAddTask={onAddTask}
+                onRefresh={onRefresh}
                 onItemClick={onItemClick}
               />
             ))}
@@ -409,6 +412,7 @@ export function KanbanBoard({
               <div className="transform rotate-3 scale-105 shadow-2xl">
                 <KanbanCard
                   item={activeItem}
+                  onRefresh={onRefresh}
                   style={config?.cardStyle}
                   readOnly={true}
                 />

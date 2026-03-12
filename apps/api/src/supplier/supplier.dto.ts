@@ -1,3 +1,4 @@
+import { IsOptional, IsString } from 'class-validator';
 import { CurrencyType, StockMaterial, UnitType } from '../../libs/constants';
 
 export type CreateWarehouseDto = {
@@ -40,3 +41,10 @@ export type CreateSupplierMaterialDto = {
   status: 'active' | 'inactive';
   currency: CurrencyType;
 };
+
+// Define a DTO for cleaner validation
+export class StatusChangeRequestDto {
+  @IsString() status_from: string;
+  @IsString() status_to: string;
+  @IsString() comments: string;
+}

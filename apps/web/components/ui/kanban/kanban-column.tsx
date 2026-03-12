@@ -5,13 +5,18 @@ import {
   SortableContext,
   verticalListSortingStrategy,
 } from "@dnd-kit/sortable";
-import { type KanbanColumn, type KanbanConfig } from "@/types/kanban";
+import {
+  KanbanItem,
+  type KanbanColumn,
+  type KanbanConfig,
+} from "@/types/kanban";
 import { KanbanCard } from "./kanban-card";
 interface KanbanColumnProps {
   column: KanbanColumn;
   config?: KanbanConfig;
   readOnly?: boolean;
   onAddTask?: (columnId: string) => void;
+  onRefresh: (() => void | Promise<void>) | undefined;
   onItemClick?: (item: KanbanItem) => void;
 }
 
@@ -20,6 +25,7 @@ export function KanbanColumn({
   config,
   readOnly = false,
   onAddTask,
+  onRefresh,
   onItemClick,
 }: KanbanColumnProps) {
   const { setNodeRef, isOver } = useDroppable({
@@ -85,6 +91,7 @@ export function KanbanColumn({
               <KanbanCard
                 key={item.id}
                 item={item}
+                onRefresh={onRefresh}
                 style={config?.cardStyle}
                 readOnly={readOnly || config?.readOnly}
                 onClick={onItemClick ? () => onItemClick(item) : undefined}

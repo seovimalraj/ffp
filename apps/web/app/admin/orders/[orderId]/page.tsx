@@ -21,6 +21,7 @@ import { Input } from "@/components/ui/input";
 import { notify } from "@/lib/toast";
 import { AssignSupplierModal } from "./components/AssignSupplierModal";
 import { useMetaStore } from "@/components/store/title-store";
+import { RequestType } from "@/app/supplier/orders/[orderId]/page";
 
 /* =======================
    TYPES (FROM API)
@@ -86,6 +87,7 @@ export type IOrderFull = {
     };
     tracking_number?: string;
   };
+  requests: Record<string, RequestType>;
 };
 
 /* =======================
@@ -536,8 +538,10 @@ export default function OrderPage() {
       {/* WORKFLOW */}
       {activeTab === "workflow" && (
         <RFQKanban
+          orderId={orderId}
           parts={data.parts}
           onRefresh={() => fetchData(true)}
+          requests={data.requests}
           onItemClick={(part) => setSelectedPart(part)}
         />
       )}

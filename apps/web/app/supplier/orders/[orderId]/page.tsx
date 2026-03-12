@@ -3,13 +3,9 @@
 import { useEffect, useState, useCallback } from "react";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { apiClient } from "@/lib/api";
-import { formatCurrencyGeneric } from "@/lib/format";
-import { generateRandomSlug } from "@/lib/utils";
 import CustomLoader from "@/components/ui/loader/CustomLoader";
-import { CommandBlock } from "@/components/ui/command-block";
 import { useMetaStore } from "@/components/store/title-store";
 import {
-  AddressCard,
   Meta,
   SectionTitle,
   StatusPill,
@@ -22,6 +18,20 @@ import RfqSideDrawer from "@/app/portal/orders/[orderId]/components/rfq-side-dra
    TYPES (FROM API)
 ======================= */
 
+export type RequestType = {
+  id: string;
+  order_id: string;
+  supplier_id: string;
+  part_id: string;
+  status_to: string;
+  status_from: string;
+  comments: string;
+  approved_by: string;
+  reject_reason: string;
+  status: string;
+  created_at: string;
+};
+
 export type IOrderFull = {
   rfq: {
     rfq_code: string;
@@ -29,6 +39,7 @@ export type IOrderFull = {
     final_price: number;
   };
   order: {
+    id: string;
     order_code: string;
     created_at: string;
     subtotal: number;
@@ -81,6 +92,7 @@ export type IOrderFull = {
     };
     tracking_number?: string;
   };
+  requests: Record<string, RequestType>;
 };
 
 /* =======================
@@ -191,57 +203,6 @@ export default function OrderPage() {
                 value={new Date(data.order.created_at).toLocaleDateString()}
               />
               <Meta label="Items" value={data.parts.length.toString()} />
-              <Meta
-                label="Total Value"
-                value={formatCurrencyGeneric(data.order.total_amount)}
-                strong
-              />
-            </div>
-          </section>
-          {/* SHIPPING */}
-          <section className="space-y-2">
-            <SectionTitle title="Shipping" />
-
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <AddressCard
-                title="Ship To"
-                name={data.order.address_snapshot.name}
-                address={[
-                  data.order.address_snapshot.street1,
-                  data.order.address_snapshot.street2,
-                  `${data.order.address_snapshot.city} - ${data.order.address_snapshot.zip}`,
-                  data.order.address_snapshot.country,
-                ]}
-              />
-
-              <div className="bg-slate-50 border rounded-lg p-4 text-sm space-y-2">
-                <div className="text-xs uppercase tracking-wide text-slate-400">
-                  Shipping Method
-                </div>
-                <div className="font-medium text-slate-900">
-                  {data.shipping.shipping_information.service.toUpperCase()}
-                  <div className="uppercase">
-                    {data.shipping.shipping_information.method}
-                  </div>
-                </div>
-                <div className="text-xs uppercase tracking-wide text-slate-400">
-                  Tracking Number
-                </div>
-                <div className="font-medium max-w-[200px] text-slate-900">
-                  <CommandBlock
-                    command={
-                      data.shipping.tracking_number ?? generateRandomSlug()
-                    }
-                  />
-                </div>
-
-                {data.shipping.shipping_information.accountNumber && (
-                  <div className="text-slate-600">
-                    Account: ****
-                    {data.shipping.shipping_information.accountNumber.slice(-4)}
-                  </div>
-                )}
-              </div>
             </div>
           </section>
 
@@ -309,99 +270,10 @@ export default function OrderPage() {
                           {part.quantity}
                         </div>
                       </div>
-
-                      <div>
-                        <div className="text-[10px] uppercase tracking-wider text-slate-400 font-bold">
-                          Unit
-                        </div>
-                        <div className="text-sm font-medium text-slate-700">
-                          {formatCurrencyGeneric(part.unit_price)}
-                        </div>
-                      </div>
-
-                      <div>
-                        <div className="text-[10px] uppercase tracking-wider text-slate-400 font-bold">
-                          Total
-                        </div>
-                        <div className="text-sm font-bold text-indigo-600">
-                          {formatCurrencyGeneric(part.total_price)}
-                        </div>
-                      </div>
                     </div>
                   </div>
                 </button>
               ))}
-            </div>
-          </section>
-
-          {/* SUMMARY TABLE */}
-          <section className="space-y-4">
-            <SectionTitle title="Summary" />
-
-            <div className="bg-white border rounded-lg overflow-hidden">
-              <table className="w-full text-sm">
-                {/* Header */}
-                <thead className="bg-slate-50 border-b">
-                  <tr>
-                    <th className="px-5 py-3 text-left font-medium text-slate-600">
-                      Line Item
-                    </th>
-                    <th className="px-5 py-3 text-right font-medium text-slate-600">
-                      Qty
-                    </th>
-                    <th className="px-5 py-3 text-right font-medium text-slate-600">
-                      Unit Price
-                    </th>
-                    <th className="px-5 py-3 text-right font-medium text-slate-600">
-                      Total
-                    </th>
-                  </tr>
-                </thead>
-
-                {/* Body */}
-                <tbody className="divide-y">
-                  {data.parts.map((part) => (
-                    <tr key={part.order_part_id}>
-                      <td className="px-5 py-4 font-medium text-slate-900">
-                        {part.rfq_part.file_name}
-                      </td>
-                      <td className="px-5 py-4 text-right">{part.quantity}</td>
-                      <td className="px-5 py-4 text-right">
-                        {formatCurrencyGeneric(part.unit_price)}
-                      </td>
-                      <td className="px-5 py-4 text-right font-medium">
-                        {formatCurrencyGeneric(part.total_price)}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-
-                {/* Footer */}
-                <tfoot className="bg-slate-50 border-t">
-                  <tr>
-                    <td
-                      colSpan={3}
-                      className="px-5 py-3 text-right text-slate-500"
-                    >
-                      Subtotal
-                    </td>
-                    <td className="px-5 py-3 text-right font-medium">
-                      {formatCurrencyGeneric(data.order.subtotal)}
-                    </td>
-                  </tr>
-                  <tr>
-                    <td
-                      colSpan={3}
-                      className="px-5 py-3 text-right font-semibold"
-                    >
-                      Total
-                    </td>
-                    <td className="px-5 py-3 text-right font-semibold text-indigo-600">
-                      {formatCurrencyGeneric(data.order.total_amount)}
-                    </td>
-                  </tr>
-                </tfoot>
-              </table>
             </div>
           </section>
         </section>
@@ -409,7 +281,9 @@ export default function OrderPage() {
       {/* WORKFLOW */}
       {activeTab === "workflow" && (
         <RFQKanban
+          orderId={orderId}
           parts={data.parts}
+          requests={data.requests}
           onRefresh={() => fetchData(true)}
           onItemClick={(part: any) => setSelectedPart(part)}
         />

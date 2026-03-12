@@ -6,7 +6,9 @@ import {
   Get,
   InternalServerErrorException,
   Logger,
+  NotFoundException,
   Param,
+  ParseUUIDPipe,
   Patch,
   Post,
   Query,
@@ -23,6 +25,7 @@ import {
   PayOrderDto,
   UpdateOrderPartStatusDto,
   CapturePaypalDto,
+  RejectStatusDto,
 } from './order.dto';
 import { ShippingAddressService } from './shipping-address.service';
 import { SupabaseService } from 'src/supabase/supabase.service';
@@ -190,7 +193,11 @@ export class OrdersController {
     @Param('id') id: string,
     @CurrentUser() currentUser: CurrentUserDto,
   ) {
-    return this.ordersService.getOrderById(id, currentUser.organizationId);
+    return this.ordersService.getOrderById(
+      id,
+      currentUser.organizationId,
+      currentUser.role,
+    );
   }
 
   @Get(':id/documents')
@@ -391,10 +398,10 @@ export class OrdersController {
   @Roles(RoleNames.Admin)
   async assignSupplierToOrder(
     @Param('orderId') orderId: string,
+    @CurrentUser() currentUser: CurrentUserDto,
     @Body() body: { supplierId: string; email: string },
   ) {
     const client = this.supabaseService.getClient();
-
     const { supplierId, email } = body;
 
     if (!supplierId) {
@@ -405,50 +412,40 @@ export class OrdersController {
       throw new BadRequestException('email is required');
     }
 
-    // Verify supplier exists
-    const { data: supplier, error: supplierError } = await client
-      .from(Tables.OrganizationTable)
-      .select('id')
-      .eq('id', supplierId)
-      .eq('organization_type', 'supplier')
-      .single();
+    const { data, error } = await client.rpc('assign_supplier_to_order', {
+      p_order_id: orderId,
+      p_supplier_id: supplierId,
+      p_assigned_by: currentUser.id,
+    });
 
-    if (supplierError || !supplier) {
-      throw new BadRequestException('Invalid supplier');
+    if (error) {
+      this.logger.error(
+        { orderId, supplierId, error },
+        'Error assigning supplier to order',
+      );
+
+      throw new InternalServerErrorException(error.message);
     }
 
-    // Update order
-    const { data, error } = await client
-      .from(Tables.OrdersTable)
-      .update({
-        assigned_supplier: supplierId,
-      })
-      .eq('id', orderId)
-      .select('id')
-      .single();
+    const assignment = data?.[0];
 
-    if (error || !data) {
-      this.logger.error({ error }, 'Error assigning supplier to order');
-      throw new InternalServerErrorException('Failed to assign supplier');
-    }
-
-    // Start Workflow to send email
+    // Start workflow (non-blocking)
     try {
       await this.temporalService.startSupplierAssignmentWorkflow({
         orderId,
-        supplierEmail: email,
+        supplierEmail: body.email,
       });
     } catch (workflowError) {
       this.logger.error(
-        { workflowError },
-        'Error starting supplier assignment workflow',
+        { orderId, supplierId, workflowError },
+        'Failed to start supplier assignment workflow',
       );
-      // We don't throw here to ensure the API returns success as the assignment happened in DB
     }
 
     return {
       success: true,
       message: 'Supplier assigned successfully',
+      data: assignment,
     };
   }
 
@@ -466,5 +463,75 @@ export class OrdersController {
     );
 
     return { success: true };
+  }
+
+  @Patch('status-requests/:requestId/approve')
+  @Roles(RoleNames.Admin)
+  async approveRequest(
+    @Param('requestId', ParseUUIDPipe) requestId: string,
+    @CurrentUser() currentUser: CurrentUserDto,
+  ) {
+    const client = this.supabaseService.getClient();
+
+    // 1. Fetch the request to get the target status and part_id
+    const { data: request, error: fetchError } = await client
+      .from(Tables.OrderStatusChangeRequests)
+      .select('part_id, status_to')
+      .eq('id', requestId)
+      .single();
+
+    if (fetchError || !request) {
+      throw new NotFoundException('Status change request not found');
+    }
+
+    // 2. Update the Request record AND the Order Part record
+    // Using a simple Promise.all or sequential updates (Supabase RPC is better for transactions)
+    const { error: updateRequestError } = await client
+      .from(Tables.OrderStatusChangeRequests)
+      .update({
+        status: 'approved',
+        approved_by: currentUser.id,
+        reviwed_at: new Date().toISOString(), // Matching your SQL typo "reviwed_at"
+      })
+      .eq('id', requestId);
+
+    if (updateRequestError)
+      throw new InternalServerErrorException('Failed to update request');
+
+    const { error: updatePartError } = await client
+      .from(Tables.OrderPartsTable)
+      .update({ status: request.status_to })
+      .eq('id', request.part_id);
+
+    if (updatePartError)
+      throw new InternalServerErrorException('Failed to update part status');
+
+    return { success: true, message: 'Status change approved and applied.' };
+  }
+
+  @Patch('status-requests/:requestId/reject')
+  @Roles(RoleNames.Admin)
+  async rejectRequest(
+    @Param('requestId', ParseUUIDPipe) requestId: string,
+    @Body() body: RejectStatusDto,
+  ) {
+    const client = this.supabaseService.getClient();
+
+    const { error } = await client
+      .from(Tables.OrderStatusChangeRequests)
+      .update({
+        status: 'rejected',
+        rejection_reason: body.rejection_reason,
+        reviwed_at: new Date().toISOString(),
+        // Note: You might want to track who rejected it in approved_by or a new rejected_by column
+      })
+      .eq('id', requestId);
+
+    if (error) {
+      this.logger.error(`Rejection error: ${error.message}`);
+      throw new InternalServerErrorException('Could not reject request');
+    }
+
+    return { success: true, message: 'Status change request rejected.' };
   }
 }
