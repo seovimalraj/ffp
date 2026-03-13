@@ -29,20 +29,18 @@ export async function POST(req: Request) {
 
     // 2️⃣ Get access token from PayPal for verification
     const auth = Buffer.from(
-      `${process.env.NEXT_PUBLIC_PAYPAL_CLIENT_ID}:${process.env.NEXT_PUBLIC_PAYPAL_APP_SECRET}`,
+      `${process.env.NEXT_PUBLIC_PAYPAL_CLIENT_ID}:${process.env.PAYPAL_APP_SECRET}`,
     ).toString("base64");
+    const paypalUrl = process.env.NEXT_PAYPAL_BASEURL || "https://api-m.paypal.com";
 
-    const tokenRes = await fetch(
-      "https://api-m.sandbox.paypal.com/v1/oauth2/token",
-      {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/x-www-form-urlencoded",
-          Authorization: `Basic ${auth}`,
-        },
-        body: "grant_type=client_credentials",
+    const tokenRes = await fetch(`${paypalUrl}/v1/oauth2/token`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/x-www-form-urlencoded",
+        Authorization: `Basic ${auth}`,
       },
-    );
+      body: "grant_type=client_credentials",
+    });
 
     if (!tokenRes.ok) {
       throw new Error("PayPal authentication failed while verifying webhook");
@@ -52,7 +50,7 @@ export async function POST(req: Request) {
 
     // 3️⃣ Verify signature (Calling PayPal API)
     const verifyRes = await fetch(
-      "https://api-m.sandbox.paypal.com/v1/notifications/verify-webhook-signature",
+      `${paypalUrl}/v1/notifications/verify-webhook-signature`,
       {
         method: "POST",
         headers: {

@@ -36,7 +36,7 @@ export const BaseEmailTemplate = (
       <mj-column>
         <mj-divider />
         <mj-text align="center" mj-class="footer-small">
-          © 2026 <b>Frigate Engineering Services Pvt Ltd</b>
+          © ${new Date().getFullYear()} <b>Frigate Engineering Services Pvt Ltd</b>
         </mj-text>
         <mj-text align="center" mj-class="footer-small" padding-top="0px">
           You’re receiving this email because you created an account on Frigate Fast Parts.

@@ -8,8 +8,8 @@ export const SupplierAssignmentTemplate = (
   const url = `${config.frontendUrl}/portal/orders/${orderId}`;
   const content = `
     <!-- Main content -->
-    <mj-section padding="20px">
-      <mj-column background-color="#ffffff" padding="32px" border-radius="12px">
+    <mj-section>
+      <mj-column background-color="#ffffff" border-radius="12px">
 
         <mj-text font-size="24px" font-weight="800" color="#1e293b" padding-bottom="8px">
           New Order Assigned

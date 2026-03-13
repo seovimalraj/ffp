@@ -9,26 +9,21 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Missing orderID" }, { status: 400 });
     }
 
-    console.log(process.env.NEXT_PUBLIC_PAYPAL_CLIENT_ID);
-    console.log(process.env.NEXT_PUBLIC_PAYPAL_APP_SECRET);
-
-    // 🔐 NEVER use NEXT_PUBLIC_* for secrets
+    // 🔐 SECURE: use non-public secret
     const auth = Buffer.from(
-      `${process.env.NEXT_PUBLIC_PAYPAL_CLIENT_ID}:${process.env.NEXT_PUBLIC_PAYPAL_APP_SECRET}`,
+      `${process.env.NEXT_PUBLIC_PAYPAL_CLIENT_ID}:${process.env.PAYPAL_APP_SECRET}`,
     ).toString("base64");
+    const paypalUrl = process.env.NEXT_PAYPAL_BASEURL || "https://api-m.paypal.com";
 
     // 1️⃣ Get access token
-    const tokenRes = await fetch(
-      "https://api-m.sandbox.paypal.com/v1/oauth2/token",
-      {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/x-www-form-urlencoded",
-          Authorization: `Basic ${auth}`,
-        },
-        body: "grant_type=client_credentials",
+    const tokenRes = await fetch(`${paypalUrl}/v1/oauth2/token`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/x-www-form-urlencoded",
+        Authorization: `Basic ${auth}`,
       },
-    );
+      body: "grant_type=client_credentials",
+    });
 
     if (!tokenRes.ok) {
       const err = await tokenRes.text();
@@ -42,7 +37,7 @@ export async function POST(req: Request) {
 
     // 2️⃣ Capture order
     const captureRes = await fetch(
-      `https://api-m.sandbox.paypal.com/v2/checkout/orders/${orderID}/capture`,
+      `${paypalUrl}/v2/checkout/orders/${orderID}/capture`,
       {
         method: "POST",
         headers: {
