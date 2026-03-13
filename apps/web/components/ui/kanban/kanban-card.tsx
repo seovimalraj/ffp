@@ -70,6 +70,7 @@ export function KanbanCard({
     fromStatus: string;
     toStatus: string;
     comments: string;
+    attachments: string[];
   }) => {
     try {
       const { data: response } = await apiClient.post(
@@ -78,6 +79,7 @@ export function KanbanCard({
           status_from: data.fromStatus,
           status_to: data.toStatus,
           comments: data.comments,
+          attachments: data.attachments,
         },
       );
 

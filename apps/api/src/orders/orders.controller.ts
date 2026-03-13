@@ -474,7 +474,7 @@ export class OrdersController {
     // 1. Fetch the request to get the target status and part_id
     const { data: request, error: fetchError } = await client
       .from(Tables.OrderStatusChangeRequests)
-      .select('part_id, status_to')
+      .select('part_id, status_to, workflow_id')
       .eq('id', requestId)
       .single();
 
@@ -504,6 +504,20 @@ export class OrdersController {
     if (updatePartError)
       throw new InternalServerErrorException('Failed to update part status');
 
+    // 3. Signal Temporal Workflow
+    if (request.workflow_id) {
+      try {
+        await this.temporalService.signalOrderStatusChangeRequestWorkflow(
+          request.workflow_id,
+          'approve',
+        );
+      } catch (signalError) {
+        this.logger.error(
+          `Failed to signal approve to workflow ${request.workflow_id}: ${signalError.message}`,
+        );
+      }
+    }
+
     return { success: true, message: 'Status change approved and applied.' };
   }
 
@@ -514,6 +528,17 @@ export class OrdersController {
     @Body() body: RejectStatusDto,
   ) {
     const client = this.supabaseService.getClient();
+
+    // 1. Fetch the request to get workflow_id
+    const { data: request, error: fetchError } = await client
+      .from(Tables.OrderStatusChangeRequests)
+      .select('workflow_id')
+      .eq('id', requestId)
+      .single();
+
+    if (fetchError || !request) {
+      throw new NotFoundException('Status change request not found');
+    }
 
     const { error } = await client
       .from(Tables.OrderStatusChangeRequests)
@@ -528,6 +553,20 @@ export class OrdersController {
     if (error) {
       this.logger.error(`Rejection error: ${error.message}`);
       throw new InternalServerErrorException('Could not reject request');
+    }
+
+    // 2. Signal Temporal Workflow
+    if (request.workflow_id) {
+      try {
+        await this.temporalService.signalOrderStatusChangeRequestWorkflow(
+          request.workflow_id,
+          'reject',
+        );
+      } catch (signalError) {
+        this.logger.error(
+          `Failed to signal reject to workflow ${request.workflow_id}: ${signalError.message}`,
+        );
+      }
     }
 
     return { success: true, message: 'Status change request rejected.' };

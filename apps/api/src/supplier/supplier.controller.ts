@@ -35,6 +35,7 @@ import {
 } from './supplier.dto';
 import { WarehouseService } from './warehouse.service';
 import { generateUUID } from '../../libs/helpers';
+import { TemporalService } from '../temporal/temporal.service';
 
 @Controller('supplier')
 @UseGuards(AuthGuard)
@@ -45,6 +46,7 @@ export class SupplierController {
     private readonly supabaseService: SupabaseService,
     private readonly warehouseService: WarehouseService,
     private readonly supplierOrderService: SupplierOrderService,
+    private readonly temporalService: TemporalService,
   ) {}
 
   @Get('orders')
@@ -224,7 +226,7 @@ export class SupplierController {
     const client = this.supabaseService.getClient();
 
     // Destructure from DTO
-    const { status_from, status_to, comments } = body;
+    const { status_from, status_to, comments, attachments } = body;
 
     this.logger.debug({
       order_id: orderId,
@@ -233,10 +235,11 @@ export class SupplierController {
       status_from,
       status_to,
       comments,
+      attachments,
       status: 'active',
     });
 
-    const { data, error } = await client
+    const { data: oscr, error } = await client
       .from(Tables.OrderStatusChangeRequests)
       .insert({
         order_id: orderId,
@@ -245,6 +248,7 @@ export class SupplierController {
         status_from,
         status_to,
         comments,
+        attachments: attachments || [],
         status: 'active',
       })
       .select() // REQUIRED to return the data
@@ -257,10 +261,35 @@ export class SupplierController {
       );
     }
 
-    return {
-      success: true,
-      oscr: data,
-    };
+    // 2. Start Temporal Workflow
+    try {
+      const workflowHandle =
+        await this.temporalService.startOrderStatusChangeRequestWorkflow({
+          requestId: oscr.id,
+          supplierEmail: currentUser.email,
+        });
+
+      // 3. Update the request with workflow_id
+      await client
+        .from(Tables.OrderStatusChangeRequests)
+        .update({ workflow_id: workflowHandle.workflowId })
+        .eq('id', oscr.id);
+
+      return {
+        success: true,
+        oscr: { ...oscr, workflow_id: workflowHandle.workflowId },
+      };
+    } catch (workflowError) {
+      this.logger.error(
+        `Failed to start status change workflow: ${workflowError.message}`,
+      );
+      // We return the oscr even if workflow fails to start, but maybe we should throw?
+      // For now, let's just return it as it's already in the DB.
+      return {
+        success: true,
+        oscr,
+      };
+    }
   }
 
   @Delete('/permission')

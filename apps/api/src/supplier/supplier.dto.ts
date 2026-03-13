@@ -47,4 +47,5 @@ export class StatusChangeRequestDto {
   @IsString() status_from: string;
   @IsString() status_to: string;
   @IsString() comments: string;
+  @IsOptional() attachments?: string[];
 }
