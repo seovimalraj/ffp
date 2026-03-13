@@ -304,22 +304,20 @@ export class OrdersController {
       const auth = Buffer.from(
         `${process.env.PAYPAL_CLIENT_ID}:${process.env.PAYPAL_CLIENT_SECRET}`,
       ).toString('base64');
-      const tokenRes = await fetch(
-        'https://api-m.sandbox.paypal.com/v1/oauth2/token',
-        {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/x-www-form-urlencoded',
-            Authorization: `Basic ${auth}`,
-          },
-          body: 'grant_type=client_credentials',
+      const paypalUrl = process.env.PAYPAL_API_URL || 'https://api-m.paypal.com';
+      const tokenRes = await fetch(`${paypalUrl}/v1/oauth2/token`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded',
+          Authorization: `Basic ${auth}`,
         },
-      );
+        body: 'grant_type=client_credentials',
+      });
 
       const { access_token } = await tokenRes.json();
       // 2. Capture Order
       const captureRes = await fetch(
-        `https://api-m.sandbox.paypal.com/v2/checkout/orders/${body.orderID}/capture`,
+        `${paypalUrl}/v2/checkout/orders/${body.orderID}/capture`,
         {
           method: 'POST',
           headers: {

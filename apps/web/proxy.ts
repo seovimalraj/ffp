@@ -19,7 +19,10 @@ const LEGACY_WIDGET_ROUTES = new Set([
 
 const LEGACY_HELP_ROUTES = new Set(["/support", "/help-center"]);
 
-function handleWidgetCORS(request: NextRequest, response: NextResponse): NextResponse | null {
+function handleWidgetCORS(
+  request: NextRequest,
+  response: NextResponse,
+): NextResponse | null {
   const origin = request.headers.get("origin");
   if (!origin) return response;
 
@@ -105,7 +108,7 @@ function setSecurityHeaders(response: NextResponse, pathname: string): void {
           "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; " +
           "font-src 'self' https://fonts.gstatic.com; " +
           "img-src 'self' data: https:; " +
-          "connect-src 'self' https://api.paypal.com https://api-m.paypal.com https://api.sandbox.paypal.com https://api-m.sandbox.paypal.com; " +
+          "connect-src 'self' https://api.paypal.com https://api-m.paypal.com https://api.sandbox.paypal.com https://api-m.paypal.com; " +
           "frame-src https://www.paypal.com https://www.sandbox.paypal.com; " +
           "object-src 'none'; base-uri 'self'; form-action 'self';"
       : "default-src 'self'; " +
