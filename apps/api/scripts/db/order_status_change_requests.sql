@@ -20,6 +20,10 @@ CREATE TABLE order_status_change_requests (
     rejection_reason TEXT,
 
     status TEXT NOT NULL,
+    
+    workflow_id text,
+
+    attachments text[],
 
     created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
 

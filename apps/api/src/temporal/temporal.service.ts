@@ -337,4 +337,57 @@ export class TemporalService implements OnModuleInit {
       throw error;
     }
   }
+
+  async startOrderStatusChangeRequestWorkflow(data: {
+    supplierEmail: string;
+    requestId: string;
+  }) {
+    try {
+      if (!this.client) {
+        throw new Error('Temporal client not initialized');
+      }
+
+      const handle = await this.client.workflow.start(
+        TemporalEvents.OrderStatusChangeRequestWorkflow,
+        {
+          taskQueue: TaskQueues.CoreTaskQueue,
+          workflowId: `oscr-${data.requestId}`,
+          args: [data],
+        },
+      );
+
+      this.logger.log(
+        `Started Order Status Change Request workflow: ${handle.workflowId}`,
+      );
+      return handle;
+    } catch (error) {
+      this.logger.error(
+        'Failed to start Order Status Change Request workflow:',
+        error.message,
+      );
+      throw error;
+    }
+  }
+
+  async signalOrderStatusChangeRequestWorkflow(
+    workflowId: string,
+    signal: 'approve' | 'reject',
+  ) {
+    try {
+      if (!this.client) {
+        throw new Error('Temporal client not initialized');
+      }
+
+      const handle = this.client.workflow.getHandle(workflowId);
+      await handle.signal(signal);
+
+      this.logger.log(`Signaled workflow ${workflowId} with ${signal}`);
+    } catch (error) {
+      this.logger.error(
+        `Failed to signal workflow ${workflowId}:`,
+        error.message,
+      );
+      throw error;
+    }
+  }
 }
