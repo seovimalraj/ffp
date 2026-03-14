@@ -1497,17 +1497,28 @@ export function loadDxfFromArrayBuffer(
   const scaleToMm =
     opts?.units === "inch" ? 25.4 : opts?.units === "mm" ? 1 : meta.scaleToMm;
   const { object } = buildLineworkFromDxf(dxf, scaleToMm, opts);
+  const mirrored = wrapDxfLineworkInMirroredRoot(object);
 
+  return {
+    object: mirrored.object,
+    bounds: mirrored.bounds,
+    meta: { ...meta, scaleToMm },
+  };
+}
+
+export function wrapDxfLineworkInMirroredRoot(
+  lineworkObject: THREE.Object3D,
+): { object: THREE.Group; bounds: THREE.Box3 } {
   const mirroredRoot = new THREE.Group();
   mirroredRoot.name = "dxfLineworkMirroredRoot";
   mirroredRoot.scale.z = -1;
-  mirroredRoot.add(object);
+  mirroredRoot.add(lineworkObject);
   mirroredRoot.updateMatrixWorld(true);
 
-  const finalBounds = new THREE.Box3().setFromObject(mirroredRoot);
-  if (finalBounds.isEmpty()) {
-    finalBounds.set(new THREE.Vector3(0, 0, 0), new THREE.Vector3(0, 0, 0));
+  const bounds = new THREE.Box3().setFromObject(mirroredRoot);
+  if (bounds.isEmpty()) {
+    bounds.set(new THREE.Vector3(0, 0, 0), new THREE.Vector3(0, 0, 0));
   }
 
-  return { object: mirroredRoot, bounds: finalBounds, meta: { ...meta, scaleToMm } };
+  return { object: mirroredRoot, bounds };
 }

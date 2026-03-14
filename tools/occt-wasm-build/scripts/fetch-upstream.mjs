@@ -12,6 +12,9 @@ const cacheDir = path.join(buildRoot, ".cache");
 const upstreamDir = path.join(buildRoot, "upstream-src");
 const metadataPath = path.join(cacheDir, "fetch-metadata.json");
 
+const DEFAULT_REPO = "https://github.com/kovacsv/occt-import-js.git";
+const DEFAULT_OCCT_MIRROR = "https://github.com/Open-Cascade-SAS/OCCT.git";
+
 function fail(message, details = "") {
   console.error(`[fetch-upstream] ${message}`);
   if (details) {
@@ -28,13 +31,19 @@ function run(command, args, cwd = buildRoot) {
   });
 
   if (result.status !== 0) {
-    fail(
-      `command failed: ${command} ${args.join(" ")}`,
-      `${result.stdout || ""}\n${result.stderr || ""}`,
-    );
+    const joined = [result.stdout || "", result.stderr || ""].join("\n").trim();
+    throw new Error(`${command} ${args.join(" ")}\n${joined}`.trim());
   }
 
-  return result.stdout;
+  return (result.stdout || "").trim();
+}
+
+function tryRun(command, args, cwd = buildRoot) {
+  try {
+    return { ok: true, output: run(command, args, cwd) };
+  } catch (error) {
+    return { ok: false, error };
+  }
 }
 
 function sha256(filePath) {
@@ -59,56 +68,117 @@ if (typeof version !== "string" || version.length === 0) {
   fail(`config.json must contain a non-empty string "version"`);
 }
 
+const repo =
+  typeof config?.repo === "string" && config.repo.trim().length > 0
+    ? config.repo.trim()
+    : DEFAULT_REPO;
+
+const explicitRef =
+  typeof config?.ref === "string" && config.ref.trim().length > 0
+    ? config.ref.trim()
+    : null;
+
+const candidateRefs = explicitRef ? [explicitRef] : [`v${version}`, version];
+
 fs.mkdirSync(cacheDir, { recursive: true });
 fs.rmSync(upstreamDir, { recursive: true, force: true });
-fs.mkdirSync(upstreamDir, { recursive: true });
 
-const npmOutput = run("npm", [
-  "pack",
-  `occt-import-js@${version}`,
-  "--pack-destination",
-  cacheDir,
-  "--json",
-]);
+const cloneErrors = [];
+let selectedRef = null;
+for (const ref of candidateRefs) {
+  try {
+    run("git", ["clone", "--depth", "1", "--branch", ref, repo, upstreamDir]);
+    selectedRef = ref;
+    break;
+  } catch (err) {
+    cloneErrors.push(`ref '${ref}': ${String(err)}`);
+    fs.rmSync(upstreamDir, { recursive: true, force: true });
+  }
+}
 
-let packInfo;
+if (!selectedRef) {
+  fail(
+    `unable to clone ${repo} using candidate refs: ${candidateRefs.join(", ")}`,
+    cloneErrors.join("\n\n"),
+  );
+}
+
 try {
-  packInfo = JSON.parse(npmOutput);
+  const submoduleInit = tryRun(
+    "git",
+    ["submodule", "update", "--init", "--recursive"],
+    upstreamDir,
+  );
+  if (!submoduleInit.ok) {
+    const fallbackUrl =
+      typeof config?.occtMirror === "string" && config.occtMirror.trim().length > 0
+        ? config.occtMirror.trim()
+        : DEFAULT_OCCT_MIRROR;
+
+    const detectedSubmoduleUrl = tryRun(
+      "git",
+      ["config", "-f", ".gitmodules", "--get", "submodule.occt.url"],
+      upstreamDir,
+    );
+    const currentSubmoduleUrl = detectedSubmoduleUrl.ok
+      ? detectedSubmoduleUrl.output
+      : "";
+    const shouldTryMirror =
+      currentSubmoduleUrl.includes("git.dev.opencascade.org") &&
+      fallbackUrl.length > 0;
+
+    if (!shouldTryMirror) {
+      throw submoduleInit.error;
+    }
+
+    console.warn(
+      `[fetch-upstream] submodule fetch from '${currentSubmoduleUrl}' failed; retrying with mirror '${fallbackUrl}'`,
+    );
+    run(
+      "git",
+      ["config", "-f", ".gitmodules", "submodule.occt.url", fallbackUrl],
+      upstreamDir,
+    );
+    run("git", ["submodule", "sync", "--recursive"], upstreamDir);
+    run("git", ["submodule", "update", "--init", "--recursive"], upstreamDir);
+  }
 } catch (err) {
-  fail("unable to parse npm pack output", `${npmOutput}\n${String(err)}`);
+  fail("failed to initialize OCCT git submodule", String(err));
 }
 
-if (!Array.isArray(packInfo) || packInfo.length === 0) {
-  fail("npm pack did not return tarball metadata", npmOutput);
+const upstreamPackageJson = path.join(upstreamDir, "package.json");
+if (!fs.existsSync(upstreamPackageJson)) {
+  fail(`cloned upstream source is missing package.json at ${upstreamDir}`);
 }
 
-const tarballName = packInfo[0]?.filename;
-if (typeof tarballName !== "string" || !tarballName.endsWith(".tgz")) {
-  fail("npm pack did not return a valid tarball filename", npmOutput);
+const occtSrcDir = path.join(upstreamDir, "occt", "src");
+if (!fs.existsSync(occtSrcDir) || !fs.statSync(occtSrcDir).isDirectory()) {
+  fail(
+    `upstream clone is missing occt submodule sources at ${occtSrcDir}`,
+    "run this script again after checking network/auth access to the submodule origin",
+  );
 }
 
-const tarballPath = path.join(cacheDir, tarballName);
-if (!fs.existsSync(tarballPath)) {
-  fail(`expected tarball was not found: ${tarballPath}`);
-}
-
-run("tar", ["-xzf", tarballPath, "-C", upstreamDir, "--strip-components=1"]);
-
-if (!fs.existsSync(path.join(upstreamDir, "package.json"))) {
-  fail(`extracted upstream source is missing package.json at ${upstreamDir}`);
-}
+const headCommit = run("git", ["rev-parse", "HEAD"], upstreamDir);
 
 const metadata = {
   package: "occt-import-js",
   version,
-  tarball: path.relative(buildRoot, tarballPath),
-  sha256: sha256(tarballPath),
+  source: {
+    repo,
+    ref: selectedRef,
+    commit: headCommit,
+  },
 };
 
 fs.writeFileSync(metadataPath, `${JSON.stringify(metadata, null, 2)}\n`);
 
+const packageJsonHash = sha256(upstreamPackageJson);
+
 console.log("[fetch-upstream] complete");
 console.log(`[fetch-upstream] package: ${metadata.package}@${metadata.version}`);
-console.log(`[fetch-upstream] tarball: ${metadata.tarball}`);
-console.log(`[fetch-upstream] sha256: ${metadata.sha256}`);
+console.log(`[fetch-upstream] repo: ${repo}`);
+console.log(`[fetch-upstream] ref: ${selectedRef}`);
+console.log(`[fetch-upstream] commit: ${headCommit}`);
+console.log(`[fetch-upstream] package.json sha256: ${packageJsonHash}`);
 console.log(`[fetch-upstream] extracted to: ${path.relative(buildRoot, upstreamDir)}`);
