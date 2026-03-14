@@ -67,9 +67,101 @@ export type Viewer = {
     location?: { x: number; y: number; z: number },
   ) => void;
   setBackgroundColor: (color: string | number) => void;
+  setOverlayVisible: (visible: boolean) => void;
   setShowViewCube: (visible: boolean) => void;
   setShowHomeButton: (visible: boolean) => void;
+  getActiveCamera: () => THREE.Camera;
+  getRendererSize: () => { width: number; height: number };
+  onViewChanged: (cb: () => void) => () => void;
+  projectWorldToScreen: (point: THREE.Vector3) => {
+    x: number;
+    y: number;
+    visible: boolean;
+  };
 };
+
+export type ViewerControlsPresetConfig = {
+  enableRotate: boolean;
+  enablePan: boolean;
+  enableZoom: boolean;
+  enableDamping: boolean;
+  screenSpacePanning: boolean;
+  mouseButtons: OrbitControls["mouseButtons"];
+  touches: OrbitControls["touches"];
+};
+
+export function getViewerControlsPresetConfig(
+  preset: "orbit3d" | "dxf2d",
+): ViewerControlsPresetConfig {
+  if (preset === "dxf2d") {
+    return {
+      enableRotate: false,
+      enablePan: true,
+      enableZoom: true,
+      enableDamping: false,
+      screenSpacePanning: true,
+      mouseButtons: {
+        LEFT: THREE.MOUSE.PAN,
+        MIDDLE: THREE.MOUSE.DOLLY,
+        RIGHT: THREE.MOUSE.PAN,
+      },
+      touches: {
+        ONE: THREE.TOUCH.PAN,
+        TWO: THREE.TOUCH.DOLLY_PAN,
+      },
+    };
+  }
+
+  return {
+    enableRotate: true,
+    enablePan: true,
+    enableZoom: true,
+    enableDamping: true,
+    screenSpacePanning: false,
+    mouseButtons: {
+      LEFT: THREE.MOUSE.ROTATE,
+      MIDDLE: THREE.MOUSE.DOLLY,
+      RIGHT: THREE.MOUSE.PAN,
+    },
+    touches: {
+      ONE: THREE.TOUCH.ROTATE,
+      TWO: THREE.TOUCH.DOLLY_PAN,
+    },
+  };
+}
+
+export function getViewerViewUpVector(
+  preset: "top" | "front" | "right" | "iso" | "bottom" | "left" | "back",
+): THREE.Vector3 {
+  if (preset === "top") {
+    return new THREE.Vector3(0, 0, -1);
+  }
+  if (preset === "bottom") {
+    return new THREE.Vector3(0, 0, 1);
+  }
+  return new THREE.Vector3(0, 1, 0);
+}
+
+export function resolveFramingDirection(params: {
+  cameraPosition: THREE.Vector3;
+  target: THREE.Vector3;
+  fallbackDirection?: THREE.Vector3;
+}): THREE.Vector3 {
+  const direction = new THREE.Vector3().subVectors(
+    params.cameraPosition,
+    params.target,
+  );
+  if (direction.lengthSq() > 1e-12) {
+    return direction.normalize();
+  }
+  const fallback = params.fallbackDirection
+    ? params.fallbackDirection.clone()
+    : new THREE.Vector3(1, 0.8, 1);
+  if (fallback.lengthSq() <= 1e-12) {
+    fallback.set(1, 0.8, 1);
+  }
+  return fallback.normalize();
+}
 
 export function createStainlessSteelMaterial(): THREE.MeshPhysicalMaterial {
   // Tuned for a realistic stainless-steel appearance with room-env reflections.
@@ -91,6 +183,17 @@ export function createViewer(container: HTMLElement): Viewer {
   // (used before assignment in view cube setup)
   let controls!: OrbitControls;
   let requestUpdateSilhouette: (() => void) | null = null;
+  const viewChangedListeners = new Set<() => void>();
+
+  const emitViewChanged = () => {
+    for (const listener of viewChangedListeners) {
+      try {
+        listener();
+      } catch {
+        // ignore callback errors from external listeners
+      }
+    }
+  };
 
   const renderer = new THREE.WebGLRenderer({
     antialias: true,
@@ -959,61 +1062,38 @@ export function createViewer(container: HTMLElement): Viewer {
     orbitControls: OrbitControls,
     preset: "orbit3d" | "dxf2d",
   ) {
-    if (preset === "dxf2d") {
-      orbitControls.enableRotate = true;
-      orbitControls.enablePan = true;
-      orbitControls.enableZoom = true;
-      orbitControls.screenSpacePanning = false;
-      orbitControls.mouseButtons = {
-        LEFT: THREE.MOUSE.ROTATE,
-        MIDDLE: THREE.MOUSE.DOLLY,
-        RIGHT: THREE.MOUSE.PAN,
-      };
-      orbitControls.touches = {
-        ONE: THREE.TOUCH.ROTATE,
-        TWO: THREE.TOUCH.DOLLY_PAN,
-      };
-      return;
-    }
-
-    orbitControls.enableRotate = true;
-    orbitControls.enablePan = true;
-    orbitControls.enableZoom = true;
-    orbitControls.screenSpacePanning = false;
-    orbitControls.mouseButtons = {
-      LEFT: THREE.MOUSE.ROTATE,
-      MIDDLE: THREE.MOUSE.DOLLY,
-      RIGHT: THREE.MOUSE.PAN,
-    };
-    orbitControls.touches = {
-      ONE: THREE.TOUCH.ROTATE,
-      TWO: THREE.TOUCH.DOLLY_PAN,
-    };
+    const config = getViewerControlsPresetConfig(preset);
+    orbitControls.enableRotate = config.enableRotate;
+    orbitControls.enablePan = config.enablePan;
+    orbitControls.enableZoom = config.enableZoom;
+    orbitControls.enableDamping = config.enableDamping;
+    orbitControls.dampingFactor = config.enableDamping ? 0.1 : 0;
+    orbitControls.screenSpacePanning = config.screenSpacePanning;
+    orbitControls.mouseButtons = config.mouseButtons;
+    orbitControls.touches = config.touches;
   }
 
   function createControls(camera: THREE.Camera): OrbitControls {
     const orbitControls = new OrbitControls(camera, renderer.domElement);
-    orbitControls.enableDamping = true;
-    orbitControls.dampingFactor = 0.1;
     applyControlsPresetTo(orbitControls, controlsPreset);
-    if (requestUpdateSilhouette) {
-      try {
-        orbitControls.addEventListener(
-          "change",
-          requestUpdateSilhouette as any,
-        );
-      } catch {
-        // ignore listener binding errors
-      }
+    try {
+      orbitControls.addEventListener("change", onControlsChanged as any);
+    } catch {
+      // ignore listener binding errors
     }
     return orbitControls;
+  }
+
+  function onControlsChanged() {
+    requestUpdateSilhouette?.();
+    emitViewChanged();
   }
 
   function rebindControls(camera: THREE.Camera) {
     const prevTarget = controls?.target?.clone?.() ?? new THREE.Vector3();
     const prevEnabled = controls?.enabled ?? true;
     try {
-      controls?.removeEventListener("change", requestUpdateSilhouette as any);
+      controls?.removeEventListener("change", onControlsChanged as any);
     } catch {
       // ignore listener cleanup errors
     }
@@ -1109,6 +1189,7 @@ export function createViewer(container: HTMLElement): Viewer {
 
   // CAD adjacency/cache for tangent + silhouette overlays (per-mesh)
   const cadMeshData = new WeakMap<THREE.Mesh, any>();
+  const ENABLE_SILHOUETTE_OVERLAYS = false;
 
   // Silhouette update scheduling (throttle with rAF)
   let silhouetteUpdateRequested = false;
@@ -1129,13 +1210,12 @@ export function createViewer(container: HTMLElement): Viewer {
     });
   };
 
-  // Attach orbit controls listener now that requestUpdateSilhouette is assigned
-  try {
-    controls.addEventListener("change", requestUpdateSilhouette as any);
-  } catch {}
-
   // Update silhouette overlays for all meshes that have precomputed edge data
   function updateSilhouetteEdges() {
+    // Silhouette overlays are intentionally disabled to avoid view-dependent
+    // duplicate edge lines on cylinders/fillets.
+    if (!ENABLE_SILHOUETTE_OVERLAYS) return;
+    if (!silhouetteEdgesEnabled) return;
     // Determine camera world info once
     const isPerspective = (activeCamera as any).isPerspectiveCamera;
     const camWorldPos = new THREE.Vector3();
@@ -1211,6 +1291,7 @@ export function createViewer(container: HTMLElement): Viewer {
 
   // Tracks current edge LineSegments objects for toggling + picking
   let featureEdgesEnabled = true;
+  let silhouetteEdgesEnabled = false; // default OFF
   const featureEdgeLines: any[] = [];
 
   // Array of edge overlay THREE.LineSegments for edge picking.
@@ -1428,6 +1509,25 @@ export function createViewer(container: HTMLElement): Viewer {
   }
 
   const raycaster = new THREE.Raycaster();
+  function computeLinePickThresholdWorld(px: number): number {
+    const h = Math.max(1, container.clientHeight);
+    const cam: any = activeCamera;
+    const target = controls?.target ?? new THREE.Vector3();
+
+    if (cam?.isPerspectiveCamera) {
+      const dist = cam.position.distanceTo(target);
+      const fovRad = THREE.MathUtils.degToRad(cam.fov ?? 50);
+      const worldPerPixel = (2 * Math.tan(fovRad * 0.5) * dist) / h;
+      const v = worldPerPixel * px;
+      return THREE.MathUtils.clamp(v, modelDiagonal * 1e-6, modelDiagonal * 1e-2);
+    }
+    if (cam?.isOrthographicCamera) {
+      const worldPerPixel = (cam.top - cam.bottom) / h;
+      const v = worldPerPixel * px;
+      return THREE.MathUtils.clamp(v, modelDiagonal * 1e-6, modelDiagonal * 1e-2);
+    }
+    return Math.max(0.1, modelDiagonal * 0.005);
+  }
   const pointer = new THREE.Vector2();
 
   const measureMaterial = new THREE.LineBasicMaterial({
@@ -1493,11 +1593,19 @@ export function createViewer(container: HTMLElement): Viewer {
     const maxDim = Math.max(size.x, size.y, size.z);
     const fov = (persp.fov * Math.PI) / 180;
     const distance = (maxDim / 2 / Math.tan(fov / 2)) * padding;
+    const currentTarget = controls?.target?.clone?.() ?? center.clone();
+    const direction = resolveFramingDirection({
+      cameraPosition: activeCamera.position.clone(),
+      target: currentTarget,
+    });
+    const up = activeCamera.up.clone();
+    const nextPosition = center.clone().add(direction.multiplyScalar(distance));
 
-    const dirVec = new THREE.Vector3(1, 0.8, 1).normalize();
-    persp.position.copy(center.clone().add(dirVec.multiplyScalar(distance)));
+    persp.position.copy(nextPosition);
+    persp.up.copy(up);
     persp.near = Math.max(0.1, distance * 0.01);
     persp.far = distance * 100 + maxDim;
+    persp.lookAt(center);
     persp.updateProjectionMatrix();
 
     const half = (maxDim * padding) / 2;
@@ -1508,7 +1616,8 @@ export function createViewer(container: HTMLElement): Viewer {
     ortho.bottom = -half;
     ortho.near = -10000;
     ortho.far = 10000;
-    ortho.position.copy(persp.position);
+    ortho.position.copy(nextPosition);
+    ortho.up.copy(up);
     ortho.lookAt(center);
     ortho.updateProjectionMatrix();
 
@@ -1612,18 +1721,39 @@ export function createViewer(container: HTMLElement): Viewer {
 
     // Raycast only against the tracked edge LineSegments for the model
     if (edgePickables.length === 0) return null;
-    // Allow some leeway when picking lines so the user doesn't have to be pixel-perfect
-    try {
-      // Larger thresholds make it easier; tuned for models in mm units
-      (raycaster.params as any).Line = (raycaster.params as any).Line || {};
-      (raycaster.params as any).Line.threshold = Math.max(
-        0.1,
-        modelDiagonal * 0.005,
-      );
-    } catch {}
+    const lineThreshold = computeLinePickThresholdWorld(8);
+    (raycaster.params as any).Line = (raycaster.params as any).Line || {};
+    (raycaster.params as any).Line.threshold = lineThreshold;
 
     const intersects = raycaster.intersectObjects(edgePickables, true);
     if (intersects.length === 0) return null;
+    intersects.sort((a, b) => {
+      const ar = Number.isFinite((a as any).distanceToRay)
+        ? Number((a as any).distanceToRay)
+        : Infinity;
+      const br = Number.isFinite((b as any).distanceToRay)
+        ? Number((b as any).distanceToRay)
+        : Infinity;
+      if (ar !== br) return ar - br;
+      const ad = (a.object as any)?.userData ?? {};
+      const bd = (b.object as any)?.userData ?? {};
+      const ap = ad.__isHoleDepthEdge
+        ? 0
+        : ad.__isArcSeamEdge
+          ? 1
+          : ad.__isFeatureEdge
+            ? 2
+            : 3;
+      const bp = bd.__isHoleDepthEdge
+        ? 0
+        : bd.__isArcSeamEdge
+          ? 1
+          : bd.__isFeatureEdge
+            ? 2
+            : 3;
+      if (ap !== bp) return ap - bp;
+      return a.distance - b.distance;
+    });
 
     // Use the nearest intersection first
     const intr = intersects[0];
@@ -1664,20 +1794,42 @@ export function createViewer(container: HTMLElement): Viewer {
       return;
     }
 
-    // Scale threshold by model diagonal for better picking across different model sizes
-    try {
-      (raycaster.params as any).Line = (raycaster.params as any).Line || {};
-      (raycaster.params as any).Line.threshold = Math.max(
-        0.1,
-        modelDiagonal * 0.005,
-      );
-    } catch {}
+    const lineThreshold = computeLinePickThresholdWorld(8);
+    (raycaster.params as any).Line = (raycaster.params as any).Line || {};
+    (raycaster.params as any).Line.threshold = lineThreshold;
 
     const intersects = raycaster.intersectObjects(edgePickables, true);
     if (intersects.length === 0) {
       clearEdgeHighlight();
       return;
     }
+    intersects.sort((a, b) => {
+      const ar = Number.isFinite((a as any).distanceToRay)
+        ? Number((a as any).distanceToRay)
+        : Infinity;
+      const br = Number.isFinite((b as any).distanceToRay)
+        ? Number((b as any).distanceToRay)
+        : Infinity;
+      if (ar !== br) return ar - br;
+      const ad = (a.object as any)?.userData ?? {};
+      const bd = (b.object as any)?.userData ?? {};
+      const ap = ad.__isHoleDepthEdge
+        ? 0
+        : ad.__isArcSeamEdge
+          ? 1
+          : ad.__isFeatureEdge
+            ? 2
+            : 3;
+      const bp = bd.__isHoleDepthEdge
+        ? 0
+        : bd.__isArcSeamEdge
+          ? 1
+          : bd.__isFeatureEdge
+            ? 2
+            : 3;
+      if (ap !== bp) return ap - bp;
+      return a.distance - b.distance;
+    });
 
     const intr = intersects[0];
     const line = intr.object as THREE.Object3D;
@@ -1787,10 +1939,8 @@ export function createViewer(container: HTMLElement): Viewer {
   /**
    * Measures an edge at the given screen position. Raycasts against measurement-capable
    * overlays, extracts hit segment endpoints, calls setMeasurementSegment with start, end,
-   * and label, and returns the numeric length.
-   * Hybrid policy:
-   * - normal edges: nearest-hit behavior
-   * - depth/seam overlays: apply front-face occlusion check
+   * and label, and returns the numeric length. If no overlay segment is hit, falls
+   * back to the closest edge of the hit mesh triangle.
    */
   function measureEdgeAtScreenPosition(
     ndcX: number,
@@ -1806,75 +1956,133 @@ export function createViewer(container: HTMLElement): Viewer {
       if (data.__isSilhouetteEdge) return false;
       return true;
     });
-    if (measurePickables.length === 0) return null;
+    const lineThreshold = computeLinePickThresholdWorld(8);
+    (raycaster.params as any).Line = (raycaster.params as any).Line || {};
+    (raycaster.params as any).Line.threshold = lineThreshold;
 
-    try {
-      (raycaster.params as any).Line = (raycaster.params as any).Line || {};
-      (raycaster.params as any).Line.threshold = Math.max(
-        0.1,
-        modelDiagonal * 0.005,
-      );
-    } catch {}
-
-    const intersects = raycaster.intersectObjects(measurePickables, true);
-    if (intersects.length === 0) return null;
-
-    let nearestVisibleMeshDistance: number | null | undefined = undefined;
-    const getNearestVisibleMeshDistance = (): number | null => {
-      if (nearestVisibleMeshDistance !== undefined)
-        return nearestVisibleMeshDistance;
-      const meshTargets: THREE.Object3D[] = [];
-      modelRoot.traverse((obj: any) => {
-        if (!obj?.isMesh) return;
-        if (obj?.userData?.__edgeOverlay) return;
-        if (!isEffectivelyVisible(obj)) return;
-        meshTargets.push(obj as THREE.Object3D);
-      });
-      if (meshTargets.length === 0) {
-        nearestVisibleMeshDistance = null;
-        return nearestVisibleMeshDistance;
-      }
-      const meshIntersects = raycaster.intersectObjects(meshTargets, true);
-      nearestVisibleMeshDistance = null;
-      for (const meshHit of meshIntersects) {
-        const hitObj = meshHit.object as any;
-        if (!hitObj?.isMesh) continue;
-        if (hitObj?.userData?.__edgeOverlay) continue;
-        nearestVisibleMeshDistance = meshHit.distance;
-        break;
-      }
-      return nearestVisibleMeshDistance;
-    };
-
-    for (const intr of intersects) {
-      const line = intr.object as THREE.Object3D;
-      const hitData = (line as any)?.userData ?? {};
-      if (hitData.__isSilhouetteEdge) continue;
-
-      if (hitData.__isDepthMeasureEdge === true) {
-        if (!Number.isFinite(intr.distance)) continue;
-        const meshDistance = getNearestVisibleMeshDistance();
-        if (meshDistance === null || !Number.isFinite(meshDistance)) continue;
-        const occlusionEpsilon = Math.max(1e-3, modelDiagonal * 1e-4);
-        if (intr.distance > meshDistance + occlusionEpsilon) continue;
+    if (measurePickables.length > 0) {
+      const intersects = raycaster.intersectObjects(measurePickables, true);
+      if (intersects.length > 0) {
+        intersects.sort((a, b) => {
+          const ar = Number.isFinite((a as any).distanceToRay)
+            ? Number((a as any).distanceToRay)
+            : Infinity;
+          const br = Number.isFinite((b as any).distanceToRay)
+            ? Number((b as any).distanceToRay)
+            : Infinity;
+          if (ar !== br) return ar - br;
+          const ad = (a.object as any)?.userData ?? {};
+          const bd = (b.object as any)?.userData ?? {};
+          const ap = ad.__isHoleDepthEdge
+            ? 0
+            : ad.__isArcSeamEdge
+              ? 1
+              : ad.__isFeatureEdge
+                ? 2
+                : 3;
+          const bp = bd.__isHoleDepthEdge
+            ? 0
+            : bd.__isArcSeamEdge
+              ? 1
+              : bd.__isFeatureEdge
+                ? 2
+                : 3;
+          if (ap !== bp) return ap - bp;
+          return a.distance - b.distance;
+        });
       }
 
-      const endpoints =
-        getSegmentEndpointsFromLineIntersection(intr, line) ??
-        getClosestSegmentEndpointsToPoint(line, intr.point);
-      if (!endpoints) continue;
+      for (const intr of intersects) {
+        const line = intr.object as THREE.Object3D;
+        const hitData = (line as any)?.userData ?? {};
+        if (hitData.__isSilhouetteEdge) continue;
 
-      // Convert from modelRoot local space to world space for measurement overlay.
-      const v0Local = endpoints.a.clone();
-      const v1Local = endpoints.b.clone();
-      modelRoot.worldToLocal(v0Local);
-      modelRoot.worldToLocal(v1Local);
-      const v0World = v0Local.clone().applyMatrix4(modelRoot.matrixWorld);
-      const v1World = v1Local.clone().applyMatrix4(modelRoot.matrixWorld);
+        const endpoints =
+          getSegmentEndpointsFromLineIntersection(intr, line) ??
+          getClosestSegmentEndpointsToPoint(line, intr.point);
+        if (!endpoints) continue;
 
-      const length = v0World.distanceTo(v1World);
+        // Convert from modelRoot local space to world space for measurement overlay.
+        const v0Local = endpoints.a.clone();
+        const v1Local = endpoints.b.clone();
+        modelRoot.worldToLocal(v0Local);
+        modelRoot.worldToLocal(v1Local);
+        const v0World = v0Local.clone().applyMatrix4(modelRoot.matrixWorld);
+        const v1World = v1Local.clone().applyMatrix4(modelRoot.matrixWorld);
+
+        const length = v0World.distanceTo(v1World);
+        const label = Number.isFinite(length) ? `${length.toFixed(2)} mm` : null;
+        setMeasurementSegment(v0World, v1World, label);
+        return length;
+      }
+    }
+
+    const meshTargets: THREE.Object3D[] = [];
+    modelRoot.traverse((obj: any) => {
+      if (!obj?.isMesh) return;
+      if (obj?.userData?.__edgeOverlay) return;
+      if (!isEffectivelyVisible(obj)) return;
+      meshTargets.push(obj as THREE.Object3D);
+    });
+    if (meshTargets.length === 0) return null;
+
+    const meshIntersects = raycaster.intersectObjects(meshTargets, true);
+    for (const meshHit of meshIntersects) {
+      const hitObj = meshHit.object as any;
+      if (!hitObj?.isMesh) continue;
+      if (hitObj?.userData?.__edgeOverlay) continue;
+      const face = meshHit.face;
+      const geometry = hitObj.geometry as THREE.BufferGeometry | undefined;
+      if (!face || !geometry?.isBufferGeometry) continue;
+      const posAttr = geometry.getAttribute("position") as
+        | THREE.BufferAttribute
+        | undefined;
+      if (!posAttr || posAttr.count < 3) continue;
+      const aIdx = Number(face.a);
+      const bIdx = Number(face.b);
+      const cIdx = Number(face.c);
+      if (
+        !Number.isFinite(aIdx) ||
+        !Number.isFinite(bIdx) ||
+        !Number.isFinite(cIdx) ||
+        aIdx < 0 ||
+        bIdx < 0 ||
+        cIdx < 0 ||
+        aIdx >= posAttr.count ||
+        bIdx >= posAttr.count ||
+        cIdx >= posAttr.count
+      ) {
+        continue;
+      }
+
+      const a = new THREE.Vector3()
+        .fromBufferAttribute(posAttr, aIdx)
+        .applyMatrix4(hitObj.matrixWorld);
+      const b = new THREE.Vector3()
+        .fromBufferAttribute(posAttr, bIdx)
+        .applyMatrix4(hitObj.matrixWorld);
+      const c = new THREE.Vector3()
+        .fromBufferAttribute(posAttr, cIdx)
+        .applyMatrix4(hitObj.matrixWorld);
+
+      let p0 = a;
+      let p1 = b;
+      let best = pointToSegmentDistanceSq(meshHit.point, a, b);
+      const dBC = pointToSegmentDistanceSq(meshHit.point, b, c);
+      if (dBC < best) {
+        best = dBC;
+        p0 = b;
+        p1 = c;
+      }
+      const dCA = pointToSegmentDistanceSq(meshHit.point, c, a);
+      if (dCA < best) {
+        p0 = c;
+        p1 = a;
+      }
+
+      const length = p0.distanceTo(p1);
       const label = Number.isFinite(length) ? `${length.toFixed(2)} mm` : null;
-      setMeasurementSegment(v0World, v1World, label);
+      setMeasurementSegment(p0, p1, label);
       return length;
     }
 
@@ -1907,7 +2115,7 @@ export function createViewer(container: HTMLElement): Viewer {
     const viewDir = new THREE.Vector3()
       .subVectors(activeCamera.position, mid)
       .normalize();
-    const overlayOffsetAmount = modelDiagonal > 0 ? modelDiagonal * 1e-4 : 0;
+    const overlayOffsetAmount = 0;
     const overlayOffset = viewDir.clone().multiplyScalar(overlayOffsetAmount);
     const p1o = p1.clone().add(overlayOffset);
     const p2o = p2.clone().add(overlayOffset);
@@ -2267,6 +2475,86 @@ export function createViewer(container: HTMLElement): Viewer {
 
   type Vec3Like = { x: number; y: number; z: number };
 
+  function segmentKey(
+    ax: number,
+    ay: number,
+    az: number,
+    bx: number,
+    by: number,
+    bz: number,
+    eps: number,
+  ) {
+    const q = (v: number) => Math.round(v / eps);
+    const a = `${q(ax)},${q(ay)},${q(az)}`;
+    const b = `${q(bx)},${q(by)},${q(bz)}`;
+    return a < b ? `${a}|${b}` : `${b}|${a}`;
+  }
+
+  function removeFeatureEdgesOverlappingSegments(
+    mesh: THREE.Object3D,
+    seamPositions: number[],
+    eps: number,
+  ) {
+    if (!seamPositions || seamPositions.length < 6) return;
+
+    // Find the featureEdges object under this mesh
+    const featureEdgesObj = (mesh.children as any[]).find(
+      (c) =>
+        c?.isLineSegments &&
+        c?.name === "featureEdges" &&
+        c?.userData?.__isFeatureEdge === true,
+    ) as THREE.LineSegments | undefined;
+
+    if (!featureEdgesObj) return;
+
+    const seamSet = new Set<string>();
+    for (let i = 0; i + 5 < seamPositions.length; i += 6) {
+      const ax = seamPositions[i],
+        ay = seamPositions[i + 1],
+        az = seamPositions[i + 2];
+      const bx = seamPositions[i + 3],
+        by = seamPositions[i + 4],
+        bz = seamPositions[i + 5];
+      seamSet.add(segmentKey(ax, ay, az, bx, by, bz, eps));
+    }
+
+    const geom = featureEdgesObj.geometry as THREE.BufferGeometry;
+    if (!geom) return;
+
+    // Work on non-indexed positions (EdgesGeometry is typically non-indexed, but be safe)
+    const g = geom.index ? geom.toNonIndexed() : geom;
+    const posAttr = g.getAttribute("position") as THREE.BufferAttribute;
+    if (!posAttr || posAttr.count < 2) return;
+
+    const kept: number[] = [];
+    for (let i = 0; i + 1 < posAttr.count; i += 2) {
+      const ax = posAttr.getX(i),
+        ay = posAttr.getY(i),
+        az = posAttr.getZ(i);
+      const bx = posAttr.getX(i + 1),
+        by = posAttr.getY(i + 1),
+        bz = posAttr.getZ(i + 1);
+      const key = segmentKey(ax, ay, az, bx, by, bz, eps);
+      if (seamSet.has(key)) continue; // DROP duplicates along seam
+      kept.push(ax, ay, az, bx, by, bz);
+    }
+
+    if (kept.length === posAttr.array.length) {
+      // Nothing removed; if we created a new geom via toNonIndexed, keep original
+      return;
+    }
+
+    const newGeom = new THREE.BufferGeometry();
+    newGeom.setAttribute(
+      "position",
+      new THREE.Float32BufferAttribute(new Float32Array(kept), 3),
+    );
+    newGeom.computeBoundingSphere();
+    // Preserve material and object, replace only geometry
+    featureEdgesObj.geometry.dispose?.();
+    featureEdgesObj.geometry = newGeom;
+  }
+
   function segmentKeyUndirected(a: Vec3Like, b: Vec3Like, eps: number): string {
     const inv = 1 / Math.max(eps, 1e-12);
     const aqx = Math.round(a.x * inv);
@@ -2328,6 +2616,21 @@ export function createViewer(container: HTMLElement): Viewer {
       .length();
   }
 
+  function pointToSegmentDistanceSq(
+    p: THREE.Vector3,
+    a: THREE.Vector3,
+    b: THREE.Vector3,
+  ): number {
+    const ab = new THREE.Vector3().subVectors(b, a);
+    const ap = new THREE.Vector3().subVectors(p, a);
+    const abLenSq = ab.lengthSq();
+    if (abLenSq <= 1e-24) return p.distanceToSquared(a);
+    let t = ap.dot(ab) / abLenSq;
+    t = Math.max(0, Math.min(1, t));
+    const closest = a.clone().addScaledVector(ab, t);
+    return p.distanceToSquared(closest);
+  }
+
   function getSegmentEndpointsFromLineIntersection(
     intersection: THREE.Intersection,
     line: THREE.Object3D,
@@ -2341,52 +2644,54 @@ export function createViewer(container: HTMLElement): Viewer {
       | undefined;
     if (!posAttr || posAttr.count < 2) return null;
 
-    let aVertex = -1;
-    let bVertex = -1;
-    if (geometry.index) {
-      const indexArray = geometry.index.array as ArrayLike<number>;
-      const start = Math.floor(idx);
-      if (start >= 0 && start + 1 < indexArray.length) {
+    const indexArray = geometry.index?.array as ArrayLike<number> | undefined;
+    const idxFloor = Math.floor(idx);
+    const candidateStarts = [idxFloor, idxFloor * 2];
+    let bestDistSq = Infinity;
+    let bestA: THREE.Vector3 | null = null;
+    let bestB: THREE.Vector3 | null = null;
+
+    for (let ci = 0; ci < candidateStarts.length; ci++) {
+      const start = candidateStarts[ci];
+      if (ci > 0 && start === candidateStarts[0]) continue;
+      if (!Number.isFinite(start)) continue;
+      let aVertex = -1;
+      let bVertex = -1;
+      if (indexArray) {
+        if (start < 0 || start + 1 >= indexArray.length) continue;
         aVertex = Number(indexArray[start]);
         bVertex = Number(indexArray[start + 1]);
       } else {
-        const startAsSegment = Math.floor(idx) * 2;
-        if (startAsSegment >= 0 && startAsSegment + 1 < indexArray.length) {
-          aVertex = Number(indexArray[startAsSegment]);
-          bVertex = Number(indexArray[startAsSegment + 1]);
-        }
-      }
-    } else {
-      const start = Math.floor(idx);
-      if (start >= 0 && start + 1 < posAttr.count) {
+        if (start < 0 || start + 1 >= posAttr.count) continue;
         aVertex = start;
         bVertex = start + 1;
-      } else {
-        const startAsSegment = Math.floor(idx) * 2;
-        if (startAsSegment >= 0 && startAsSegment + 1 < posAttr.count) {
-          aVertex = startAsSegment;
-          bVertex = startAsSegment + 1;
-        }
+      }
+      if (
+        !Number.isFinite(aVertex) ||
+        !Number.isFinite(bVertex) ||
+        aVertex < 0 ||
+        bVertex < 0 ||
+        aVertex >= posAttr.count ||
+        bVertex >= posAttr.count
+      ) {
+        continue;
+      }
+      const aW = new THREE.Vector3()
+        .fromBufferAttribute(posAttr, aVertex)
+        .applyMatrix4(line.matrixWorld);
+      const bW = new THREE.Vector3()
+        .fromBufferAttribute(posAttr, bVertex)
+        .applyMatrix4(line.matrixWorld);
+      const d2 = pointToSegmentDistanceSq(intersection.point, aW, bW);
+      if (d2 < bestDistSq) {
+        bestDistSq = d2;
+        bestA = aW;
+        bestB = bW;
       }
     }
 
-    if (
-      !Number.isFinite(aVertex) ||
-      !Number.isFinite(bVertex) ||
-      aVertex < 0 ||
-      bVertex < 0 ||
-      aVertex >= posAttr.count ||
-      bVertex >= posAttr.count
-    ) {
-      return null;
-    }
-    const a = new THREE.Vector3()
-      .fromBufferAttribute(posAttr, aVertex)
-      .applyMatrix4(line.matrixWorld);
-    const b = new THREE.Vector3()
-      .fromBufferAttribute(posAttr, bVertex)
-      .applyMatrix4(line.matrixWorld);
-    return { a, b };
+    if (!bestA || !bestB) return null;
+    return { a: bestA, b: bestB };
   }
 
   function getClosestSegmentEndpointsToPoint(
@@ -2676,7 +2981,7 @@ export function createViewer(container: HTMLElement): Viewer {
       const estimatedFaceCount = analysisGeom?.index
         ? analysisGeom.index.count / 3
         : (basePosAttr?.count ?? 0) / 3;
-      const maxAnalysisFaces = 600000;
+      const maxAnalysisFaces = 2000000;
       if (estimatedFaceCount > maxAnalysisFaces) return;
 
       let indexedGeom: THREE.BufferGeometry;
@@ -2929,8 +3234,11 @@ export function createViewer(container: HTMLElement): Viewer {
                 return { componentIdx, totalLength };
               })
               .sort((lhs, rhs) => rhs.totalLength - lhs.totalLength);
-            const keepCount = Math.min(2, ranked.length);
+            const largest = ranked[0]?.totalLength ?? 0;
+            const minComponentLength = largest * 0.02;
+            const keepCount = Math.min(50, ranked.length);
             for (let i = 0; i < keepCount; i++) {
+              if (i > 0 && ranked[i].totalLength < minComponentLength) break;
               const component = seamComponents[ranked[i].componentIdx];
               for (const segIdx of component) seamKeep.add(segIdx);
             }
@@ -2953,6 +3261,11 @@ export function createViewer(container: HTMLElement): Viewer {
         }
         const seamPositionsDeduped = dedupeSegmentPositions(
           seamPositions,
+          epsSegment,
+        );
+        removeFeatureEdgesOverlappingSegments(
+          mesh,
+          seamPositionsDeduped,
           epsSegment,
         );
 
@@ -2984,7 +3297,6 @@ export function createViewer(container: HTMLElement): Viewer {
             seamObj.renderOrder = (mesh.renderOrder ?? 0) + 1;
             seamObj.userData.__edgeOverlay = true;
             seamObj.userData.__isArcSeamEdge = true;
-            seamObj.userData.__isDepthMeasureEdge = true;
             seamObj.visible = featureEdgesEnabled;
             mesh.add(seamObj);
             edgePickables.push(seamObj);
@@ -3103,7 +3415,7 @@ export function createViewer(container: HTMLElement): Viewer {
           const length = tMax - tMin;
           const radiusDenom = Math.max(radius, 1e-9);
           if (radiusStd / radiusDenom >= 0.12) continue;
-          if (!(length > 0.1 * diagForFilters)) continue;
+          if (!(length > 0.02 * diagForFilters)) continue;
           if (!(radius < 0.25 * diagForFilters)) continue;
           if (!(length / radiusDenom > 1.0)) continue;
           const avgConcavity =
@@ -3148,31 +3460,15 @@ export function createViewer(container: HTMLElement): Viewer {
             const candidate = cylinderCandidates[cluster[ci]];
             if (candidate.span > chosen.span) chosen = candidate;
           }
-
-          const up = new THREE.Vector3(0, 1, 0);
-          if (Math.abs(up.dot(chosen.axisDir)) > 0.95) {
-            up.set(1, 0, 0);
-          }
-          const u = up.sub(
-            vecTempB
-              .copy(chosen.axisDir)
-              .multiplyScalar(up.dot(chosen.axisDir)),
-          );
-          if (u.lengthSq() <= 1e-12) continue;
-          u.normalize();
-
           const axisMin = vecTempA
             .copy(chosen.axisDir)
             .multiplyScalar(chosen.tMin);
           const axisMax = vecTempB
             .copy(chosen.axisDir)
             .multiplyScalar(chosen.tMax);
-          const radial = u.clone().multiplyScalar(chosen.radius);
 
-          const p0 = chosen.axisOrigin.clone().add(radial).add(axisMin);
-          const p1 = chosen.axisOrigin.clone().add(radial).add(axisMax);
-          const q0 = chosen.axisOrigin.clone().sub(radial).add(axisMin);
-          const q1 = chosen.axisOrigin.clone().sub(radial).add(axisMax);
+          const p0 = chosen.axisOrigin.clone().add(axisMin);
+          const p1 = chosen.axisOrigin.clone().add(axisMax);
 
           holeDepthPositions.push(
             p0.x,
@@ -3181,12 +3477,6 @@ export function createViewer(container: HTMLElement): Viewer {
             p1.x,
             p1.y,
             p1.z,
-            q0.x,
-            q0.y,
-            q0.z,
-            q1.x,
-            q1.y,
-            q1.z,
           );
         }
         const holeDepthPositionsDeduped = dedupeSegmentPositions(
@@ -3210,11 +3500,8 @@ export function createViewer(container: HTMLElement): Viewer {
               color: 0x111111,
               transparent: true,
               opacity: 0.9,
-              depthTest: true,
+              depthTest: false,
               depthWrite: false,
-              polygonOffset: true,
-              polygonOffsetFactor: -1,
-              polygonOffsetUnits: 1,
             });
             holeDepthObj = new THREE.LineSegments(hg, hmat);
             holeDepthObj.name = "holeDepthEdges";
@@ -3222,7 +3509,6 @@ export function createViewer(container: HTMLElement): Viewer {
             holeDepthObj.renderOrder = (mesh.renderOrder ?? 0) + 1;
             holeDepthObj.userData.__edgeOverlay = true;
             holeDepthObj.userData.__isHoleDepthEdge = true;
-            holeDepthObj.userData.__isDepthMeasureEdge = true;
             holeDepthObj.visible = featureEdgesEnabled;
             mesh.add(holeDepthObj);
             edgePickables.push(holeDepthObj);
@@ -3235,30 +3521,31 @@ export function createViewer(container: HTMLElement): Viewer {
         // Create silhouette LineSegments (dynamic) with empty geom initially
         let silhouetteObj: THREE.LineSegments | null = null;
         try {
-          const sg = new THREE.BufferGeometry();
-          sg.setAttribute(
-            "position",
-            new THREE.Float32BufferAttribute(new Float32Array(0), 3),
-          );
-          const smat = new THREE.LineBasicMaterial({
-            color: 0x000000,
-            linewidth: 3.0,
-            transparent: true,
-            opacity: 1.0,
-            depthTest: true,
-            depthWrite: false,
-            polygonOffset: true,
-            polygonOffsetFactor: -1,
-            polygonOffsetUnits: 1,
-          });
-          silhouetteObj = new THREE.LineSegments(sg, smat);
-          silhouetteObj.frustumCulled = false;
-          silhouetteObj.renderOrder = 10000;
-          silhouetteObj.userData.__edgeOverlay = true;
-          silhouetteObj.userData.__isSilhouetteEdge = true;
-          silhouetteObj.visible = featureEdgesEnabled;
-          mesh.add(silhouetteObj);
-          edgePickables.push(silhouetteObj);
+          if (ENABLE_SILHOUETTE_OVERLAYS && silhouetteEdgesEnabled) {
+            const sg = new THREE.BufferGeometry();
+            sg.setAttribute(
+              "position",
+              new THREE.Float32BufferAttribute(new Float32Array(0), 3),
+            );
+            const smat = new THREE.LineBasicMaterial({
+              color: 0x000000,
+              linewidth: 3.0,
+              transparent: true,
+              opacity: 1.0,
+              depthTest: true,
+              depthWrite: false,
+              polygonOffset: true,
+              polygonOffsetFactor: -1,
+              polygonOffsetUnits: 1,
+            });
+            silhouetteObj = new THREE.LineSegments(sg, smat);
+            silhouetteObj.frustumCulled = false;
+            silhouetteObj.renderOrder = 10000;
+            silhouetteObj.userData.__edgeOverlay = true;
+            silhouetteObj.userData.__isSilhouetteEdge = true;
+            silhouetteObj.visible = false;
+            mesh.add(silhouetteObj);
+          }
         } catch (e) {
           /* ignore silhouette build errors */
         }
@@ -3516,6 +3803,7 @@ export function createViewer(container: HTMLElement): Viewer {
       modelDiagonal = 0;
       updateClippingPlanes();
     }
+    emitViewChanged();
   }
 
   function clear() {
@@ -3524,6 +3812,7 @@ export function createViewer(container: HTMLElement): Viewer {
     resetIsolationSnapshot();
     modelRoot.clear();
     modelRoot.position.set(0, 0, 0);
+    emitViewChanged();
   }
 
   function setView(
@@ -3531,7 +3820,7 @@ export function createViewer(container: HTMLElement): Viewer {
   ) {
     const target = controls.target.clone();
     const dist = (activeCamera as any).position?.distanceTo?.(target) ?? 300;
-    const up = new THREE.Vector3(0, 1, 0);
+    const up = getViewerViewUpVector(preset);
     switch (preset) {
       case "top":
         (activeCamera as THREE.PerspectiveCamera).position.copy(
@@ -3576,6 +3865,7 @@ export function createViewer(container: HTMLElement): Viewer {
     // The user may call fitToScreen separately; controls should reflect new position.
     controls.update();
     requestUpdateSilhouette?.();
+    emitViewChanged();
   }
 
   function setProjection(mode: "perspective" | "orthographic") {
@@ -3585,6 +3875,7 @@ export function createViewer(container: HTMLElement): Viewer {
       rebindControls(activeCamera);
     }
     requestUpdateSilhouette?.();
+    emitViewChanged();
   }
 
   function resize() {
@@ -3610,6 +3901,7 @@ export function createViewer(container: HTMLElement): Viewer {
       edgeHoverLineMaterial.resolution.set(w, h);
     }
     updateCubeSize();
+    emitViewChanged();
   }
 
   function setControlsEnabled(enabled: boolean) {
@@ -3744,6 +4036,7 @@ export function createViewer(container: HTMLElement): Viewer {
     // userZoom < 1 means further (larger padding)
     const padding = 1.5 / Math.max(0.1, zoom);
     fitCameraToBox(box, padding);
+    emitViewChanged();
   }
 
   function frameObject(object: THREE.Object3D) {
@@ -3758,14 +4051,10 @@ export function createViewer(container: HTMLElement): Viewer {
     const padding = 1.5;
 
     const currentTarget = controls.target.clone();
-    const currentDir = new THREE.Vector3().subVectors(
-      activeCamera.position,
-      currentTarget,
-    );
-    if (currentDir.lengthSq() <= 1e-12) {
-      currentDir.set(1, 0.8, 1);
-    }
-    currentDir.normalize();
+    const currentDir = resolveFramingDirection({
+      cameraPosition: activeCamera.position.clone(),
+      target: currentTarget,
+    });
 
     const fov = (persp.fov * Math.PI) / 180;
     const distance = (maxDim / 2 / Math.tan(fov / 2)) * padding;
@@ -3795,6 +4084,52 @@ export function createViewer(container: HTMLElement): Viewer {
     controls.target.copy(center);
     controls.update();
     requestUpdateSilhouette?.();
+    emitViewChanged();
+  }
+
+  function getRendererSize(): { width: number; height: number } {
+    const width = renderer.domElement.clientWidth || container.clientWidth || 0;
+    const height =
+      renderer.domElement.clientHeight || container.clientHeight || 0;
+    return { width, height };
+  }
+
+  function getActiveCamera(): THREE.Camera {
+    return activeCamera;
+  }
+
+  function onViewChanged(cb: () => void): () => void {
+    if (typeof cb !== "function") {
+      return () => undefined;
+    }
+    viewChangedListeners.add(cb);
+    return () => {
+      viewChangedListeners.delete(cb);
+    };
+  }
+
+  function projectWorldToScreen(point: THREE.Vector3): {
+    x: number;
+    y: number;
+    visible: boolean;
+  } {
+    const ndc = point.clone().project(activeCamera);
+    const size = getRendererSize();
+    const width = Math.max(1, size.width);
+    const height = Math.max(1, size.height);
+    const x = ((ndc.x + 1) * 0.5) * width;
+    const y = ((1 - ndc.y) * 0.5) * height;
+    const visible =
+      Number.isFinite(ndc.x) &&
+      Number.isFinite(ndc.y) &&
+      Number.isFinite(ndc.z) &&
+      ndc.z >= -1 &&
+      ndc.z <= 1 &&
+      ndc.x >= -1.2 &&
+      ndc.x <= 1.2 &&
+      ndc.y >= -1.2 &&
+      ndc.y <= 1.2;
+    return { x, y, visible };
   }
 
   function setBackgroundColor(color: string | number) {
@@ -3955,7 +4290,7 @@ export function createViewer(container: HTMLElement): Viewer {
       measureMaterial.dispose();
     } catch {}
     try {
-      controls.removeEventListener("change", requestUpdateSilhouette as any);
+      controls.removeEventListener("change", onControlsChanged as any);
     } catch {}
     try {
       controls.dispose();
@@ -4093,6 +4428,7 @@ export function createViewer(container: HTMLElement): Viewer {
     frameObject,
     setHighlight,
     setBackgroundColor,
+    setOverlayVisible,
     setControlsEnabled,
     setControlsPreset,
     setShowViewCube: (visible: boolean) => {
@@ -4101,5 +4437,9 @@ export function createViewer(container: HTMLElement): Viewer {
     setShowHomeButton: (visible: boolean) => {
       homeBtn.style.display = visible ? "flex" : "none";
     },
+    getActiveCamera,
+    getRendererSize,
+    onViewChanged,
+    projectWorldToScreen,
   };
 }

@@ -39,6 +39,22 @@ type UnfoldSheetMetalReq = {
   };
 };
 
+type ExportPartReq = {
+  id: string;
+  type: "export_part";
+  payload: {
+    buffer: ArrayBuffer;
+    ext: CADExt;
+    partId: string;
+    format: CadExactExportFormat;
+  };
+};
+
+type GetWorkerCapabilitiesReq = {
+  id: string;
+  type: "get_worker_capabilities";
+};
+
 type TessFlatOk = {
   id: string;
   ok: true;
@@ -48,6 +64,7 @@ type TessFlatOk = {
 
 type TessPartsMesh = {
   name: string;
+  partId?: string | null;
   color?: [number, number, number] | null;
   positions: Float32Array;
   normals?: Float32Array;
@@ -63,9 +80,34 @@ type TessPartsOk = {
 };
 
 type TessErr = { id: string; ok: false; error: string };
+type ExportPartOk = {
+  id: string;
+  ok: true;
+  type: "export_part";
+  format: CadExactExportFormat;
+  bytes: Uint8Array;
+};
+
+type GetWorkerCapabilitiesOk = {
+  id: string;
+  ok: true;
+  type: "get_worker_capabilities";
+  capabilities: WorkerCapabilities;
+};
 
 type CADExt = "step" | "stp" | "iges" | "igs" | "brep";
+export type CadExactExportFormat = "step" | "iges" | "brep";
 type MeshAssemblyExt = "obj" | "3mf" | "gltf" | "glb";
+
+export type WorkerCapabilities = {
+  exactCadPartExport: boolean;
+  supportedExactCadFormats: Array<CadExactExportFormat>;
+};
+
+export const DEFAULT_WORKER_CAPABILITIES: WorkerCapabilities = {
+  exactCadPartExport: false,
+  supportedExactCadFormats: [],
+};
 
 export type SheetMetalMeta = {
   isAssembly: boolean;
@@ -99,6 +141,7 @@ type UnfoldSheetMetalOk = {
 
 export type CadAssemblyNode = {
   name: string;
+  partId?: string | null;
   meshes: number[];
   children: CadAssemblyNode[];
   [key: string]: unknown;
@@ -108,6 +151,8 @@ export type CadAssemblyLoadResult = {
   object: THREE.Group;
   root: CadAssemblyNode;
   meshes: THREE.Mesh[];
+  originalBytes: ArrayBuffer;
+  ext: CADExt;
 };
 
 function applyStainlessSteelMaterialOverrides(root: any, doubleSide = false) {
@@ -255,6 +300,18 @@ function isMeshAssemblyExt(ext: string): ext is MeshAssemblyExt {
   return ext === "obj" || ext === "3mf" || ext === "gltf" || ext === "glb";
 }
 
+function isCadExactExportFormat(
+  format: string,
+): format is CadExactExportFormat {
+  return format === "step" || format === "iges" || format === "brep";
+}
+
+function normalizeCadPartId(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : null;
+}
+
 function normalizeSheetMetalMeta(raw: any): SheetMetalMeta {
   if (!raw || typeof raw !== "object") {
     return {
@@ -272,6 +329,27 @@ function normalizeSheetMetalMeta(raw: any): SheetMetalMeta {
     thicknessMM: Number.isFinite(thicknessMM) ? thicknessMM : undefined,
     bendCount: Number.isFinite(bendCount) ? bendCount : undefined,
     reason: typeof raw.reason === "string" ? raw.reason : undefined,
+  };
+}
+
+function normalizeWorkerCapabilities(raw: unknown): WorkerCapabilities {
+  if (!raw || typeof raw !== "object") {
+    return { ...DEFAULT_WORKER_CAPABILITIES };
+  }
+
+  const caps = raw as WorkerCapabilities;
+  const supportedExactCadFormats = Array.isArray(caps.supportedExactCadFormats)
+    ? caps.supportedExactCadFormats.filter((entry): entry is CadExactExportFormat =>
+        isCadExactExportFormat(String(entry)),
+      )
+    : [];
+
+  const exactCadPartExport =
+    !!caps.exactCadPartExport && supportedExactCadFormats.length > 0;
+
+  return {
+    exactCadPartExport,
+    supportedExactCadFormats,
   };
 }
 
@@ -304,6 +382,7 @@ function normalizeCadRoot(root: any, meshCount: number): CadAssemblyNode {
   if (!root || typeof root !== "object") {
     return {
       name: "Root",
+      partId: null,
       meshes: new Array(meshCount).fill(0).map((_, idx) => idx),
       children: [],
     };
@@ -326,6 +405,7 @@ function normalizeCadRoot(root: any, meshCount: number): CadAssemblyNode {
   const normalized: CadAssemblyNode = {
     ...(root as object),
     name: typeof (root as any).name === "string" ? (root as any).name : "Root",
+    partId: normalizeCadPartId((root as any).partId),
     meshes,
     children,
   };
@@ -360,6 +440,7 @@ export async function loadCadAssemblyFile(
 
   const id = Math.random().toString(36).slice(2);
   const buf = await fileObj.arrayBuffer();
+  const sourceBytes = buf.slice(0);
 
   return new Promise<CadAssemblyLoadResult>((resolve, reject) => {
     const handle = (e: MessageEvent<TessPartsOk | TessErr | TessFlatOk>) => {
@@ -413,6 +494,9 @@ export async function loadCadAssemblyFile(
             ? packed.name
             : `Part ${i + 1}`;
         mesh.userData.__cadMeshIndex = i;
+        if (packed.partId) {
+          mesh.userData.__cadPartId = packed.partId;
+        }
         if (packed.color) {
           mesh.userData.__cadColor = packed.color;
         }
@@ -424,7 +508,7 @@ export async function loadCadAssemblyFile(
       if (typeof root.name === "string" && root.name.trim().length > 0) {
         group.name = root.name;
       }
-      resolve({ object: group, root, meshes });
+      resolve({ object: group, root, meshes, originalBytes: sourceBytes, ext });
     };
 
     worker.addEventListener("message", handle as any);
@@ -601,6 +685,129 @@ export async function unfoldCadSheetMetal(
       );
     },
   );
+}
+
+export async function exportCadPartExact(
+  worker: Worker,
+  payload: {
+    buffer: ArrayBuffer;
+    ext: CADExt;
+    partId: string;
+    format: CadExactExportFormat;
+  },
+): Promise<{ format: CadExactExportFormat; bytes: Uint8Array }> {
+  if (!isCadExactExportFormat(payload.format)) {
+    throw new Error("Unsupported exact CAD export format.");
+  }
+  if (!isCADExt(payload.ext)) {
+    throw new Error("Unsupported CAD source format.");
+  }
+
+  const normalizedPartId = normalizeCadPartId(payload.partId);
+  if (!normalizedPartId) {
+    throw new Error("Missing CAD part identity for exact export.");
+  }
+
+  const id = Math.random().toString(36).slice(2);
+  const buf = payload.buffer;
+
+  return new Promise<{ format: CadExactExportFormat; bytes: Uint8Array }>(
+    (resolve, reject) => {
+      const handle = (e: MessageEvent<ExportPartOk | TessErr>) => {
+        const data = e.data;
+        if (!data || data.id !== id) return;
+        worker.removeEventListener("message", handle as any);
+
+        if (!data.ok) {
+          reject(
+            new Error(
+              "error" in data && typeof data.error === "string"
+                ? data.error
+                : "OpenCascade error",
+            ),
+          );
+          return;
+        }
+
+        const bytes =
+          data.bytes instanceof Uint8Array
+            ? data.bytes
+            : new Uint8Array(data.bytes as any);
+        if (bytes.length === 0) {
+          reject(new Error("Exact CAD export returned an empty payload."));
+          return;
+        }
+
+        const outFormat = isCadExactExportFormat(data.format)
+          ? data.format
+          : payload.format;
+        resolve({ format: outFormat, bytes });
+      };
+
+      worker.addEventListener("message", handle as any);
+      worker.postMessage(
+        {
+          id,
+          type: "export_part",
+          payload: {
+            buffer: buf,
+            ext: payload.ext,
+            partId: normalizedPartId,
+            format: payload.format,
+          },
+        } as ExportPartReq,
+        [buf],
+      );
+    },
+  );
+}
+
+export async function getWorkerCapabilities(
+  worker: Worker | null | undefined,
+  options?: { timeoutMs?: number },
+): Promise<WorkerCapabilities> {
+  if (!worker) return { ...DEFAULT_WORKER_CAPABILITIES };
+
+  const timeoutMs = Math.max(50, options?.timeoutMs ?? 1500);
+  const id = Math.random().toString(36).slice(2);
+
+  return new Promise<WorkerCapabilities>((resolve) => {
+    let settled = false;
+    let timeoutHandle: ReturnType<typeof setTimeout> | null = null;
+
+    const finalize = (caps: WorkerCapabilities) => {
+      if (settled) return;
+      settled = true;
+      if (timeoutHandle) {
+        clearTimeout(timeoutHandle);
+      }
+      worker.removeEventListener("message", handle as any);
+      resolve(caps);
+    };
+
+    const handle = (e: MessageEvent<GetWorkerCapabilitiesOk | TessErr>) => {
+      const data = e.data;
+      if (!data || data.id !== id) return;
+
+      if (!data.ok || data.type !== "get_worker_capabilities") {
+        finalize({ ...DEFAULT_WORKER_CAPABILITIES });
+        return;
+      }
+
+      finalize(normalizeWorkerCapabilities(data.capabilities));
+    };
+
+    timeoutHandle = setTimeout(() => {
+      finalize({ ...DEFAULT_WORKER_CAPABILITIES });
+    }, timeoutMs);
+
+    worker.addEventListener("message", handle as any);
+    try {
+      worker.postMessage({ id, type: "get_worker_capabilities" } as GetWorkerCapabilitiesReq);
+    } catch {
+      finalize({ ...DEFAULT_WORKER_CAPABILITIES });
+    }
+  });
 }
 
 export async function loadMeshFile(
