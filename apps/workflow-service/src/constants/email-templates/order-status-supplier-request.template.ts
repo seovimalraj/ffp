@@ -9,11 +9,8 @@ export const OrderStatusSupplierRequestTemplate = (
 ) => {
   const url = `${config.frontendUrl}/admin/orders/${orderId}?tab=workflow`;
   const content = `
-     <mj-section padding="10px 0">
-  <mj-column background-color="#ffffff" border-radius="8px">
-
-    <mj-section padding="20px">
-      <mj-column background-color="#ffffff" border-radius="12px">
+    <mj-section padding="20px 0">
+      <mj-column background-color="#ffffff" padding="20px" border-radius="12px">
 
         <mj-text font-size="24px" font-weight="800" color="#1e293b" padding-bottom="8px">
           Order Status Change Request
@@ -39,48 +36,19 @@ export const OrderStatusSupplierRequestTemplate = (
           Requested Status Change
         </mj-text>
 
-        <mj-section padding="10px 0">
-
-          <mj-column width="40%">
-            <mj-text 
-              align="center"
-              background-color="#f1f5f9"
-              color="#334155"
-              font-size="14px"
-              font-weight="600"
-              padding="10px"
-              border-radius="6px"
-            >
+        <mj-table padding="10px 0">
+          <tr>
+            <td align="center" style="background-color: #f1f5f9; color: #334155; font-size: 14px; font-weight: 600; padding: 10px; border-radius: 6px; width: 40%;">
               ${fromStatus}
-            </mj-text>
-          </mj-column>
-
-          <mj-column width="20%">
-            <mj-text 
-              align="center"
-              font-size="18px"
-              color="#94a3b8"
-              padding="10px"
-            >
-              →
-            </mj-text>
-          </mj-column>
-
-          <mj-column width="40%">
-            <mj-text 
-              align="center"
-              background-color="#dbeafe"
-              color="#1e40af"
-              font-size="14px"
-              font-weight="700"
-              padding="10px"
-              border-radius="6px"
-            >
+            </td>
+            <td align="center" style="font-size: 18px; color: #94a3b8; padding: 10px; width: 20%;">
+              &rarr;
+            </td>
+            <td align="center" style="background-color: #dbeafe; color: #1e40af; font-size: 14px; font-weight: 700; padding: 10px; border-radius: 6px; width: 40%;">
               ${toStatus}
-            </mj-text>
-          </mj-column>
-
-        </mj-section>
+            </td>
+          </tr>
+        </mj-table>
 
         <mj-spacer height="20px" />
 
@@ -130,10 +98,7 @@ export const OrderStatusSupplierRequestTemplate = (
 
       </mj-column>
     </mj-section>
-
-  </mj-column>
-</mj-section>
-    `;
+  `;
 
   return BaseEmailTemplate(content, "Order Status change Request");
 };

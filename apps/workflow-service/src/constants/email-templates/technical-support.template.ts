@@ -9,6 +9,8 @@ export const TechnicalSupportTemplate = (
   quoteCode?: string,
 ) => {
   const content = `
+    <mj-section padding="10px 0">
+      <mj-column background-color="#ffffff" padding="18px" border-radius="8px">
         <mj-text font-size="20px" font-weight="700" color="#334155" padding-bottom="20px">
           Technical Support Requested
         </mj-text>
@@ -46,6 +48,8 @@ export const TechnicalSupportTemplate = (
           Best regards,<br /><br />
           <b>Frigate System</b>
         </mj-text>
+      </mj-column>
+    </mj-section>
   `;
 
   return BaseEmailTemplate(content, "Technical Support Request");

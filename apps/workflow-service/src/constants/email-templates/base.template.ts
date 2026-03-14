@@ -25,11 +25,7 @@ export const BaseEmailTemplate = (
     </mj-section>
 
     <!-- Main content -->
-    <mj-section padding="10px 0">
-      <mj-column background-color="#ffffff" padding="18px" border-radius="8px">
-        ${content}
-      </mj-column>
-    </mj-section>
+    ${content}
 
     <!-- Footer -->
     <mj-section padding="20px 24px 40px 24px">
