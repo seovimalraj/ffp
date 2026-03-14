@@ -29,6 +29,7 @@ export function RFQKanban({
   const [pendingMove, setPendingMove] = useState<{
     itemId: string;
     toColumnId: string;
+    requestId?: string;
   } | null>(null);
   // Convert RFQ parts to Kanban items
   const kanbanItems: KanbanItem[] = useMemo(() => {
@@ -110,10 +111,17 @@ export function RFQKanban({
     if (!pendingMove) return;
 
     try {
-      await apiClient.patch(`/orders/part/${pendingMove.itemId}`, {
-        status: pendingMove.toColumnId,
-        notes: notes,
-      });
+      if (pendingMove.requestId) {
+        await apiClient.patch(
+          `/orders/status-requests/${pendingMove.requestId}/approve`,
+          { notes }
+        );
+      } else {
+        await apiClient.patch(`/orders/part/${pendingMove.itemId}`, {
+          status: pendingMove.toColumnId,
+          notes: notes,
+        });
+      }
 
       if (onRefresh) {
         await onRefresh();
@@ -150,6 +158,13 @@ export function RFQKanban({
         onItemMove={handleItemMove}
         onItemClick={handleCardClick}
         onRefresh={onRefresh}
+        onApproveRequest={(item, targetStatus, requestId) => {
+          setPendingMove({
+            itemId: item.id,
+            toColumnId: targetStatus,
+            requestId,
+          });
+        }}
         readOnly={session.data?.user?.role !== "admin"}
         className="bg-transparent"
       />

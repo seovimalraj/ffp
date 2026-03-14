@@ -35,6 +35,7 @@ interface KanbanBoardProps {
   ) => void | Promise<void>;
   onRefresh: (() => void | Promise<void>) | undefined;
   onItemClick?: (item: KanbanItem) => void;
+  onApproveRequest?: (item: KanbanItem, targetStatus: string, requestId: string) => void;
   className?: string;
 }
 
@@ -47,6 +48,7 @@ export function KanbanBoard({
   onStatusChange,
   onRefresh,
   onItemClick,
+  onApproveRequest,
   className = "",
 }: KanbanBoardProps) {
   const [board, setBoard] = useState(initialBoard);
@@ -381,6 +383,7 @@ export function KanbanBoard({
                 onAddTask={onAddTask}
                 onRefresh={onRefresh}
                 onItemClick={onItemClick}
+                onApproveRequest={onApproveRequest}
               />
             ))}
 

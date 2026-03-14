@@ -304,7 +304,8 @@ export class OrdersController {
       const auth = Buffer.from(
         `${process.env.PAYPAL_CLIENT_ID}:${process.env.PAYPAL_CLIENT_SECRET}`,
       ).toString('base64');
-      const paypalUrl = process.env.PAYPAL_API_URL || 'https://api-m.paypal.com';
+      const paypalUrl =
+        process.env.PAYPAL_API_URL || 'https://api-m.paypal.com';
       const tokenRes = await fetch(`${paypalUrl}/v1/oauth2/token`, {
         method: 'POST',
         headers: {
@@ -468,13 +469,16 @@ export class OrdersController {
   async approveRequest(
     @Param('requestId', ParseUUIDPipe) requestId: string,
     @CurrentUser() currentUser: CurrentUserDto,
+    @Body() body: { notes?: string },
   ) {
     const client = this.supabaseService.getClient();
 
     // 1. Fetch the request to get the target status and part_id
     const { data: request, error: fetchError } = await client
       .from(Tables.OrderStatusChangeRequests)
-      .select('part_id, status_to, workflow_id')
+      .select(
+        'part_id, status_to, workflow_id, order_id, status_from, status_to',
+      )
       .eq('id', requestId)
       .single();
 
@@ -496,14 +500,6 @@ export class OrdersController {
     if (updateRequestError)
       throw new InternalServerErrorException('Failed to update request');
 
-    const { error: updatePartError } = await client
-      .from(Tables.OrderPartsTable)
-      .update({ status: request.status_to })
-      .eq('id', request.part_id);
-
-    if (updatePartError)
-      throw new InternalServerErrorException('Failed to update part status');
-
     // 3. Signal Temporal Workflow
     if (request.workflow_id) {
       try {
@@ -517,6 +513,15 @@ export class OrdersController {
         );
       }
     }
+
+    // 4. Update the part status and start status change workflow
+    // using the existing service method to avoid duplication
+    await this.ordersService.updateOrderPartStatus(
+      request.part_id,
+      request.status_to,
+      currentUser,
+      body.notes,
+    );
 
     return { success: true, message: 'Status change approved and applied.' };
   }

@@ -18,6 +18,7 @@ interface KanbanColumnProps {
   onAddTask?: (columnId: string) => void;
   onRefresh: (() => void | Promise<void>) | undefined;
   onItemClick?: (item: KanbanItem) => void;
+  onApproveRequest?: (item: KanbanItem, targetStatus: string, requestId: string) => void;
 }
 
 export function KanbanColumn({
@@ -27,6 +28,7 @@ export function KanbanColumn({
   onAddTask,
   onRefresh,
   onItemClick,
+  onApproveRequest,
 }: KanbanColumnProps) {
   const { setNodeRef, isOver } = useDroppable({
     id: column.id,
@@ -95,6 +97,7 @@ export function KanbanColumn({
                 style={config?.cardStyle}
                 readOnly={readOnly || config?.readOnly}
                 onClick={onItemClick ? () => onItemClick(item) : undefined}
+                onApproveRequest={onApproveRequest}
               />
             ))}
         </SortableContext>

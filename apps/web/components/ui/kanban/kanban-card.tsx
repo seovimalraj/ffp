@@ -16,6 +16,7 @@ interface KanbanCardProps {
   readOnly?: boolean;
   onRefresh: (() => void | Promise<void>) | undefined;
   onClick?: () => void;
+  onApproveRequest?: (item: KanbanItem, targetStatus: string, requestId: string) => void;
 }
 
 export function KanbanCard({
@@ -24,6 +25,7 @@ export function KanbanCard({
   readOnly = false,
   onRefresh,
   onClick,
+  onApproveRequest,
 }: KanbanCardProps) {
   const {
     attributes,
@@ -95,22 +97,6 @@ export function KanbanCard({
       const message =
         error?.response?.data?.message ||
         "Error while requesting status change";
-      notify.error(message);
-    }
-  };
-
-  const handleApprove = async () => {
-    if (!activeRequest) return;
-    try {
-      await apiClient.patch(
-        `/orders/status-requests/${activeRequest.id}/approve`,
-      );
-      notify.success("Status change approved");
-      onRefresh && onRefresh();
-    } catch (error: any) {
-      console.error(error);
-      const message =
-        error?.response?.data?.message || "Error approving request";
       notify.error(message);
     }
   };
@@ -296,7 +282,9 @@ export function KanbanCard({
                 size="sm"
                 onClick={(e) => {
                   e.stopPropagation();
-                  handleApprove();
+                  if (activeRequest && onApproveRequest) {
+                    onApproveRequest(item, activeRequest.status_to, activeRequest.id);
+                  }
                 }}
                 className="flex-1 h-8 text-[11px] font-bold border-emerald-200 text-emerald-700 hover:bg-emerald-50 hover:text-emerald-800 hover:border-emerald-300 transition-all rounded-lg"
               >
