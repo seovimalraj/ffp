@@ -103,8 +103,6 @@ export class AuthController {
         organizationId: user.organization_id || null,
       });
 
-      console.log(user);
-
       const result = {
         id: user.id,
         email: user.email,

@@ -20,7 +20,7 @@ export interface SteppedModalProps {
   icon: React.ReactNode;
   steps: StepConfig[];
   onSubmit: (data: any) => void | Promise<void>;
-  onValidateStep?: (step: number) => boolean;
+  onValidateStep?: (step: number) => boolean | Promise<boolean>;
   submitLabel?: string;
   children: React.ReactNode | ((props: { currentStep: number; isSubmitting: boolean; isLoading: boolean }) => React.ReactNode);
   isLoading?: boolean;
@@ -42,9 +42,12 @@ export default function SteppedModal({
   const [currentStep, setCurrentStep] = useState(1);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const handleNext = () => {
+  const handleNext = async () => {
     if (isLoading || isSubmitting) return;
-    if (onValidateStep && !onValidateStep(currentStep)) return;
+    if (onValidateStep) {
+      const isValid = await onValidateStep(currentStep);
+      if (!isValid) return;
+    }
     if (currentStep < steps.length) {
       setCurrentStep(currentStep + 1);
     }
@@ -66,7 +69,10 @@ export default function SteppedModal({
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (isLoading || isSubmitting) return;
-    if (onValidateStep && !onValidateStep(currentStep)) return;
+    if (onValidateStep) {
+      const isValid = await onValidateStep(currentStep);
+      if (!isValid) return;
+    }
     setIsSubmitting(true);
     try {
       await onSubmit({});

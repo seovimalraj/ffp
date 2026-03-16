@@ -7,3 +7,4 @@ export * from "./technical-support.activites.js";
 export * from "./process-part-geometry.activities.js";
 export * from "./production-request.activities.js";
 export * from "./supplier-assignment.activities.js";
+export * from "./supplier-welcome.activities.js";

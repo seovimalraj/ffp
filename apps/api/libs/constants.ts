@@ -116,6 +116,7 @@ export enum TemporalEvents {
   ProductionRequestWorkflow = 'productionRequestWorkflow',
   SupplierAssignmentWorkflow = 'supplierAssignmentWorkflow',
   OrderStatusChangeRequestWorkflow = 'orderStatusChangeRequestWorkflow',
+  SupplierWelcomeWorkflow = 'supplierWelcomeWorkflow',
 }
 
 /**
@@ -128,6 +129,7 @@ export enum MaterializedViewNames {
 
 export enum SQLFunctions {
   createUser = 'create_user',
+  CreateSupplier = 'create_supplier',
   userPermissionCodesMVRefresh = 'refresh_user_permission_codes_mv',
 
   createInitialRFQ = 'create_initial_rfq',

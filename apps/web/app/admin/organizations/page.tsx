@@ -71,7 +71,9 @@ export default function AdminOrganizationsPage() {
           offset: isNext ? organizationsRef.current.length : 0,
         };
 
-        const response = await apiClient.get("/admin", { params });
+        const response = await apiClient.get("/admin/organizations", {
+          params,
+        });
         const { data, pagination } = response.data;
 
         setOrganizations((prev) => (isNext ? [...prev, ...data] : data));

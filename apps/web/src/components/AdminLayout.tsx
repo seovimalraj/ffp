@@ -116,10 +116,23 @@ export default function AdminLayout({ children }: Readonly<AdminLayoutProps>) {
   const { data, status } = useSession();
 
   React.useEffect(() => {
+    if (status === "unauthenticated") {
+      router.push("/signin");
+      return;
+    }
     if (status === "authenticated" && data?.user?.role !== "admin") {
       router.push(`/${data?.user?.role}`);
     }
   }, [data, status, router]);
+
+  // Don't render anything while the session is loading or a redirect is pending
+  if (status === "loading" || status === "unauthenticated") {
+    return null;
+  }
+
+  if (status === "authenticated" && data?.user?.role !== "admin") {
+    return null;
+  }
 
   return (
     <div className="flex h-screen w-full overflow-hidden bg-gradient-to-br from-slate-50 via-gray-50 to-slate-100 dark:from-gray-950 dark:via-slate-950 dark:to-gray-900">

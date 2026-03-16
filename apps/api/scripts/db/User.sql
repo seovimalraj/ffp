@@ -1,4 +1,18 @@
 -- --
+-- Organizations
+-- --
+CREATE TABLE IF NOT EXISTS organizations ( 
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    name VARCHAR(255) NOT NULL,
+    display_name VARCHAR(255),
+    address TEXT,
+    logo_url text, 
+    organization_type TEXT NOT NULL DEFAULT 'customer',
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP 
+);
+
+-- --
 -- Users
 -- --
 CREATE TYPE user_type_enum AS ENUM ('admin', 'supplier', 'customer');
@@ -8,28 +22,14 @@ create table if not exists users (
     password_hash VARCHAR(255) not null,
     verified boolean default false,
     role user_type_enum not null default 'customer',
-    role_id uuid references roles (id) on delete
-    set null,
-        organization_id uuid references organizations (id) on delete
-    set null,
-        created_at timestamp with time zone default CURRENT_TIMESTAMP,
-        updated_at timestamp with time zone default CURRENT_TIMESTAMP,
-        name VARCHAR(255),
-        phone VARCHAR(20),
+    role_id uuid references roles (id) on delete set null,
+    organization_id uuid references organizations (id) on delete set null,
+    created_at timestamp with time zone default CURRENT_TIMESTAMP,
+    updated_at timestamp with time zone default CURRENT_TIMESTAMP,
+    name VARCHAR(255),
+    phone VARCHAR(20)
 );
 create index idx_users_email on users (email);
--- --
--- Organizationsstock_material_type
--- --
-CREATE TABLE IF NOT EXISTS organizations ( 
-    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-    name VARCHAR(255) NOT NULL,
-    display_name VARCHAR(255),
-    address TEXT,
-    organization_type TEXT NOT NULL DEFAULT 'customer',
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP 
-);
 -- --
 -- Refresh Tokens
 -- --

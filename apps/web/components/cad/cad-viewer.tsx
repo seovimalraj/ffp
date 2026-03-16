@@ -95,7 +95,10 @@ export const CAD_EXTS: ReadonlySet<CADExt> = new Set<CADExt>([
 export const MESH_ASSEMBLY_EXTS: ReadonlySet<MeshAssemblyExt> =
   new Set<MeshAssemblyExt>(["obj", "3mf", "gltf", "glb"]);
 
-function applyPartMetadata(object: THREE.Object3D, descriptor: PartDescriptor): void {
+function applyPartMetadata(
+  object: THREE.Object3D,
+  descriptor: PartDescriptor,
+): void {
   object.userData.__partKey = descriptor.key;
   object.userData.__partKind = descriptor.kind;
   if (descriptor.kind === "cad") {
@@ -361,7 +364,9 @@ export const CadViewer = forwardRef<CadViewerRef, CadViewerProps>(
     const [parts, setParts] = useState<LoadedPart[]>([]);
     const [modelSession, setModelSession] = useState<ModelSession | null>(null);
     const modelSessionRef = useRef<ModelSession | null>(null);
-    const [viewerMode, setViewerMode] = useState<ViewerMode>({ kind: "assembly" });
+    const [viewerMode, setViewerMode] = useState<ViewerMode>({
+      kind: "assembly",
+    });
     const [selectedPartKey, setSelectedPartKey] = useState<string | null>(null);
     const [partExportMessage, setPartExportMessage] = useState<string | null>(
       null,
@@ -425,7 +430,9 @@ export const CadViewer = forwardRef<CadViewerRef, CadViewerProps>(
       }
 
       if (!dxfPreviewViewerRef.current) {
-        dxfPreviewViewerRef.current = createViewer(dxfPreviewContainerRef.current);
+        dxfPreviewViewerRef.current = createViewer(
+          dxfPreviewContainerRef.current,
+        );
       }
       const dxfPreviewViewer = dxfPreviewViewerRef.current;
       const unsubscribe = dxfPreviewViewer.onViewChanged(() => {
@@ -449,7 +456,11 @@ export const CadViewer = forwardRef<CadViewerRef, CadViewerProps>(
     }, []);
 
     useEffect(() => {
-      if (!showDxfPreviewPanel || !loadedDxfDocument || !dxfPreviewViewerRef.current) {
+      if (
+        !showDxfPreviewPanel ||
+        !loadedDxfDocument ||
+        !dxfPreviewViewerRef.current
+      ) {
         return;
       }
 
@@ -814,7 +825,10 @@ export const CadViewer = forwardRef<CadViewerRef, CadViewerProps>(
 
       const snapshot = displayAssemblySnapshotRef.current;
       if (!snapshot) return false;
-      const assemblyDisplay = cloneAssemblyDisplayFromSnapshot(session, snapshot);
+      const assemblyDisplay = cloneAssemblyDisplayFromSnapshot(
+        session,
+        snapshot,
+      );
       if (!assemblyDisplay) return false;
 
       setDimsFromObject(assemblyDisplay.root);
@@ -837,11 +851,16 @@ export const CadViewer = forwardRef<CadViewerRef, CadViewerProps>(
 
       const descriptor = session.partMap.get(partKey);
       if (!descriptor) {
-        setPartExportMessage("Selected part is unavailable. Select a part again.");
+        setPartExportMessage(
+          "Selected part is unavailable. Select a part again.",
+        );
         return;
       }
 
-      const latestSnapshot = buildDisplayAssemblySnapshotFromParts(session, parts);
+      const latestSnapshot = buildDisplayAssemblySnapshotFromParts(
+        session,
+        parts,
+      );
       if (latestSnapshot) {
         displayAssemblySnapshotRef.current = latestSnapshot;
       }
@@ -919,7 +938,9 @@ export const CadViewer = forwardRef<CadViewerRef, CadViewerProps>(
             const session = createCadModelSession(assembly, {
               ext,
               originalName:
-                typeof file === "string" ? file.split("/").pop() || file : file.name,
+                typeof file === "string"
+                  ? file.split("/").pop() || file
+                  : file.name,
               originalFile: typeof file === "string" ? undefined : file,
               originalBytes: assembly.originalBytes,
             });
@@ -937,7 +958,9 @@ export const CadViewer = forwardRef<CadViewerRef, CadViewerProps>(
           const session = createMeshModelSession(object, {
             ext,
             originalName:
-              typeof file === "string" ? file.split("/").pop() || file : file.name,
+              typeof file === "string"
+                ? file.split("/").pop() || file
+                : file.name,
             originalFile: typeof file === "string" ? undefined : file,
           });
           const meshCount = session.partMap.size;
@@ -1019,7 +1042,9 @@ export const CadViewer = forwardRef<CadViewerRef, CadViewerProps>(
                   ? 1
                   : parsed.meta.scaleToMm;
             const fileName =
-              typeof file === "string" ? file.split("/").pop() || file : file.name;
+              typeof file === "string"
+                ? file.split("/").pop() || file
+                : file.name;
 
             const doc = createLoadedDxfDocument({
               fileName,
@@ -1065,7 +1090,9 @@ export const CadViewer = forwardRef<CadViewerRef, CadViewerProps>(
               const session = createCadModelSession(assembly, {
                 ext,
                 originalName:
-                  typeof file === "string" ? file.split("/").pop() || file : file.name,
+                  typeof file === "string"
+                    ? file.split("/").pop() || file
+                    : file.name,
                 originalFile: typeof file === "string" ? undefined : file,
                 originalBytes: assembly.originalBytes,
               });
@@ -1076,7 +1103,8 @@ export const CadViewer = forwardRef<CadViewerRef, CadViewerProps>(
                 return;
               }
 
-              const assemblyDisplay = reconstructAssemblyDisplayFromSource(session);
+              const assemblyDisplay =
+                reconstructAssemblyDisplayFromSource(session);
               if (!assemblyDisplay) {
                 throw new Error("Failed to reconstruct CAD assembly session.");
               }
@@ -1094,7 +1122,9 @@ export const CadViewer = forwardRef<CadViewerRef, CadViewerProps>(
               const session = createMeshModelSession(object, {
                 ext,
                 originalName:
-                  typeof file === "string" ? file.split("/").pop() || file : file.name,
+                  typeof file === "string"
+                    ? file.split("/").pop() || file
+                    : file.name,
                 originalFile: typeof file === "string" ? undefined : file,
               });
               disposeObject3DSafe(object);
@@ -1104,7 +1134,8 @@ export const CadViewer = forwardRef<CadViewerRef, CadViewerProps>(
                 return;
               }
 
-              const assemblyDisplay = reconstructAssemblyDisplayFromSource(session);
+              const assemblyDisplay =
+                reconstructAssemblyDisplayFromSource(session);
               if (!assemblyDisplay) {
                 throw new Error("Failed to reconstruct mesh assembly session.");
               }
@@ -1164,10 +1195,11 @@ export const CadViewer = forwardRef<CadViewerRef, CadViewerProps>(
             viewerRef.current?.fitToScreen(zoom);
           }
           if (loadedAssemblySession && loadedAssemblyParts.length > 0) {
-            displayAssemblySnapshotRef.current = buildDisplayAssemblySnapshotFromParts(
-              loadedAssemblySession,
-              loadedAssemblyParts,
-            );
+            displayAssemblySnapshotRef.current =
+              buildDisplayAssemblySnapshotFromParts(
+                loadedAssemblySession,
+                loadedAssemblyParts,
+              );
           }
         } catch (err: any) {
           if (isStale()) return;
@@ -1600,7 +1632,9 @@ export const CadViewer = forwardRef<CadViewerRef, CadViewerProps>(
       };
     };
 
-    const handleExportSelectedPart = async (explicitPartKey?: string | null) => {
+    const handleExportSelectedPart = async (
+      explicitPartKey?: string | null,
+    ) => {
       const partKey = explicitPartKey ?? selectedPartKey;
       const state = resolvePartExportState(partKey);
       if (!partKey || !state.enabled || !state.plan) {
@@ -1654,11 +1688,7 @@ export const CadViewer = forwardRef<CadViewerRef, CadViewerProps>(
         plan: dxfPreviewDimensionPlan,
         mode: "expanded",
       });
-    }, [
-      isDxfPreviewExpanded,
-      showDimensions,
-      dxfPreviewDimensionPlan,
-    ]);
+    }, [isDxfPreviewExpanded, showDimensions, dxfPreviewDimensionPlan]);
 
     useEffect(() => {
       const svg = dxfDimensionSvgRef.current;
