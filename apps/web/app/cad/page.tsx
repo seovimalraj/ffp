@@ -60,18 +60,7 @@ export default function CadPage() {
         </div>
 
         <div className="flex items-center gap-4">
-          {!file ? (
-            <div {...getHeaderRootProps()}>
-              <input {...getHeaderInputProps()} />
-              <Button
-                onClick={openHeader}
-                className="bg-blue-600 hover:bg-blue-700 text-white rounded-full px-6 shadow-lg shadow-blue-600/20 transition-all active:scale-95"
-              >
-                <Upload className="w-4 h-4 mr-2" />
-                Upload CAD
-              </Button>
-            </div>
-          ) : (
+          {file && (
             <div className="flex items-center gap-3 bg-white px-4 py-1.5 rounded-full border border-slate-200 shadow-sm">
               <span className="text-sm font-medium max-w-[200px] truncate text-slate-700">
                 {file.name}
@@ -153,15 +142,15 @@ export default function CadPage() {
 
               <div className="pt-4">
                 <Button
-                  variant="outline"
                   size="lg"
-                  className="rounded-full px-8 border-slate-200 hover:bg-slate-50 text-slate-600 relative z-20"
+                  className="rounded-full px-8 border-slate-200 hover:scale-105 text-white relative z-20"
                   onClick={(e) => {
                     e.stopPropagation();
                     openMain();
                   }}
                 >
-                  Select File
+                  <Upload className="w-4 h-4 mr-2" />
+                  Browse your computer
                 </Button>
               </div>
 

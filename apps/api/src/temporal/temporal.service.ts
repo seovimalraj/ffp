@@ -390,4 +390,37 @@ export class TemporalService implements OnModuleInit {
       throw error;
     }
   }
+
+  async startSupplierWelcomeWorkflow(data: {
+    email: string;
+    username: string;
+    password?: string;
+    organizationName: string;
+  }) {
+    try {
+      if (!this.client) {
+        throw new Error('Temporal client not initialized');
+      }
+
+      const handle = await this.client.workflow.start(
+        TemporalEvents.SupplierWelcomeWorkflow,
+        {
+          taskQueue: TaskQueues.CoreTaskQueue,
+          workflowId: `supplier-welcome-${Date.now()}-${data.email}`,
+          args: [data],
+        },
+      );
+
+      this.logger.log(
+        `Started supplier welcome workflow: ${handle.workflowId}`,
+      );
+      return handle;
+    } catch (error) {
+      this.logger.error(
+        'Failed to start supplier welcome workflow:',
+        error.message,
+      );
+      throw error;
+    }
+  }
 }

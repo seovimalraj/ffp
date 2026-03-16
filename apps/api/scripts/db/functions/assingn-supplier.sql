@@ -40,9 +40,9 @@ begin
     -- optional: prevent duplicate active assignment
     if exists (
         select 1
-        from supplier_assignments
-        where order_id = p_order_id
-        and current_status = 'active'
+        from supplier_assignments sa
+        where sa.order_id = p_order_id
+        and sa.current_status = 'active'
     ) then
         raise exception 'Order already has an active supplier';
     end if;

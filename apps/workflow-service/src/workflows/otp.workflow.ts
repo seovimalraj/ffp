@@ -15,6 +15,7 @@ export async function otpWorkflow(data: {
   email: string;
   username: string;
   code?: string;
+  password?: string;
 }) {
   log.info("Starting otpWorkflow", {
     email: data.email,

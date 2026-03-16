@@ -4,9 +4,15 @@ import { useState, useRef } from "react";
 import SteppedModal from "../ui/modal/SteppedModal";
 import Step from "../ui/modal/step";
 import { FormField, Textarea } from "../ui/form-field";
-import { ClipboardList, ArrowRight, Paperclip, X, Upload, Loader2 } from "lucide-react";
+import {
+  ClipboardList,
+  ArrowRight,
+  Paperclip,
+  X,
+  Upload,
+  Loader2,
+} from "lucide-react";
 import { useFileUpload } from "@/lib/hooks/use-file-upload";
-import { Button } from "../ui/button";
 
 interface SupplierStatusRequestModalProps {
   isOpen: boolean;

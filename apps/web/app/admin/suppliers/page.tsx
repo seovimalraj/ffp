@@ -1,417 +1,314 @@
 "use client";
 
-import { Card } from "@/components/ui/card";
+import React, { useState, useEffect, useMemo } from "react";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
-import { Input } from "@/components/ui/input";
-import {
-  Factory,
-  Search,
-  Star,
-  MapPin,
-  CheckCircle,
-  Clock,
-  DollarSign,
-  Award,
-} from "lucide-react";
-import { useState } from "react";
+import { Skeleton } from "@/components/ui/skeleton";
+import { Factory, Plus, ArrowUpFromLine } from "lucide-react";
+import { apiClient } from "@/lib/api";
+import { DataTable, Column } from "@/components/ui/data-table";
+import { formatDate } from "@/lib/format";
+import { useMetaStore } from "@/components/store/title-store";
+import { StatusCards, StatusItem } from "@/components/ui/status-cards";
+import { CreateSupplierModal } from "@/components/modals/create-supplier-modal";
+import { notify } from "@/lib/toast";
 
 interface Supplier {
   id: string;
   name: string;
-  location: string;
-  rating: number;
-  totalOrders: number;
-  completedOrders: number;
-  activeOrders: number;
-  revenue: number;
-  capacity: number;
-  onTimeDelivery: number;
-  qualityScore: number;
-  status: "active" | "inactive" | "pending";
-  specialties: string[];
-  certifications: string[];
+  display_name: string | null;
+  address: string | null;
+  organization_type: string;
+  created_at: string;
+  updated_at: string;
+  users?: {
+    id: string;
+    email: string;
+    name: string | null;
+    phone: string | null;
+    role: string;
+    verified: boolean;
+    created_at: string;
+  }[];
 }
 
-const mockSuppliers: Supplier[] = [
-  {
-    id: "1",
-    name: "Precision Parts Co",
-    location: "San Francisco, CA",
-    rating: 4.8,
-    totalOrders: 245,
-    completedOrders: 232,
-    activeOrders: 13,
-    revenue: 1250000,
-    capacity: 85,
-    onTimeDelivery: 94,
-    qualityScore: 96,
-    status: "active",
-    specialties: ["CNC Machining", "5-Axis Milling", "Aluminum"],
-    certifications: ["ISO 9001", "AS9100"],
-  },
-  {
-    id: "2",
-    name: "Advanced CNC Solutions",
-    location: "Austin, TX",
-    rating: 4.9,
-    totalOrders: 312,
-    completedOrders: 305,
-    activeOrders: 7,
-    revenue: 1850000,
-    capacity: 72,
-    onTimeDelivery: 97,
-    qualityScore: 98,
-    status: "active",
-    specialties: ["Precision Turning", "Swiss Machining", "Medical Parts"],
-    certifications: ["ISO 9001", "ISO 13485", "FDA"],
-  },
-  {
-    id: "3",
-    name: "MetalWorks Pro",
-    location: "Chicago, IL",
-    rating: 4.5,
-    totalOrders: 189,
-    completedOrders: 178,
-    activeOrders: 11,
-    revenue: 890000,
-    capacity: 90,
-    onTimeDelivery: 89,
-    qualityScore: 92,
-    status: "active",
-    specialties: ["Sheet Metal", "Welding", "Fabrication"],
-    certifications: ["ISO 9001", "ASME"],
-  },
-  {
-    id: "4",
-    name: "Titanium Works",
-    location: "Seattle, WA",
-    rating: 4.7,
-    totalOrders: 156,
-    completedOrders: 152,
-    activeOrders: 4,
-    revenue: 2100000,
-    capacity: 65,
-    onTimeDelivery: 95,
-    qualityScore: 97,
-    status: "active",
-    specialties: ["Titanium Machining", "Aerospace Parts", "High-Precision"],
-    certifications: ["ISO 9001", "AS9100", "NADCAP"],
-  },
-  {
-    id: "5",
-    name: "Sterile Manufacturing",
-    location: "Boston, MA",
-    rating: 4.9,
-    totalOrders: 203,
-    completedOrders: 198,
-    activeOrders: 5,
-    revenue: 1650000,
-    capacity: 78,
-    onTimeDelivery: 96,
-    qualityScore: 99,
-    status: "active",
-    specialties: ["Medical Devices", "Cleanroom Manufacturing", "Implants"],
-    certifications: ["ISO 9001", "ISO 13485", "FDA", "ISO 14644"],
-  },
-  {
-    id: "6",
-    name: "Rapid Prototyping Inc",
-    location: "Los Angeles, CA",
-    rating: 4.3,
-    totalOrders: 98,
-    completedOrders: 89,
-    activeOrders: 9,
-    revenue: 450000,
-    capacity: 95,
-    onTimeDelivery: 87,
-    qualityScore: 90,
-    status: "active",
-    specialties: ["3D Printing", "Rapid Prototyping", "Low Volume"],
-    certifications: ["ISO 9001"],
-  },
-];
-
 export default function AdminSuppliersPage() {
-  const [searchTerm, setSearchTerm] = useState("");
+  const [suppliers, setSuppliers] = useState<Supplier[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [totalCount, setTotalCount] = useState(0);
+  const [hasMore, setHasMore] = useState(false);
+  const [isFetchingMore, setIsFetchingMore] = useState(false);
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const suppliersRef = React.useRef<Supplier[]>([]);
 
-  const filteredSuppliers = mockSuppliers.filter(
-    (supplier) =>
-      supplier.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      supplier.location.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      supplier.specialties.some((s) =>
-        s.toLowerCase().includes(searchTerm.toLowerCase()),
-      ),
+  const { setPageTitle, resetTitle } = useMetaStore();
+  const PAGE_LIMIT = 20;
+
+  useEffect(() => {
+    setPageTitle("Suppliers");
+    return () => {
+      resetTitle();
+    };
+  }, [setPageTitle, resetTitle]);
+
+  // Keep ref in sync
+  useEffect(() => {
+    suppliersRef.current = suppliers;
+  }, [suppliers]);
+
+  const fetchSuppliers = React.useCallback(
+    async (isNext = false) => {
+      if (isNext) {
+        setIsFetchingMore(true);
+      } else {
+        setLoading(true);
+      }
+
+      try {
+        const params = {
+          limit: PAGE_LIMIT,
+          offset: isNext ? suppliersRef.current.length : 0,
+          organization_type: "supplier",
+        };
+
+        const response = await apiClient.get("/admin/organizations", {
+          params,
+        });
+        const { data, pagination } = response.data;
+
+        setSuppliers((prev) => (isNext ? [...prev, ...data] : data));
+        setHasMore(pagination.hasMore);
+        setTotalCount(pagination.total);
+      } catch (error) {
+        console.error("Failed to fetch suppliers:", error);
+      } finally {
+        setLoading(false);
+        setIsFetchingMore(false);
+      }
+    },
+    [PAGE_LIMIT],
   );
 
-  const getRatingStars = (rating: number) => {
-    return (
-      <div className="flex items-center gap-1">
-        {[1, 2, 3, 4, 5].map((star) => (
-          <Star
-            key={star}
-            className={`w-4 h-4 ${
-              star <= Math.floor(rating)
-                ? "text-yellow-500 fill-yellow-500"
-                : star - 0.5 <= rating
-                  ? "text-yellow-500 fill-yellow-500/50"
-                  : "text-gray-600"
-            }`}
-          />
-        ))}
-        <span className="text-sm text-gray-400 ml-1">{rating.toFixed(1)}</span>
-      </div>
-    );
+  useEffect(() => {
+    fetchSuppliers();
+  }, [fetchSuppliers]);
+
+  const stats: StatusItem[] = useMemo(
+    () => [
+      {
+        label: "Total Suppliers",
+        value: totalCount,
+        color: "blue",
+        icon: Factory,
+        priority: 1,
+      },
+    ],
+    [totalCount],
+  );
+
+  const handleCreateSupplier = async (data: {
+    organizationName: string;
+    organizationAddress?: string;
+    organizationLogoUrl?: string;
+    contactName: string;
+    contactEmail: string;
+    contactPhone?: string;
+  }) => {
+    try {
+      await apiClient.post("/admin/organizations", {
+        ...data,
+        organizationType: "supplier",
+      });
+      notify.success("Supplier created successfully");
+      setIsModalOpen(false);
+      fetchSuppliers(); // Refresh list
+    } catch (error) {
+      console.error("Error creating supplier", error);
+      notify.error("Failed to create supplier");
+      throw error; // Let modal handle error state
+    }
   };
 
-  const getStatusBadge = (status: Supplier["status"]) => {
-    const variants = {
-      active: "bg-green-500/10 text-green-500 border-green-500/20",
-      inactive: "bg-gray-500/10 text-gray-500 border-gray-500/20",
-      pending: "bg-yellow-500/10 text-yellow-500 border-yellow-500/20",
-    };
-    return (
-      <Badge className={`${variants[status]} border px-2 py-1`}>{status}</Badge>
-    );
-  };
-
-  const getCapacityColor = (capacity: number) => {
-    if (capacity >= 90) return "text-red-500";
-    if (capacity >= 75) return "text-yellow-500";
-    return "text-green-500";
-  };
-
-  const stats = {
-    totalSuppliers: mockSuppliers.length,
-    activeSuppliers: mockSuppliers.filter((s) => s.status === "active").length,
-    avgRating: (
-      mockSuppliers.reduce((sum, s) => sum + s.rating, 0) / mockSuppliers.length
-    ).toFixed(1),
-    totalRevenue: mockSuppliers.reduce((sum, s) => sum + s.revenue, 0),
-  };
+  const columns: Column<Supplier>[] = [
+    {
+      key: "name",
+      header: "Supplier Name",
+      render: (row) => (
+        <div className="flex flex-col">
+          <span className="font-semibold text-gray-900 dark:text-gray-100">
+            {row.name}
+          </span>
+          {row.display_name && (
+            <span className="text-xs text-gray-500">{row.display_name}</span>
+          )}
+        </div>
+      ),
+    },
+    {
+      key: "primary_user",
+      header: "Primary Contact",
+      render: (row, _, meta) => {
+        const primaryUser = row.users?.[0];
+        return (
+          <div className="flex items-center gap-3">
+            <div className="flex flex-col max-w-[200px]">
+              <span className="font-semibold text-gray-900 dark:text-gray-100 truncate">
+                {primaryUser?.name || "No name"}
+              </span>
+              <span className="text-xs text-gray-500 truncate">
+                {primaryUser?.email || "No email"}
+              </span>
+            </div>
+            {row.users && row.users.length > 0 && (
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  meta?.toggleExpansion();
+                }}
+                className="text-blue-600 hover:text-blue-800 text-[10px] font-bold uppercase tracking-wider underline underline-offset-4 transition-colors ml-2"
+              >
+                {meta?.isExpanded
+                  ? "Hide Members"
+                  : `Show Members (${row.users.length})`}
+              </button>
+            )}
+          </div>
+        );
+      },
+    },
+    {
+      key: "created_at",
+      header: "Created At",
+      render: (row) => formatDate(row.created_at),
+    },
+    {
+      key: "updated_at",
+      header: "Updated At",
+      render: (row) => formatDate(row.updated_at),
+    },
+  ];
 
   return (
-    <div className="p-8 space-y-6">
-      {/* Header */}
-      <div className="flex items-center justify-between">
+    <div className="min-h-screen space-y-4">
+      {/* Header Section */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h1 className="text-3xl font-bold text-white">Suppliers</h1>
-          <p className="text-gray-400 mt-1">
-            Manage and monitor supplier performance
+          <h1 className="text-2xl font-bold text-gray-900 dark:text-white flex items-center gap-2">
+            <Factory className="w-6 h-6 text-blue-500" />
+            Suppliers
+          </h1>
+          <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
+            Overview and management of all registered suppliers
           </p>
         </div>
-        <Button className="bg-blue-600 hover:bg-blue-700">
-          <Factory className="w-4 h-4 mr-2" />
-          Add Supplier
-        </Button>
-      </div>
-
-      {/* Stats Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-        <Card className="bg-white border-gray-200 shadow-sm p-6">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-gray-600 text-sm">Total Suppliers</p>
-              <p className="text-3xl font-bold text-gray-900 mt-1">
-                {stats.totalSuppliers}
-              </p>
-            </div>
-            <Factory className="w-10 h-10 text-blue-500" />
-          </div>
-        </Card>
-
-        <Card className="bg-white border-gray-200 shadow-sm p-6">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-gray-600 text-sm">Active Suppliers</p>
-              <p className="text-3xl font-bold text-gray-900 mt-1">
-                {stats.activeSuppliers}
-              </p>
-            </div>
-            <CheckCircle className="w-10 h-10 text-green-500" />
-          </div>
-        </Card>
-
-        <Card className="bg-white border-gray-200 shadow-sm p-6">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-gray-600 text-sm">Avg Rating</p>
-              <p className="text-3xl font-bold text-gray-900 mt-1">
-                {stats.avgRating}
-              </p>
-            </div>
-            <Star className="w-10 h-10 text-yellow-500 fill-yellow-500" />
-          </div>
-        </Card>
-
-        <Card className="bg-white border-gray-200 shadow-sm p-6">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-gray-600 text-sm">Total Revenue</p>
-              <p className="text-3xl font-bold text-gray-900 mt-1">
-                ${(stats.totalRevenue / 1000000).toFixed(1)}M
-              </p>
-            </div>
-            <DollarSign className="w-10 h-10 text-green-500" />
-          </div>
-        </Card>
-      </div>
-
-      {/* Search */}
-      <Card className="bg-white border-gray-200 shadow-sm p-4">
-        <div className="relative">
-          <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
-          <Input
-            placeholder="Search suppliers by name, location, or specialty..."
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            className="pl-10 bg-white border-gray-300 text-gray-900"
-          />
-        </div>
-      </Card>
-
-      {/* Suppliers Grid */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {filteredSuppliers.map((supplier) => (
-          <Card
-            key={supplier.id}
-            className="bg-white border-gray-200 shadow-sm p-6 hover:shadow-md transition-shadow"
+        <div className="flex items-center gap-3">
+          <Button
+            variant="outline"
+            size="sm"
+            className="h-9 px-4 transition-all flex items-center gap-2 font-semibold text-xs tracking-wide uppercase"
           >
-            {/* Header */}
-            <div className="flex items-start justify-between mb-4">
-              <div className="flex items-start gap-4">
-                <div className="w-12 h-12 rounded-lg bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center">
-                  <Factory className="w-6 h-6 text-white" />
-                </div>
-                <div>
-                  <h3 className="text-lg font-semibold text-gray-900">
-                    {supplier.name}
-                  </h3>
-                  <div className="flex items-center gap-2 mt-1 text-sm text-gray-600">
-                    <MapPin className="w-3 h-3" />
-                    {supplier.location}
-                  </div>
-                </div>
-              </div>
-              {getStatusBadge(supplier.status)}
-            </div>
-
-            {/* Rating */}
-            <div className="mb-4">{getRatingStars(supplier.rating)}</div>
-
-            {/* Stats Grid */}
-            <div className="grid grid-cols-3 gap-4 mb-4">
-              <div>
-                <p className="text-xs text-gray-600">Total Orders</p>
-                <p className="text-lg font-semibold text-gray-900">
-                  {supplier.totalOrders}
-                </p>
-              </div>
-              <div>
-                <p className="text-xs text-gray-600">Active</p>
-                <p className="text-lg font-semibold text-blue-500">
-                  {supplier.activeOrders}
-                </p>
-              </div>
-              <div>
-                <p className="text-xs text-gray-600">Revenue</p>
-                <p className="text-lg font-semibold text-green-500">
-                  ${(supplier.revenue / 1000).toFixed(0)}K
-                </p>
-              </div>
-            </div>
-
-            {/* Performance Metrics */}
-            <div className="space-y-3 mb-4">
-              <div>
-                <div className="flex items-center justify-between mb-1">
-                  <span className="text-xs text-gray-600">
-                    Capacity Utilization
-                  </span>
-                  <span
-                    className={`text-xs font-medium ${getCapacityColor(supplier.capacity)}`}
-                  >
-                    {supplier.capacity}%
-                  </span>
-                </div>
-                <div className="bg-gray-100 rounded-full h-2">
-                  <div
-                    className={`h-2 rounded-full transition-all ${
-                      supplier.capacity >= 90
-                        ? "bg-red-500"
-                        : supplier.capacity >= 75
-                          ? "bg-yellow-500"
-                          : "bg-green-500"
-                    }`}
-                    style={{ width: `${supplier.capacity}%` }}
-                  />
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <div className="bg-gray-50 rounded-lg p-2">
-                  <div className="flex items-center gap-1 text-xs text-gray-600 mb-1">
-                    <Clock className="w-3 h-3" />
-                    On-Time Delivery
-                  </div>
-                  <p className="text-sm font-semibold text-gray-900">
-                    {supplier.onTimeDelivery}%
-                  </p>
-                </div>
-                <div className="bg-gray-50 rounded-lg p-2">
-                  <div className="flex items-center gap-1 text-xs text-gray-600 mb-1">
-                    <Award className="w-3 h-3" />
-                    Quality Score
-                  </div>
-                  <p className="text-sm font-semibold text-gray-900">
-                    {supplier.qualityScore}%
-                  </p>
-                </div>
-              </div>
-            </div>
-
-            {/* Specialties */}
-            <div className="mb-4">
-              <p className="text-xs text-gray-600 mb-2">Specialties</p>
-              <div className="flex flex-wrap gap-2">
-                {supplier.specialties.map((specialty, idx) => (
-                  <Badge
-                    key={idx}
-                    className="bg-blue-500/10 text-blue-500 border-blue-500/20 border text-xs"
-                  >
-                    {specialty}
-                  </Badge>
-                ))}
-              </div>
-            </div>
-
-            {/* Certifications */}
-            <div className="mb-4">
-              <p className="text-xs text-gray-600 mb-2">Certifications</p>
-              <div className="flex flex-wrap gap-2">
-                {supplier.certifications.map((cert, idx) => (
-                  <Badge
-                    key={idx}
-                    className="bg-green-500/10 text-green-500 border-green-500/20 border text-xs"
-                  >
-                    {cert}
-                  </Badge>
-                ))}
-              </div>
-            </div>
-
-            {/* Actions */}
-            <div className="flex gap-2">
-              <Button variant="outline" className="flex-1 border-gray-300">
-                View Details
-              </Button>
-              <Button className="flex-1 bg-blue-600 hover:bg-blue-700">
-                Contact
-              </Button>
-            </div>
-          </Card>
-        ))}
+            <ArrowUpFromLine size={14} className="opacity-60" />
+            <span>Export</span>
+          </Button>
+          <Button
+            variant="default"
+            size="sm"
+            onClick={() => setIsModalOpen(true)}
+            className="h-9 px-4 bg-blue-600 hover:bg-blue-700 text-white transition-all flex items-center gap-2 font-semibold text-xs tracking-wide uppercase"
+          >
+            <Plus size={14} />
+            <span>New Supplier</span>
+          </Button>
+        </div>
       </div>
+      <StatusCards isLoading={loading} items={stats} minimal={true} />
+      {/* Content Section */}
+      <div className="pt-2">
+        {loading && suppliers.length === 0 ? (
+          <div className="space-y-6">
+            {Array.from({ length: 5 }).map((_, i) => (
+              <div
+                key={i}
+                className="flex items-center justify-between gap-4 py-4 border-b border-gray-50 dark:border-gray-900/50"
+              >
+                <Skeleton className="w-48 h-4 rounded-full" />
+                <Skeleton className="w-24 h-4 rounded-full" />
+                <Skeleton className="w-32 h-4 rounded-full" />
+                <Skeleton className="w-32 h-4 rounded-full" />
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div className="animate-in fade-in duration-500">
+            <DataTable
+              columns={columns}
+              data={suppliers}
+              keyExtractor={(m) => m.id}
+              emptyMessage="No Suppliers Found"
+              isLoading={loading || isFetchingMore}
+              numbering={true}
+              hasMore={hasMore}
+              onEndReached={() => {
+                if (hasMore && !isFetchingMore) {
+                  fetchSuppliers(true);
+                }
+              }}
+              renderExpansion={(row) => (
+                <div className="px-8 py-6 bg-gray-50/50 dark:bg-gray-900/20 border-t border-gray-100 dark:border-gray-800/50">
+                  <div className="mb-4">
+                    <h3 className="text-xs font-black text-gray-400 uppercase tracking-[0.2em] flex items-center gap-2">
+                      <span className="w-1.5 h-1.5 rounded-full bg-blue-500" />
+                      Supplier Contacts
+                    </h3>
+                  </div>
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                    {row.users?.map((user) => (
+                      <div
+                        key={user.id}
+                        className="flex items-center gap-4 p-4 bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 rounded-2xl shadow-sm"
+                      >
+                        <div className="w-10 h-10 rounded-full bg-blue-50 dark:bg-blue-900/20 flex items-center justify-center text-blue-600 dark:text-blue-400 font-bold text-sm">
+                          {user.name?.charAt(0) ||
+                            user.email.charAt(0).toUpperCase()}
+                        </div>
+                        <div className="flex flex-col min-w-0">
+                          <span className="font-bold text-gray-900 dark:text-gray-100 truncate text-sm">
+                            {user.name || "N/A"}
+                          </span>
+                          <span className="text-xs text-gray-500 truncate mb-1">
+                            {user.email}
+                          </span>
+                          <div className="flex items-center gap-2">
+                            <span className="px-1.5 py-0.5 rounded bg-gray-100 dark:bg-gray-700 text-[10px] font-bold text-gray-600 dark:text-gray-300 uppercase tracking-widest">
+                              {user.role}
+                            </span>
+                            {user.verified && (
+                              <span className="px-1.5 py-0.5 rounded bg-green-50 dark:bg-green-900/10 text-[10px] font-bold text-green-600 dark:text-green-400 uppercase tracking-widest">
+                                Verified
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+              actions={[
+                {
+                  label: "View",
+                  onClick: (sup) => console.log("View sup", sup.id),
+                },
+              ]}
+            />
+          </div>
+        )}
+      </div>
+      /
+      <CreateSupplierModal
+        isOpen={isModalOpen}
+        onClose={() => setIsModalOpen(false)}
+        onSubmit={handleCreateSupplier}
+      />
     </div>
   );
 }

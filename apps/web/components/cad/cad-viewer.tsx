@@ -20,7 +20,7 @@ import {
 import { loadDxfFromArrayBuffer, parseDxfFromArrayBuffer } from "./dxf";
 import buildSolidFromDxf from "./dxf_solid";
 import { motion, AnimatePresence } from "framer-motion";
-import { Loader2 } from "lucide-react";
+import { Loader2, Menu, X } from "lucide-react";
 
 type Units = "mm" | "cm" | "m" | "in";
 type AssemblyLoadMode = "flat" | "parts";
@@ -157,6 +157,7 @@ export const CadViewer = forwardRef<CadViewerRef, CadViewerProps>(
     const [isLoading, setIsLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [show3D, setShow3D] = useState(!previewUrl);
+    const [isControlsOpen, setIsControlsOpen] = useState(true);
     const [assemblyMode, setAssemblyMode] = useState<AssemblyLoadMode>(
       assemblyLoadModeProp ?? "flat",
     );
@@ -1218,349 +1219,378 @@ export const CadViewer = forwardRef<CadViewerRef, CadViewerProps>(
 
         {/* Controls Overlay */}
         {showControls && (
-          <div className="absolute top-6 left-6 z-10 flex items-start gap-3">
-            <div className="flex flex-col gap-3 rounded-2xl bg-white/80 p-4 backdrop-blur-xl shadow-[0_8px_30px_rgba(0,0,0,0.08)] border border-slate-200/50 min-w-[220px] text-sm text-slate-600 ring-1 ring-black/[0.02]">
-              {/* Views: replaced by corner view cube */}
-
-              {hasAssembly && (
-                <button
-                  type="button"
-                  disabled={isProbingAssembly}
-                  onClick={() => {
-                    if (assemblyMode === "parts") {
-                      setAssemblyMode("flat");
-                      viewerRef.current?.showAllParts();
-                      viewerRef.current?.clearIsolation();
-                      setPartMenu(null);
-                      setSelectedPartId(null);
-                      return;
-                    }
-                    setAssemblyMode("parts");
-                  }}
-                  className={`rounded-lg border px-3 py-1.5 text-xs font-semibold transition-all ${
-                    assemblyMode === "parts"
-                      ? "bg-blue-600 text-white shadow-md shadow-blue-200 ring-2 ring-blue-500/30 border border-blue-600"
-                      : "bg-slate-50 text-slate-700 border border-blue-200/70 hover:bg-white hover:border-blue-300"
-                  } ${
-                    isProbingAssembly
-                      ? "cursor-not-allowed opacity-60"
-                      : "cursor-pointer"
-                  }`}
+          <div className="absolute top-6 left-6 z-10 flex flex-col items-start gap-3">
+            <button
+              onClick={() => setIsControlsOpen(!isControlsOpen)}
+              className="flex h-10 w-10 items-center justify-center rounded-xl bg-white/80 backdrop-blur-xl shadow-[0_8px_30px_rgba(0,0,0,0.08)] border border-slate-200/50 text-slate-600 hover:text-blue-600 ring-1 ring-black/[0.02] transition-colors z-20"
+              aria-label="Toggle Controls"
+            >
+              {isControlsOpen ? <X size={20} /> : <Menu size={20} />}
+            </button>
+            <AnimatePresence>
+              {isControlsOpen && (
+                <motion.div
+                  initial={{ opacity: 0, y: -10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -10 }}
+                  transition={{ duration: 0.2 }}
+                  className="flex items-start gap-3"
                 >
-                  Assembly parts
-                </button>
-              )}
+                  <div className="flex flex-col gap-3 rounded-2xl bg-white/80 p-4 backdrop-blur-xl shadow-[0_8px_30px_rgba(0,0,0,0.08)] border border-slate-200/50 min-w-[220px] text-sm text-slate-600 ring-1 ring-black/[0.02] max-h-[80vh] overflow-y-auto custom-scrollbar">
+                    {/* Views: replaced by corner view cube */}
 
-              <div className="h-px bg-slate-200/60 mx-1" />
-
-              {/* Measurements */}
-              <div className="flex items-center gap-2">
-                <button
-                  onClick={() => {
-                    const next = !measureMode;
-                    setMeasureMode(next);
-                    if (!next && viewerRef.current) {
-                      setMeasureMM(null);
-                      viewerRef.current.setMeasurementSegment(null, null, null);
-                    }
-                  }}
-                  className={`flex-1 rounded-lg px-3 py-1.5 text-xs font-medium transition-all ${
-                    measureMode
-                      ? "bg-blue-600 text-white shadow-md shadow-blue-200"
-                      : "bg-slate-50 border border-slate-200/60 text-slate-600 hover:bg-white hover:border-blue-200"
-                  }`}
-                >
-                  Measure
-                </button>
-                <select
-                  value={units}
-                  onChange={(e) => setUnits(e.target.value as Units)}
-                  className="bg-slate-50 border border-slate-200/60 rounded-lg px-2 py-1.5 text-xs font-medium text-slate-700 outline-none hover:border-blue-200 transition-all"
-                >
-                  <option value="mm">mm</option>
-                  <option value="cm">cm</option>
-                  <option value="m">m</option>
-                  <option value="in">in</option>
-                </select>
-              </div>
-
-              {measureMode && (
-                <div className="bg-blue-50/50 rounded-lg p-2 border border-blue-100/50">
-                  <div className="text-[10px] uppercase tracking-wider text-blue-500 font-bold mb-1">
-                    {!measureHasResult(measureMM) && "Click an Edge"}
-                    {measureHasResult(measureMM) && "Result"}
-                  </div>
-                  {measureHasResult(measureMM) && (
-                    <div className="text-blue-700 font-mono text-xs font-bold">
-                      {fmt(convert(measureMM!, units))} {units}
-                    </div>
-                  )}
-                </div>
-              )}
-
-              <div className="h-px bg-slate-200/60 mx-1" />
-
-              {/* Style Controls */}
-              <div className="space-y-2.5">
-                <div className="flex items-center justify-between">
-                  <span className="text-slate-500 text-xs font-medium">
-                    Wireframe
-                  </span>
-                  <button
-                    onClick={() => setWireframe(!wireframe)}
-                    className={`relative inline-flex h-5 w-9 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 focus:outline-none ${
-                      wireframe ? "bg-blue-600" : "bg-slate-200"
-                    }`}
-                  >
-                    <span
-                      className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
-                        wireframe ? "translate-x-4" : "translate-x-0"
-                      }`}
-                    />
-                  </button>
-                </div>
-                <div className="flex items-center justify-between">
-                  <span className="text-slate-500 text-xs font-medium">
-                    X-Ray View
-                  </span>
-                  <button
-                    onClick={() => setXray(!xray)}
-                    className={`relative inline-flex h-5 w-9 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 focus:outline-none ${
-                      xray ? "bg-blue-600" : "bg-slate-200"
-                    }`}
-                  >
-                    <span
-                      className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
-                        xray ? "translate-x-4" : "translate-x-0"
-                      }`}
-                    />
-                  </button>
-                </div>
-                <div className="flex justify-between items-center pt-1">
-                  {[
-                    "#b8c2ff", // Default Blue
-                    "#ef4444", // Red
-                    "#22c55e", // Green
-                    "#f59e0b", // Amber
-                    "#d1d5db", // Grey
-                    "#334155", // Slate
-                  ].map((c) => (
-                    <button
-                      key={c}
-                      onClick={() => setMaterialColor(c)}
-                      className={`h-5 w-5 rounded-full border ring-offset-2 transition-all ${
-                        materialColor === c
-                          ? "ring-2 ring-blue-500 scale-110 border-white"
-                          : "border-slate-200 hover:scale-110"
-                      }`}
-                      style={{ backgroundColor: c }}
-                    />
-                  ))}
-                </div>
-              </div>
-
-              {flattenControlVisible && (
-                <>
-                  <div className="h-px bg-slate-200/60 mx-1" />
-                  <div className="space-y-2">
-                    <div className="flex items-center justify-between">
-                      <span className="text-slate-500 text-xs font-medium">
-                        Flatten
-                      </span>
+                    {hasAssembly && (
                       <button
-                        disabled={isUnfolding}
-                        onClick={() => handleFlatToggle(!flatEnabled)}
-                        className={`relative inline-flex h-5 w-9 flex-shrink-0 rounded-full border-2 border-transparent transition-colors duration-200 focus:outline-none ${
-                          flatEnabled ? "bg-blue-600" : "bg-slate-200"
+                        type="button"
+                        disabled={isProbingAssembly}
+                        onClick={() => {
+                          if (assemblyMode === "parts") {
+                            setAssemblyMode("flat");
+                            viewerRef.current?.showAllParts();
+                            viewerRef.current?.clearIsolation();
+                            setPartMenu(null);
+                            setSelectedPartId(null);
+                            return;
+                          }
+                          setAssemblyMode("parts");
+                        }}
+                        className={`rounded-lg border px-3 py-1.5 text-xs font-semibold transition-all ${
+                          assemblyMode === "parts"
+                            ? "bg-blue-600 text-white shadow-md shadow-blue-200 ring-2 ring-blue-500/30 border border-blue-600"
+                            : "bg-slate-50 text-slate-700 border border-blue-200/70 hover:bg-white hover:border-blue-300"
                         } ${
-                          isUnfolding
+                          isProbingAssembly
                             ? "cursor-not-allowed opacity-60"
                             : "cursor-pointer"
                         }`}
                       >
-                        <span
-                          className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
-                            flatEnabled ? "translate-x-4" : "translate-x-0"
-                          }`}
-                        />
+                        Assembly parts
                       </button>
-                    </div>
-                    <div className="flex items-center justify-between gap-2">
-                      <span className="text-slate-500 text-xs font-medium">
-                        K-Factor
-                      </span>
-                      <input
-                        type="number"
-                        min={0}
-                        max={1}
-                        step={0.01}
-                        value={kFactor}
-                        onChange={(e) => handleKFactorChange(e.target.value)}
-                        className="w-20 rounded-md border border-slate-200/70 bg-slate-50 px-2 py-1 text-right text-xs font-medium text-slate-700 outline-none focus:border-blue-300"
-                      />
-                    </div>
-                    <div className="flex items-center justify-between gap-2">
-                      <span className="text-slate-500 text-xs font-medium">
-                        Thickness
-                      </span>
-                      <input
-                        type="number"
-                        min={0}
-                        step={0.01}
-                        placeholder="auto"
-                        value={thicknessOverrideMM ?? ""}
-                        onChange={(e) =>
-                          handleThicknessOverrideChange(e.target.value)
-                        }
-                        className="w-20 rounded-md border border-slate-200/70 bg-slate-50 px-2 py-1 text-right text-xs font-medium text-slate-700 outline-none focus:border-blue-300"
-                      />
-                    </div>
-                    {isUnfolding && (
-                      <div className="text-[11px] font-medium text-blue-600">
-                        Unfolding...
-                      </div>
                     )}
-                    {flattenError && (
-                      <div className="text-[11px] font-medium text-rose-600">
-                        {flattenError}
-                      </div>
-                    )}
-                    {SHOW_SHEET_META_DEBUG && sheetMeta && (
-                      <div className="text-[10px] font-mono text-slate-500">
-                        {`sheet=${sheetMeta.isSheetMetal ? "true" : "false"} assembly=${
-                          sheetMeta.isAssembly ? "true" : "false"
-                        } reason=${sheetMeta.reason ?? "none"}`}
-                      </div>
-                    )}
-                  </div>
-                </>
-              )}
 
-              <div className="h-px bg-slate-200/60 mx-1" />
+                    <div className="h-px bg-slate-200/60 mx-1" />
 
-              {/* Slicing Controls */}
-              <div className="space-y-2">
-                <div className="flex items-center justify-between">
-                  <span className="text-slate-500 text-xs font-medium">
-                    Cross Section
-                  </span>
-                  <button
-                    onClick={() => setSliceEnabled(!sliceEnabled)}
-                    className={`relative inline-flex h-5 w-9 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 focus:outline-none ${
-                      sliceEnabled ? "bg-blue-600" : "bg-slate-200"
-                    }`}
-                  >
-                    <span
-                      className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
-                        sliceEnabled ? "translate-x-4" : "translate-x-0"
-                      }`}
-                    />
-                  </button>
-                </div>
-                {sliceEnabled && (
-                  <div className="px-0.5 pt-1">
-                    <input
-                      type="range"
-                      min="0"
-                      max="100"
-                      value={sliceLevel}
-                      onChange={(e) => setSliceLevel(Number(e.target.value))}
-                      className="w-full h-1 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-blue-600"
-                    />
-                  </div>
-                )}
-              </div>
-
-              <div className="h-px bg-slate-200/60 mx-1" />
-
-              {/* Snapshots */}
-              <div className="grid grid-cols-2 gap-2">
-                <button
-                  onClick={() => handleSnapshot("normal")}
-                  className="rounded-lg bg-slate-50 border border-slate-200/60 py-1.5 text-[11px] font-semibold text-slate-600 hover:bg-white hover:border-blue-200 hover:text-blue-600 transition-all"
-                >
-                  Screenshot
-                </button>
-                <button
-                  onClick={() => handleSnapshot("outline")}
-                  className="rounded-lg bg-slate-50 border border-slate-200/60 py-1.5 text-[11px] font-semibold text-slate-600 hover:bg-white hover:border-blue-200 hover:text-blue-600 transition-all"
-                >
-                  Outline Snap
-                </button>
-              </div>
-
-              {/* Dimensions Info */}
-              {dimsMM && (
-                <>
-                  <div className="h-px bg-slate-200/60 mx-1" />
-                  <div className="bg-slate-50/50 rounded-xl p-3 border border-slate-200/40">
-                    <div className="text-[10px] uppercase tracking-wider text-slate-400 font-bold mb-2">
-                      Model Bounds
-                    </div>
-                    <div className="grid grid-cols-3 gap-2 text-[11px] font-mono">
-                      <div className="flex flex-col">
-                        <span className="text-slate-400">X</span>
-                        <span className="text-slate-700 font-bold">
-                          {fmt(convert(dimsMM.x, units))}
-                        </span>
-                      </div>
-                      <div className="flex flex-col">
-                        <span className="text-slate-400">Y</span>
-                        <span className="text-slate-700 font-bold">
-                          {fmt(convert(dimsMM.y, units))}
-                        </span>
-                      </div>
-                      <div className="flex flex-col">
-                        <span className="text-slate-400">Z</span>
-                        <span className="text-slate-700 font-bold">
-                          {fmt(convert(dimsMM.z, units))}
-                        </span>
-                      </div>
-                    </div>
-                    <div className="mt-1 text-[10px] text-right text-slate-400 uppercase font-medium">
-                      {units}
-                    </div>
-                  </div>
-                </>
-              )}
-            </div>
-
-            {assemblyMode === "parts" && parts.length > 0 && (
-              <div className="w-[220px] max-h-[55vh] overflow-hidden flex flex-col gap-2 p-3 rounded-xl bg-white/90 border border-slate-200/70 shadow-[0_10px_24px_rgba(15,23,42,0.12)] backdrop-blur-xl ring-1 ring-black/[0.03]">
-                <div className="text-xs font-bold text-slate-900">
-                  Parts ({parts.length})
-                </div>
-                <div className="flex flex-col gap-1.5 overflow-y-auto pr-1">
-                  {parts.map((part, index) => {
-                    const id = part.object.uuid;
-                    const label =
-                      typeof part.name === "string" &&
-                      part.name.trim().length > 0
-                        ? part.name
-                        : `Part ${index + 1}`;
-                    return (
+                    {/* Measurements */}
+                    <div className="flex items-center gap-2">
                       <button
-                        key={id}
                         onClick={() => {
-                          setSelectedPartId(id);
-                          setLastPickName(label);
-                          viewerRef.current?.isolateObject(part.object);
-                          setPartMenu(null);
+                          const next = !measureMode;
+                          setMeasureMode(next);
+                          if (!next && viewerRef.current) {
+                            setMeasureMM(null);
+                            viewerRef.current.setMeasurementSegment(
+                              null,
+                              null,
+                              null,
+                            );
+                          }
                         }}
-                        className={`text-left rounded-md px-2 py-1.5 text-xs font-semibold transition-colors ${
-                          selectedPartId === id
-                            ? "bg-blue-600 text-white border border-blue-600 shadow-md shadow-blue-200"
-                            : "bg-slate-50 text-slate-700 border border-slate-200/60 hover:bg-white hover:border-blue-200"
+                        className={`flex-1 rounded-lg px-3 py-1.5 text-xs font-medium transition-all ${
+                          measureMode
+                            ? "bg-blue-600 text-white shadow-md shadow-blue-200"
+                            : "bg-slate-50 border border-slate-200/60 text-slate-600 hover:bg-white hover:border-blue-200"
                         }`}
-                        title={label}
                       >
-                        {label}
+                        Measure
                       </button>
-                    );
-                  })}
-                </div>
-              </div>
-            )}
+                      <select
+                        value={units}
+                        onChange={(e) => setUnits(e.target.value as Units)}
+                        className="bg-slate-50 border border-slate-200/60 rounded-lg px-2 py-1.5 text-xs font-medium text-slate-700 outline-none hover:border-blue-200 transition-all"
+                      >
+                        <option value="mm">mm</option>
+                        <option value="cm">cm</option>
+                        <option value="m">m</option>
+                        <option value="in">in</option>
+                      </select>
+                    </div>
+
+                    {measureMode && (
+                      <div className="bg-blue-50/50 rounded-lg p-2 border border-blue-100/50">
+                        <div className="text-[10px] uppercase tracking-wider text-blue-500 font-bold mb-1">
+                          {!measureHasResult(measureMM) && "Click an Edge"}
+                          {measureHasResult(measureMM) && "Result"}
+                        </div>
+                        {measureHasResult(measureMM) && (
+                          <div className="text-blue-700 font-mono text-xs font-bold">
+                            {fmt(convert(measureMM!, units))} {units}
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                    <div className="h-px bg-slate-200/60 mx-1" />
+
+                    {/* Style Controls */}
+                    <div className="space-y-2.5">
+                      <div className="flex items-center justify-between">
+                        <span className="text-slate-500 text-xs font-medium">
+                          Wireframe
+                        </span>
+                        <button
+                          onClick={() => setWireframe(!wireframe)}
+                          className={`relative inline-flex h-5 w-9 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 focus:outline-none ${
+                            wireframe ? "bg-blue-600" : "bg-slate-200"
+                          }`}
+                        >
+                          <span
+                            className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
+                              wireframe ? "translate-x-4" : "translate-x-0"
+                            }`}
+                          />
+                        </button>
+                      </div>
+                      <div className="flex items-center justify-between">
+                        <span className="text-slate-500 text-xs font-medium">
+                          X-Ray View
+                        </span>
+                        <button
+                          onClick={() => setXray(!xray)}
+                          className={`relative inline-flex h-5 w-9 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 focus:outline-none ${
+                            xray ? "bg-blue-600" : "bg-slate-200"
+                          }`}
+                        >
+                          <span
+                            className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
+                              xray ? "translate-x-4" : "translate-x-0"
+                            }`}
+                          />
+                        </button>
+                      </div>
+                      <div className="flex justify-between items-center pt-1">
+                        {[
+                          "#b8c2ff", // Default Blue
+                          "#ef4444", // Red
+                          "#22c55e", // Green
+                          "#f59e0b", // Amber
+                          "#d1d5db", // Grey
+                          "#334155", // Slate
+                        ].map((c) => (
+                          <button
+                            key={c}
+                            onClick={() => setMaterialColor(c)}
+                            className={`h-5 w-5 rounded-full border ring-offset-2 transition-all ${
+                              materialColor === c
+                                ? "ring-2 ring-blue-500 scale-110 border-white"
+                                : "border-slate-200 hover:scale-110"
+                            }`}
+                            style={{ backgroundColor: c }}
+                          />
+                        ))}
+                      </div>
+                    </div>
+
+                    {flattenControlVisible && (
+                      <>
+                        <div className="h-px bg-slate-200/60 mx-1" />
+                        <div className="space-y-2">
+                          <div className="flex items-center justify-between">
+                            <span className="text-slate-500 text-xs font-medium">
+                              Flatten
+                            </span>
+                            <button
+                              disabled={isUnfolding}
+                              onClick={() => handleFlatToggle(!flatEnabled)}
+                              className={`relative inline-flex h-5 w-9 flex-shrink-0 rounded-full border-2 border-transparent transition-colors duration-200 focus:outline-none ${
+                                flatEnabled ? "bg-blue-600" : "bg-slate-200"
+                              } ${
+                                isUnfolding
+                                  ? "cursor-not-allowed opacity-60"
+                                  : "cursor-pointer"
+                              }`}
+                            >
+                              <span
+                                className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
+                                  flatEnabled
+                                    ? "translate-x-4"
+                                    : "translate-x-0"
+                                }`}
+                              />
+                            </button>
+                          </div>
+                          <div className="flex items-center justify-between gap-2">
+                            <span className="text-slate-500 text-xs font-medium">
+                              K-Factor
+                            </span>
+                            <input
+                              type="number"
+                              min={0}
+                              max={1}
+                              step={0.01}
+                              value={kFactor}
+                              onChange={(e) =>
+                                handleKFactorChange(e.target.value)
+                              }
+                              className="w-20 rounded-md border border-slate-200/70 bg-slate-50 px-2 py-1 text-right text-xs font-medium text-slate-700 outline-none focus:border-blue-300"
+                            />
+                          </div>
+                          <div className="flex items-center justify-between gap-2">
+                            <span className="text-slate-500 text-xs font-medium">
+                              Thickness
+                            </span>
+                            <input
+                              type="number"
+                              min={0}
+                              step={0.01}
+                              placeholder="auto"
+                              value={thicknessOverrideMM ?? ""}
+                              onChange={(e) =>
+                                handleThicknessOverrideChange(e.target.value)
+                              }
+                              className="w-20 rounded-md border border-slate-200/70 bg-slate-50 px-2 py-1 text-right text-xs font-medium text-slate-700 outline-none focus:border-blue-300"
+                            />
+                          </div>
+                          {isUnfolding && (
+                            <div className="text-[11px] font-medium text-blue-600">
+                              Unfolding...
+                            </div>
+                          )}
+                          {flattenError && (
+                            <div className="text-[11px] font-medium text-rose-600">
+                              {flattenError}
+                            </div>
+                          )}
+                          {SHOW_SHEET_META_DEBUG && sheetMeta && (
+                            <div className="text-[10px] font-mono text-slate-500">
+                              {`sheet=${sheetMeta.isSheetMetal ? "true" : "false"} assembly=${
+                                sheetMeta.isAssembly ? "true" : "false"
+                              } reason=${sheetMeta.reason ?? "none"}`}
+                            </div>
+                          )}
+                        </div>
+                      </>
+                    )}
+
+                    <div className="h-px bg-slate-200/60 mx-1" />
+
+                    {/* Slicing Controls */}
+                    <div className="space-y-2">
+                      <div className="flex items-center justify-between">
+                        <span className="text-slate-500 text-xs font-medium">
+                          Cross Section
+                        </span>
+                        <button
+                          onClick={() => setSliceEnabled(!sliceEnabled)}
+                          className={`relative inline-flex h-5 w-9 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 focus:outline-none ${
+                            sliceEnabled ? "bg-blue-600" : "bg-slate-200"
+                          }`}
+                        >
+                          <span
+                            className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
+                              sliceEnabled ? "translate-x-4" : "translate-x-0"
+                            }`}
+                          />
+                        </button>
+                      </div>
+                      {sliceEnabled && (
+                        <div className="px-0.5 pt-1">
+                          <input
+                            type="range"
+                            min="0"
+                            max="100"
+                            value={sliceLevel}
+                            onChange={(e) =>
+                              setSliceLevel(Number(e.target.value))
+                            }
+                            className="w-full h-1 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-blue-600"
+                          />
+                        </div>
+                      )}
+                    </div>
+
+                    <div className="h-px bg-slate-200/60 mx-1" />
+
+                    {/* Snapshots */}
+                    <div className="grid grid-cols-2 gap-2">
+                      <button
+                        onClick={() => handleSnapshot("normal")}
+                        className="rounded-lg bg-slate-50 border border-slate-200/60 py-1.5 text-[11px] font-semibold text-slate-600 hover:bg-white hover:border-blue-200 hover:text-blue-600 transition-all"
+                      >
+                        Screenshot
+                      </button>
+                      <button
+                        onClick={() => handleSnapshot("outline")}
+                        className="rounded-lg bg-slate-50 border border-slate-200/60 py-1.5 text-[11px] font-semibold text-slate-600 hover:bg-white hover:border-blue-200 hover:text-blue-600 transition-all"
+                      >
+                        Outline Snap
+                      </button>
+                    </div>
+
+                    {/* Dimensions Info */}
+                    {dimsMM && (
+                      <>
+                        <div className="h-px bg-slate-200/60 mx-1" />
+                        <div className="bg-slate-50/50 rounded-xl p-3 border border-slate-200/40">
+                          <div className="text-[10px] uppercase tracking-wider text-slate-400 font-bold mb-2">
+                            Model Bounds
+                          </div>
+                          <div className="grid grid-cols-3 gap-2 text-[11px] font-mono">
+                            <div className="flex flex-col">
+                              <span className="text-slate-400">X</span>
+                              <span className="text-slate-700 font-bold">
+                                {fmt(convert(dimsMM.x, units))}
+                              </span>
+                            </div>
+                            <div className="flex flex-col">
+                              <span className="text-slate-400">Y</span>
+                              <span className="text-slate-700 font-bold">
+                                {fmt(convert(dimsMM.y, units))}
+                              </span>
+                            </div>
+                            <div className="flex flex-col">
+                              <span className="text-slate-400">Z</span>
+                              <span className="text-slate-700 font-bold">
+                                {fmt(convert(dimsMM.z, units))}
+                              </span>
+                            </div>
+                          </div>
+                          <div className="mt-1 text-[10px] text-right text-slate-400 uppercase font-medium">
+                            {units}
+                          </div>
+                        </div>
+                      </>
+                    )}
+                  </div>
+
+                  {assemblyMode === "parts" && parts.length > 0 && (
+                    <div className="w-[220px] max-h-[55vh] overflow-hidden flex flex-col gap-2 p-3 rounded-xl bg-white/90 border border-slate-200/70 shadow-[0_10px_24px_rgba(15,23,42,0.12)] backdrop-blur-xl ring-1 ring-black/[0.03]">
+                      <div className="text-xs font-bold text-slate-900">
+                        Parts ({parts.length})
+                      </div>
+                      <div className="flex flex-col gap-1.5 overflow-y-auto pr-1">
+                        {parts.map((part, index) => {
+                          const id = part.object.uuid;
+                          const label =
+                            typeof part.name === "string" &&
+                            part.name.trim().length > 0
+                              ? part.name
+                              : `Part ${index + 1}`;
+                          return (
+                            <button
+                              key={id}
+                              onClick={() => {
+                                setSelectedPartId(id);
+                                setLastPickName(label);
+                                viewerRef.current?.isolateObject(part.object);
+                                setPartMenu(null);
+                              }}
+                              className={`text-left rounded-md px-2 py-1.5 text-xs font-semibold transition-colors ${
+                                selectedPartId === id
+                                  ? "bg-blue-600 text-white border border-blue-600 shadow-md shadow-blue-200"
+                                  : "bg-slate-50 text-slate-700 border border-slate-200/60 hover:bg-white hover:border-blue-200"
+                              }`}
+                              title={label}
+                            >
+                              {label}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
+                </motion.div>
+              )}
+            </AnimatePresence>
           </div>
         )}
 

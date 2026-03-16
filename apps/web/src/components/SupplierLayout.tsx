@@ -1,8 +1,8 @@
 "use client";
 
-import React, { useState, useMemo } from "react";
+import React, { useState, useMemo, useEffect } from "react";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import AppHeader from "@/layout/AppHeader";
 import { cn } from "@/lib/utils";
 import { ChevronLeft, X, LogOut, Menu } from "lucide-react";
@@ -40,11 +40,12 @@ export default function SupplierLayout({
   const pathname = usePathname();
   const [mobileOpen, setMobileOpen] = useState(false);
   const [desktopOpen, setDesktopOpen] = useState(true);
-  const { data: session } = useSession();
+  const { data: session, status } = useSession();
   const { isOpen: isMegaMenuOpen, setIsOpen: setIsMegaMenuOpen } =
     useMegaMenu();
   const { hasPermission, isLoading } = usePermissions();
   const filteredNav = useActiveMenuSection();
+  const router = useRouter();
 
   // Avoid mutating module-level arrays. Compute nav items per-render and
   // only append the admin/organization item when the user has access.
@@ -54,6 +55,18 @@ export default function SupplierLayout({
   const navItems = useMemo(() => {
     return filteredNav.section?.items || [];
   }, [canAccessPermissions, filteredNav]);
+
+  useEffect(() => {
+    if (status === "authenticated" && session?.user?.role !== "supplier") {
+      router.push(`/${session?.user?.role}`);
+    }
+  }, [session, status, router]);
+
+  useEffect(() => {
+    if (status === "authenticated" && !session.user.verified) {
+      router.push("/verify");
+    }
+  }, [session, status, router]);
 
   if (isLoading) {
     return null;
