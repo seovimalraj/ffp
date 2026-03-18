@@ -524,6 +524,36 @@ export class AuthController {
     }
   }
 
+  @Post('reset-password')
+  @Roles(RoleNames.Supplier, RoleNames.Customer)
+  @UseGuards(AuthGuard)
+  async resetPassword(
+    @Body() body: { password: string },
+    @CurrentUser() user: CurrentUserDto,
+  ) {
+    const client = this.supabaseService.getClient();
+    const { password } = body;
+    if (!password) {
+      throw new HttpException('Password is required', HttpStatus.BAD_REQUEST);
+    }
+    const hashedPassword = await hash(password, 12);
+
+    const { error } = await client
+      .from(Tables.UserTable)
+      .update({ password_hash: hashedPassword })
+      .eq('id', user.id);
+
+    if (error) {
+      this.logger.error(error);
+      throw new HttpException(
+        'Failed to update password',
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
+
+    return { success: true, message: 'Password updated successfully' };
+  }
+
   @Post('logout')
   async logout(@Body() body: LogoutDto) {
     try {
