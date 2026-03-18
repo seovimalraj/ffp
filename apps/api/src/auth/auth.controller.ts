@@ -393,16 +393,18 @@ export class AuthController {
         .delete()
         .eq('email', currentUser.email);
 
-      try {
-        await this.temporalService.sendEmail({
-          to: currentUser.email,
-          subject: 'Welcome to Frigate Fast Parts',
-          text: '', // or provide a text body
-          name: currentUser.name,
-          type: 'welcome',
-        });
-      } catch (error) {
-        this.logger.error({ error }, 'Error while sending welcome email');
+      if (currentUser.role === 'customer') {
+        try {
+          await this.temporalService.sendEmail({
+            to: currentUser.email,
+            subject: 'Welcome to Frigate Fast Parts',
+            text: '', // or provide a text body
+            name: currentUser.name,
+            type: 'welcome',
+          });
+        } catch (error) {
+          this.logger.error({ error }, 'Error while sending welcome email');
+        }
       }
 
       return { success: true, message: 'Account verified successfully' };
