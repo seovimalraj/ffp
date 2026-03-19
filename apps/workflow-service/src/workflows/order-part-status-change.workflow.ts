@@ -20,6 +20,7 @@ export interface OrderPartStatusChangeInput {
   prevStatus: string;
   currentStatus: string;
   notes?: string;
+  documents?: string[];
 }
 
 /**
@@ -28,7 +29,14 @@ export interface OrderPartStatusChangeInput {
 export async function orderPartStatusChangeWorkflow(
   input: OrderPartStatusChangeInput,
 ) {
-  const { orderId, orderPartId, prevStatus, currentStatus, notes = "" } = input;
+  const {
+    orderId,
+    orderPartId,
+    prevStatus,
+    currentStatus,
+    notes = "",
+    documents = [],
+  } = input;
 
   log.info("Starting orderPartStatusChangeWorkflow", {
     orderId,
@@ -67,6 +75,7 @@ export async function orderPartStatusChangeWorkflow(
       essentials.order_code,
       parts,
       shippingDetails,
+      documents,
     );
   } else {
     log.info("Sending part status change email.", {
@@ -89,6 +98,7 @@ export async function orderPartStatusChangeWorkflow(
       currentStatus,
       shippingDetails,
       notes,
+      documents,
     );
   }
 

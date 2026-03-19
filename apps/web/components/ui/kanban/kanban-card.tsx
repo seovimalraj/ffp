@@ -16,7 +16,11 @@ interface KanbanCardProps {
   readOnly?: boolean;
   onRefresh: (() => void | Promise<void>) | undefined;
   onClick?: () => void;
-  onApproveRequest?: (item: KanbanItem, targetStatus: string, requestId: string) => void;
+  onApproveRequest?: (
+    item: KanbanItem,
+    targetStatus: string,
+    requestId: string,
+  ) => void;
 }
 
 export function KanbanCard({
@@ -75,6 +79,24 @@ export function KanbanCard({
     attachments: string[];
   }) => {
     try {
+      if (data.attachments.length > 0) {
+        await Promise.all([
+          data.attachments.map((url) =>
+            apiClient.post(`/orders/${item?.metadata?.orderId}/documents`, {
+              document_type: "other",
+              document_url: url,
+              file_name: url.split("/").pop() || "attachment",
+              mime_type: url.match(/\.(jpg|jpeg|png|webp|gif)$/i)
+                ? "image/jpeg"
+                : "application/pdf",
+              uploaded_by: (session.data?.user as any)?.id,
+              is_active: true,
+              visibility: "supplier",
+            }),
+          ),
+        ]);
+      }
+
       const { data: response } = await apiClient.post(
         `/supplier/${item?.metadata?.orderId || ""}/request-status-change/${item.id}`,
         {
@@ -283,7 +305,11 @@ export function KanbanCard({
                 onClick={(e) => {
                   e.stopPropagation();
                   if (activeRequest && onApproveRequest) {
-                    onApproveRequest(item, activeRequest.status_to, activeRequest.id);
+                    onApproveRequest(
+                      item,
+                      activeRequest.status_to,
+                      activeRequest.id,
+                    );
                   }
                 }}
                 className="flex-1 h-8 text-[11px] font-bold border-emerald-200 text-emerald-700 hover:bg-emerald-50 hover:text-emerald-800 hover:border-emerald-300 transition-all rounded-lg"

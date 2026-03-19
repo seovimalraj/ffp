@@ -26,6 +26,7 @@ import {
   UpdateOrderPartStatusDto,
   CapturePaypalDto,
   RejectStatusDto,
+  UpdateOrderDocumentDto,
 } from './order.dto';
 import { ShippingAddressService } from './shipping-address.service';
 import { SupabaseService } from 'src/supabase/supabase.service';
@@ -201,18 +202,29 @@ export class OrdersController {
   }
 
   @Get(':id/documents')
-  async getDocuments(@Param('id') id: string) {
-    return this.ordersService.getOrderDocuments(id);
+  async getOrderDocuments(
+    @Param('id') id: string,
+    @CurrentUser() currentUser: CurrentUserDto,
+  ) {
+    return this.ordersService.getOrderDocuments(id, currentUser.role);
   }
 
   @Post(':id/documents')
-  @Roles(RoleNames.Admin)
   async createDocument(
     @Param('id') id: string,
     @Body() body: CreateOrderDocumentDto,
     @CurrentUser() currentUser: CurrentUserDto,
   ) {
     return this.ordersService.createOrderDocument(id, body, currentUser);
+  }
+
+  @Patch(':id/documents')
+  @Roles(RoleNames.Admin)
+  async updateOrderDocument(
+    @Param('id') id: string,
+    @Body() body: UpdateOrderDocumentDto,
+  ) {
+    return this.ordersService.updateOrderDocument(id, body);
   }
 
   @Post('')
@@ -459,6 +471,7 @@ export class OrdersController {
       body.status,
       currentUser,
       body.notes,
+      body.documents,
     );
 
     return { success: true };
@@ -469,7 +482,7 @@ export class OrdersController {
   async approveRequest(
     @Param('requestId', ParseUUIDPipe) requestId: string,
     @CurrentUser() currentUser: CurrentUserDto,
-    @Body() body: { notes?: string },
+    @Body() body: { notes?: string; attachments: string[] },
   ) {
     const client = this.supabaseService.getClient();
 
@@ -521,6 +534,7 @@ export class OrdersController {
       request.status_to,
       currentUser,
       body.notes,
+      body.attachments,
     );
 
     return { success: true, message: 'Status change approved and applied.' };

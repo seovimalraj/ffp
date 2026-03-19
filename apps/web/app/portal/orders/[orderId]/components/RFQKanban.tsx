@@ -107,14 +107,33 @@ export function RFQKanban({
     setPendingMove({ itemId: event.itemId, toColumnId: event.toColumnId });
   };
 
-  const handleModalSubmit = async (notes: string) => {
-    if (!pendingMove) return;
+  const handleModalSubmit = async (notes: string, attachments: string[]) => {
+    if (!pendingMove || !orderId) return;
 
     try {
+      // Upload documents if any
+      if (attachments.length > 0) {
+        await Promise.all(
+          attachments.map((url) =>
+            apiClient.post(`/orders/${orderId}/documents`, {
+              document_type: "other",
+              document_url: url,
+              file_name: url.split("/").pop() || "attachment",
+              mime_type: url.match(/\.(jpg|jpeg|png|webp|gif)$/i)
+                ? "image/jpeg"
+                : "application/pdf",
+              uploaded_by: (session.data?.user as any)?.id,
+              is_active: true,
+              visibility: "customer",
+            }),
+          ),
+        );
+      }
+
       if (pendingMove.requestId) {
         await apiClient.patch(
           `/orders/status-requests/${pendingMove.requestId}/approve`,
-          { notes }
+          { notes, attachments },
         );
       } else {
         await apiClient.patch(`/orders/part/${pendingMove.itemId}`, {

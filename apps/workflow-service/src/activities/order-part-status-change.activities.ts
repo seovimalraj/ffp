@@ -420,6 +420,7 @@ export async function sendOrderStatusChangeEmail(
     tracking_number: string;
   },
   notes: string,
+  documents?: string[],
 ) {
   try {
     const userName = orderShippingDetails.address_snapshot.name || "Customer";
@@ -440,6 +441,10 @@ export async function sendOrderStatusChangeEmail(
       to: orderShippingDetails.address_snapshot.email,
       subject: `Production Update: ${partName} (Order #${orderId})`,
       html: htmlContent,
+      attachments: (documents || []).map((url) => ({
+        filename: url.split("/").pop() || "attachment",
+        path: url,
+      })),
     };
 
     return await sendEmail(emailDetails);
@@ -460,6 +465,7 @@ export async function sendOrderCompletionEmail(
     address_snapshot: AddressContact;
     tracking_number: string;
   },
+  documents?: string[],
 ) {
   try {
     const userName = orderShippingDetails.address_snapshot.name || "Customer";
@@ -476,6 +482,10 @@ export async function sendOrderCompletionEmail(
       to: orderShippingDetails.address_snapshot.email,
       subject: `Order Shipped: All parts are on the way! (Order #${orderId})`,
       html: htmlContent,
+      attachments: (documents || []).map((url) => ({
+        filename: url.split("/").pop() || "attachment",
+        path: url,
+      })),
     };
 
     return await sendEmail(emailDetails);
