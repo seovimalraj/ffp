@@ -406,6 +406,7 @@ export default function OrderPage() {
           parts={data.parts}
           onRefresh={() => fetchData(true)}
           onItemClick={(part) => setSelectedPart(part)}
+          orderId={orderId}
         />
       )}
       {/* DOCUMENTS */}

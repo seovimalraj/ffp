@@ -1,3 +1,5 @@
+CREATE TYPE documentVisibility as enum ('customer', 'supplier', 'global')
+
 CREATE TABLE order_documents (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     order_id UUID NOT NULL REFERENCES orders(id) ON DELETE CASCADE,
@@ -9,6 +11,7 @@ CREATE TABLE order_documents (
     uploaded_by UUID REFERENCES users(id),
     is_active BOOLEAN NOT NULL DEFAULT TRUE,
     metadata JSONB,
+    visibility documentVisibility DEFAULT 'global'::documentVisibility,
     created_at TIMESTAMP NOT NULL DEFAULT now(),
     updated_at TIMESTAMP NOT NULL DEFAULT now()
 );

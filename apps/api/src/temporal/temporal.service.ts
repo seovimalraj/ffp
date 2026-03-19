@@ -244,6 +244,7 @@ export class TemporalService implements OnModuleInit {
     prevStatus: string;
     currentStatus: string;
     notes?: string;
+    documents?: string[];
   }) {
     try {
       if (!this.client) {

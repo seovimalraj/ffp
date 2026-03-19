@@ -13,6 +13,10 @@ import {
   Download,
   Paperclip,
   Eye,
+  MoreVertical,
+  Globe,
+  User,
+  Building,
 } from "lucide-react";
 import { useToast } from "@/src/components/ui/use-toast";
 import { format } from "date-fns";
@@ -25,6 +29,14 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/src/components/ui/dialog";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/src/components/ui/dropdown-menu";
 import { Input } from "@/src/components/ui/input";
 import { Label } from "@/src/components/ui/label";
 import {
@@ -36,6 +48,7 @@ import {
 } from "@/src/components/ui/select";
 import { PdfViewerModal } from "@/components/pdf-viewer-modal";
 import { notify } from "@/lib/toast";
+import RoleCheck from "@/components/auth/role-check";
 
 type Document = {
   id: string;
@@ -45,6 +58,15 @@ type Document = {
   created_at: string;
   uploaded_by: string;
   mime_type: string;
+  visibility: string;
+
+  users?: {
+    name: string;
+    email: string;
+    organizations: {
+      name: string;
+    };
+  };
 };
 
 type DocumentsProps = {
@@ -61,6 +83,12 @@ const DOCUMENT_TYPES = [
   { value: "other", label: "Other" },
 ];
 
+const VISIBILITY_TYPES = [
+  { value: "customer", label: "Customer" },
+  { value: "supplier", label: "Supplier" },
+  { value: "global", label: "Global" },
+];
+
 const Documents = ({ orderId, inView }: DocumentsProps) => {
   const [documents, setDocuments] = useState<Document[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -74,6 +102,7 @@ const Documents = ({ orderId, inView }: DocumentsProps) => {
   const [pendingFile, setPendingFile] = useState<File | null>(null);
   const [docName, setDocName] = useState("");
   const [docType, setDocType] = useState("technical_drawing");
+  const [docVisibility, setDocVisibility] = useState("global");
 
   // PDF Viewer State
   const [pdfViewer, setPdfViewer] = useState<{
@@ -85,6 +114,10 @@ const Documents = ({ orderId, inView }: DocumentsProps) => {
     url: "",
     name: "",
   });
+
+  useEffect(() => {
+    setDocVisibility(session?.user?.role ?? "global");
+  }, [session]);
 
   const fetchDocuments = async () => {
     try {
@@ -132,6 +165,7 @@ const Documents = ({ orderId, inView }: DocumentsProps) => {
         file_name: docName || pendingFile.name,
         mime_type: pendingFile.type,
         uploaded_by: session?.user?.id,
+        visibility: docVisibility,
       });
 
       toast({
@@ -146,6 +180,24 @@ const Documents = ({ orderId, inView }: DocumentsProps) => {
       toast({
         title: "Upload Failed",
         description: "There was an error uploading your document",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const handleUpdateVisibility = async (docId: string, visibility: string) => {
+    try {
+      await apiClient.patch(`/orders/${docId}/documents`, { visibility });
+      toast({
+        title: "Success",
+        description: "Visibility updated successfully",
+      });
+      fetchDocuments();
+    } catch (error) {
+      console.error("Error updating visibility:", error);
+      toast({
+        title: "Error",
+        description: "Failed to update visibility",
         variant: "destructive",
       });
     }
@@ -170,6 +222,11 @@ const Documents = ({ orderId, inView }: DocumentsProps) => {
     setPendingFile(null);
     setDocName("");
     setDocType("other");
+    setDocVisibility(
+      session?.user.role === "admin"
+        ? "global"
+        : session?.user.role || "global",
+    );
     if (fileInputRef.current) fileInputRef.current.value = "";
   };
 
@@ -233,25 +290,23 @@ const Documents = ({ orderId, inView }: DocumentsProps) => {
             ref={fileInputRef}
             onChange={handleFileSelect}
           />
-          {session?.user?.role === "admin" && (
-            <Button
-              onClick={() => fileInputRef.current?.click()}
-              disabled={isUploading}
-              className="bg-indigo-600 hover:bg-indigo-700 text-white shadow-md transition-all active:scale-95"
-            >
-              {isUploading ? (
-                <>
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  Uploading ({progress}%)
-                </>
-              ) : (
-                <>
-                  <UploadIcon className="mr-2 h-4 w-4" />
-                  Upload Document
-                </>
-              )}
-            </Button>
-          )}
+          <Button
+            onClick={() => fileInputRef.current?.click()}
+            disabled={isUploading}
+            className="bg-indigo-600 hover:bg-indigo-700 text-white shadow-md transition-all active:scale-95"
+          >
+            {isUploading ? (
+              <>
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                Uploading ({progress}%)
+              </>
+            ) : (
+              <>
+                <UploadIcon className="mr-2 h-4 w-4" />
+                Upload Document
+              </>
+            )}
+          </Button>
         </div>
       </div>
 
@@ -305,10 +360,78 @@ const Documents = ({ orderId, inView }: DocumentsProps) => {
                   )}
 
                   {/* Type Badge - Top Right */}
-                  <div className="absolute top-3 right-3">
+                  <div className="absolute top-3 right-3 flex items-center gap-2">
                     <span className="inline-flex items-center px-2.5 py-1 rounded-full text-[10px] font-bold bg-white/90 backdrop-blur-md text-slate-600 shadow-sm border border-slate-100 uppercase tracking-wider">
                       {doc.document_type.replace("_", " ")}
                     </span>
+                    <RoleCheck roles={["admin"]}>
+                      <span
+                        className={`inline-flex items-center px-2.5 py-1 rounded-full text-[10px] font-bold bg-white/90 backdrop-blur-md shadow-sm border border-slate-100 uppercase tracking-wider ${
+                          doc.visibility === "global"
+                            ? "text-emerald-600"
+                            : doc.visibility === "customer"
+                              ? "text-blue-600"
+                              : "text-amber-600"
+                        }`}
+                      >
+                        {doc.visibility === "global" ? (
+                          <Globe className="w-3 h-3 mr-1" />
+                        ) : doc.visibility === "customer" ? (
+                          <User className="w-3 h-3 mr-1" />
+                        ) : (
+                          <Building className="w-3 h-3 mr-1" />
+                        )}
+                        {doc.visibility}
+                      </span>
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-6 w-6 bg-white/90 backdrop-blur-md hover:bg-white shadow-sm border border-slate-100 rounded-full active:scale-90 transition-all pointer-events-auto"
+                            onClick={(e) => e.stopPropagation()}
+                          >
+                            <MoreVertical className="h-3 w-3 text-slate-600" />
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end" className="w-40">
+                          <DropdownMenuLabel className="text-[10px] font-bold text-slate-400 uppercase tracking-widest px-2 py-1.5">
+                            Set Visibility
+                          </DropdownMenuLabel>
+                          <DropdownMenuSeparator />
+                          {VISIBILITY_TYPES.map((type) => (
+                            <DropdownMenuItem
+                              key={type.value}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleUpdateVisibility(doc.id, type.value);
+                              }}
+                              className={`text-xs font-medium ${
+                                doc.visibility === type.value
+                                  ? "bg-indigo-50 text-indigo-600 font-bold"
+                                  : "text-slate-600"
+                              }`}
+                            >
+                              <div className="flex items-center w-full justify-between">
+                                <div className="flex items-center gap-2">
+                                  {type.value === "global" ? (
+                                    <Globe className="w-3.5 h-3.5" />
+                                  ) : type.value === "customer" ? (
+                                    <User className="w-3.5 h-3.5" />
+                                  ) : (
+                                    <Building className="w-3.5 h-3.5" />
+                                  )}
+                                  {type.label}
+                                </div>
+                                {doc.visibility === type.value && (
+                                  <div className="h-1.5 w-1.5 rounded-full bg-indigo-600" />
+                                )}
+                              </div>
+                            </DropdownMenuItem>
+                          ))}
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    </RoleCheck>
                   </div>
                 </div>
 
@@ -316,7 +439,7 @@ const Documents = ({ orderId, inView }: DocumentsProps) => {
                 <div className="p-5 flex flex-col flex-1">
                   <div className="flex-1 min-w-0 mb-4">
                     <h4
-                      className="text-sm font-bold text-slate-800 line-clamp-2 leading-snug hover:text-indigo-600 transition-colors cursor-default"
+                      className="text-sm text-wrap font-bold text-slate-800 line-clamp-2 leading-snug hover:text-indigo-600 transition-colors cursor-default"
                       title={doc.file_name}
                     >
                       {doc.file_name}
@@ -328,6 +451,23 @@ const Documents = ({ orderId, inView }: DocumentsProps) => {
                         {format(new Date(doc.created_at), "MMM d, yyyy")}
                       </p>
                     </div>
+                    <RoleCheck roles={["admin"]}>
+                      <div className="mt-3 pt-3 border-t border-slate-100/80">
+                        <div className="flex items-center gap-2.5 group/uploader">
+                          <div className="h-7 w-7 rounded-lg bg-slate-100 flex items-center justify-center text-[10px] font-bold text-slate-600 border border-slate-200 group-hover/uploader:bg-indigo-50 group-hover/uploader:text-indigo-600 group-hover/uploader:border-indigo-100 transition-all duration-300">
+                            {doc?.users?.name?.charAt(0).toUpperCase() || "U"}
+                          </div>
+                          <div className="flex flex-col min-w-0">
+                            <p className="text-[10px] font-bold text-slate-700 leading-none truncate group-hover/uploader:text-indigo-600 transition-colors">
+                              {doc?.users?.name || "System"}
+                            </p>
+                            <p className="text-[9px] text-slate-500 font-medium mt-1 truncate">
+                              {doc?.users?.organizations?.name || "Admin"}
+                            </p>
+                          </div>
+                        </div>
+                      </div>
+                    </RoleCheck>
                   </div>
 
                   <div className="pt-4 flex items-center gap-2 border-t border-slate-100/80">
@@ -400,6 +540,23 @@ const Documents = ({ orderId, inView }: DocumentsProps) => {
                 </SelectContent>
               </Select>
             </div>
+            {session?.user.role === "admin" && (
+              <div className="space-y-2">
+                <Label htmlFor="type">Visibility</Label>
+                <Select value={docVisibility} onValueChange={setDocVisibility}>
+                  <SelectTrigger id="type" className="focus:ring-indigo-600">
+                    <SelectValue placeholder="Select visibility" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {VISIBILITY_TYPES.map((type) => (
+                      <SelectItem key={type.value} value={type.value}>
+                        {type.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={handleCloseModal}>

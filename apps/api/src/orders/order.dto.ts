@@ -134,6 +134,9 @@ export class UpdateOrderPartStatusDto {
   @IsOptional()
   @IsString()
   notes?: string;
+
+  @IsOptional()
+  documents?: string[];
 }
 
 export class CreateOrderDocumentDto {
@@ -163,6 +166,24 @@ export class CreateOrderDocumentDto {
 
   @IsObject()
   @IsNotEmpty()
+  @IsOptional()
+  metadata?: Record<string, any>;
+
+  @IsString()
+  @IsOptional()
+  visibility?: string;
+}
+
+export class UpdateOrderDocumentDto {
+  @IsString()
+  @IsOptional()
+  visibility?: string;
+
+  @IsBoolean()
+  @IsOptional()
+  is_active?: boolean;
+
+  @IsObject()
   @IsOptional()
   metadata?: Record<string, any>;
 }

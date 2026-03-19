@@ -3,10 +3,10 @@ import {
   InternalServerErrorException,
   Logger,
 } from '@nestjs/common';
-import { SQLFunctions, Tables } from '../../libs/constants';
+import { RoleNames, SQLFunctions, Tables } from '../../libs/constants';
 import { SupabaseService } from 'src/supabase/supabase.service';
 import { CurrentUserDto } from 'src/auth/auth.dto';
-import { CreateOrderDocumentDto } from './order.dto';
+import { CreateOrderDocumentDto, UpdateOrderDocumentDto } from './order.dto';
 import { TemporalService } from 'src/temporal/temporal.service';
 
 interface GetOrdersParams {
@@ -84,7 +84,10 @@ export class OrderService {
       p_organization_id: organizationId,
     });
 
-    let requestsPromise: any = Promise.resolve({ data: [] as any[], error: null as any });
+    let requestsPromise: any = Promise.resolve({
+      data: [] as any[],
+      error: null as any,
+    });
 
     if (role !== 'customer') {
       requestsPromise = client
@@ -127,6 +130,7 @@ export class OrderService {
     status: string,
     currentUser: CurrentUserDto,
     notes?: string,
+    documents?: string[],
   ) {
     const client = this.supabaseService.getClient();
 
@@ -170,6 +174,7 @@ export class OrderService {
         prevStatus,
         currentStatus: status,
         notes,
+        documents,
       })
       .catch((err) => {
         this.logger.error('Failed to trigger status change workflow', err);
@@ -178,18 +183,34 @@ export class OrderService {
     return data;
   }
 
-  async getOrderDocuments(id: string) {
+  async getOrderDocuments(id: string, role: RoleNames) {
     const client = this.supabaseService.getClient();
-    const { data, error } = await client
+
+    // Define base select
+    let selectQuery = '*';
+    if (role === 'admin') {
+      selectQuery = `*, users( name, email, organizations( name ) )`;
+    }
+
+    let query = client
       .from(Tables.OrderDocumentsTable)
-      .select('*')
-      .eq('order_id', id);
+      .select(selectQuery)
+      .eq('order_id', id)
+      .order('created_at', { ascending: false });
+
+    // Apply visibility filter only for non-admins
+    if (role !== 'admin') {
+      const visibility = ['global', role];
+      query = query.in('visibility', visibility);
+    }
+
+    const { data, error } = await query;
 
     if (error) {
       throw new InternalServerErrorException(error.message);
     }
 
-    return data;
+    return data ?? [];
   }
 
   async getOrderStatuses(userId: string | null) {
@@ -212,7 +233,7 @@ export class OrderService {
   async createOrderDocument(
     order_id: string,
     document: CreateOrderDocumentDto,
-    currentUser: CurrentUserDto,
+    _currentUser: CurrentUserDto,
   ) {
     const client = this.supabaseService.getClient();
     const { data, error } = await client
@@ -259,6 +280,23 @@ export class OrderService {
       }
     } catch (error) {
       this.logger.error({ error }, 'Error while sending document email');
+    }
+
+    return data;
+  }
+
+  async updateOrderDocument(id: string, update: UpdateOrderDocumentDto) {
+    const client = this.supabaseService.getClient();
+
+    const { data, error } = await client
+      .from(Tables.OrderDocumentsTable)
+      .update(update)
+      .eq('id', id)
+      .select()
+      .single();
+
+    if (error) {
+      throw new InternalServerErrorException(error.message);
     }
 
     return data;
