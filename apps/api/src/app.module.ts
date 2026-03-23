@@ -21,6 +21,7 @@ import { TemporalModule } from './temporal/temporal.module';
 import { AdminModule } from './admin/admin.module';
 import { SystemModule } from './system/system.module';
 import { TechnicalSupportModule } from './technical-support/technical-support.module';
+import { QuoteRequestModule } from './quote-request/quote-request.module';
 
 @Module({
   imports: [
@@ -61,6 +62,7 @@ import { TechnicalSupportModule } from './technical-support/technical-support.mo
     AdminModule,
     SystemModule,
     TechnicalSupportModule,
+    QuoteRequestModule,
   ],
   controllers: [AppController],
   providers: [AppService],

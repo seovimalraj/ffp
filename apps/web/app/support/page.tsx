@@ -263,14 +263,15 @@ const SupportPage = () => {
           </section>
 
           {/* CTA Section */}
-          <section className="mb-24 bg-gradient-to-r from-slate-900 to-slate-800 rounded-[40px] p-8 md:p-16 text-white relative overflow-hidden group shadow-2xl">
-            <div className="absolute top-0 right-0 w-[500px] h-[500px] bg-blue-500/10 rounded-full blur-[120px] -mr-48 -mt-48 transition-colors group-hover:bg-blue-500/20" />
-            <div className="absolute bottom-0 left-0 w-64 h-64 bg-purple-500/5 rounded-full blur-[80px] -ml-24 -mb-24" />
+          <section className="mb-24 bg-[#0B0F1A] rounded-[40px] p-8 md:p-16 text-white relative overflow-hidden group shadow-2xl border border-slate-900/50 selection:bg-blue-500/30">
+            {/* Glowing Blobs */}
+            <div className="absolute top-0 right-0 w-[500px] h-[500px] bg-blue-500/[0.12] rounded-full blur-[140px] -mr-48 -mt-48 transition-all duration-700 group-hover:bg-blue-500/[0.18]" />
+            <div className="absolute bottom-0 left-0 w-64 h-64 bg-purple-500/[0.08] rounded-full blur-[100px] -ml-24 -mb-24" />
 
             <div className="relative z-10 flex flex-col md:flex-row items-center justify-between gap-12">
               <div className="max-w-xl text-center md:text-left">
-                <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-blue-500/20 text-blue-300 text-xs font-medium mb-6 border border-blue-500/20">
-                  <ShieldCheck className="w-3 h-3" /> Technical DFM Support
+                <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-blue-500/20 text-blue-300 text-xs font-medium mb-6 border border-blue-500/20 shadow-lg shadow-blue-500/5">
+                  <ShieldCheck className="w-3.5 h-3.5" /> Technical DFM Support
                 </div>
                 <h2 className="text-3xl md:text-4xl font-light mb-4">
                   Need optimization help?
@@ -288,10 +289,10 @@ const SupportPage = () => {
                     ?.open("https://frigate.ai/book-a-call/", "_blank")
                     ?.focus()
                 }
-                className="bg-white text-slate-900 hover:bg-blue-50 px-10 py-7 text-lg rounded-2xl shadow-xl shadow-white/5 transition-all hover:scale-105 active:scale-95 group/live"
+                className="bg-white text-slate-900 hover:bg-blue-50 px-10 py-7 text-lg rounded-2xl shadow-xl shadow-white/5 transition-all hover:scale-105 active:scale-95 group/live border-0"
               >
                 Book a Call
-                <div className="ml-3 w-2 h-2 rounded-full bg-green-500 animate-pulse" />
+                <div className="ml-3 w-2 h-2 rounded-full bg-green-500 animate-pulse shadow-[0_0_8px_rgba(34,197,94,0.6)]" />
               </Button>
             </div>
           </section>

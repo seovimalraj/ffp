@@ -87,9 +87,8 @@ const RfqSideDrawer = ({ part, onClose }: Props) => {
           </div>
 
           {/* Content */}
-          {!isSupplier && (
-            <div className="flex-1 overflow-y-auto p-8 space-y-10 custom-scrollbar">
-              {/* Quick Stats Section */}
+          <div className="flex-1 overflow-y-auto p-8 space-y-10 custom-scrollbar">
+            {!isSupplier && (
               <div className="grid grid-cols-2 gap-4">
                 <div className="bg-slate-50/50 p-5 rounded-3xl border border-slate-100 flex flex-col">
                   <span className="text-[10px] text-slate-400 uppercase font-black tracking-widest mb-2">
@@ -108,31 +107,33 @@ const RfqSideDrawer = ({ part, onClose }: Props) => {
                   </span>
                 </div>
               </div>
+            )}
 
-              {/* Specifications */}
-              <section>
-                <h3 className="text-xs font-black text-slate-400 uppercase tracking-[0.2em] mb-6 flex items-center gap-2">
-                  <div className="w-1 h-1 rounded-full bg-indigo-500" />
-                  Technical Details
-                </h3>
-                <div className="grid gap-y-5">
-                  <Detail
-                    label="Material"
-                    value={
-                      (metalTranslation as any)[part.rfq_part.material] ??
-                      part.rfq_part.material
-                    }
-                  />
-                  <Detail label="Finishing" value={part.rfq_part.finish} />
-                  <Detail label="Tolerance" value={part.rfq_part.tolerance} />
-                  <Detail
-                    label="Quality Grade"
-                    value={part.rfq_part.inspection || "Standard"}
-                  />
-                </div>
-              </section>
+            {/* Specifications */}
+            <section>
+              <h3 className="text-xs font-black text-slate-400 uppercase tracking-[0.2em] mb-6 flex items-center gap-2">
+                <div className="w-1 h-1 rounded-full bg-indigo-500" />
+                Technical Details
+              </h3>
+              <div className="grid gap-y-5">
+                <Detail
+                  label="Material"
+                  value={
+                    (metalTranslation as any)[part.rfq_part.material] ??
+                    part.rfq_part.material
+                  }
+                />
+                <Detail label="Finishing" value={part.rfq_part.finish} />
+                <Detail label="Tolerance" value={part.rfq_part.tolerance} />
+                <Detail
+                  label="Quality Grade"
+                  value={part.rfq_part.inspection || "Standard"}
+                />
+              </div>
+            </section>
 
-              {/* Fulfillment */}
+            {/* Fulfillment */}
+            {!isSupplier && (
               <section>
                 <h3 className="text-xs font-black text-slate-400 uppercase tracking-[0.2em] mb-6 flex items-center gap-2">
                   <div className="w-1 h-1 rounded-full bg-indigo-500" />
@@ -168,8 +169,10 @@ const RfqSideDrawer = ({ part, onClose }: Props) => {
                   </div>
                 </div>
               </section>
+            )}
 
-              {/* Status */}
+            {/* Status */}
+            {!isSupplier && (
               <section>
                 <h3 className="text-xs font-black text-slate-400 uppercase tracking-[0.2em] mb-4 flex items-center gap-2">
                   <div className="w-1 h-1 rounded-full bg-indigo-500" />
@@ -190,66 +193,65 @@ const RfqSideDrawer = ({ part, onClose }: Props) => {
                   </div>
                 </div>
               </section>
+            )}
+            {/* 2D Diagrams */}
+            <section>
+              <h3 className="text-xs font-black text-slate-400 uppercase tracking-[0.2em] mb-4 flex items-center gap-2">
+                <div className="w-1 h-1 rounded-full bg-indigo-500" />
+                2D Diagrams
+              </h3>
+              <div className="grid grid-cols-1 gap-3">
+                {part.drawings_2d && part.drawings_2d.length > 0 ? (
+                  part.drawings_2d.map((file, idx) => (
+                    <button
+                      key={idx}
+                      onClick={() => setViewingFile(file)}
+                      className="group flex items-center gap-4 p-4 rounded-2xl bg-slate-50 border border-slate-100 hover:border-indigo-200 hover:bg-white transition-all duration-300 hover:shadow-lg hover:shadow-indigo-500/5 text-left"
+                    >
+                      <div className="h-10 w-10 rounded-xl bg-white border border-slate-100 flex items-center justify-center text-slate-400 group-hover:text-indigo-600 group-hover:border-indigo-100 transition-colors">
+                        {file.mime_type.includes("pdf") ? (
+                          <FileText className="h-5 w-5" />
+                        ) : (
+                          <ImageIcon className="h-5 w-5" />
+                        )}
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <p className="text-sm font-bold text-slate-900 truncate">
+                          {file.file_name}
+                        </p>
+                        <p className="text-[10px] text-slate-400 uppercase font-bold tracking-wider">
+                          {file.mime_type.split("/")[1]?.toUpperCase() ||
+                            "FILE"}
+                        </p>
+                      </div>
+                      <div className="h-8 w-8 rounded-full flex items-center justify-center text-slate-300 group-hover:text-indigo-500 group-hover:bg-indigo-50 transition-all">
+                        <Eye className="h-4 w-4" />
+                      </div>
+                    </button>
+                  ))
+                ) : (
+                  <div className="text-center py-8 rounded-[24px] border border-dashed border-slate-200">
+                    <p className="text-xs text-slate-400 font-medium">
+                      No 2D diagrams available
+                    </p>
+                  </div>
+                )}
+              </div>
+            </section>
 
-              {/* 2D Diagrams */}
-              <section>
+            {/* Notes */}
+            {part.rfq_part.notes && !isSupplier && (
+              <section className="pb-4">
                 <h3 className="text-xs font-black text-slate-400 uppercase tracking-[0.2em] mb-4 flex items-center gap-2">
                   <div className="w-1 h-1 rounded-full bg-indigo-500" />
-                  2D Diagrams
+                  Manufacturer Notes
                 </h3>
-                <div className="grid grid-cols-1 gap-3">
-                  {part.drawings_2d && part.drawings_2d.length > 0 ? (
-                    part.drawings_2d.map((file, idx) => (
-                      <button
-                        key={idx}
-                        onClick={() => setViewingFile(file)}
-                        className="group flex items-center gap-4 p-4 rounded-2xl bg-slate-50 border border-slate-100 hover:border-indigo-200 hover:bg-white transition-all duration-300 hover:shadow-lg hover:shadow-indigo-500/5 text-left"
-                      >
-                        <div className="h-10 w-10 rounded-xl bg-white border border-slate-100 flex items-center justify-center text-slate-400 group-hover:text-indigo-600 group-hover:border-indigo-100 transition-colors">
-                          {file.mime_type.includes("pdf") ? (
-                            <FileText className="h-5 w-5" />
-                          ) : (
-                            <ImageIcon className="h-5 w-5" />
-                          )}
-                        </div>
-                        <div className="min-w-0 flex-1">
-                          <p className="text-sm font-bold text-slate-900 truncate">
-                            {file.file_name}
-                          </p>
-                          <p className="text-[10px] text-slate-400 uppercase font-bold tracking-wider">
-                            {file.mime_type.split("/")[1]?.toUpperCase() ||
-                              "FILE"}
-                          </p>
-                        </div>
-                        <div className="h-8 w-8 rounded-full flex items-center justify-center text-slate-300 group-hover:text-indigo-500 group-hover:bg-indigo-50 transition-all">
-                          <Eye className="h-4 w-4" />
-                        </div>
-                      </button>
-                    ))
-                  ) : (
-                    <div className="text-center py-8 rounded-[24px] border border-dashed border-slate-200">
-                      <p className="text-xs text-slate-400 font-medium">
-                        No 2D diagrams available
-                      </p>
-                    </div>
-                  )}
+                <div className="p-5 bg-slate-50 rounded-[24px] text-sm text-slate-600 leading-relaxed italic border border-slate-100">
+                  "{part.rfq_part.notes}"
                 </div>
               </section>
-
-              {/* Notes */}
-              {part.rfq_part.notes && (
-                <section className="pb-4">
-                  <h3 className="text-xs font-black text-slate-400 uppercase tracking-[0.2em] mb-4 flex items-center gap-2">
-                    <div className="w-1 h-1 rounded-full bg-indigo-500" />
-                    Manufacturer Notes
-                  </h3>
-                  <div className="p-5 bg-slate-50 rounded-[24px] text-sm text-slate-600 leading-relaxed italic border border-slate-100">
-                    "{part.rfq_part.notes}"
-                  </div>
-                </section>
-              )}
-            </div>
-          )}
+            )}
+          </div>
         </div>
       </div>
 
