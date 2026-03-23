@@ -89,6 +89,10 @@ export enum Tables {
   OrderStatusChangeRequests = 'order_status_change_requests',
 
   SupplierAssignments = 'supplier_assignments',
+
+  QuoteRequest = 'quote_request',
+
+  QuoteRequestEvent = 'quote_request_event',
 }
 
 /**
@@ -117,6 +121,7 @@ export enum TemporalEvents {
   SupplierAssignmentWorkflow = 'supplierAssignmentWorkflow',
   OrderStatusChangeRequestWorkflow = 'orderStatusChangeRequestWorkflow',
   SupplierWelcomeWorkflow = 'supplierWelcomeWorkflow',
+  QuoteRequestWorkflow = 'quoteRequestWorkflow',
 }
 
 /**

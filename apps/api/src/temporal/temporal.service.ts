@@ -424,4 +424,51 @@ export class TemporalService implements OnModuleInit {
       throw error;
     }
   }
+
+  async startQuoteRequestWorkflow(quoteRequestId: string) {
+    try {
+      if (!this.client) {
+        throw new Error('Temporal client not initialized');
+      }
+
+      const handle = await this.client.workflow.start(
+        TemporalEvents.QuoteRequestWorkflow,
+        {
+          taskQueue: TaskQueues.CoreTaskQueue,
+          workflowId: `quote-request-${quoteRequestId}`,
+          args: [quoteRequestId],
+        },
+      );
+
+      this.logger.log(`Started quote request workflow: ${handle.workflowId}`);
+      return handle;
+    } catch (error) {
+      this.logger.error(
+        'Failed to start quote request workflow:',
+        error.message,
+      );
+    }
+  }
+
+  async signalQuoteRequestWorkflow(
+    workflowId: string,
+    status: 'accepted' | 'declined',
+  ) {
+    try {
+      if (!this.client) {
+        throw new Error('Temporal client not initialized');
+      }
+
+      const handle = this.client.workflow.getHandle(workflowId);
+      await handle.signal('quoteResponse', { status });
+
+      this.logger.log(
+        `Signaled quote request workflow ${workflowId} with ${status}`,
+      );
+    } catch (error) {
+      this.logger.warn(
+        `Failed to signal quote request workflow ${workflowId}: ${error.message}`,
+      );
+    }
+  }
 }

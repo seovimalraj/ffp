@@ -8,7 +8,7 @@ import { notify } from "@/lib/toast";
 interface Supplier {
   id: string;
   name: string;
-  users: Array<{ email: string; name: string }>;
+  users: Array<{ email: string; name: string; id: string }>;
 }
 
 interface AssignSupplierModalProps {
@@ -30,7 +30,7 @@ export function AssignSupplierModal({
   const [selectedSupplierId, setSelectedSupplierId] = useState<string | null>(
     null,
   );
-  const [selectedEmail, setSelectedEmail] = useState<string>("");
+  const [selectedUser, setSelectedUser] = useState<string>("");
 
   useEffect(() => {
     if (isOpen) {
@@ -38,7 +38,7 @@ export function AssignSupplierModal({
     } else {
       // Reset state when closed
       setSelectedSupplierId(null);
-      setSelectedEmail("");
+      setSelectedUser("");
     }
   }, [isOpen]);
 
@@ -56,19 +56,20 @@ export function AssignSupplierModal({
   };
 
   const handleAssign = async () => {
-    if (!selectedSupplierId || !selectedEmail) {
+    if (!selectedSupplierId || !selectedUser) {
       notify.error("Please select a supplier and a contact email");
       return;
     }
 
     try {
       setAssigning(true);
-      await apiClient.post(`/orders/${orderId}/assign-supplier`, {
-        supplierId: selectedSupplierId,
-        email: selectedEmail,
+      await apiClient.post(`/quote-request`, {
+        supplier_id: selectedSupplierId,
+        order_id: orderId,
+        contact_user: selectedUser,
       });
       notify.success("Supplier assigned successfully");
-      onAssigned();
+      await onAssigned();
       onClose();
     } catch (error) {
       console.error(error);
@@ -133,9 +134,9 @@ export function AssignSupplierModal({
                     setSelectedSupplierId(supplier.id);
                     // Default to first email if available
                     if (supplier.users?.[0]?.email) {
-                      setSelectedEmail(supplier.users[0].email);
+                      setSelectedUser(supplier.users[0].email);
                     } else {
-                      setSelectedEmail("");
+                      setSelectedUser("");
                     }
                   }}
                   className={`relative p-4 rounded-xl border-2 text-left transition-all duration-200 ${
@@ -174,10 +175,10 @@ export function AssignSupplierModal({
                 {selectedSupplier.users && selectedSupplier.users.length > 0 ? (
                   selectedSupplier.users.map((user) => (
                     <button
-                      key={user.email}
-                      onClick={() => setSelectedEmail(user.email)}
+                      key={user.id}
+                      onClick={() => setSelectedUser(user.id)}
                       className={`w-full p-3 rounded-lg border flex items-center justify-between text-sm transition-all ${
-                        selectedEmail === user.email
+                        selectedUser === user.id
                           ? "border-indigo-200 bg-indigo-50 text-indigo-700 font-medium"
                           : "border-slate-100 bg-slate-50 text-slate-600 hover:bg-slate-100"
                       }`}
@@ -188,7 +189,7 @@ export function AssignSupplierModal({
                         </span>
                         <span className="text-xs opacity-70">{user.email}</span>
                       </div>
-                      {selectedEmail === user.email && (
+                      {selectedUser === user.id && (
                         <div className="w-2 h-2 rounded-full bg-indigo-600" />
                       )}
                     </button>
@@ -214,7 +215,7 @@ export function AssignSupplierModal({
           </button>
           <button
             onClick={handleAssign}
-            disabled={assigning || !selectedSupplierId || !selectedEmail}
+            disabled={assigning || !selectedSupplierId || !selectedUser}
             className="flex-[2] px-4 py-2.5 rounded-xl bg-indigo-600 text-white font-semibold hover:bg-indigo-700 shadow-lg shadow-indigo-100 disabled:opacity-50 disabled:shadow-none transition-all flex items-center justify-center gap-2"
           >
             {assigning ? (

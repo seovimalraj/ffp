@@ -161,7 +161,10 @@ export class AdminController {
           code: otpCode,
         });
       } catch (error) {
-        this.logger.error({ error }, 'Failed to start OTP workflow via Temporal');
+        this.logger.error(
+          { error },
+          'Failed to start OTP workflow via Temporal',
+        );
       }
 
       try {
@@ -172,7 +175,10 @@ export class AdminController {
           organizationName,
         });
       } catch (error) {
-        this.logger.error({ error }, 'Failed to start supplier welcome workflow via Temporal');
+        this.logger.error(
+          { error },
+          'Failed to start supplier welcome workflow via Temporal',
+        );
       }
 
       return {
@@ -321,7 +327,7 @@ export class AdminController {
 
     const { data, error } = await client
       .from(Tables.OrganizationTable)
-      .select('id, name, organization_type, users(email, name)')
+      .select('id, name, organization_type, users(email, name, id)')
       .eq('organization_type', 'supplier');
 
     if (error) {

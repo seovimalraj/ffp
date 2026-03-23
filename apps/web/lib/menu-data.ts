@@ -54,9 +54,9 @@ export const menuSections: MenuSection[] = [
         icon: LayoutDashboard,
       },
       {
-        label: "RFQs",
-        slug: "rfqs",
-        route: "/supplier/rfqs",
+        label: "Quote Requests",
+        slug: "quote-request",
+        route: "/supplier/quote-request",
         icon: FileQuestion,
       },
       {

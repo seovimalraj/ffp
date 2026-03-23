@@ -102,13 +102,23 @@ export class OrderService {
       }
     }
 
-    // OPTIMIZATION 2: Run both queries in parallel
+    // OPTIMIZATION 2: Run all queries in parallel
     const [
       { data: orderData, error: orderErr },
       { data: reqData, error: reqErr },
-    ] = await Promise.all([orderPromise, requestsPromise]);
+      { data: quoteRequestData, error: quoteErr },
+    ] = await Promise.all([
+      orderPromise,
+      requestsPromise,
+      client
+        .from(Tables.QuoteRequest)
+        .select('*, contact_user:users(name, email), supplier:organizations(name)')
+        .eq('order_id', id)
+        .eq('status', 'requested')
+        .maybeSingle(),
+    ]);
 
-    if (orderErr || reqErr)
+    if (orderErr || reqErr || quoteErr)
       throw new InternalServerErrorException('Data fetch failed');
 
     // OPTIMIZATION 3: O(n) Grouping (Linear time)
@@ -122,7 +132,14 @@ export class OrderService {
       }
     }
 
-    return { ...orderData, requests: partRequestsMap };
+    const result: any = { ...orderData, requests: partRequestsMap };
+
+    // Attach quote request if no supplier is assigned yet
+    if (!orderData.supplier && quoteRequestData) {
+      result.quote_request = quoteRequestData;
+    }
+
+    return result;
   }
 
   async updateOrderPartStatus(

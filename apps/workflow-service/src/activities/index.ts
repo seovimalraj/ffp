@@ -8,3 +8,4 @@ export * from "./process-part-geometry.activities.js";
 export * from "./production-request.activities.js";
 export * from "./supplier-assignment.activities.js";
 export * from "./supplier-welcome.activities.js";
+export * from "./quote-request.activities.js";

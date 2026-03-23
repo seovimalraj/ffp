@@ -16,12 +16,13 @@ import {
 } from "@/app/portal/orders/[orderId]/page";
 import Documents from "@/app/portal/orders/[orderId]/components/documents";
 import { AddressFlow } from "@/components/ui/animated-flow";
-import { Check, Pencil, UserPlus, X } from "lucide-react";
+import { Check, Clock, Pencil, UserPlus, X } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { notify } from "@/lib/toast";
 import { AssignSupplierModal } from "./components/AssignSupplierModal";
 import { useMetaStore } from "@/components/store/title-store";
 import { RequestType } from "@/app/supplier/orders/[orderId]/page";
+import QuoteRequestHistory from "./components/quote-request-history";
 
 /* =======================
    TYPES (FROM API)
@@ -87,6 +88,20 @@ export type IOrderFull = {
     };
     tracking_number?: string;
   };
+  quote_request?: {
+    id: string;
+    order_id: string;
+    supplier_id: string;
+    contract_user: {
+      name: string;
+      email: string;
+    };
+    status: string;
+    notes: "";
+    supplier: {
+      name: string;
+    };
+  };
   requests: Record<string, RequestType>;
 };
 
@@ -94,7 +109,7 @@ export type IOrderFull = {
    PAGE
 ======================= */
 
-type Tab = "general" | "workflow" | "documents";
+type Tab = "general" | "workflow" | "documents" | "quote-request";
 
 export default function OrderPage() {
   const searchParams = useSearchParams();
@@ -205,6 +220,20 @@ export default function OrderPage() {
                   </div>
                 </div>
               </div>
+            ) : data?.quote_request ? (
+              <div className="flex items-center gap-3 bg-blue-50 px-4 py-2 rounded-xl border border-blue-100">
+                <div className="flex items-center justify-center w-8 h-8 rounded-full bg-blue-500 text-white shadow-sm">
+                  <Clock className="w-4 h-4" />
+                </div>
+                <div>
+                  <div className="text-[10px] font-bold uppercase tracking-wider text-blue-600 leading-none mb-1 text-nowrap">
+                    Quote Requested
+                  </div>
+                  <div className="text-sm font-semibold text-slate-900 leading-none">
+                    {data.quote_request.supplier.name}
+                  </div>
+                </div>
+              </div>
             ) : (
               data.order.status !== "payment pending" && (
                 <button
@@ -222,7 +251,7 @@ export default function OrderPage() {
       </div>
       {/* TABS */}
       <div className="border-b flex gap-6 text-sm">
-        {["general", "workflow", "documents"].map((tab) => (
+        {["general", "workflow", "documents", "quote-request"].map((tab) => (
           <button
             key={tab}
             onClick={() => {
@@ -548,6 +577,10 @@ export default function OrderPage() {
       {/* DOCUMENTS */}
       {activeTab === "documents" && (
         <Documents orderId={orderId} inView={activeTab === "documents"} />
+      )}
+
+      {activeTab === "quote-request" && (
+        <QuoteRequestHistory orderId={orderId} />
       )}
       {/* SIDE DRAWER */}
       {selectedPart && (
