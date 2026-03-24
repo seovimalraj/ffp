@@ -2061,7 +2061,7 @@ export default function QuoteConfigPage() {
                       Shipping & Logistics
                     </span>
                     <span className="font-semibold text-green-600">
-                      Complementary
+                      Complimentary
                     </span>
                   </div>
                   <div className="flex justify-between items-center text-sm">
