@@ -1,9 +1,18 @@
 "use client";
 
-import { useState, useEffect } from "react";
-import { X, UserPlus, CheckCircle, Loader2 } from "lucide-react";
+import { useState, useEffect, useMemo } from "react";
+import {
+  UserPlus,
+  CheckCircle,
+  Search,
+  Mail,
+  MessageSquare,
+  Building2,
+  User,
+} from "lucide-react";
 import { apiClient } from "@/lib/api";
 import { notify } from "@/lib/toast";
+import SteppedModal from "@/components/ui/modal/SteppedModal";
 
 interface Supplier {
   id: string;
@@ -18,6 +27,12 @@ interface AssignSupplierModalProps {
   onAssigned: () => void;
 }
 
+const STEPS = [
+  { id: 1, title: "Supplier", description: "Select a partner" },
+  { id: 2, title: "Contact", description: "Choose recipient" },
+  { id: 3, title: "Notes", description: "Add instructions" },
+];
+
 export function AssignSupplierModal({
   isOpen,
   onClose,
@@ -26,11 +41,12 @@ export function AssignSupplierModal({
 }: AssignSupplierModalProps) {
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
   const [loading, setLoading] = useState(false);
-  const [assigning, setAssigning] = useState(false);
+  const [searchTerm, setSearchTerm] = useState("");
+  const [notes, setNotes] = useState("");
   const [selectedSupplierId, setSelectedSupplierId] = useState<string | null>(
     null,
   );
-  const [selectedUser, setSelectedUser] = useState<string>("");
+  const [selectedUserId, setSelectedUserId] = useState<string>("");
 
   useEffect(() => {
     if (isOpen) {
@@ -38,7 +54,9 @@ export function AssignSupplierModal({
     } else {
       // Reset state when closed
       setSelectedSupplierId(null);
-      setSelectedUser("");
+      setSelectedUserId("");
+      setSearchTerm("");
+      setNotes("");
     }
   }, [isOpen]);
 
@@ -55,18 +73,36 @@ export function AssignSupplierModal({
     }
   };
 
-  const handleAssign = async () => {
-    if (!selectedSupplierId || !selectedUser) {
-      notify.error("Please select a supplier and a contact email");
-      return;
-    }
+  const filteredSuppliers = useMemo(() => {
+    return suppliers.filter((s) =>
+      s.name.toLowerCase().includes(searchTerm.toLowerCase()),
+    );
+  }, [suppliers, searchTerm]);
 
+  const selectedSupplier = useMemo(
+    () => suppliers.find((s) => s.id === selectedSupplierId),
+    [suppliers, selectedSupplierId],
+  );
+
+  const handleValidateStep = (step: number) => {
+    if (step === 1 && !selectedSupplierId) {
+      notify.error("Please select a supplier");
+      return false;
+    }
+    if (step === 2 && !selectedUserId) {
+      notify.error("Please select a contact email");
+      return false;
+    }
+    return true;
+  };
+
+  const handleAssign = async () => {
     try {
-      setAssigning(true);
       await apiClient.post(`/quote-request`, {
         supplier_id: selectedSupplierId,
         order_id: orderId,
-        contact_user: selectedUser,
+        contact_user: selectedUserId,
+        notes: notes,
       });
       notify.success("Supplier assigned successfully");
       await onAssigned();
@@ -74,161 +110,141 @@ export function AssignSupplierModal({
     } catch (error) {
       console.error(error);
       notify.error("Failed to assign supplier");
-    } finally {
-      setAssigning(false);
+      throw error; // Rethrow so SteppedModal knows there was an error
     }
   };
 
-  if (!isOpen) return null;
-
-  const selectedSupplier = suppliers.find((s) => s.id === selectedSupplierId);
-
   return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
-      {/* Backdrop */}
-      <div
-        className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm transition-opacity"
-        onClick={onClose}
-      />
+    <SteppedModal
+      isOpen={isOpen}
+      onClose={onClose}
+      title="Assign Supplier"
+      subtitle={`Set up fulfillment for order #${orderId.slice(0, 8)}`}
+      icon={<UserPlus className="text-white w-5 h-5" />}
+      steps={STEPS}
+      onSubmit={handleAssign}
+      onValidateStep={handleValidateStep}
+      submitLabel="Confirm Assignment"
+      isLoading={loading}
+    >
+      {({ currentStep }) => (
+        <div className="space-y-6">
+          {currentStep === 1 && (
+            <div className="space-y-4">
+              <div className="relative group">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 group-focus-within:text-violet-600 transition-colors" />
+                <input
+                  type="text"
+                  placeholder="Search suppliers..."
+                  className="w-full pl-10 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:border-violet-600 outline-none transition-all text-sm"
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                />
+              </div>
 
-      {/* Container */}
-      <div className="relative w-full max-w-xl bg-white rounded-2xl shadow-2xl overflow-hidden border border-slate-100 flex flex-col max-h-[90vh] animate-in zoom-in-95 duration-200">
-        {/* Header */}
-        <div className="p-6 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-indigo-100 flex items-center justify-center text-indigo-600">
-              <UserPlus className="w-5 h-5" />
-            </div>
-            <div>
-              <h2 className="text-xl font-bold text-slate-900">
-                Assign Supplier
-              </h2>
-              <p className="text-sm text-slate-500">
-                Choose a supplier for this order
-              </p>
-            </div>
-          </div>
-          <button
-            onClick={onClose}
-            className="p-2 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-lg transition-colors"
-          >
-            <X className="w-5 h-5" />
-          </button>
-        </div>
-
-        {/* Content */}
-        <div className="flex-1 overflow-y-auto p-6 space-y-6">
-          {loading ? (
-            <div className="h-40 flex flex-col items-center justify-center gap-2">
-              <Loader2 className="h-8 w-8 text-indigo-600 animate-spin" />
-              <span className="text-sm text-slate-500 font-medium">
-                Loading suppliers...
-              </span>
-            </div>
-          ) : (
-            <div className="grid grid-cols-1 gap-3">
-              {suppliers.map((supplier) => (
-                <button
-                  key={supplier.id}
-                  onClick={() => {
-                    setSelectedSupplierId(supplier.id);
-                    // Default to first email if available
-                    if (supplier.users?.[0]?.email) {
-                      setSelectedUser(supplier.users[0].email);
-                    } else {
-                      setSelectedUser("");
-                    }
-                  }}
-                  className={`relative p-4 rounded-xl border-2 text-left transition-all duration-200 ${
-                    selectedSupplierId === supplier.id
-                      ? "border-indigo-500 bg-indigo-50/30 ring-4 ring-indigo-50"
-                      : "border-slate-100 bg-white hover:border-indigo-200 hover:bg-slate-50/50"
-                  }`}
-                >
-                  <div className="flex items-center justify-between gap-4">
-                    <div className="min-w-0">
-                      <div className="font-bold text-slate-900 truncate">
-                        {supplier.name}
+              <div className="grid grid-cols-1 gap-2 max-h-[400px] overflow-y-auto pr-1">
+                {filteredSuppliers.map((supplier) => (
+                  <button
+                    key={supplier.id}
+                    type="button"
+                    onClick={() => {
+                      setSelectedSupplierId(supplier.id);
+                      if (supplier.users?.[0]?.id)
+                        setSelectedUserId(supplier.users[0].id);
+                    }}
+                    className={`flex items-center justify-between p-4 rounded-xl border-2 transition-all ${
+                      selectedSupplierId === supplier.id
+                        ? "border-violet-600 bg-violet-50"
+                        : "border-slate-100 bg-white hover:border-slate-200"
+                    }`}
+                  >
+                    <div className="flex items-center gap-3">
+                      <div
+                        className={`p-2 rounded-lg ${
+                          selectedSupplierId === supplier.id
+                            ? "bg-violet-600 text-white"
+                            : "bg-slate-100 text-slate-500"
+                        }`}
+                      >
+                        <Building2 size={18} />
                       </div>
-                      <div className="text-xs text-slate-500 mt-1">
-                        {supplier.users?.length || 0} contact(s) available
+                      <div className="text-left font-semibold text-slate-900">
+                        {supplier.name}
                       </div>
                     </div>
                     {selectedSupplierId === supplier.id && (
-                      <div className="text-indigo-600 flex-shrink-0">
-                        <CheckCircle className="w-6 h-6" />
-                      </div>
+                      <CheckCircle className="text-violet-600 w-5 h-5" />
                     )}
-                  </div>
-                </button>
-              ))}
-            </div>
-          )}
-
-          {/* Contact Selection */}
-          {selectedSupplier && (
-            <div className="pt-4 border-t border-slate-100 animate-in fade-in slide-in-from-top-2">
-              <label className="block text-sm font-semibold text-slate-700 mb-3">
-                Select Notification Email
-              </label>
-              <div className="space-y-2">
-                {selectedSupplier.users && selectedSupplier.users.length > 0 ? (
-                  selectedSupplier.users.map((user) => (
-                    <button
-                      key={user.id}
-                      onClick={() => setSelectedUser(user.id)}
-                      className={`w-full p-3 rounded-lg border flex items-center justify-between text-sm transition-all ${
-                        selectedUser === user.id
-                          ? "border-indigo-200 bg-indigo-50 text-indigo-700 font-medium"
-                          : "border-slate-100 bg-slate-50 text-slate-600 hover:bg-slate-100"
-                      }`}
-                    >
-                      <div className="flex flex-col">
-                        <span className="font-semibold">
-                          {user.name || "Default user"}
-                        </span>
-                        <span className="text-xs opacity-70">{user.email}</span>
-                      </div>
-                      {selectedUser === user.id && (
-                        <div className="w-2 h-2 rounded-full bg-indigo-600" />
-                      )}
-                    </button>
-                  ))
-                ) : (
-                  <p className="text-sm text-red-500 py-2">
-                    No users found for this supplier. A notification email is
-                    required.
-                  </p>
-                )}
+                  </button>
+                ))}
               </div>
             </div>
           )}
-        </div>
 
-        {/* Footer */}
-        <div className="p-6 border-t border-slate-100 bg-slate-50/50 flex gap-3">
-          <button
-            onClick={onClose}
-            className="flex-1 px-4 py-2.5 rounded-xl border border-slate-200 text-slate-600 font-semibold hover:bg-white hover:shadow-sm transition-all"
-          >
-            Cancel
-          </button>
-          <button
-            onClick={handleAssign}
-            disabled={assigning || !selectedSupplierId || !selectedUser}
-            className="flex-[2] px-4 py-2.5 rounded-xl bg-indigo-600 text-white font-semibold hover:bg-indigo-700 shadow-lg shadow-indigo-100 disabled:opacity-50 disabled:shadow-none transition-all flex items-center justify-center gap-2"
-          >
-            {assigning ? (
-              <>
-                <Loader2 className="h-4 w-4 animate-spin" />
-                Assigning...
-              </>
-            ) : (
-              "Confirm Assignment"
-            )}
-          </button>
+          {currentStep === 2 && selectedSupplier && (
+            <div className="space-y-4">
+              <div className="p-4 bg-slate-50 rounded-xl border border-slate-200 flex items-center gap-3">
+                <Building2 className="text-slate-400" size={20} />
+                <div className="font-bold text-slate-900">
+                  {selectedSupplier.name}
+                </div>
+              </div>
+
+              <label className="text-xs font-bold text-slate-400 uppercase tracking-wider block">
+                Select Recipient
+              </label>
+
+              <div className="space-y-2">
+                {selectedSupplier.users.map((user) => (
+                  <button
+                    key={user.id}
+                    type="button"
+                    onClick={() => setSelectedUserId(user.id)}
+                    className={`w-full p-4 rounded-xl border-2 flex items-center justify-between transition-all ${
+                      selectedUserId === user.id
+                        ? "border-violet-600 bg-violet-50"
+                        : "border-slate-100 bg-white hover:border-slate-200"
+                    }`}
+                  >
+                    <div className="flex flex-col items-start gap-0.5">
+                      <span className="font-bold text-slate-900 text-sm">
+                        {user.name}
+                      </span>
+                      <span className="text-xs text-slate-500 flex items-center gap-1.5">
+                        <Mail size={12} /> {user.email}
+                      </span>
+                    </div>
+                    {selectedUserId === user.id && (
+                      <div className="w-2.5 h-2.5 rounded-full bg-violet-600 shadow-sm shadow-violet-200" />
+                    )}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {currentStep === 3 && (
+            <div className="space-y-4">
+              <div className="flex items-center gap-3 p-4 bg-violet-50 text-violet-700 rounded-xl border border-violet-100">
+                <MessageSquare size={20} />
+                <div className="text-sm font-medium">
+                  Add internal context or external instructions for the
+                  supplier.
+                </div>
+              </div>
+
+              <textarea
+                autoFocus
+                rows={6}
+                placeholder="Include quality specs, urgency notes, or specific contact instructions..."
+                className="w-full p-4 bg-slate-50 border-2 border-slate-100 rounded-2xl focus:bg-white focus:border-violet-600 outline-none transition-all text-sm resize-none"
+                value={notes}
+                onChange={(e) => setNotes(e.target.value)}
+              />
+            </div>
+          )}
         </div>
-      </div>
-    </div>
+      )}
+    </SteppedModal>
   );
 }

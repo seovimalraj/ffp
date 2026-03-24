@@ -19,6 +19,7 @@ interface GetOrdersParams {
 }
 
 interface GetOrdersInfiniteParams {
+  role: string;
   organizationId: string | null;
   status?: string;
   paymentStatus?: string;
@@ -72,6 +73,13 @@ export class OrderService {
       throw new InternalServerErrorException(error.message);
     }
 
+    if (params.role === 'customer' && data?.data) {
+      data.data.forEach((order: any) => {
+        delete order.assigned_supplier;
+        delete order.supplier_name;
+      });
+    }
+
     return data;
   }
 
@@ -112,7 +120,9 @@ export class OrderService {
       requestsPromise,
       client
         .from(Tables.QuoteRequest)
-        .select('*, contact_user:users(name, email), supplier:organizations(name)')
+        .select(
+          '*, contact_user:users(name, email), supplier:organizations(name)',
+        )
         .eq('order_id', id)
         .eq('status', 'requested')
         .maybeSingle(),

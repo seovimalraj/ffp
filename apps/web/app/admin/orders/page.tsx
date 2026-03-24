@@ -34,6 +34,8 @@ export type IOrder = {
   part_count: number;
   organization_name: string;
   created_at: string;
+  assigned_supplier: string;
+  supplier_name: string;
   parts: {
     cad_file_url: string;
     file_name: string;
@@ -273,6 +275,15 @@ const Page = () => {
       key: "total_amount",
       header: "Total Amount",
       render: (row) => formatCurrency(row.total_amount || 0, "USD"),
+    },
+    {
+      key: "assingned_supplier",
+      header: "Assinged Supplier",
+      render: (row) => (
+        <span className="font-semibold">
+          {row.supplier_name ? row.supplier_name : "Not Assigned"}
+        </span>
+      ),
     },
     {
       key: "status",

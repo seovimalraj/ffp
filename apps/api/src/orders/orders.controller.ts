@@ -88,6 +88,7 @@ export class OrdersController {
       currentUser.role === RoleNames.Admin ? null : currentUser.organizationId;
 
     const data = await this.ordersService.getOrdersInfinite({
+      role: currentUser.role,
       organizationId,
       status,
       paymentStatus,

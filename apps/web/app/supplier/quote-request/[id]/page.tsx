@@ -12,6 +12,8 @@ import {
 } from "@/app/portal/orders/[orderId]/page";
 import RfqSideDrawer from "@/app/portal/orders/[orderId]/components/rfq-side-drawer";
 import { toast } from "sonner";
+import SteppedModal from "@/components/ui/modal/SteppedModal";
+import { AlertCircle } from "lucide-react";
 
 /* =======================
    TYPES
@@ -73,6 +75,8 @@ export default function QuoteRequestPage() {
   const [data, setData] = useState<IQuoteRequestFull>();
   const [loading, setLoading] = useState(true);
   const [processing, setProcessing] = useState(false);
+  const [isDeclineModalOpen, setIsDeclineModalOpen] = useState(false);
+  const [declineReason, setDeclineReason] = useState("");
   const { setPageTitle, resetTitle } = useMetaStore();
 
   const fetchData = useCallback(
@@ -119,14 +123,24 @@ export default function QuoteRequestPage() {
     }
   };
 
-  const handleDecline = async () => {
-    const reason = window.prompt("Please provide a reason for declining:");
-    if (reason === null) return;
+  const handleDecline = () => {
+    setIsDeclineModalOpen(true);
+  };
+
+  const handleDeclineSubmit = async () => {
+    if (!declineReason.trim()) {
+      toast.error("Please provide a reason for declining");
+      return;
+    }
 
     try {
       setProcessing(true);
-      await apiClient.patch(`/quote-request/${id}/decline`, { reason });
+      await apiClient.patch(`/quote-request/${id}/decline`, {
+        reason: declineReason,
+      });
       toast.success("Quote request declined");
+      setIsDeclineModalOpen(false);
+      setDeclineReason("");
       fetchData(true);
     } catch (error: any) {
       toast.error(
@@ -376,6 +390,33 @@ export default function QuoteRequestPage() {
           onClose={() => setSelectedPart(null)}
         />
       )}
+
+      {/* DECLINE MODAL */}
+      <SteppedModal
+        isOpen={isDeclineModalOpen}
+        onClose={() => setIsDeclineModalOpen(false)}
+        title="Decline Quote Request"
+        subtitle="Please let us know why you are declining this request"
+        icon={<AlertCircle className="text-white" size={20} />}
+        steps={[{ id: 1, title: "Decline Reason" }]}
+        onSubmit={handleDeclineSubmit}
+        submitLabel="Decline Request"
+        isLoading={processing}
+      >
+        <div className="space-y-4">
+          <label className="block text-sm font-medium text-slate-700">
+            Reason for declining
+          </label>
+          <textarea
+            value={declineReason}
+            onChange={(e) => setDeclineReason(e.target.value)}
+            className="w-full min-h-[120px] p-3 rounded-lg border border-slate-200 focus:ring-2 focus:ring-violet-500 focus:border-transparent outline-none transition-all resize-none text-slate-800"
+            placeholder="E.g. Capacity full, Material not available, etc."
+            required
+            disabled={processing}
+          />
+        </div>
+      </SteppedModal>
     </div>
   );
 }
