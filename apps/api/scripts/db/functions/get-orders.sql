@@ -76,17 +76,23 @@ CREATE OR REPLACE FUNCTION get_orders_infinite (
         SELECT o.id AS order_id,
             o.order_code,
             o.rfq_id,
+            o.organization_id,
             o.status,
             o.payment_status,
             o.subtotal,
             o.shipping_cost,
             o.tax_amount,
             o.total_amount,
+            o.estimated_ship_date,
+            o.estimated_delivery_date,
             o.created_at,
             o.confirmed_at,
-            org.name AS organization_name
+            o.assigned_supplier,
+            org.name AS organization_name,
+            sorg.name AS supplier_name
         FROM orders o
             JOIN organizations org ON org.id = o.organization_id
+            LEFT JOIN organizations sorg ON sorg.id = o.assigned_supplier
         WHERE (
                 p_organization_id IS NULL
                 OR o.organization_id = p_organization_id
@@ -111,6 +117,7 @@ CREATE OR REPLACE FUNCTION get_orders_infinite (
                 p_search IS NULL
                 OR o.order_code ILIKE '%' || p_search || '%'
                 OR org.name ILIKE '%' || p_search || '%'
+                OR sorg.name ILIKE '%' || p_search || '%'
             )
     ),
     total_count AS (
@@ -135,18 +142,37 @@ CREATE OR REPLACE FUNCTION get_orders_infinite (
         SELECT ol.order_id,
             ol.order_code,
             ol.rfq_id,
+            ol.organization_id,
             ol.status,
             ol.payment_status,
             ol.subtotal,
             ol.shipping_cost,
             ol.tax_amount,
             ol.total_amount,
+            ol.estimated_ship_date,
+            ol.estimated_delivery_date,
             ol.created_at,
             ol.confirmed_at,
             ol.organization_name,
+            ol.assigned_supplier,
+            ol.supplier_name,
             COALESCE(
                 jsonb_agg(
                     jsonb_build_object(
+                        'id',
+                        op.id,
+                        'part_code',
+                        op.part_code,
+                        'part_name',
+                        op.part_name,
+                        'quantity',
+                        op.quantity,
+                        'unit_price',
+                        op.unit_price,
+                        'total_price',
+                        op.total_price,
+                        'status',
+                        op.status,
                         'file_name',
                         rp.file_name,
                         'cad_file_url',
@@ -167,15 +193,20 @@ CREATE OR REPLACE FUNCTION get_orders_infinite (
         GROUP BY ol.order_id,
             ol.order_code,
             ol.rfq_id,
+            ol.organization_id,
             ol.status,
             ol.payment_status,
             ol.subtotal,
             ol.shipping_cost,
             ol.tax_amount,
             ol.total_amount,
+            ol.estimated_ship_date,
+            ol.estimated_delivery_date,
             ol.created_at,
             ol.confirmed_at,
-            ol.organization_name
+            ol.organization_name,
+            ol.assigned_supplier,
+            ol.supplier_name
     )
 SELECT jsonb_build_object(
         'data',

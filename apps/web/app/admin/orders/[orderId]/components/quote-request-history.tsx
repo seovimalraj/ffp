@@ -154,7 +154,10 @@ const TimelineItem = ({
                       new Date(b.created_at).getTime(),
                   )
                   .map((event) => (
-                    <div key={event.id} className="flex items-center justify-between gap-4">
+                    <div
+                      key={event.id}
+                      className="flex items-center justify-between gap-4"
+                    >
                       <div className="flex items-center gap-2">
                         <div className="w-1.5 h-1.5 rounded-full bg-slate-300 flex-shrink-0" />
                         <div className="text-xs font-semibold text-slate-600 capitalize">
@@ -223,7 +226,6 @@ const QuoteRequestHistory = ({ orderId }: { orderId: string }) => {
 
   return (
     <section className="space-y-6 max-w-4xl">
-      <SectionTitle title="Quote Request History" />
       <div className="mt-8">
         {requests.map((request, index) => (
           <TimelineItem
