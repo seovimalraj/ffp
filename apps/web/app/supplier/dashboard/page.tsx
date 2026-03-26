@@ -1,366 +1,539 @@
 "use client";
 
-import { useState, useEffect } from "react";
 import {
-  TrendingUp,
-  Package,
-  DollarSign,
-  Factory,
-  Clock,
-  AlertTriangle,
-  CheckCircle2,
-  ArrowUpRight,
+  FileText,
   ArrowRight,
-  AlertCircle,
-  Loader2,
+  Package,
+  CheckCircle,
+  Clock,
+  ChevronRight,
 } from "lucide-react";
+import { StatusCards, StatusItem } from "@/components/ui/status-cards";
 import Link from "next/link";
-import {
-  getSupplierDashboardStats,
-  getSupplierActiveOrders,
-} from "@/lib/database";
+import { useEffect, useState } from "react";
+import { useSession } from "next-auth/react";
+import { useRouter } from "next/navigation";
+import { apiClient } from "@/lib/api";
+import { toast } from "sonner";
+import CustomLoader from "@/components/ui/loader/CustomLoader";
+import { useMetaStore } from "@/components/store/title-store";
+import { motion, Variants } from "framer-motion";
+import { cn } from "@/lib/utils";
+import { Button } from "@/components/ui/button";
+import dynamic from "next/dynamic";
+import { formatDate } from "@/lib/format";
+
+// Dynamically import apexcharts to avoid SSR issues
+const ReactApexChart = dynamic(() => import("react-apexcharts"), {
+  ssr: false,
+});
+
+// Animation variants
+const containerVariants: Variants = {
+  hidden: { opacity: 0 },
+  visible: {
+    opacity: 1,
+    transition: {
+      staggerChildren: 0.08,
+    },
+  },
+};
+
+const itemVariants: Variants = {
+  hidden: { y: 15, opacity: 0 },
+  visible: {
+    y: 0,
+    opacity: 1,
+    transition: {
+      type: "spring",
+      stiffness: 110,
+      damping: 15,
+    },
+  },
+};
 
 export default function SupplierDashboardPage() {
-  const [stats, setStats] = useState({
-    activeOrders: 0,
-    monthlyRevenue: 0,
-    machineUtilization: 0,
-    avgLeadTime: 0,
-  });
-  const [activeOrders, setActiveOrders] = useState<any[]>([]);
+  const { data: session } = useSession();
+  const router = useRouter();
   const [loading, setLoading] = useState(true);
 
+  // Data states
+  const [orderSummary, setOrderSummary] = useState<{
+    total: number;
+    completed: number;
+    active: number;
+    by_status: { status: string; count: number }[];
+  }>({ total: 0, completed: 0, active: 0, by_status: [] });
+
+  const [quoteRequestsCount, setQuoteRequestsCount] = useState(0);
+  const [recentQuoteRequests, setRecentQuoteRequests] = useState<any[]>([]);
+  const [recentOrders, setRecentOrders] = useState<any[]>([]);
+
+  const { setPageTitle, resetTitle } = useMetaStore();
+
   useEffect(() => {
-    async function loadDashboardData() {
+    setPageTitle("Dashboard");
+    return () => {
+      resetTitle();
+    };
+  }, []);
+
+  useEffect(() => {
+    const loadDashboardData = async () => {
       try {
-        const [statsData, ordersData] = await Promise.all([
-          getSupplierDashboardStats(),
-          getSupplierActiveOrders(),
+        setLoading(true);
+        const [ordersSummaryRes, quoteRes, ordersRes] = await Promise.all([
+          apiClient.get("/supplier/orders-summary"),
+          apiClient.get("/quote-request", { params: { page: 1, limit: 3 } }),
+          apiClient.get("/supplier/orders/infinite", { params: { limit: 3 } }),
         ]);
 
-        setStats(statsData);
-        setActiveOrders(ordersData);
+        const summaryData = ordersSummaryRes.data.statuses || {
+          total: 0,
+          completed: 0,
+          active: 0,
+          by_status: [],
+        };
+
+        // Custom counting active and completed if the backend does not return it directly at the root
+        let total = summaryData.total || 0;
+        let active = summaryData.active || 0;
+        let completed = summaryData.completed || 0;
+
+        if (!summaryData.active && summaryData.by_status) {
+          total =
+            summaryData.total ||
+            summaryData.by_status.reduce(
+              (acc: number, curr: any) => acc + curr.count,
+              0,
+            );
+          active = summaryData.by_status
+            .filter(
+              (s: any) =>
+                s.status.toLowerCase() !== "completed" &&
+                s.status.toLowerCase() !== "cancelled",
+            )
+            .reduce((acc: number, curr: any) => acc + curr.count, 0);
+          completed = summaryData.by_status
+            .filter((s: any) => s.status.toLowerCase() === "completed")
+            .reduce((acc: number, curr: any) => acc + curr.count, 0);
+        }
+
+        setOrderSummary({
+          total,
+          active,
+          completed,
+          by_status: summaryData.by_status || [],
+        });
+
+        setRecentQuoteRequests(quoteRes.data.data || []);
+        setQuoteRequestsCount(quoteRes.data.count || 0);
+        setRecentOrders(ordersRes.data.data || []);
       } catch (error) {
-        console.error("Error loading dashboard data:", error);
+        console.error("Failed to load supplier dashboard data:", error);
+        toast.error("Failed to load dashboard data");
       } finally {
         setLoading(false);
       }
-    }
+    };
 
     loadDashboardData();
   }, []);
 
-  const statCards = [
-    {
-      label: "Active Orders",
-      value: loading ? "..." : stats.activeOrders.toString(),
-      change: loading ? "..." : `${stats.activeOrders} in progress`,
-      trend: "up",
-      icon: Package,
-      color: "violet",
-      href: "/supplier/orders",
-    },
-    {
-      label: "Monthly Revenue",
-      value: loading
-        ? "..."
-        : `$${stats.monthlyRevenue.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
-      change: "From active orders",
-      trend: "up",
-      icon: DollarSign,
-      color: "purple",
-      href: "/supplier/analytics",
-    },
-    {
-      label: "Machine Utilization",
-      value: loading ? "..." : `${stats.machineUtilization}%`,
-      change:
-        stats.machineUtilization > 80 ? "High capacity" : "Capacity available",
-      trend: stats.machineUtilization > 80 ? "up" : "neutral",
-      icon: Factory,
-      color: "fuchsia",
-      href: "/supplier/capacity",
-    },
-    {
-      label: "Avg Lead Time",
-      value: loading ? "..." : `${stats.avgLeadTime} days`,
-      change: "On target",
-      trend: "neutral",
-      icon: Clock,
-      color: "rose",
-      href: "/supplier/analytics",
-    },
-  ];
-
-  const alerts = [
-    {
-      type: "warning",
-      message: "Low material stock: Aluminum 6061 (85kg remaining)",
-      action: "View Inventory",
-      href: "/supplier/inventory",
-    },
-    {
-      type: "warning",
-      message: "CNC Mill #3 at 98% utilization",
-      action: "View Capacity",
-      href: "/supplier/capacity",
-    },
-    {
-      type: "success",
-      message: "5 orders completed this week",
-      action: "View Orders",
-      href: "/supplier/orders",
-    },
-    {
-      type: "info",
-      message: "3 new RFQs awaiting response",
-      action: "View RFQs",
-      href: "/supplier/orders",
-    },
-  ];
-
   const getStatusColor = (status: string) => {
     const colors: Record<string, string> = {
-      in_production: "bg-blue-100 text-blue-700 ring-1 ring-blue-600/20",
-      pending: "bg-yellow-100 text-yellow-700 ring-1 ring-yellow-600/20",
-      quality_check: "bg-purple-100 text-purple-700 ring-1 ring-purple-600/20",
-      completed: "bg-green-100 text-green-700 ring-1 ring-green-600/20",
-      shipped: "bg-indigo-100 text-indigo-700 ring-1 ring-indigo-600/20",
+      requested: "bg-orange-50 text-orange-700 border-orange-200",
+      accepted: "bg-violet-50 text-violet-700 border-violet-200",
+      declined: "bg-red-50 text-red-700 border-red-200",
+      payment_pending: "bg-pink-50 text-pink-700 border-pink-200",
+      paid: "bg-violet-50 text-violet-700 border-violet-200",
+      processing: "bg-fuchsia-50 text-fuchsia-700 border-fuchsia-200",
+      shipped: "bg-amber-50 text-amber-700 border-amber-200",
+      delivered: "bg-rose-50 text-rose-700 border-rose-200",
+      completed: "bg-purple-50 text-purple-700 border-purple-200",
+      cancelled: "bg-red-50 text-red-700 border-red-200",
     };
-    return colors[status] || "bg-gray-100 text-gray-700";
+    return (
+      colors[status?.toLowerCase()?.replace(" ", "_")] ||
+      "bg-slate-50 text-slate-700 border-slate-200"
+    );
   };
 
-  const getAlertIcon = (type: string) => {
-    if (type === "warning") return AlertTriangle;
-    if (type === "success") return CheckCircle2;
-    return AlertCircle;
-  };
+  // Combine quotes and orders for the recent activity table
+  const unifiedActivity = [
+    ...recentQuoteRequests.map((q) => ({
+      id: q.id,
+      code: q.order?.order_code || q.id.substring(0, 8).toUpperCase(),
+      type: "Quote Request",
+      date: q.created_at,
+      status: q.status,
+      href: `/supplier/quote-request/${q.id}`,
+    })),
+    ...recentOrders.map((o) => ({
+      id: o.order_id,
+      code: o.order_code || o.order_id.substring(0, 8).toUpperCase(),
+      type: "Order",
+      date: o.created_at,
+      status: o.status,
+      href: `/supplier/orders/${o.order_id}`,
+    })),
+  ]
+    .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
+    .slice(0, 8);
 
-  const getAlertColor = (type: string) => {
-    if (type === "warning")
-      return "bg-amber-50 border-amber-200 dark:bg-amber-900/20 dark:border-amber-800 text-amber-900 dark:text-amber-100";
-    if (type === "success")
-      return "bg-violet-50 border-violet-200 dark:bg-violet-900/20 dark:border-violet-800 text-violet-900 dark:text-violet-100";
-    return "bg-slate-50 border-slate-200 dark:bg-slate-900/20 dark:border-slate-800 text-slate-900 dark:text-slate-100";
-  };
+  if (loading) {
+    return (
+      <div className="flex h-[calc(100vh-100px)] items-center justify-center">
+        <CustomLoader />
+      </div>
+    );
+  }
 
-  const getColorClasses = (color: string) => {
-    const colors: Record<string, { bg: string; text: string; ring: string }> = {
-      violet: {
-        bg: "bg-violet-500/10",
-        text: "text-violet-600",
-        ring: "ring-violet-500/20",
+  const firstName = session?.user?.name?.split(" ")[0] || "Partner";
+
+  const statsItems: StatusItem[] = [
+    {
+      label: "Total Orders",
+      value: orderSummary.total,
+      icon: Package,
+      color: "blue",
+    },
+    {
+      label: "Active Orders",
+      value: orderSummary.active,
+      icon: Clock,
+      color: "indigo",
+    },
+    {
+      label: "Completed Orders",
+      value: orderSummary.completed,
+      icon: CheckCircle,
+      color: "emerald",
+    },
+    {
+      label: "Quote Requests",
+      value: quoteRequestsCount,
+      icon: FileText,
+      color: "amber",
+    },
+  ];
+
+  // Pie chart configuration for order distribution
+  const chartSeries = [orderSummary.active, orderSummary.completed];
+  const chartOptions: ApexCharts.ApexOptions = {
+    chart: {
+      type: "donut",
+      fontFamily: "inherit",
+      animations: {
+        enabled: true,
+        speed: 800,
+        animateGradually: {
+          enabled: true,
+          delay: 150,
+        },
+        dynamicAnimation: {
+          enabled: true,
+          speed: 350,
+        },
       },
-      purple: {
-        bg: "bg-purple-500/10",
-        text: "text-purple-600",
-        ring: "ring-purple-500/20",
+    },
+    labels: ["Active", "Completed"],
+    colors: ["#6366f1", "#10b981"], // Indigo for active, Emerald for completed
+    dataLabels: {
+      enabled: false,
+    },
+    plotOptions: {
+      pie: {
+        donut: {
+          size: "65%",
+          labels: {
+            show: true,
+            name: {
+              show: true,
+              fontSize: "14px",
+              fontFamily: "inherit",
+              fontWeight: 600,
+              color: "#64748b",
+            },
+            value: {
+              show: true,
+              fontSize: "24px",
+              fontFamily: "inherit",
+              fontWeight: 700,
+              color: "#0f172a",
+            },
+            total: {
+              show: true,
+              showAlways: true,
+              label: "Total Orders",
+              fontSize: "12px",
+              fontFamily: "inherit",
+              fontWeight: 600,
+              color: "#64748b",
+              formatter: function (w) {
+                return w.globals.seriesTotals.reduce((a: any, b: any) => {
+                  return a + b;
+                }, 0);
+              },
+            },
+          },
+        },
       },
-      fuchsia: {
-        bg: "bg-fuchsia-500/10",
-        text: "text-fuchsia-600",
-        ring: "ring-fuchsia-500/20",
+    },
+    legend: {
+      position: "bottom",
+      fontFamily: "inherit",
+      fontWeight: 500,
+      labels: {
+        colors: "#475569",
       },
-      rose: {
-        bg: "bg-rose-500/10",
-        text: "text-rose-600",
-        ring: "ring-rose-500/20",
+      markers: {
+        radius: 12,
       },
-    };
-    return colors[color] || colors.violet;
+    },
+    stroke: {
+      show: true,
+      colors: ["transparent"],
+      width: 2,
+    },
+    tooltip: {
+      fillSeriesColor: false,
+      y: {
+        formatter: function (val) {
+          return val + " orders";
+        },
+      },
+    },
   };
 
   return (
-    <div className="space-y-8 animate-in fade-in duration-500">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-4xl font-bold bg-gradient-to-r from-violet-900 to-violet-500 bg-clip-text text-transparent">
-            Production Dashboard
+    <motion.div
+      variants={containerVariants}
+      initial="hidden"
+      animate="visible"
+      className="space-y-12 p-6 max-w-[1440px] mx-auto pb-24"
+    >
+      {/* Hello Header */}
+      <section className="flex flex-col md:flex-row md:items-center justify-between gap-6">
+        <div className="space-y-1">
+          <h1 className="text-3xl md:text-4xl font-bold text-slate-900 tracking-tight">
+            Welcome back, {firstName}
           </h1>
-          <p className="text-gray-600 dark:text-gray-400 mt-2 text-lg">
-            Monitor your manufacturing operations and capacity
+          <p className="text-slate-500 text-lg">
+            Manage your quote requests and production workflow.
           </p>
         </div>
-        <Link
-          href="/supplier/capacity"
-          className="flex items-center gap-2 px-6 py-3 bg-gradient-to-r from-violet-900 to-violet-500 text-white rounded-xl hover:shadow-xl hover:shadow-violet-500/30 transition-all duration-300 hover:scale-105 font-semibold"
-        >
-          <Factory size={20} />
-          View Capacity
-        </Link>
-      </div>
+      </section>
 
-      {/* Stats Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-        {statCards.map((stat) => {
-          const Icon = stat.icon;
-          const colors = getColorClasses(stat.color);
-          return (
-            <Link
-              key={stat.label}
-              href={stat.href}
-              className="group relative bg-white/70 dark:bg-gray-900/70 backdrop-blur-xl rounded-2xl p-6 border border-gray-200/50 dark:border-gray-800/50 shadow-lg hover:shadow-2xl transition-all duration-300 hover:scale-[1.02] overflow-hidden"
-            >
-              {/* Background gradient */}
-              <div
-                className={`absolute inset-0 ${colors.bg} opacity-0 group-hover:opacity-100 transition-opacity duration-300`}
-              />
+      {/* Stats Overview */}
+      <section>
+        <StatusCards items={statsItems} />
+      </section>
 
-              <div className="relative z-10">
-                <div className="flex items-center justify-between mb-4">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+        {/* Main Action Cards & Chart */}
+        <section className="col-span-1 lg:col-span-2 space-y-8">
+          <h2 className="text-2xl font-bold text-slate-800 tracking-tight flex items-center gap-2 px-1">
+            Quick Actions
+          </h2>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+            {[
+              {
+                title: "View Quote Requests",
+                description:
+                  "Review new quote requests and respond to open RFQs.",
+                icon: FileText,
+                href: "/supplier/quote-request",
+                action: "Review RFQs",
+                color: "amber",
+              },
+              {
+                title: "Manage Orders",
+                description:
+                  "Track progress and status of active manufacturing orders.",
+                icon: Package,
+                href: "/supplier/orders",
+                action: "View Orders",
+                color: "indigo",
+              },
+            ].map((card, idx) => {
+              const content = (
+                <div className="group flex flex-col h-full bg-white rounded-3xl p-8 border border-slate-200/60 shadow-sm hover:shadow-xl transition-all duration-300 relative overflow-hidden">
                   <div
-                    className={`${colors.bg} ${colors.text} p-3 rounded-xl ring-2 ${colors.ring}`}
+                    className={cn(
+                      "w-12 h-12 rounded-xl flex items-center justify-center mb-6 transition-colors duration-300",
+                      card.color === "amber" &&
+                        "bg-amber-50 text-amber-600 group-hover:bg-amber-500 group-hover:text-white",
+                      card.color === "indigo" &&
+                        "bg-indigo-50 text-indigo-600 group-hover:bg-indigo-600 group-hover:text-white",
+                    )}
                   >
-                    <Icon size={24} />
+                    <card.icon size={24} />
                   </div>
-                  {!loading && (
-                    <ArrowUpRight
-                      className="text-gray-400 group-hover:text-violet-900 transition-colors"
-                      size={20}
-                    />
-                  )}
-                </div>
-                <div className="space-y-1">
-                  <p className="text-gray-600 dark:text-gray-400 text-sm font-medium">
-                    {stat.label}
+                  <h3 className="text-xl font-bold text-slate-900 mb-2">
+                    {card.title}
+                  </h3>
+                  <p className="text-slate-500 text-sm leading-relaxed mb-6 flex-grow">
+                    {card.description}
                   </p>
-                  <p className="text-3xl font-bold text-gray-900 dark:text-white">
-                    {loading ? (
-                      <Loader2 className="w-8 h-8 animate-spin inline" />
-                    ) : (
-                      stat.value
-                    )}
-                  </p>
-                  <p className="text-sm text-violet-900 dark:text-violet-400 flex items-center gap-1">
-                    {!loading && stat.trend === "up" && (
-                      <TrendingUp size={14} />
-                    )}
-                    {stat.change}
-                  </p>
-                </div>
-              </div>
-            </Link>
-          );
-        })}
-      </div>
 
-      {/* Alerts */}
-      {!loading && alerts.length > 0 && (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          {alerts.map((alert, idx) => {
-            const AlertIcon = getAlertIcon(alert.type);
-            return (
-              <div
-                key={idx}
-                className={`p-5 rounded-xl border shadow-md ${getAlertColor(alert.type)}`}
-              >
-                <div className="flex items-start gap-3">
-                  <AlertIcon
-                    className={`flex-shrink-0 mt-0.5 ${alert.type === "warning" ? "text-yellow-600" : alert.type === "success" ? "text-green-600" : "text-blue-600"}`}
-                    size={20}
-                  />
-                  <div className="flex-1">
-                    <p className="font-semibold">{alert.message}</p>
-                    <Link
-                      href={alert.href}
-                      className={`text-sm mt-2 inline-flex items-center gap-1 font-medium ${alert.type === "warning" ? "text-yellow-700 hover:text-yellow-800" : alert.type === "success" ? "text-green-700 hover:text-green-800" : "text-blue-700 hover:text-blue-800"}`}
-                    >
-                      {alert.action}
-                      <ArrowRight size={14} />
-                    </Link>
+                  <div
+                    className={cn(
+                      "flex items-center gap-1 text-xs font-bold uppercase tracking-wider",
+                      card.color === "amber"
+                        ? "text-amber-600"
+                        : "text-indigo-600",
+                    )}
+                  >
+                    {card.action} <ChevronRight size={14} />
+                  </div>
+
+                  <div className="absolute -right-4 -bottom-4 opacity-[0.03] group-hover:opacity-[0.08] transition-all duration-500 group-hover:-rotate-12 group-hover:scale-110">
+                    <card.icon size={120} />
                   </div>
                 </div>
-              </div>
-            );
-          })}
-        </div>
-      )}
+              );
 
-      {/* Active Orders */}
-      <div className="bg-white/70 dark:bg-gray-900/70 backdrop-blur-xl rounded-2xl border border-gray-200/50 dark:border-gray-800/50 shadow-lg overflow-hidden">
-        <div className="px-6 py-5 border-b border-gray-200/50 dark:border-gray-800/50 bg-gradient-to-r from-violet-50 to-purple-50 dark:from-violet-950/50 dark:to-purple-950/50">
-          <div className="flex items-center justify-between">
-            <h2 className="text-xl font-bold text-gray-900 dark:text-white flex items-center gap-2">
-              <Package size={24} className="text-violet-900" />
-              Active Orders
-            </h2>
-            <Link
-              href="/supplier/orders"
-              className="text-violet-900 hover:text-violet-700 text-sm font-semibold flex items-center gap-1 hover:gap-2 transition-all"
-            >
-              View All
-              <ArrowRight size={16} />
-            </Link>
-          </div>
-        </div>
-        <div className="p-6">
-          {loading ? (
-            <div className="flex items-center justify-center py-12">
-              <Loader2 className="w-8 h-8 animate-spin text-violet-900" />
-            </div>
-          ) : activeOrders.length === 0 ? (
-            <div className="text-center py-12">
-              <Package className="w-12 h-12 text-gray-400 mx-auto mb-3" />
-              <p className="text-gray-600">No active orders</p>
-            </div>
-          ) : (
-            <div className="space-y-4">
-              {activeOrders.map((order) => (
-                <Link
-                  key={order.id}
-                  href={`/supplier/production/${order.id}`}
-                  className="group flex items-center justify-between p-4 rounded-xl border border-gray-200 dark:border-gray-800 hover:border-violet-300 dark:hover:border-violet-700 hover:shadow-md transition-all duration-200 bg-white dark:bg-gray-900"
+              return (
+                <motion.div
+                  key={idx}
+                  variants={itemVariants}
+                  className="h-full"
                 >
-                  <div className="flex-1">
-                    <div className="flex items-center gap-3 mb-2">
-                      <p className="font-semibold text-gray-900 dark:text-white group-hover:text-violet-900 transition-colors">
-                        {order.id}
-                      </p>
-                    </div>
-                    <p className="text-sm text-gray-600 dark:text-gray-400">
-                      {order.customer_company || order.customer_name} •{" "}
-                      {Array.isArray(order.parts) ? order.parts.length : 0}{" "}
-                      parts
-                    </p>
-                    <p className="text-xs text-gray-500 dark:text-gray-500 mt-1">
-                      $
-                      {Number(order.total_price).toLocaleString("en-US", {
-                        minimumFractionDigits: 2,
-                      })}
-                    </p>
-                  </div>
-                  <div>
-                    <span
-                      className={`inline-flex items-center px-3 py-1.5 rounded-full text-xs font-medium ${getStatusColor(order.status)}`}
-                    >
-                      {order.status.replace("_", " ")}
-                    </span>
-                  </div>
-                </Link>
-              ))}
-            </div>
-          )}
-        </div>
-      </div>
-
-      {/* Quick Actions */}
-      <div className="bg-gradient-to-r from-violet-900 to-violet-500 rounded-2xl p-8 shadow-2xl shadow-violet-500/30">
-        <div className="flex items-center justify-between">
-          <div className="text-white">
-            <h2 className="text-2xl font-bold mb-2">Optimize Production</h2>
-            <p className="text-violet-100">
-              Manage machine capacity and schedule efficiently
-            </p>
+                  <Link href={card.href} className="h-full">
+                    {content}
+                  </Link>
+                </motion.div>
+              );
+            })}
           </div>
-          <Link
-            href="/supplier/schedule"
-            className="px-8 py-4 bg-white text-violet-600 rounded-xl hover:bg-violet-50 transition-all duration-300 hover:scale-105 font-bold text-lg shadow-xl"
+
+          {/* Chart Section */}
+          <motion.div
+            variants={itemVariants}
+            className="bg-white rounded-[2rem] p-8 border border-slate-200/60 shadow-sm flex flex-col md:flex-row gap-8 items-center justify-around overflow-hidden"
           >
-            View Schedule
-          </Link>
-        </div>
+            <div className="flex-1 space-y-4 max-w-sm">
+              <h3 className="text-2xl font-bold text-slate-900">
+                Order Distribution
+              </h3>
+              <p className="text-slate-500 text-sm leading-relaxed pb-4">
+                Visual breakdown of your assigned production orders by their
+                active status versus those you have already successfully
+                completed. Focus on maintaining a healthy completion rate to
+                boost your supplier score.
+              </p>
+              <div className="flex gap-4">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => router.push("/supplier/orders")}
+                  className="text-indigo-600 font-semibold hover:bg-indigo-50 rounded-lg group px-0 h-auto"
+                >
+                  View all orders{" "}
+                  <ArrowRight
+                    size={14}
+                    className="ml-2 group-hover:translate-x-1 transition-transform"
+                  />
+                </Button>
+              </div>
+            </div>
+            <div className="w-[300px] h-[300px] shrink-0 flex items-center justify-center relative">
+              {orderSummary.total > 0 ? (
+                <ReactApexChart
+                  options={chartOptions}
+                  series={chartSeries}
+                  type="donut"
+                  height="300"
+                />
+              ) : (
+                <div className="flex flex-col items-center justify-center text-slate-400 space-y-3">
+                  <Package className="w-10 h-10 opacity-30" />
+                  <span className="text-sm font-medium">No order data yet</span>
+                </div>
+              )}
+              <div className="absolute inset-0 rounded-full border border-slate-100/50 pointer-events-none scale-[1.05]" />
+            </div>
+          </motion.div>
+        </section>
+
+        {/* Recent Activity Table (Sidebar on Desktop) */}
+        <section className="col-span-1 space-y-8">
+          <h2 className="text-2xl font-bold text-slate-800 tracking-tight flex items-center justify-between px-1">
+            Recent Activity
+          </h2>
+          <motion.div
+            variants={itemVariants}
+            className="bg-white rounded-[2rem] border border-slate-200/60 shadow-sm overflow-hidden flex flex-col"
+          >
+            <div className="divide-y divide-slate-100/80">
+              {unifiedActivity.length > 0 ? (
+                unifiedActivity.map((act, idx) => (
+                  <div
+                    key={idx}
+                    className="p-5 hover:bg-slate-50/60 transition-colors group cursor-pointer flex flex-col gap-2 relative overflow-hidden"
+                    onClick={() => router.push(act.href)}
+                  >
+                    <div className="flex items-center justify-between gap-3 relative z-10">
+                      <div className="flex items-center gap-3 min-w-0">
+                        <div
+                          className={cn(
+                            "w-10 h-10 rounded-xl flex items-center justify-center shrink-0 border shadow-sm",
+                            act.type === "Quote Request"
+                              ? "bg-amber-50 border-amber-100 text-amber-600"
+                              : "bg-indigo-50 border-indigo-100 text-indigo-600",
+                          )}
+                        >
+                          {act.type === "Quote Request" ? (
+                            <FileText size={18} />
+                          ) : (
+                            <Package size={18} />
+                          )}
+                        </div>
+                        <div className="flex flex-col min-w-0">
+                          <span className="text-sm font-bold text-slate-900 group-hover:text-indigo-600 transition-colors uppercase truncate">
+                            {act.code}
+                          </span>
+                          <span className="text-xs text-slate-500 truncate">
+                            {formatDate(act.date)}
+                          </span>
+                        </div>
+                      </div>
+                      <div className="shrink-0">
+                        <ChevronRight
+                          size={18}
+                          className="text-slate-300 group-hover:text-indigo-500 transition-colors group-hover:translate-x-1"
+                        />
+                      </div>
+                    </div>
+                    <div className="flex items-center justify-between mt-1 ml-[52px] relative z-10">
+                      <span
+                        className={cn(
+                          "text-[10px] px-2.5 py-1 rounded-full font-bold uppercase tracking-wider border",
+                          getStatusColor(act.status),
+                        )}
+                      >
+                        {act.status?.replace("_", " ")}
+                      </span>
+                      <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 group-hover:text-slate-500">
+                        {act.type}
+                      </span>
+                    </div>
+
+                    {/* Hover Decoration */}
+                    <div className="absolute right-0 top-0 bottom-0 w-1 bg-indigo-500 opacity-0 group-hover:opacity-100 transition-opacity" />
+                  </div>
+                ))
+              ) : (
+                <div className="px-6 py-12 text-center text-slate-400 text-sm flex flex-col items-center">
+                  <Clock className="w-8 h-8 opacity-20 mb-3" />
+                  No recent activity found.
+                </div>
+              )}
+            </div>
+          </motion.div>
+        </section>
       </div>
-    </div>
+    </motion.div>
   );
 }

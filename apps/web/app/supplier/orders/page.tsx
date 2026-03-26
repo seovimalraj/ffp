@@ -6,7 +6,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { StatusCards, StatusItem } from "@/components/ui/status-cards";
 import { apiClient } from "@/lib/api";
 import { formatCurrency, formatDate } from "@/lib/format";
-import { toTitleCase, cn } from "@/lib/utils";
+import { cn } from "@/lib/utils";
 import { CubeIcon } from "@heroicons/react/24/outline";
 import {
   Select,
@@ -44,25 +44,27 @@ interface Filters {
 
 enum StatusColor {
   "total" = "slate",
+  "active" = "indigo",
   "pending" = "orange",
   "paid" = "violet",
   "processing" = "fuchsia",
   "shipped" = "amber",
   "delivered" = "rose",
-  "completed" = "purple",
+  "completed" = "emerald",
   "cancelled" = "red",
   "payment pending" = "pink",
 }
 
 enum StatusPriority {
   "total" = 1,
-  "payment pending" = 2,
-  "paid" = 3,
-  "processing" = 4,
-  "shipped" = 5,
-  "delivered" = 6,
-  "completed" = 7,
-  "cancelled" = 8,
+  "active" = 2,
+  "payment pending" = 3,
+  "paid" = 4,
+  "processing" = 5,
+  "shipped" = 6,
+  "delivered" = 7,
+  "completed" = 8,
+  "cancelled" = 9,
 }
 
 const Page = () => {
@@ -102,7 +104,8 @@ const Page = () => {
 
   const [rawStatusData, setRawStatusData] = useState<{
     total: number;
-    by_status: { status: string; count: number }[];
+    active: number;
+    completed: number;
   } | null>(null);
 
   const fetchStatuses = useCallback(async () => {
@@ -111,7 +114,8 @@ const Page = () => {
       const response = await apiClient.get("/supplier/orders-summary");
       const statusData = response.data.statuses || {
         total: 0,
-        by_status: [],
+        active: 0,
+        completed: 0,
       };
       setRawStatusData(statusData);
     } catch (error) {
@@ -124,22 +128,9 @@ const Page = () => {
   const buildStatusCards = useCallback(
     (statusCounts: {
       total: number;
-      by_status: { status: string; count: number }[];
+      active: number;
+      completed: number;
     }) => {
-      const countsMap = new Map(
-        statusCounts.by_status.map((s) => [s.status.toLowerCase(), s.count]),
-      );
-
-      const permittedStatuses = [
-        "payment pending",
-        "paid",
-        "processing",
-        "shipped",
-        "delivered",
-        "completed",
-        "cancelled",
-      ];
-
       const cards: StatusItem[] = [
         {
           label: "Total Orders",
@@ -149,20 +140,23 @@ const Page = () => {
           priority: StatusPriority["total"],
           highlight: filters.status === "Any",
         },
+        {
+          label: "Active",
+          value: statusCounts.active || 0,
+          color: StatusColor["active"],
+          onClick: () => setFilters({ status: "active" }),
+          priority: StatusPriority["active"],
+          highlight: filters.status === "active",
+        },
+        {
+          label: "Completed",
+          value: statusCounts.completed || 0,
+          color: StatusColor["completed"],
+          onClick: () => setFilters({ status: "completed" }),
+          priority: StatusPriority["completed"],
+          highlight: filters.status === "completed",
+        },
       ];
-
-      permittedStatuses.forEach((statusKey) => {
-        cards.push({
-          label: toTitleCase(statusKey),
-          value: countsMap.get(statusKey) || 0,
-          color: (StatusColor[statusKey as keyof typeof StatusColor] ??
-            "gray") as StatusItem["color"],
-          onClick: () => setFilters({ status: statusKey }),
-          priority:
-            StatusPriority[statusKey as keyof typeof StatusPriority] ?? 50,
-          highlight: filters.status.toLowerCase() === statusKey.toLowerCase(),
-        });
-      });
 
       setStatuses(cards);
     },
