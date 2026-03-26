@@ -22,7 +22,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { EyeIcon } from "lucide-react";
-// import Link from "next/link";
+import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import React, { useState, useEffect, useCallback } from "react";
 
@@ -138,14 +138,18 @@ const Page = () => {
           {row.id.substring(0, 8).toUpperCase()}
         </span>
       ),
+      hidden: true,
     },
     {
       key: "order_code",
       header: "Order Code",
       render: (row) => (
-        <span className="uppercase font-medium text-slate-900">
+        <Link
+          href={`/supplier/quote-request/${row.id}`}
+          className="text-violet-600 hover:text-violet-800 underline uppercase font-medium transition-colors"
+        >
           {row.order.order_code}
-        </span>
+        </Link>
       ),
     },
     {

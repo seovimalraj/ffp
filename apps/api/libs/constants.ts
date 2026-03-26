@@ -162,6 +162,7 @@ export enum SQLFunctions {
 
   createTechRequest = 'create_tech_request',
   assignSupplierToOrder = 'assign_supplier_to_order',
+  getSupplierOrderMetrics = 'get_supplier_order_metrics',
 }
 
 /**

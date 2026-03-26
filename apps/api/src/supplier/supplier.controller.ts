@@ -104,7 +104,7 @@ export class SupplierController {
     const client = this.supabaseService.getClient();
 
     const { data, error } = await client.rpc(
-      SQLFunctions.getOrderStatusSummary,
+      SQLFunctions.getSupplierOrderMetrics,
       {
         p_user_id: user.id,
       },
