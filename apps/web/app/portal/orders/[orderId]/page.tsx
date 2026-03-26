@@ -11,6 +11,8 @@ import RfqSideDrawer from "./components/rfq-side-drawer";
 import { CommandBlock } from "@/components/ui/command-block";
 import Documents from "./components/documents";
 import { useMetaStore } from "@/components/store/title-store";
+import { OrderTimelineView } from "./components/OrderTimelineView";
+import { LayoutGrid, List } from "lucide-react";
 
 /* =======================
    TYPES (FROM API)
@@ -75,6 +77,7 @@ export type IOrderFull = {
     };
     tracking_number?: string;
   };
+  requests?: Record<string, any>;
 };
 
 /* =======================
@@ -93,6 +96,7 @@ export default function OrderPage() {
   const [selectedPart, setSelectedPart] = useState<any>(null);
   const [data, setData] = useState<IOrderFull>();
   const [loading, setLoading] = useState(true);
+  const [viewMode, setViewMode] = useState<"kanban" | "timeline">("timeline");
   const { setPageTitle, resetTitle } = useMetaStore();
   const router = useRouter();
 
@@ -154,23 +158,52 @@ export default function OrderPage() {
         </div>
       </div>
       {/* TABS */}
-      <div className="border-b flex gap-6 text-sm">
-        {["general", "workflow", "documents"].map((tab) => (
-          <button
-            key={tab}
-            onClick={() => {
-              setActiveTab(tab as any);
-              router.push(setUrlParam(tab));
-            }}
-            className={`pb-3 capitalize ${
-              activeTab === tab
-                ? "border-b-2 border-indigo-600 text-indigo-600 font-medium"
-                : "text-slate-500 hover:text-slate-700"
-            }`}
-          >
-            {tab}
-          </button>
-        ))}
+      <div className="border-b flex items-center justify-between text-sm">
+        <div className="flex gap-6">
+          {["general", "workflow", "documents"].map((tab) => (
+            <button
+              key={tab}
+              onClick={() => {
+                setActiveTab(tab as any);
+                router.push(setUrlParam(tab));
+              }}
+              className={`pb-3 capitalize transition-all duration-200 ${
+                activeTab === tab
+                  ? "border-b-2 border-indigo-600 text-indigo-600 font-semibold"
+                  : "text-slate-500 hover:text-slate-700"
+              }`}
+            >
+              {tab}
+            </button>
+          ))}
+        </div>
+
+        {activeTab === "workflow" && (
+          <div className="flex items-center bg-slate-100 p-1 rounded-lg mb-2 mr-1">
+            <button
+              onClick={() => setViewMode("timeline")}
+              className={`flex items-center gap-2 px-3 py-1 text-[10px] font-bold uppercase tracking-tight rounded-md transition-all ${
+                viewMode === "timeline"
+                  ? "bg-white text-indigo-600 shadow-sm"
+                  : "text-slate-500 hover:text-slate-700"
+              }`}
+            >
+              <List className="w-3 h-3" />
+              <span>Timeline</span>
+            </button>
+            <button
+              onClick={() => setViewMode("kanban")}
+              className={`flex items-center gap-2 px-3 py-1 text-[10px] font-bold uppercase tracking-tight rounded-md transition-all ${
+                viewMode === "kanban"
+                  ? "bg-white text-indigo-600 shadow-sm"
+                  : "text-slate-500 hover:text-slate-700"
+              }`}
+            >
+              <LayoutGrid className="w-3 h-3" />
+              <span>Kanban</span>
+            </button>
+          </div>
+        )}
       </div>
       {/* PARTS TAB */}
       {activeTab === "general" && (
@@ -402,12 +435,25 @@ export default function OrderPage() {
       )}
       {/* WORKFLOW */}
       {activeTab === "workflow" && (
-        <RFQKanban
-          parts={data.parts}
-          onRefresh={() => fetchData(true)}
-          onItemClick={(part) => setSelectedPart(part)}
-          orderId={orderId}
-        />
+        <div className="pt-2">
+          {viewMode === "kanban" ? (
+            <RFQKanban
+              parts={data.parts}
+              onRefresh={() => fetchData(true)}
+              onItemClick={(part) => setSelectedPart(part)}
+              orderId={orderId}
+              requests={data.requests}
+            />
+          ) : (
+            <OrderTimelineView
+              orderId={orderId}
+              parts={data.parts}
+              onRefresh={() => fetchData(true)}
+              requests={data.requests}
+              onItemClick={(part) => setSelectedPart(part)}
+            />
+          )}
+        </div>
       )}
       {/* DOCUMENTS */}
       {activeTab === "documents" && (

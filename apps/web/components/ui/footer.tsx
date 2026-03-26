@@ -3,17 +3,41 @@
 import React, { useState, useEffect } from "react";
 import Link from "next/link";
 import Logo from "@/components/ui/logo";
-import {
-  Shield,
-  Clock,
-  ChevronRight,
-  Mail,
-  Phone,
-  ExternalLink,
-} from "lucide-react";
+import { Shield, ChevronRight, Mail, Phone } from "lucide-react";
 import { SocialLinks } from "@cnc-quote/shared";
 import { api } from "@/lib/api";
 import { formatPhoneNumberIntl } from "react-phone-number-input";
+
+const services = [
+  {
+    label: "Heavy Engineering",
+    href: "https://frigate.co.in/",
+  },
+  {
+    label: "Casting",
+    href: "https://frigate.ai/capabilities/casting-services/",
+  },
+  {
+    label: "CNC Machining",
+    href: "https://frigate.ai/capabilities/cnc-machining-services/",
+  },
+  {
+    label: "Sheet Metal Fabrication",
+    href: "https://frigate.ai/capabilities/sheet-metal-fabrication-services/",
+  },
+  {
+    label: "Forging",
+    href: "https://frigate.ai/capabilities/forging-services/",
+  },
+  {
+    label: "Injection Molding",
+    href: "https://frigate.ai/capabilities/injection-molding-services/",
+  },
+  {
+    label: "Stamping",
+    href: "https://frigate.ai/capabilities/stamping-services/",
+  },
+];
 
 const Footer = () => {
   const currentYear = new Date().getFullYear();
@@ -65,37 +89,6 @@ const Footer = () => {
     fetchSupportContacts();
   }, []);
 
-  const services = [
-    {
-      label: "Heavy Engineering",
-      href: "https://frigate.co.in/",
-    },
-    {
-      label: "Casting",
-      href: "https://frigate.ai/capabilities/casting-services/",
-    },
-    {
-      label: "CNC Machining",
-      href: "https://frigate.ai/capabilities/cnc-machining-services/",
-    },
-    {
-      label: "Sheet Metal Fabrication",
-      href: "https://frigate.ai/capabilities/sheet-metal-fabrication-services/",
-    },
-    {
-      label: "Forging",
-      href: "https://frigate.ai/capabilities/forging-services/",
-    },
-    {
-      label: "Injection Molding",
-      href: "https://frigate.ai/capabilities/injection-molding-services/",
-    },
-    {
-      label: "Stamping",
-      href: "https://frigate.ai/capabilities/stamping-services/",
-    },
-  ];
-
   const quickLinks = [
     { label: "About Us", href: "https://frigate.ai/about-frigate/" },
     { label: "Locations", href: "https://frigate.ai/locations/" },
@@ -122,9 +115,10 @@ const Footer = () => {
               <Logo classNames="h-10 w-auto object-contain" />
             </Link>
             <p className="max-w-sm text-slate-500 font-light leading-relaxed text-[14px]">
-              Frigate is revolutionizing manufacturing with AI-powered instant
-              quotes and expert DFM analysis. Fast, secure, and confidential
-              production for your next project.
+              Frigate Fast Parts is an instant quote platform for CNC Machining
+              and Sheet Metal Fabrication that delivers transparent pricing and
+              fast turnaround, simplifying the manufacturing procurement
+              process.
             </p>
 
             {/* Social Links */}
