@@ -9,6 +9,8 @@ import { useSession } from "next-auth/react";
 import { useMemo, useCallback, useState } from "react";
 import { UpdatePartStatusModal } from "@/components/modals/update-part-status-modal";
 import { RequestType } from "@/app/supplier/orders/[orderId]/page";
+import { OrderPhases } from "@cnc-quote/shared";
+import { kebabToTitleSafe } from "@/utils";
 
 interface Props {
   parts: IOrderFull["parts"];
@@ -55,50 +57,18 @@ export function RFQKanban({
     }));
   }, [parts]);
 
+  const columns = OrderPhases.map((phase) => ({
+    id: phase,
+    title: kebabToTitleSafe(phase),
+    items: kanbanItems.filter((item) => item.status === phase),
+  }));
+
   // Group items by status
   const kanbanBoard: KanbanBoardType = useMemo(
     () => ({
       id: "rfq-kanban",
       title: "",
-      columns: [
-        {
-          id: "pending",
-          title: "Pending",
-          items: kanbanItems.filter((item) => item.status === "pending"),
-        },
-        {
-          id: "backlog",
-          title: "Backlog",
-          items: kanbanItems.filter((item) => item.status === "backlog"),
-        },
-        {
-          id: "preparation",
-          title: "Preparation",
-          items: kanbanItems.filter((item) => item.status === "preparation"),
-        },
-        {
-          id: "production",
-          title: "Production",
-          items: kanbanItems.filter((item) => item.status === "production"),
-        },
-        {
-          id: "post-production",
-          title: "Post Production",
-          items: kanbanItems.filter(
-            (item) => item.status === "post-production",
-          ),
-        },
-        {
-          id: "shipping",
-          title: "Shipping",
-          items: kanbanItems.filter((item) => item.status === "shipping"),
-        },
-        {
-          id: "completed",
-          title: "Completed",
-          items: kanbanItems.filter((item) => item.status === "completed"),
-        },
-      ],
+      columns,
     }),
     [kanbanItems],
   );

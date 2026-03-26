@@ -23,6 +23,12 @@ import { AssignSupplierModal } from "./components/AssignSupplierModal";
 import { useMetaStore } from "@/components/store/title-store";
 import { RequestType } from "@/app/supplier/orders/[orderId]/page";
 import QuoteRequestHistory from "./components/quote-request-history";
+import { OrderTimelineView } from "@/app/portal/orders/[orderId]/components/OrderTimelineView";
+import { LayoutGrid, List } from "lucide-react";
+import {
+  OrderStatusHistoryProvider,
+  useOrderStatusHistory,
+} from "@/context/OrderStatusHistoryContext";
 
 /* =======================
    TYPES (FROM API)
@@ -112,48 +118,10 @@ export type IOrderFull = {
 type Tab = "general" | "workflow" | "documents" | "quote-request";
 
 export default function OrderPage() {
-  const searchParams = useSearchParams();
-  const searchQuery = (searchParams?.get("tab") as Tab) || "general";
-  const [activeTab, setActiveTab] = useState<Tab>(searchQuery);
-
   const params = useParams();
   const orderId = (params?.orderId as string) || "";
-  const [selectedPart, setSelectedPart] = useState<any>(null);
   const [data, setData] = useState<IOrderFull>();
   const [loading, setLoading] = useState(true);
-
-  // Tracking Edit State
-  const [isEditingTracking, setIsEditingTracking] = useState(false);
-  const [tempTracking, setTempTracking] = useState("");
-  const [isAssignModalOpen, setIsAssignModalOpen] = useState(false);
-  const { setPageTitle, resetTitle } = useMetaStore();
-
-  const handleUpdateTracking = async () => {
-    if (!tempTracking) return;
-    try {
-      await apiClient.post(`/orders/tracking/${orderId}`, {
-        trackingNumber: tempTracking,
-      });
-
-      // Update local state with new tracking number
-      setData((prevData) => {
-        if (!prevData) return prevData;
-        return {
-          ...prevData,
-          shipping: {
-            ...prevData.shipping,
-            tracking_number: tempTracking,
-          },
-        };
-      });
-
-      notify.success("Tracking number updated");
-      setIsEditingTracking(false);
-    } catch (error) {
-      console.error(error);
-      notify.error("Failed to update tracking");
-    }
-  };
 
   const fetchData = useCallback(
     async (silent = false) => {
@@ -175,13 +143,6 @@ export default function OrderPage() {
     fetchData();
   }, [fetchData]);
 
-  useEffect(() => {
-    setPageTitle("Order");
-    return () => {
-      resetTitle();
-    };
-  }, []);
-
   if (loading) {
     return (
       <div className="h-screen flex items-center justify-center">
@@ -195,77 +156,159 @@ export default function OrderPage() {
   }
 
   return (
+    <OrderStatusHistoryProvider orderId={orderId} parts={data.parts}>
+      <AdminOrderInner
+        data={data}
+        orderId={orderId}
+        onRefresh={() => fetchData(true)}
+      />
+    </OrderStatusHistoryProvider>
+  );
+}
+
+function AdminOrderInner({
+  data,
+  orderId,
+  onRefresh,
+}: {
+  data: IOrderFull;
+  orderId: string;
+  onRefresh: () => void;
+}) {
+  const { openHistory } = useOrderStatusHistory();
+  const searchParams = useSearchParams();
+  const searchQuery = (searchParams?.get("tab") as Tab) || "general";
+  const [activeTab, setActiveTab] = useState<Tab>(searchQuery);
+  const [selectedPart, setSelectedPart] = useState<any>(null);
+
+  // Tracking Edit State
+  const [isEditingTracking, setIsEditingTracking] = useState(false);
+  const [tempTracking, setTempTracking] = useState("");
+  const [isAssignModalOpen, setIsAssignModalOpen] = useState(false);
+  const [viewMode, setViewMode] = useState<"kanban" | "timeline">("timeline");
+  const { setPageTitle, resetTitle } = useMetaStore();
+
+  const handleUpdateTracking = async () => {
+    if (!tempTracking) return;
+    try {
+      await apiClient.post(`/orders/tracking/${orderId}`, {
+        trackingNumber: tempTracking,
+      });
+
+      notify.success("Tracking number updated");
+      setIsEditingTracking(false);
+      onRefresh();
+    } catch (error) {
+      console.error(error);
+      notify.error("Failed to update tracking");
+    }
+  };
+
+  useEffect(() => {
+    setPageTitle("Order");
+    return () => {
+      resetTitle();
+    };
+  }, []);
+
+  return (
     <div className="relative max-w-7xl h-full mx-auto px-2 py-3 space-y-10">
-      {/* HEADER */}
-      <div className="space-y-1">
-        <div className="flex items-center justify-between gap-3">
-          <div className="flex items-center gap-3">
-            <h1 className="text-2xl font-semibold text-slate-900">
-              {data.order.order_code}
-            </h1>
-            <StatusPill status={data.order.status} />
-          </div>
-          <div className="flex items-center gap-4">
-            {data.supplier ? (
-              <div className="flex items-center gap-3 bg-emerald-50 px-4 py-2 rounded-xl">
-                <div className="flex items-center justify-center w-8 h-8 rounded-full bg-emerald-500 text-white">
-                  <Check className="w-5 h-5" />
+      <div className="flex items-center justify-between gap-3">
+        <div className="flex items-center gap-3">
+          <h1 className="text-2xl font-semibold text-slate-900">
+            {data.order.order_code}
+          </h1>
+          <StatusPill status={data.order.status} />
+        </div>
+        <div className="flex items-center gap-4">
+          {data.supplier ? (
+            <div className="flex items-center gap-3 bg-emerald-50 px-4 py-2 rounded-xl">
+              <div className="flex items-center justify-center w-8 h-8 rounded-full bg-emerald-500 text-white">
+                <Check className="w-5 h-5" />
+              </div>
+              <div>
+                <div className="text-[10px] font-bold uppercase tracking-wider text-emerald-600 leading-none mb-1">
+                  Supplier Assigned
                 </div>
-                <div>
-                  <div className="text-[10px] font-bold uppercase tracking-wider text-emerald-600 leading-none mb-1">
-                    Supplier Assigned
-                  </div>
-                  <div className="text-sm font-semibold text-slate-900">
-                    {data.supplier.display_name || data.supplier.name}
-                  </div>
+                <div className="text-sm font-semibold text-slate-900">
+                  {data.supplier.display_name || data.supplier.name}
                 </div>
               </div>
-            ) : data?.quote_request ? (
-              <div className="flex items-center gap-3 bg-blue-50 px-4 py-2 rounded-xl border border-blue-100">
-                <div className="flex items-center justify-center w-8 h-8 rounded-full bg-blue-500 text-white shadow-sm">
-                  <Clock className="w-4 h-4" />
+            </div>
+          ) : data?.quote_request ? (
+            <div className="flex items-center gap-3 bg-blue-50 px-4 py-2 rounded-xl border border-blue-100">
+              <div className="flex items-center justify-center w-8 h-8 rounded-full bg-blue-500 text-white shadow-sm">
+                <Clock className="w-4 h-4" />
+              </div>
+              <div>
+                <div className="text-[10px] font-bold uppercase tracking-wider text-blue-600 leading-none mb-1 text-nowrap">
+                  Quote Requested
                 </div>
-                <div>
-                  <div className="text-[10px] font-bold uppercase tracking-wider text-blue-600 leading-none mb-1 text-nowrap">
-                    Quote Requested
-                  </div>
-                  <div className="text-sm font-semibold text-slate-900 leading-none">
-                    {data.quote_request.supplier.name}
-                  </div>
+                <div className="text-sm font-semibold text-slate-900 leading-none">
+                  {data.quote_request.supplier.name}
                 </div>
               </div>
-            ) : (
-              data.order.status !== "payment pending" && (
-                <button
-                  onClick={() => setIsAssignModalOpen(true)}
-                  className="flex items-center gap-2 px-3 py-1.5 text-xs font-semibold text-indigo-600 bg-indigo-50 hover:bg-indigo-100 rounded-lg transition-colors border border-indigo-200"
-                  title="Assign Supplier"
-                >
-                  <UserPlus className="w-4 h-4" />
-                  <span>Assign Supplier</span>
-                </button>
-              )
-            )}
-          </div>
+            </div>
+          ) : (
+            data.order.status !== "payment pending" && (
+              <button
+                onClick={() => setIsAssignModalOpen(true)}
+                className="flex items-center gap-2 px-3 py-1.5 text-xs font-semibold text-indigo-600 bg-indigo-50 hover:bg-indigo-100 rounded-lg transition-colors border border-indigo-200"
+                title="Assign Supplier"
+              >
+                <UserPlus className="w-4 h-4" />
+                <span>Assign Supplier</span>
+              </button>
+            )
+          )}
         </div>
       </div>
       {/* TABS */}
-      <div className="border-b flex gap-6 text-sm">
-        {["general", "workflow", "documents", "quote-request"].map((tab) => (
-          <button
-            key={tab}
-            onClick={() => {
-              setActiveTab(tab as any);
-            }}
-            className={`pb-3 capitalize ${
-              activeTab === tab
-                ? "border-b-2 border-indigo-600 text-indigo-600 font-medium"
-                : "text-slate-500 hover:text-slate-700"
-            }`}
-          >
-            {tab}
-          </button>
-        ))}
+      <div className="border-b flex items-center justify-between text-sm">
+        <div className="flex gap-6">
+          {["general", "workflow", "documents", "quote-request"].map((tab) => (
+            <button
+              key={tab}
+              onClick={() => {
+                setActiveTab(tab as any);
+              }}
+              className={`pb-3 capitalize transition-all duration-200 ${
+                activeTab === tab
+                  ? "border-b-2 border-indigo-600 text-indigo-600 font-semibold"
+                  : "text-slate-500 hover:text-slate-700"
+              }`}
+            >
+              {tab}
+            </button>
+          ))}
+        </div>
+
+        {activeTab === "workflow" && (
+          <div className="flex items-center bg-slate-100 p-1 rounded-lg mb-2 mr-1">
+            <button
+              onClick={() => setViewMode("timeline")}
+              className={`flex items-center gap-2 px-3 py-1 text-[10px] font-bold uppercase tracking-tight rounded-md transition-all ${
+                viewMode === "timeline"
+                  ? "bg-white text-indigo-600 shadow-sm"
+                  : "text-slate-500 hover:text-slate-700"
+              }`}
+            >
+              <List className="w-3 h-3" />
+              <span>Timeline</span>
+            </button>
+            <button
+              onClick={() => setViewMode("kanban")}
+              className={`flex items-center gap-2 px-3 py-1 text-[10px] font-bold uppercase tracking-tight rounded-md transition-all ${
+                viewMode === "kanban"
+                  ? "bg-white text-indigo-600 shadow-sm"
+                  : "text-slate-500 hover:text-slate-700"
+              }`}
+            >
+              <LayoutGrid className="w-3 h-3" />
+              <span>Kanban</span>
+            </button>
+          </div>
+        )}
       </div>
       {/* PARTS TAB */}
       {activeTab === "general" && (
@@ -566,14 +609,31 @@ export default function OrderPage() {
       )}
       {/* WORKFLOW */}
       {activeTab === "workflow" && (
-        <RFQKanban
-          orderId={orderId}
-          parts={data.parts}
-          onRefresh={() => fetchData(true)}
-          requests={data.requests}
-          onItemClick={(part) => setSelectedPart(part)}
-        />
+        <div className="pt-2 mb-4">
+          {viewMode === "kanban" ? (
+            <RFQKanban
+              orderId={orderId}
+              parts={data.parts}
+              onRefresh={onRefresh}
+              requests={data.requests}
+              onItemClick={(part) => setSelectedPart(part)}
+            />
+          ) : (
+            <OrderTimelineView
+              orderId={orderId}
+              parts={data.parts}
+              onRefresh={onRefresh}
+              requests={data.requests}
+              onItemClick={(part) => setSelectedPart(part)}
+              onStatusClick={(partId, statusFrom) => {
+                openHistory(partId, statusFrom);
+              }}
+            />
+          )}
+        </div>
       )}
+
+      {/* STATUS CHANGE HISTORY SIDEBAR IS NOW MANAGED BY THE CONTEXT PROVIDER */}
       {/* DOCUMENTS */}
       {activeTab === "documents" && (
         <Documents orderId={orderId} inView={activeTab === "documents"} />
@@ -595,7 +655,7 @@ export default function OrderPage() {
         isOpen={isAssignModalOpen}
         onClose={() => setIsAssignModalOpen(false)}
         orderId={orderId}
-        onAssigned={() => fetchData(true)}
+        onAssigned={onRefresh}
       />
     </div>
   );

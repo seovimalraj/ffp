@@ -4,7 +4,7 @@ import React, { useEffect, useState } from "react";
 import { apiClient } from "@/lib/api";
 import CustomLoader from "@/components/ui/loader/CustomLoader";
 import { Clock, CheckCircle2, XCircle, AlertCircle, Send } from "lucide-react";
-import { SectionTitle, StatusPill } from "@/app/portal/orders/[orderId]/page";
+import { StatusPill } from "@/app/portal/orders/[orderId]/page";
 
 /* =======================
    TYPES

@@ -190,6 +190,37 @@ export class OrdersController {
     return { data };
   }
 
+  @Get('/status-change-request/:orderId')
+  @Roles(RoleNames.Admin, RoleNames.Supplier)
+  async getOrderStatusChangeRequest(
+    @Param('orderId') orderId: string,
+    // @CurrentUser() currentUser: CurrentUserDto
+  ) {
+    if (!orderId) {
+      throw new BadRequestException('Order Id is required');
+    }
+
+    const client = this.supabaseService.getClient();
+
+    const { data, error } = await client
+      .from(Tables.OrderStatusChangeRequests)
+      .select('*')
+      .eq('order_id', orderId)
+      .order('created_at', { ascending: true });
+
+    if (error) {
+      throw new InternalServerErrorException(
+        { error },
+        'Error while fetching order status change requests',
+      );
+    }
+
+    return {
+      success: true,
+      data: data ?? [],
+    };
+  }
+
   @Get(':id')
   async getOrder(
     @Param('id') id: string,

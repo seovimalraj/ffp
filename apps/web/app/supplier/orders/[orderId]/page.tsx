@@ -13,6 +13,12 @@ import {
 import { RFQKanban } from "@/app/portal/orders/[orderId]/components/RFQKanban";
 import Documents from "@/app/portal/orders/[orderId]/components/documents";
 import RfqSideDrawer from "@/app/portal/orders/[orderId]/components/rfq-side-drawer";
+import { OrderTimelineView } from "@/app/portal/orders/[orderId]/components/OrderTimelineView";
+import { LayoutGrid, List } from "lucide-react";
+import {
+  OrderStatusHistoryProvider,
+  useOrderStatusHistory,
+} from "@/context/OrderStatusHistoryContext";
 
 /* =======================
    TYPES (FROM API)
@@ -102,24 +108,10 @@ export type IOrderFull = {
 type Tab = "general" | "workflow" | "documents";
 
 export default function OrderPage() {
-  const searchParams = useSearchParams();
-  const searchQuery = (searchParams?.get("tab") as Tab) || "general";
-  const [activeTab, setActiveTab] = useState<Tab>(searchQuery);
-
   const params = useParams();
   const orderId = (params?.orderId as string) || "";
-  const [selectedPart, setSelectedPart] = useState<any>(null);
   const [data, setData] = useState<IOrderFull>();
   const [loading, setLoading] = useState(true);
-  const { setPageTitle, resetTitle } = useMetaStore();
-  const router = useRouter();
-
-  const setUrlParam = (tab: string) => {
-    const params = new URLSearchParams(searchParams?.toString());
-    params.set("tab", tab);
-    const newUrl = `${window.location.pathname}?${params.toString()}`;
-    return newUrl;
-  };
 
   const fetchData = useCallback(
     async (silent = false) => {
@@ -138,13 +130,6 @@ export default function OrderPage() {
   );
 
   useEffect(() => {
-    setPageTitle("Order");
-    return () => {
-      resetTitle();
-    };
-  }, []);
-
-  useEffect(() => {
     fetchData();
   }, [fetchData]);
 
@@ -161,6 +146,49 @@ export default function OrderPage() {
   }
 
   return (
+    <OrderStatusHistoryProvider orderId={orderId} parts={data.parts}>
+      <SupplierOrderInner
+        data={data}
+        orderId={orderId}
+        onRefresh={() => fetchData(true)}
+      />
+    </OrderStatusHistoryProvider>
+  );
+}
+
+function SupplierOrderInner({
+  data,
+  orderId,
+  onRefresh,
+}: {
+  data: IOrderFull;
+  orderId: string;
+  onRefresh: () => void;
+}) {
+  const { openHistory } = useOrderStatusHistory();
+  const searchParams = useSearchParams();
+  const searchQuery = (searchParams?.get("tab") as Tab) || "general";
+  const [activeTab, setActiveTab] = useState<Tab>(searchQuery);
+  const [selectedPart, setSelectedPart] = useState<any>(null);
+  const [viewMode, setViewMode] = useState<"kanban" | "timeline">("timeline");
+  const { setPageTitle, resetTitle } = useMetaStore();
+  const router = useRouter();
+
+  const setUrlParam = (tab: string) => {
+    const params = new URLSearchParams(searchParams?.toString());
+    params.set("tab", tab);
+    const newUrl = `${window.location.pathname}?${params.toString()}`;
+    return newUrl;
+  };
+
+  useEffect(() => {
+    setPageTitle("Order");
+    return () => {
+      resetTitle();
+    };
+  }, [data.order.order_code, setPageTitle, resetTitle]);
+
+  return (
     <div className="relative max-w-7xl h-full mx-auto px-2 py-3 space-y-10">
       {/* HEADER */}
       <div className="space-y-1">
@@ -172,23 +200,52 @@ export default function OrderPage() {
         </div>
       </div>
       {/* TABS */}
-      <div className="border-b flex gap-6 text-sm">
-        {["general", "workflow", "documents"].map((tab) => (
-          <button
-            key={tab}
-            onClick={() => {
-              setActiveTab(tab as any);
-              router.push(setUrlParam(tab));
-            }}
-            className={`pb-3 capitalize ${
-              activeTab === tab
-                ? "border-b-2 border-indigo-600 text-indigo-600 font-medium"
-                : "text-slate-500 hover:text-slate-700"
-            }`}
-          >
-            {tab}
-          </button>
-        ))}
+      <div className="border-b flex items-center justify-between text-sm">
+        <div className="flex gap-6">
+          {["general", "workflow", "documents"].map((tab) => (
+            <button
+              key={tab}
+              onClick={() => {
+                setActiveTab(tab as any);
+                router.push(setUrlParam(tab));
+              }}
+              className={`pb-3 capitalize transition-all duration-200 ${
+                activeTab === tab
+                  ? "border-b-2 border-indigo-600 text-indigo-600 font-semibold"
+                  : "text-slate-500 hover:text-slate-700"
+              }`}
+            >
+              {tab}
+            </button>
+          ))}
+        </div>
+
+        {activeTab === "workflow" && (
+          <div className="flex items-center bg-slate-100 p-1 rounded-lg mb-2 mr-1">
+            <button
+              onClick={() => setViewMode("timeline")}
+              className={`flex items-center gap-2 px-3 py-1 text-[10px] font-bold uppercase tracking-tight rounded-md transition-all ${
+                viewMode === "timeline"
+                  ? "bg-white text-indigo-600 shadow-sm"
+                  : "text-slate-500 hover:text-slate-700"
+              }`}
+            >
+              <List className="w-3 h-3" />
+              <span>Timeline</span>
+            </button>
+            <button
+              onClick={() => setViewMode("kanban")}
+              className={`flex items-center gap-2 px-3 py-1 text-[10px] font-bold uppercase tracking-tight rounded-md transition-all ${
+                viewMode === "kanban"
+                  ? "bg-white text-indigo-600 shadow-sm"
+                  : "text-slate-500 hover:text-slate-700"
+              }`}
+            >
+              <LayoutGrid className="w-3 h-3" />
+              <span>Kanban</span>
+            </button>
+          </div>
+        )}
       </div>
       {/* PARTS TAB */}
       {activeTab === "general" && (
@@ -214,7 +271,7 @@ export default function OrderPage() {
               {data.parts.map((part) => (
                 <button
                   key={part.order_part_id}
-                  onClick={() => setSelectedPart(part)}
+                  onClick={() => openHistory(part.order_part_id)}
                   className="group relative flex w-full bg-white border border-slate-200 rounded-xl overflow-hidden hover:shadow-md hover:border-indigo-400/50 transition-all duration-300 text-left items-stretch"
                 >
                   {/* Left: Image / Snapshot */}
@@ -280,13 +337,28 @@ export default function OrderPage() {
       )}
       {/* WORKFLOW */}
       {activeTab === "workflow" && (
-        <RFQKanban
-          orderId={orderId}
-          parts={data.parts}
-          requests={data.requests}
-          onRefresh={() => fetchData(true)}
-          onItemClick={(part: any) => setSelectedPart(part)}
-        />
+        <div className="pt-2">
+          {viewMode === "kanban" ? (
+            <RFQKanban
+              orderId={orderId}
+              parts={data.parts}
+              requests={data.requests}
+              onRefresh={onRefresh}
+              onItemClick={(part: any) => setSelectedPart(part)}
+            />
+          ) : (
+            <OrderTimelineView
+              orderId={orderId}
+              parts={data.parts}
+              onRefresh={onRefresh}
+              requests={data.requests}
+              onItemClick={(part) => setSelectedPart(part)}
+              onStatusClick={(partId, statusFrom) =>
+                openHistory(partId, statusFrom)
+              }
+            />
+          )}
+        </div>
       )}
       {/* DOCUMENTS */}
       {activeTab === "documents" && (

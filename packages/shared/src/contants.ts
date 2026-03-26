@@ -37,6 +37,16 @@ export const CAD_MIME_MAP = {
   ],
 };
 
+export const OrderPhases = [
+  "pending",
+  "backlog",
+  "preparation",
+  "production",
+  "post-production",
+  "shipping",
+  "completed",
+];
+
 export const TWO_D_AND_IMAGE_MIME = {
   // --- 2D technical drawings ---
   "application/pdf": [".pdf"],

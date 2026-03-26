@@ -65,24 +65,24 @@ export const menuSections: MenuSection[] = [
         route: "/supplier/orders",
         icon: ShoppingCart,
       },
-      {
-        label: "Live Auctions",
-        slug: "auctions",
-        route: "/rfq-procurement/auctions",
-        icon: Gavel,
-      },
-      {
-        label: "Vendor Comparison",
-        slug: "vendor-comparison",
-        route: "/rfq-procurement/vendor-comparison",
-        icon: GitCompare,
-      },
-      {
-        label: "Quote History",
-        slug: "quote-history",
-        route: "/rfq-procurement/quote-history",
-        icon: History,
-      },
+      // {
+      //   label: "Live Auctions",
+      //   slug: "auctions",
+      //   route: "/rfq-procurement/auctions",
+      //   icon: Gavel,
+      // },
+      // {
+      //   label: "Vendor Comparison",
+      //   slug: "vendor-comparison",
+      //   route: "/rfq-procurement/vendor-comparison",
+      //   icon: GitCompare,
+      // },
+      // {
+      //   label: "Quote History",
+      //   slug: "quote-history",
+      //   route: "/rfq-procurement/quote-history",
+      //   icon: History,
+      // },
     ],
   },
   {

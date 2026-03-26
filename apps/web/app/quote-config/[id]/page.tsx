@@ -596,7 +596,7 @@ export default function QuoteConfigPage() {
               try {
                 geometry = await analyzeCADFile(file);
                 status = "processed";
-              } catch (error) {
+              } catch (_error) {
                 console.warn(`Client-side analysis failed for ${file.name}`);
               }
             }
@@ -2137,7 +2137,6 @@ export default function QuoteConfigPage() {
         </div>
 
         {/* Footer Area - Minimal */}
-
         <ManualExceededModal
           isOpen={
             showManualExceededModal || (exceeded && !hasDismissedExceededModal)
