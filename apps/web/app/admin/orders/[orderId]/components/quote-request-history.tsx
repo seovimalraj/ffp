@@ -3,8 +3,10 @@
 import React, { useEffect, useState } from "react";
 import { apiClient } from "@/lib/api";
 import CustomLoader from "@/components/ui/loader/CustomLoader";
-import { Clock, CheckCircle2, XCircle, AlertCircle, Send } from "lucide-react";
+import { Clock, CheckCircle2, XCircle, AlertCircle, Send, FileText } from "lucide-react";
 import { StatusPill } from "@/app/portal/orders/[orderId]/page";
+import { ImageViewerModal } from "@/components/image-viewer-modal";
+import { PdfViewerModal } from "@/components/pdf-viewer-modal";
 
 /* =======================
    TYPES
@@ -30,6 +32,7 @@ type QuoteRequest = {
     created_at: string;
     metadata: any;
   }>;
+  attachments?: string[];
 };
 
 /* =======================
@@ -40,10 +43,12 @@ const TimelineItem = ({
   request,
   isLast,
   index,
+  onViewAttachment,
 }: {
   request: QuoteRequest;
   isLast: boolean;
   index: number;
+  onViewAttachment: (url: string) => void;
 }) => {
   const getStatusIcon = (status: string) => {
     switch (status) {
@@ -140,6 +145,27 @@ const TimelineItem = ({
             )}
           </div>
 
+          {/* Attachments */}
+          {request.attachments && request.attachments.length > 0 && (
+            <div className="mt-4 pt-4 border-t border-slate-200/50">
+              <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-3">
+                Attachments
+              </div>
+              <div className="flex flex-wrap gap-2">
+                {request.attachments.map((url, i) => (
+                  <button
+                    key={i}
+                    onClick={() => onViewAttachment(url)}
+                    className="flex items-center gap-1.5 px-3 py-1.5 bg-white border border-slate-200 rounded-md text-xs font-bold text-slate-600 hover:text-indigo-600 hover:border-indigo-200 transition-colors shadow-sm"
+                  >
+                    <FileText className="w-4 h-4" />
+                    Attachment {i + 1}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
           {/* Activity log / events */}
           {request.events && request.events.length > 0 && (
             <div className="mt-4 pt-4 border-t border-slate-200/50">
@@ -184,6 +210,7 @@ const TimelineItem = ({
 const QuoteRequestHistory = ({ orderId }: { orderId: string }) => {
   const [requests, setRequests] = useState<QuoteRequest[]>([]);
   const [loading, setLoading] = useState(true);
+  const [viewerDoc, setViewerDoc] = useState<{ url: string; type: "pdf" | "image" } | null>(null);
 
   useEffect(() => {
     const fetchHistory = async () => {
@@ -225,18 +252,38 @@ const QuoteRequestHistory = ({ orderId }: { orderId: string }) => {
   }
 
   return (
-    <section className="space-y-6 max-w-4xl">
-      <div className="mt-8">
-        {requests.map((request, index) => (
-          <TimelineItem
-            key={request.id}
-            request={request}
-            isLast={index === requests.length - 1}
-            index={index}
-          />
-        ))}
-      </div>
-    </section>
+    <>
+      <section className="space-y-6 max-w-4xl">
+        <div className="mt-8">
+          {requests.map((request, index) => (
+            <TimelineItem
+              key={request.id}
+              request={request}
+              isLast={index === requests.length - 1}
+              index={index}
+              onViewAttachment={(url) =>
+                setViewerDoc({
+                  url,
+                  type: url.toLowerCase().includes(".pdf") ? "pdf" : "image",
+                })
+              }
+            />
+          ))}
+        </div>
+      </section>
+
+      <ImageViewerModal
+        isOpen={viewerDoc?.type === "image"}
+        onClose={() => setViewerDoc(null)}
+        imageSrc={viewerDoc?.url || ""}
+      />
+
+      <PdfViewerModal
+        isOpen={viewerDoc?.type === "pdf"}
+        onClose={() => setViewerDoc(null)}
+        pdfSrc={viewerDoc?.url || ""}
+      />
+    </>
   );
 };
 

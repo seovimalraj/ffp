@@ -13,6 +13,7 @@ import {
   Calendar,
   ShieldCheck,
   HelpCircle,
+  ClipboardList,
 } from "lucide-react";
 import Logo from "@/components/ui/logo";
 import Footer from "@/components/ui/footer";
@@ -27,8 +28,13 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { formatPhoneNumberIntl } from "react-phone-number-input";
 import TechnicalSupportModal from "../quote-config/components/technical-support-modal";
+import { useMetaStore } from "@/components/store/title-store";
+import { useRouter as useNextRouter } from "next/navigation";
 
-const contactMethods = (setSupportOpen: (open: boolean) => void) => [
+const contactMethods = (
+  setSupportOpen: (open: boolean) => void,
+  onBookProduction: () => void,
+) => [
   {
     image: "/support/email.webp",
     title: "Email Support",
@@ -90,13 +96,36 @@ const contactMethods = (setSupportOpen: (open: boolean) => void) => [
     bgColor: "bg-slate-50",
     onClick: () => {},
   },
+  {
+    image: "/support/production-order.webp",
+    title: "Book Production Order",
+    description:
+      "Ready to manufacture? Book a production order and we'll get your parts into production.",
+    value: "Book Production Order",
+    icon: ClipboardList,
+    color: "text-orange-600",
+    bgColor: "bg-orange-50",
+    onClick: onBookProduction,
+  },
 ];
 
 const SupportPage = () => {
   const session = useSession();
   const [isSupportOpen, setIsSupportOpen] = useState(false);
-  const [methods, setMethods] = useState(contactMethods(() => {}));
+  const [methods, setMethods] = useState(contactMethods(() => {}, () => {}));
   const [isLoading, setIsLoading] = useState(true);
+  const { setRedirectUrl } = useMetaStore();
+  const router = useNextRouter();
+
+  const handleBookProduction = () => {
+    const PRODUCTION_REDIRECT = "/portal/dashboard?showProduction=true";
+    if (session.status === "authenticated") {
+      router.push(PRODUCTION_REDIRECT);
+    } else {
+      setRedirectUrl(PRODUCTION_REDIRECT);
+      router.push("/signin?intent=production-order");
+    }
+  };
 
   useEffect(() => {
     const fetchSupportContacts = async () => {
@@ -143,7 +172,7 @@ const SupportPage = () => {
       }
     };
 
-    setMethods(contactMethods(setIsSupportOpen));
+    setMethods(contactMethods(setIsSupportOpen, handleBookProduction));
     fetchSupportContacts();
   }, []);
 

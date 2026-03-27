@@ -7,7 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Checkbox } from "@/components/ui/checkbox";
 import { trackEvent } from "@/lib/analytics/posthog";
 import { getSession, signIn } from "next-auth/react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { notify } from "@/lib/toast";
 import {
   Eye,
@@ -16,6 +16,7 @@ import {
   Building2,
   User,
   Phone as PhoneIcon,
+  ClipboardList,
 } from "lucide-react";
 import PhoneInput from "react-phone-number-input";
 import "react-phone-number-input/style.css";
@@ -44,6 +45,8 @@ export function SignUpForm() {
   const [errors, setErrors] = useState<Record<string, string>>({});
 
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const intent = searchParams?.get("intent");
 
   useEffect(() => {
     trackEvent("signup_view");
@@ -170,6 +173,22 @@ export function SignUpForm() {
   return (
     <div className="w-full h-full p-8 lg:p-12 flex flex-col justify-center overflow-y-auto">
       <div className="max-w-md mx-auto w-full relative">
+
+        {/* Production Order Intent Banner */}
+        {intent === "production-order" && (
+          <div className="mb-6 p-4 bg-orange-50 border border-orange-200 rounded-2xl flex items-start gap-3">
+            <div className="p-2 bg-orange-100 rounded-xl flex-shrink-0">
+              <ClipboardList className="w-5 h-5 text-orange-600" />
+            </div>
+            <div>
+              <p className="text-sm font-semibold text-orange-900">Book a Production Order</p>
+              <p className="text-xs text-orange-700 mt-0.5 leading-relaxed">
+                Create an account to book your production order. You'll be taken directly to the order form after signing up.
+              </p>
+            </div>
+          </div>
+        )}
+
         {/* Header */}
         <div className="mb-8 text-center">
           <h1 className="text-3xl font-bold text-gray-900 mb-2">
@@ -338,7 +357,7 @@ export function SignUpForm() {
         <p className="mt-8 text-center text-sm text-gray-500">
           Already have an account?{" "}
           <Link
-            href="/signin"
+            href={intent ? `/signin?intent=${intent}` : "/signin"}
             className="text-purple-600 font-semibold hover:underline"
           >
             Sign in

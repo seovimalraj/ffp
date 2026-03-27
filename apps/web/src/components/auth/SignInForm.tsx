@@ -16,6 +16,7 @@ import {
   AlertCircle,
   Globe,
   MessageCircle,
+  ClipboardList,
 } from "lucide-react";
 import { formatUrlForRole, useMetaStore } from "@/components/store/title-store";
 import { SocialLinks } from "@cnc-quote/shared";
@@ -36,6 +37,7 @@ export function SignInForm() {
   const searchParams = useSearchParams();
   const { redirectUrl, setRedirectUrl } = useMetaStore();
   const error = searchParams?.get("error");
+  const intent = searchParams?.get("intent");
 
   useEffect(() => {
     trackEvent("signin_view");
@@ -144,7 +146,10 @@ export function SignInForm() {
 
       trackEvent("signin_success", { role: session.user.role });
       notify.success("Welcome back!");
-      if (redirectUrl) {
+      // Unverified suppliers must verify before accessing the portal
+      if (session.user.role === "supplier" && !session.user.verified) {
+        router.push("/verify");
+      } else if (redirectUrl) {
         setRedirectUrl("");
         router.push(
           formatUrlForRole(redirectUrl, session?.user?.role || "customer"),
@@ -169,13 +174,29 @@ export function SignInForm() {
   return (
     <div className="w-full h-full p-8 lg:p-12 flex flex-col justify-center">
       <div className="max-w-md mx-auto w-full">
+
+        {/* Production Order Intent Banner */}
+        {intent === "production-order" && (
+          <div className="mb-6 p-4 bg-orange-50 border border-orange-200 rounded-2xl flex items-start gap-3">
+            <div className="p-2 bg-orange-100 rounded-xl flex-shrink-0">
+              <ClipboardList className="w-5 h-5 text-orange-600" />
+            </div>
+            <div>
+              <p className="text-sm font-semibold text-orange-900">Book a Production Order</p>
+              <p className="text-xs text-orange-700 mt-0.5 leading-relaxed">
+                Sign in to continue booking your production order. You'll be taken directly to the order form after logging in.
+              </p>
+            </div>
+          </div>
+        )}
+
         <h1 className="text-4xl font-bold text-gray-900 mb-2">
           Sign in to your account
         </h1>
         <p className="text-gray-600 mb-8">
           Don't have an account?{" "}
           <Link
-            href="/sign-up"
+            href={intent ? `/sign-up?intent=${intent}` : "/sign-up"}
             className="text-purple-600 hover:text-purple-700 font-medium transition-colors underline-offset-2 hover:underline"
           >
             Sign up

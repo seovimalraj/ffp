@@ -17,7 +17,7 @@ import { StatusCards, StatusItem } from "@/components/ui/status-cards";
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { useSession } from "next-auth/react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import {
   DashboardAPI,
   DashboardStats,
@@ -61,6 +61,7 @@ const itemVariants: Variants = {
 export default function CustomerDashboardPage() {
   const { data: session } = useSession();
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [loading, setLoading] = useState(true);
   const [stats, setStats] = useState<DashboardStats>({
     activeQuotes: 0,
@@ -81,6 +82,17 @@ export default function CustomerDashboardPage() {
       resetTitle();
     };
   }, []);
+
+  // Auto-open production modal when redirected from support page
+  useEffect(() => {
+    if (searchParams?.get("showProduction") === "true") {
+      setShowProductionModal(true);
+      // Clean the query param from the URL without a page reload
+      const url = new URL(window.location.href);
+      url.searchParams.delete("showProduction");
+      window.history.replaceState({}, "", url.toString());
+    }
+  }, [searchParams]);
 
   useEffect(() => {
     const loadDashboardData = async () => {

@@ -57,18 +57,31 @@ export default function SupplierLayout({
   }, [canAccessPermissions, filteredNav]);
 
   useEffect(() => {
-    if (status === "authenticated" && session?.user?.role !== "supplier") {
-      router.push(`/${session?.user?.role}`);
+    if (status === "loading") return;
+    if (status === "unauthenticated") {
+      router.push("/signin");
+      return;
     }
-  }, [session, status, router]);
-
-  useEffect(() => {
-    if (status === "authenticated" && !session.user.verified) {
+    if (session?.user?.role !== "supplier") {
+      router.push(`/${session?.user?.role}`);
+      return;
+    }
+    if (!session.user.verified) {
       router.push("/verify");
     }
   }, [session, status, router]);
 
-  if (isLoading) {
+  // Block render until session is resolved
+  if (status === "loading" || isLoading) {
+    return null;
+  }
+
+  // Never render children if verified check would redirect
+  if (
+    status !== "authenticated" ||
+    session?.user?.role !== "supplier" ||
+    !session?.user?.verified
+  ) {
     return null;
   }
 
