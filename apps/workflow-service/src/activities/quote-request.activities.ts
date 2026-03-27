@@ -106,7 +106,7 @@ export async function sendQuoteResponseToAdminActivity(quoteRequestId: string) {
   const { data: configData, error: configError } = await supabase
     .from(Tables.SystemConfig)
     .select("value")
-    .eq("key", "test_verifier_email_multi")
+    .eq("key", "verifier_email_multi")
     .single();
 
   let adminEmails: string[] = [];

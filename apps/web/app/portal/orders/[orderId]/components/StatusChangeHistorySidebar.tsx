@@ -5,6 +5,8 @@ import { X, Clock, Check, AlertCircle, FileText } from "lucide-react";
 import { format } from "date-fns";
 import { kebabToTitleSafe } from "@/utils/index"; // Added /index just in case
 import { motion, AnimatePresence } from "framer-motion";
+import { ImageViewerModal } from "@/components/image-viewer-modal";
+import { PdfViewerModal } from "@/components/pdf-viewer-modal";
 
 interface StatusRequest {
   id: string;
@@ -42,12 +44,15 @@ const StatusChangeHistorySidebar = ({
     return isPartMatch && isStatusMatch;
   });
 
+  const [viewerDoc, setViewerDoc] = React.useState<{ url: string; type: "pdf" | "image" } | null>(null);
+
   const part = parts.find((p) => p.order_part_id === partId);
 
   return (
-    <AnimatePresence>
-      {isOpen && (
-        <>
+    <>
+      <AnimatePresence>
+        {isOpen && (
+          <>
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
@@ -164,16 +169,20 @@ const StatusChangeHistorySidebar = ({
                         {req.attachments && req.attachments.length > 0 && (
                           <div className="flex flex-wrap gap-2 pt-1">
                             {req.attachments.map((url, i) => (
-                              <a
+                              <button
                                 key={i}
-                                href={url}
-                                target="_blank"
-                                rel="noreferrer"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setViewerDoc({
+                                    url,
+                                    type: url.toLowerCase().includes(".pdf") ? "pdf" : "image",
+                                  });
+                                }}
                                 className="flex items-center gap-1.5 px-2 py-1 bg-white border border-slate-200 rounded-md text-[9px] font-bold text-slate-500 hover:text-indigo-600 hover:border-indigo-200 transition-colors shadow-sm"
                               >
                                 <FileText className="w-3 h-3" />
                                 ATTACHMENT {i + 1}
-                              </a>
+                              </button>
                             ))}
                           </div>
                         )}
@@ -186,7 +195,20 @@ const StatusChangeHistorySidebar = ({
           </motion.div>
         </>
       )}
-    </AnimatePresence>
+      </AnimatePresence>
+
+      <ImageViewerModal
+        isOpen={viewerDoc?.type === "image"}
+        onClose={() => setViewerDoc(null)}
+        imageSrc={viewerDoc?.url || ""}
+      />
+
+      <PdfViewerModal
+        isOpen={viewerDoc?.type === "pdf"}
+        onClose={() => setViewerDoc(null)}
+        pdfSrc={viewerDoc?.url || ""}
+      />
+    </>
   );
 };
 
