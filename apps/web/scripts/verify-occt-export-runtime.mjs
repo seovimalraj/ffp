@@ -13,7 +13,14 @@ const sampleDir = path.join(webDir, "public", "samples");
 
 const CAD_EXTS = new Set(["step", "stp", "iges", "igs", "brep"]);
 const EXACT_EXPORT_FORMATS = ["step", "iges", "brep"];
-const REQUIRED_SYMBOLS = ["ReadStepFile", "ReadIgesFile", "ReadBrepFile", "ExportPart"];
+const REQUIRED_SYMBOLS = [
+  "ReadStepFile",
+  "ReadIgesFile",
+  "ReadBrepFile",
+  "AnalyzeSheetMetal",
+  "ExportPart",
+  "TessellateWithTopology",
+];
 
 function fail(message) {
   console.error(`[occ:verify:export] ${message}`);
@@ -277,6 +284,38 @@ for (const samplePath of samples) {
   console.log(`  root partIds: ${summarizePartIds(rootPartIds)}`);
   console.log(`  mesh partIds: ${summarizePartIds(meshPartIds)}`);
   console.log(`  export partId: ${partId}`);
+
+  const topologyResult = occt.TessellateWithTopology(new Uint8Array(input), {
+    inputExt: ext,
+    ext,
+    linearDeflection: 0.001,
+    angularDeflection: 0.5,
+    mesh: buildOcctParams(),
+  });
+  if (!topologyResult || topologyResult.success === false) {
+    fail(
+      `TessellateWithTopology failed for '${samplePath}': ${
+        topologyResult?.error || "unknown error"
+      }`,
+    );
+  }
+  if (!Array.isArray(topologyResult.meshes)) {
+    fail(`TessellateWithTopology returned no meshes for '${samplePath}'`);
+  }
+
+  const topologyPayload = topologyResult?.topology ?? topologyResult;
+  const topologyEdgeCount = Array.isArray(topologyPayload?.edges)
+    ? topologyPayload.edges.length
+    : 0;
+  const topologyFaceCount = Array.isArray(topologyPayload?.faces)
+    ? topologyPayload.faces.length
+    : 0;
+  if (topologyEdgeCount <= 0 || topologyFaceCount <= 0) {
+    fail(
+      `TessellateWithTopology returned insufficient topology for '${samplePath}' (edges=${topologyEdgeCount}, faces=${topologyFaceCount})`,
+    );
+  }
+  console.log(`  topology edges/faces: ${topologyEdgeCount}/${topologyFaceCount}`);
 
   for (const format of EXACT_EXPORT_FORMATS) {
     const exportResult = occt.ExportPart(new Uint8Array(input), {

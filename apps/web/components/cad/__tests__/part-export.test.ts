@@ -81,11 +81,13 @@ function makeCadSession(partKey = "cad:xcf:0:1"): ModelSession {
 describe("part-export helpers", () => {
   const capsUnavailable: WorkerCapabilities = {
     exactCadPartExport: false,
+    exactCadTopology: false,
     supportedExactCadFormats: [],
   };
 
   const capsExactAll: WorkerCapabilities = {
     exactCadPartExport: true,
+    exactCadTopology: false,
     supportedExactCadFormats: ["step", "iges", "brep"],
   };
 

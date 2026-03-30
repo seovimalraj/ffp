@@ -59,6 +59,8 @@ function createViewerMock(): {
     setFeatureEdgesEnabled: (enabled) => {
       calls.push(`setFeatureEdgesEnabled:${enabled ? "1" : "0"}`);
     },
+    setExactCadEdgeDisplayOptions: () => undefined,
+    setExactCadMeasurementMode: () => undefined,
     resize: () => {
       calls.push("resize");
     },
@@ -69,6 +71,7 @@ function createViewerMock(): {
     pickAtScreenPosition: () => null,
     pickMeshAtScreenPosition: () => null,
     pickEdgeAtScreenPosition: () => null,
+    pickMeasurementEntityAtScreenPosition: () => null,
     isolateObject: () => undefined,
     clearIsolation: () => undefined,
     showAllParts: () => undefined,

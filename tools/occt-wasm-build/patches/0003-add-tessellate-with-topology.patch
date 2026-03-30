@@ -1,0 +1,810 @@
+diff --git a/occt-import-js/src/js-interface.cpp b/occt-import-js/src/js-interface.cpp
+--- a/occt-import-js/src/js-interface.cpp
++++ b/occt-import-js/src/js-interface.cpp
+@@ -5,6 +5,7 @@
+ #include "importer-iges.hpp"
+ #include "importer-brep.hpp"
+ #include "sheetmetal_analyze.hpp"
++#include "topology_export.hpp"
+ 
+ #include <algorithm>
+ #include <cctype>
+@@ -740,6 +741,58 @@
+     resultObj.set ("success", true);
+     resultObj.set ("format", outputFormat);
+     resultObj.set ("bytes", byteArray);
++    return resultObj;
++}
++
++emscripten::val TessellateWithTopology (const emscripten::val& buffer, const emscripten::val& opts)
++{
++    emscripten::val resultObj (emscripten::val::object ());
++    resultObj.set ("success", false);
++
++    std::string inputExt;
++    if (!GetStringOpt (opts, "ext", inputExt) && !GetStringOpt (opts, "inputExt", inputExt)) {
++        resultObj.set ("error", "Missing required topology options: ext or inputExt");
++        return resultObj;
++    }
++    inputExt = ToLower (inputExt);
++
++    ImportParams importParams;
++    if (!opts.isUndefined () && !opts.isNull () && opts.hasOwnProperty ("mesh")) {
++        importParams = GetImportParams (opts["mesh"]);
++    } else {
++        importParams = GetImportParams (opts);
++    }
++
++    ImporterPtr importer;
++    if (inputExt == "step" || inputExt == "stp") {
++        importer = std::make_shared<ImporterStep> ();
++    } else if (inputExt == "iges" || inputExt == "igs") {
++        importer = std::make_shared<ImporterIges> ();
++    } else if (inputExt == "brep") {
++        importer = std::make_shared<ImporterBrep> ();
++    } else {
++        resultObj.set ("error", "Unsupported source extension");
++        return resultObj;
++    }
++
++    const std::vector<uint8_t>& sourceBytes = emscripten::vecFromJSArray<std::uint8_t> (buffer);
++    Importer::Result importResult = importer->LoadFile (sourceBytes, importParams);
++    if (importResult != Importer::Result::Success) {
++        resultObj.set ("error", "Failed to load source CAD file");
++        return resultObj;
++    }
++
++    emscripten::val rootNodeObj (emscripten::val::object ());
++    emscripten::val meshesArr (emscripten::val::array ());
++    NodePtr rootNode = importer->GetRootNode ();
++
++    HierarchyWriter hierarchyWriter (meshesArr);
++    hierarchyWriter.WriteNode (rootNode, rootNodeObj);
++
++    resultObj.set ("success", true);
++    resultObj.set ("root", rootNodeObj);
++    resultObj.set ("meshes", meshesArr);
++    resultObj.set ("topology", BuildExactTopologyForImporter (importer));
+     return resultObj;
+ }
+ 
+@@ -788,6 +841,7 @@
+     emscripten::function<emscripten::val, const emscripten::val&, const emscripten::val&> ("ReadBrepFile", &ReadBrepFile);
+     emscripten::function<emscripten::val, const emscripten::val&, const emscripten::val&> ("AnalyzeSheetMetal", &AnalyzeSheetMetal);
+     emscripten::function<emscripten::val, const emscripten::val&, const emscripten::val&> ("ExportPart", &ExportPart);
++    emscripten::function<emscripten::val, const emscripten::val&, const emscripten::val&> ("TessellateWithTopology", &TessellateWithTopology);
+ }
+ 
+ #endif
+
+diff --git a/occt-import-js/src/topology_export.hpp b/occt-import-js/src/topology_export.hpp
+new file mode 100644
+--- /dev/null
++++ b/occt-import-js/src/topology_export.hpp
+@@ -0,0 +1,11 @@
++#pragma once
++
++#ifdef EMSCRIPTEN
++
++#include "importer.hpp"
++
++#include <emscripten/val.h>
++
++emscripten::val BuildExactTopologyForImporter (const ImporterPtr& importer);
++
++#endif
+
+diff --git a/occt-import-js/src/topology_export.cpp b/occt-import-js/src/topology_export.cpp
+new file mode 100644
+--- /dev/null
++++ b/occt-import-js/src/topology_export.cpp
+@@ -0,0 +1,703 @@
++#ifdef EMSCRIPTEN
++
++#include "topology_export.hpp"
++
++#include "importer-brep.hpp"
++#include "importer-xcaf.hpp"
++
++#include <BRepAdaptor_Curve.hxx>
++#include <BRepAdaptor_Surface.hxx>
++#include <BRep_Builder.hxx>
++#include <BRep_Tool.hxx>
++#include <GeomAbs_CurveType.hxx>
++#include <GeomAbs_SurfaceType.hxx>
++#include <Poly_Polygon3D.hxx>
++#include <Precision.hxx>
++#include <TColgp_Array1OfPnt.hxx>
++#include <TCollection_AsciiString.hxx>
++#include <TDF_ChildIterator.hxx>
++#include <TDF_LabelSequence.hxx>
++#include <TDF_Tool.hxx>
++#include <TopExp.hxx>
++#include <TopExp_Explorer.hxx>
++#include <TopLoc_Location.hxx>
++#include <TopTools_IndexedDataMapOfShapeListOfShape.hxx>
++#include <TopTools_IndexedMapOfShape.hxx>
++#include <TopTools_ListIteratorOfListOfShape.hxx>
++#include <TopoDS.hxx>
++#include <TopoDS_Compound.hxx>
++#include <TopoDS_Edge.hxx>
++#include <TopoDS_Face.hxx>
++#include <TopoDS_Shape.hxx>
++#include <TopoDS_Vertex.hxx>
++#include <XCAFDoc_DocumentTool.hxx>
++#include <gp_Circ.hxx>
++#include <gp_Cone.hxx>
++#include <gp_Cylinder.hxx>
++#include <gp_Dir.hxx>
++#include <gp_Pln.hxx>
++#include <gp_Pnt.hxx>
++#include <gp_Sphere.hxx>
++#include <gp_Torus.hxx>
++#include <gp_Trsf.hxx>
++
++#include <cmath>
++#include <memory>
++#include <set>
++#include <string>
++#include <vector>
++
++namespace {
++
++constexpr double kTwoPi = 6.28318530717958647692;
++
++struct PartShapeRef
++{
++    std::string partId;
++    TopoDS_Shape shape;
++};
++
++static emscripten::val Vec3 (double x, double y, double z)
++{
++    emscripten::val arr (emscripten::val::array ());
++    arr.set (0, x);
++    arr.set (1, y);
++    arr.set (2, z);
++    return arr;
++}
++
++static emscripten::val Vec3 (const gp_Pnt& point)
++{
++    return Vec3 (point.X (), point.Y (), point.Z ());
++}
++
++static emscripten::val Vec3 (const gp_Dir& dir)
++{
++    return Vec3 (dir.X (), dir.Y (), dir.Z ());
++}
++
++static void SetPartIdField (emscripten::val& object, const std::string& partId)
++{
++    if (partId.empty ()) {
++        object.set ("partId", emscripten::val::null ());
++    } else {
++        object.set ("partId", partId);
++    }
++}
++
++static bool IsFiniteParam (const Standard_Real value)
++{
++    return std::isfinite (static_cast<double> (value)) && !Precision::IsInfinite (value);
++}
++
++static std::string GetLabelEntry (const TDF_Label& label)
++{
++    TCollection_AsciiString asciiEntry;
++    TDF_Tool::Entry (label, asciiEntry);
++    if (asciiEntry.IsEmpty ()) {
++        return std::string ();
++    }
++    return std::string (asciiEntry.ToCString ());
++}
++
++static bool IsFreeShape (const TDF_Label& label, const Handle (XCAFDoc_ShapeTool)& shapeTool)
++{
++    TopoDS_Shape shape;
++    return shapeTool->GetShape (label, shape) && shapeTool->IsFree (label);
++}
++
++static bool IsXcafMeshNode (const TDF_Label& label, const Handle (XCAFDoc_ShapeTool)& shapeTool)
++{
++    if (!label.HasChild ()) {
++        return true;
++    }
++
++    bool hasSubshapeChild = false;
++    for (TDF_ChildIterator it (label); it.More (); it.Next ()) {
++        if (shapeTool->IsSubShape (it.Value ())) {
++            hasSubshapeChild = true;
++            break;
++        }
++    }
++    if (hasSubshapeChild) {
++        return true;
++    }
++
++    bool hasFreeShapeChild = false;
++    for (TDF_ChildIterator it (label); it.More (); it.Next ()) {
++        if (IsFreeShape (it.Value (), shapeTool)) {
++            hasFreeShapeChild = true;
++            break;
++        }
++    }
++
++    return !hasFreeShapeChild;
++}
++
++static void CollectXcafMeshShapesRecursive (
++    const TDF_Label& label,
++    const Handle (XCAFDoc_ShapeTool)& shapeTool,
++    std::vector<PartShapeRef>& outPartShapes)
++{
++    if (IsXcafMeshNode (label, shapeTool)) {
++        TopoDS_Shape shape = shapeTool->GetShape (label);
++        if (!shape.IsNull ()) {
++            std::string entry = GetLabelEntry (label);
++            if (!entry.empty ()) {
++                outPartShapes.push_back ({ std::string ("xcf:") + entry, shape });
++            }
++        }
++        return;
++    }
++
++    for (TDF_ChildIterator it (label); it.More (); it.Next ()) {
++        TDF_Label childLabel = it.Value ();
++        if (!IsFreeShape (childLabel, shapeTool)) {
++            continue;
++        }
++        CollectXcafMeshShapesRecursive (childLabel, shapeTool, outPartShapes);
++    }
++}
++
++static std::vector<PartShapeRef> CollectXcafPartShapes (const ImporterXcaf& importer)
++{
++    std::vector<PartShapeRef> partShapes;
++
++    const Handle (XCAFDoc_ShapeTool)& shapeTool = importer.GetShapeTool ();
++    if (shapeTool.IsNull ()) {
++        return partShapes;
++    }
++
++    TDF_LabelSequence freeShapeLabels;
++    shapeTool->GetFreeShapes (freeShapeLabels);
++    for (Standard_Integer index = 1; index <= freeShapeLabels.Length (); index++) {
++        CollectXcafMeshShapesRecursive (freeShapeLabels.Value (index), shapeTool, partShapes);
++    }
++
++    return partShapes;
++}
++
++static std::vector<PartShapeRef> CollectBrepPartShapes (const TopoDS_Shape& rootShape)
++{
++    std::vector<PartShapeRef> partShapes;
++
++    int solidIndex = 0;
++    for (TopExp_Explorer ex (rootShape, TopAbs_SOLID); ex.More (); ex.Next ()) {
++        partShapes.push_back ({ std::string ("brep:solid:") + std::to_string (solidIndex), ex.Current () });
++        solidIndex += 1;
++    }
++
++    int shellIndex = 0;
++    for (TopExp_Explorer ex (rootShape, TopAbs_SHELL, TopAbs_SOLID); ex.More (); ex.Next ()) {
++        partShapes.push_back ({ std::string ("brep:shell:") + std::to_string (shellIndex), ex.Current () });
++        shellIndex += 1;
++    }
++
++    BRep_Builder builder;
++    TopoDS_Compound standaloneFaces;
++    builder.MakeCompound (standaloneFaces);
++
++    bool hasStandaloneFaces = false;
++    for (TopExp_Explorer ex (rootShape, TopAbs_FACE, TopAbs_SHELL); ex.More (); ex.Next ()) {
++        builder.Add (standaloneFaces, ex.Current ());
++        hasStandaloneFaces = true;
++    }
++
++    if (hasStandaloneFaces) {
++        partShapes.push_back ({ "brep:faces:0", standaloneFaces });
++    }
++
++    if (partShapes.empty () && !rootShape.IsNull ()) {
++        partShapes.push_back ({ "brep:root", rootShape });
++    }
++
++    return partShapes;
++}
++
++static std::string CurveKindToString (const GeomAbs_CurveType curveType)
++{
++    switch (curveType) {
++        case GeomAbs_Line:
++            return "line";
++        case GeomAbs_Circle:
++            return "circle";
++        case GeomAbs_Ellipse:
++            return "ellipse";
++        case GeomAbs_BSplineCurve:
++        case GeomAbs_BezierCurve:
++            return "bspline";
++        default:
++            return "other";
++    }
++}
++
++static std::string FaceKindToString (const GeomAbs_SurfaceType surfaceType)
++{
++    switch (surfaceType) {
++        case GeomAbs_Plane:
++            return "plane";
++        case GeomAbs_Cylinder:
++            return "cylinder";
++        case GeomAbs_Cone:
++            return "cone";
++        case GeomAbs_Sphere:
++            return "sphere";
++        case GeomAbs_Torus:
++            return "torus";
++        case GeomAbs_BSplineSurface:
++        case GeomAbs_BezierSurface:
++            return "bspline";
++        default:
++            return "other";
++    }
++}
++
++static std::vector<double> SampleEdgePositions (
++    const TopoDS_Edge& edge,
++    const TopoDS_Vertex& vStart,
++    const TopoDS_Vertex& vEnd,
++    const BRepAdaptor_Curve* adaptor,
++    const std::string& curveKind,
++    const bool closed)
++{
++    std::vector<double> positions;
++
++    auto appendPoint = [&](const gp_Pnt& pnt) {
++        positions.push_back (pnt.X ());
++        positions.push_back (pnt.Y ());
++        positions.push_back (pnt.Z ());
++    };
++
++    if (adaptor != nullptr) {
++        Standard_Real firstParam = 0.0;
++        Standard_Real lastParam = 0.0;
++        bool hasFiniteRange = false;
++
++        try {
++            firstParam = adaptor->FirstParameter ();
++            lastParam = adaptor->LastParameter ();
++            hasFiniteRange = IsFiniteParam (firstParam) && IsFiniteParam (lastParam);
++        } catch (...) {
++            hasFiniteRange = false;
++        }
++
++        int sampleCount = 20;
++        if (curveKind == "line") {
++            sampleCount = 2;
++        } else if (curveKind == "circle") {
++            sampleCount = closed ? 64 : 32;
++        } else if (curveKind == "ellipse") {
++            sampleCount = 40;
++        } else if (curveKind == "bspline") {
++            sampleCount = 32;
++        }
++
++        if (hasFiniteRange) {
++            const double delta = std::abs (static_cast<double> (lastParam - firstParam));
++            if (delta <= 1.0e-12) {
++                try {
++                    appendPoint (adaptor->Value (firstParam));
++                } catch (...) {
++                }
++            } else {
++                for (int index = 0; index < sampleCount; index++) {
++                    const double ratio =
++                        sampleCount <= 1
++                            ? 0.0
++                            : static_cast<double> (index) / static_cast<double> (sampleCount - 1);
++                    const Standard_Real param = firstParam + (lastParam - firstParam) * ratio;
++                    try {
++                        appendPoint (adaptor->Value (param));
++                    } catch (...) {
++                    }
++                }
++            }
++        }
++    }
++
++    if (positions.size () < 6) {
++        TopLoc_Location polygonLocation;
++        Handle (Poly_Polygon3D) polygon = BRep_Tool::Polygon3D (edge, polygonLocation);
++        if (!polygon.IsNull () && polygon->NbNodes () >= 2) {
++            positions.clear ();
++            gp_Trsf transform = polygonLocation.Transformation ();
++            const TColgp_Array1OfPnt& nodes = polygon->Nodes ();
++            for (Standard_Integer index = nodes.Lower (); index <= nodes.Upper (); index++) {
++                gp_Pnt point = nodes.Value (index);
++                point.Transform (transform);
++                appendPoint (point);
++            }
++        }
++    }
++
++    if (positions.size () < 6) {
++        positions.clear ();
++        if (!vStart.IsNull ()) {
++            appendPoint (BRep_Tool::Pnt (vStart));
++        }
++        if (!vEnd.IsNull ()) {
++            appendPoint (BRep_Tool::Pnt (vEnd));
++        }
++    }
++
++    if (positions.size () == 3) {
++        positions.push_back (positions[0]);
++        positions.push_back (positions[1]);
++        positions.push_back (positions[2]);
++    }
++
++    if (positions.size () < 6) {
++        positions.clear ();
++    }
++
++    return positions;
++}
++
++static void SetFaceAnalyticData (emscripten::val& faceObj, const BRepAdaptor_Surface& surfaceAdaptor)
++{
++    emscripten::val analyticObj (emscripten::val::object ());
++    bool hasAnalytic = false;
++
++    switch (surfaceAdaptor.GetType ()) {
++        case GeomAbs_Plane: {
++            gp_Pln plane = surfaceAdaptor.Plane ();
++            analyticObj.set ("origin", Vec3 (plane.Location ()));
++            analyticObj.set ("normal", Vec3 (plane.Axis ().Direction ()));
++            hasAnalytic = true;
++            break;
++        }
++        case GeomAbs_Cylinder: {
++            gp_Cylinder cylinder = surfaceAdaptor.Cylinder ();
++            analyticObj.set ("origin", Vec3 (cylinder.Location ()));
++            analyticObj.set ("axis", Vec3 (cylinder.Axis ().Direction ()));
++            analyticObj.set ("radius", cylinder.Radius ());
++            hasAnalytic = true;
++            break;
++        }
++        case GeomAbs_Cone: {
++            gp_Cone cone = surfaceAdaptor.Cone ();
++            analyticObj.set ("origin", Vec3 (cone.Location ()));
++            analyticObj.set ("axis", Vec3 (cone.Axis ().Direction ()));
++            analyticObj.set ("radius", cone.RefRadius ());
++            hasAnalytic = true;
++            break;
++        }
++        case GeomAbs_Sphere: {
++            gp_Sphere sphere = surfaceAdaptor.Sphere ();
++            analyticObj.set ("origin", Vec3 (sphere.Location ()));
++            analyticObj.set ("axis", Vec3 (sphere.Axis ().Direction ()));
++            analyticObj.set ("radius", sphere.Radius ());
++            hasAnalytic = true;
++            break;
++        }
++        case GeomAbs_Torus: {
++            gp_Torus torus = surfaceAdaptor.Torus ();
++            analyticObj.set ("origin", Vec3 (torus.Location ()));
++            analyticObj.set ("axis", Vec3 (torus.Axis ().Direction ()));
++            analyticObj.set ("radius", torus.MajorRadius ());
++            hasAnalytic = true;
++            break;
++        }
++        default:
++            break;
++    }
++
++    if (hasAnalytic) {
++        faceObj.set ("analytic", analyticObj);
++    }
++}
++
++static void AppendTopologyForPart (
++    const PartShapeRef& partRef,
++    emscripten::val& verticesArr,
++    emscripten::val& edgesArr,
++    emscripten::val& facesArr,
++    int& nextVertexIndex,
++    int& nextEdgeIndex,
++    int& nextFaceIndex)
++{
++    if (partRef.shape.IsNull ()) {
++        return;
++    }
++
++    TopTools_IndexedMapOfShape vertexMap;
++    TopExp::MapShapes (partRef.shape, TopAbs_VERTEX, vertexMap);
++
++    std::vector<std::string> vertexIds (vertexMap.Extent () + 1);
++    for (int localIndex = 1; localIndex <= vertexMap.Extent (); localIndex++) {
++        const TopoDS_Vertex& vertex = TopoDS::Vertex (vertexMap (localIndex));
++
++        emscripten::val vertexObj (emscripten::val::object ());
++        const std::string vertexId = std::string ("v_") + std::to_string (nextVertexIndex);
++        vertexIds[localIndex] = vertexId;
++
++        vertexObj.set ("id", vertexId);
++        SetPartIdField (vertexObj, partRef.partId);
++        vertexObj.set ("point", Vec3 (BRep_Tool::Pnt (vertex)));
++        vertexObj.set ("tolerance", BRep_Tool::Tolerance (vertex));
++
++        verticesArr.set (nextVertexIndex, vertexObj);
++        nextVertexIndex += 1;
++    }
++
++    TopTools_IndexedMapOfShape faceMap;
++    TopExp::MapShapes (partRef.shape, TopAbs_FACE, faceMap);
++
++    std::vector<std::string> faceIds (faceMap.Extent () + 1);
++    for (int localIndex = 1; localIndex <= faceMap.Extent (); localIndex++) {
++        const TopoDS_Face& face = TopoDS::Face (faceMap (localIndex));
++
++        emscripten::val faceObj (emscripten::val::object ());
++        const std::string faceId = std::string ("f_") + std::to_string (nextFaceIndex);
++        faceIds[localIndex] = faceId;
++
++        faceObj.set ("id", faceId);
++        SetPartIdField (faceObj, partRef.partId);
++
++        BRepAdaptor_Surface surfaceAdaptor (face, Standard_True);
++        faceObj.set ("kind", FaceKindToString (surfaceAdaptor.GetType ()));
++        SetFaceAnalyticData (faceObj, surfaceAdaptor);
++
++        facesArr.set (nextFaceIndex, faceObj);
++        nextFaceIndex += 1;
++    }
++
++    TopTools_IndexedMapOfShape edgeMap;
++    TopExp::MapShapes (partRef.shape, TopAbs_EDGE, edgeMap);
++
++    TopTools_IndexedDataMapOfShapeListOfShape edgeToFaces;
++    TopExp::MapShapesAndAncestors (partRef.shape, TopAbs_EDGE, TopAbs_FACE, edgeToFaces);
++
++    for (int localIndex = 1; localIndex <= edgeMap.Extent (); localIndex++) {
++        const TopoDS_Edge& edge = TopoDS::Edge (edgeMap (localIndex));
++
++        emscripten::val edgeObj (emscripten::val::object ());
++        const std::string edgeId = std::string ("e_") + std::to_string (nextEdgeIndex);
++
++        edgeObj.set ("id", edgeId);
++        SetPartIdField (edgeObj, partRef.partId);
++
++        TopoDS_Vertex vStart;
++        TopoDS_Vertex vEnd;
++        TopExp::Vertices (edge, vStart, vEnd);
++
++        int vStartIndex = vStart.IsNull () ? 0 : vertexMap.FindIndex (vStart);
++        int vEndIndex = vEnd.IsNull () ? 0 : vertexMap.FindIndex (vEnd);
++        if (vStartIndex > 0 && vStartIndex < vertexIds.size () &&
++            vEndIndex > 0 && vEndIndex < vertexIds.size ()) {
++            emscripten::val vertexIdsArr (emscripten::val::array ());
++            vertexIdsArr.set (0, vertexIds[vStartIndex]);
++            vertexIdsArr.set (1, vertexIds[vEndIndex]);
++            edgeObj.set ("vertexIds", vertexIdsArr);
++        } else {
++            edgeObj.set ("vertexIds", emscripten::val::null ());
++        }
++
++        emscripten::val adjacentFaceIds (emscripten::val::array ());
++        int adjacentFaceCount = 0;
++        bool seamCandidate = false;
++        std::set<int> uniqueFaceIndices;
++
++        if (edgeToFaces.Contains (edge)) {
++            const TopTools_ListOfShape& linkedFaces = edgeToFaces.FindFromKey (edge);
++            for (TopTools_ListIteratorOfListOfShape it (linkedFaces); it.More (); it.Next ()) {
++                const TopoDS_Face& linkedFace = TopoDS::Face (it.Value ());
++                const int linkedFaceIndex = faceMap.FindIndex (linkedFace);
++                if (linkedFaceIndex <= 0 || linkedFaceIndex >= faceIds.size ()) {
++                    continue;
++                }
++
++                if (uniqueFaceIndices.find (linkedFaceIndex) != uniqueFaceIndices.end ()) {
++                    seamCandidate = true;
++                }
++                uniqueFaceIndices.insert (linkedFaceIndex);
++                adjacentFaceIds.set (adjacentFaceCount, faceIds[linkedFaceIndex]);
++                adjacentFaceCount += 1;
++            }
++        }
++
++        edgeObj.set ("adjacentFaceIds", adjacentFaceIds);
++
++        std::string edgeKind = "unknown";
++        if (BRep_Tool::Degenerated (edge)) {
++            edgeKind = "degenerated";
++        } else if (seamCandidate) {
++            edgeKind = "seam";
++        } else if (adjacentFaceCount <= 1) {
++            edgeKind = "boundary";
++        } else {
++            edgeKind = "sharp";
++        }
++        edgeObj.set ("kind", edgeKind);
++
++        std::string curveKind = "other";
++        bool closed = edge.Closed ();
++        bool periodic = false;
++        BRepAdaptor_Curve adaptor;
++        BRepAdaptor_Curve* adaptorPtr = nullptr;
++        bool hasCurve = false;
++
++        try {
++            adaptor = BRepAdaptor_Curve (edge);
++            adaptorPtr = &adaptor;
++            hasCurve = true;
++            curveKind = CurveKindToString (adaptor.GetType ());
++            periodic = adaptor.IsPeriodic ();
++        } catch (...) {
++            hasCurve = false;
++            adaptorPtr = nullptr;
++        }
++
++        edgeObj.set ("curveKind", curveKind);
++        edgeObj.set ("closed", closed);
++        edgeObj.set ("periodic", periodic);
++        edgeObj.set ("tolerance", BRep_Tool::Tolerance (edge));
++
++        std::vector<double> sampledPositions = SampleEdgePositions (
++            edge,
++            vStart,
++            vEnd,
++            adaptorPtr,
++            curveKind,
++            closed || periodic);
++
++        if (sampledPositions.size () < 6) {
++            continue;
++        }
++
++        emscripten::val sampledArr (emscripten::val::array ());
++        for (int sampleIndex = 0; sampleIndex < sampledPositions.size (); sampleIndex++) {
++            sampledArr.set (sampleIndex, sampledPositions[sampleIndex]);
++        }
++        edgeObj.set ("samplePositions", sampledArr);
++
++        if (hasCurve && adaptor.GetType () == GeomAbs_Circle) {
++            emscripten::val analyticObj (emscripten::val::object ());
++
++            gp_Circ circle = adaptor.Circle ();
++            const double radius = circle.Radius ();
++            analyticObj.set ("radius", radius);
++            analyticObj.set ("diameter", radius * 2.0);
++            analyticObj.set ("center", Vec3 (circle.Location ()));
++            analyticObj.set ("axis", Vec3 (circle.Axis ().Direction ()));
++            analyticObj.set ("normal", Vec3 (circle.Axis ().Direction ()));
++
++            gp_Pnt startPoint;
++            gp_Pnt endPoint;
++            bool hasStartPoint = false;
++            bool hasEndPoint = false;
++
++            if (!vStart.IsNull ()) {
++                startPoint = BRep_Tool::Pnt (vStart);
++                hasStartPoint = true;
++            }
++            if (!vEnd.IsNull ()) {
++                endPoint = BRep_Tool::Pnt (vEnd);
++                hasEndPoint = true;
++            }
++
++            Standard_Real firstParam = 0.0;
++            Standard_Real lastParam = 0.0;
++            const bool hasFiniteParams =
++                IsFiniteParam (adaptor.FirstParameter ()) && IsFiniteParam (adaptor.LastParameter ());
++            if (hasFiniteParams) {
++                firstParam = adaptor.FirstParameter ();
++                lastParam = adaptor.LastParameter ();
++                if (!hasStartPoint) {
++                    startPoint = adaptor.Value (firstParam);
++                    hasStartPoint = true;
++                }
++                if (!hasEndPoint) {
++                    endPoint = adaptor.Value (lastParam);
++                    hasEndPoint = true;
++                }
++
++                gp_Pnt midPoint = adaptor.Value ((firstParam + lastParam) * 0.5);
++                analyticObj.set ("midPoint", Vec3 (midPoint));
++            }
++
++            if (hasStartPoint) {
++                analyticObj.set ("startPoint", Vec3 (startPoint));
++            }
++            if (hasEndPoint) {
++                analyticObj.set ("endPoint", Vec3 (endPoint));
++            }
++
++            double sweepAngleRad = 0.0;
++            if (hasFiniteParams) {
++                sweepAngleRad = std::abs (static_cast<double> (lastParam - firstParam));
++                if (sweepAngleRad > kTwoPi) {
++                    const double normalizedSweep = std::fmod (sweepAngleRad, kTwoPi);
++                    sweepAngleRad = normalizedSweep <= 1.0e-6 ? kTwoPi : normalizedSweep;
++                }
++            }
++
++            const double endpointTolerance = std::max (radius * 1.0e-6, 1.0e-6);
++            const bool hasDistinctEndpoints =
++                hasStartPoint &&
++                hasEndPoint &&
++                startPoint.Distance (endPoint) > endpointTolerance;
++            const bool sweepNearFullCircle =
++                sweepAngleRad > 0.0 &&
++                std::abs (sweepAngleRad - kTwoPi) <= 1.0e-3;
++            const bool isFullCircle =
++                sweepNearFullCircle ||
++                (!hasDistinctEndpoints && closed);
++
++            if (isFullCircle) {
++                sweepAngleRad = kTwoPi;
++            }
++
++            if (sweepAngleRad > 0.0) {
++                analyticObj.set ("sweepAngleRad", sweepAngleRad);
++            }
++            analyticObj.set ("isFullCircle", isFullCircle);
++
++            edgeObj.set ("analytic", analyticObj);
++        }
++
++        edgesArr.set (nextEdgeIndex, edgeObj);
++        nextEdgeIndex += 1;
++    }
++}
++
++} // namespace
++
++emscripten::val BuildExactTopologyForImporter (const ImporterPtr& importer)
++{
++    emscripten::val topologyObj (emscripten::val::object ());
++    emscripten::val verticesArr (emscripten::val::array ());
++    emscripten::val edgesArr (emscripten::val::array ());
++    emscripten::val facesArr (emscripten::val::array ());
++
++    int nextVertexIndex = 0;
++    int nextEdgeIndex = 0;
++    int nextFaceIndex = 0;
++
++    std::vector<PartShapeRef> partShapes;
++
++    const std::shared_ptr<ImporterBrep> brepImporter =
++        std::dynamic_pointer_cast<ImporterBrep> (importer);
++    if (brepImporter) {
++        partShapes = CollectBrepPartShapes (brepImporter->GetShape ());
++    }
++
++    const std::shared_ptr<ImporterXcaf> xcafImporter =
++        std::dynamic_pointer_cast<ImporterXcaf> (importer);
++    if (xcafImporter) {
++        partShapes = CollectXcafPartShapes (*xcafImporter);
++    }
++
++    for (const PartShapeRef& partRef : partShapes) {
++        AppendTopologyForPart (
++            partRef,
++            verticesArr,
++            edgesArr,
++            facesArr,
++            nextVertexIndex,
++            nextEdgeIndex,
++            nextFaceIndex);
++    }
++
++    topologyObj.set ("vertices", verticesArr);
++    topologyObj.set ("edges", edgesArr);
++    topologyObj.set ("faces", facesArr);
++
++    return topologyObj;
++}
++
++#endif
