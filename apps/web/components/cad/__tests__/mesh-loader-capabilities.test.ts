@@ -45,7 +45,6 @@ describe("mesh-loader worker capabilities", () => {
         type: "get_worker_capabilities",
         capabilities: {
           exactCadPartExport: true,
-          exactCadTopology: true,
           supportedExactCadFormats: ["step", "iges"],
         },
       });
@@ -57,7 +56,6 @@ describe("mesh-loader worker capabilities", () => {
 
     assert.deepEqual(capabilities, {
       exactCadPartExport: true,
-      exactCadTopology: true,
       supportedExactCadFormats: ["step", "iges"],
     });
   });

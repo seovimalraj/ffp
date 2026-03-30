@@ -8,30 +8,8 @@ import * as BufferGeometryUtils from "three/examples/jsm/utils/BufferGeometryUti
 import { Line2 } from "three/examples/jsm/lines/Line2.js";
 import { LineMaterial } from "three/examples/jsm/lines/LineMaterial.js";
 import { LineGeometry } from "three/examples/jsm/lines/LineGeometry.js";
-import { measureApproximateMeshEdgeAtScreenPosition } from "./approx-mesh-measurement";
-import {
-  buildCircularFeatureCache,
-  hasDistinctCircularEndpoints,
-  isCircularTargetEffectivelyFullCircle,
-  measureExactCad,
-  resolveCircularMeasureTarget,
-  type CircularFeature,
-  type CircularMeasureTarget,
-  type ExactCadMeasurementDisplay,
-  type ExactCadMeasurementRequest,
-  type ExactCadMeasurementResult,
-} from "./exact-cad-measurement";
-import type {
-  CadTopologyAvailability,
-  CadTopologyResult,
-  ExactEdge,
-  ExactEdgeKind,
-  ExactFace,
-  ExactVertex,
-  PickedEntity,
-} from "./exact-cad-topology";
 // Line rendering helpers (thick, pixel-correct lines)
-// We use simple THREE.LineSegments + THREE.EdgesGeometry for legacy/fallback mesh feature edges.
+// We use simple THREE.LineSegments + THREE.EdgesGeometry for feature edges
 
 export type Viewer = {
   loadMeshFromGeometry: (geom: THREE.BufferGeometry) => void;
@@ -49,12 +27,6 @@ export type Viewer = {
   ) => void;
   setProjection: (mode: "perspective" | "orthographic") => void;
   setFeatureEdgesEnabled: (enabled: boolean) => void;
-  setExactCadEdgeDisplayOptions: (
-    options: Partial<ExactCadEdgeDisplayOptions>,
-  ) => void;
-  setExactCadMeasurementMode: (
-    mode: ExactCadSingleEntityMeasurementMode,
-  ) => void;
   resize: () => void;
   dispose: () => void;
   pickAtScreenPosition: (ndcX: number, ndcY: number) => THREE.Vector3 | null;
@@ -66,33 +38,18 @@ export type Viewer = {
     ndcX: number,
     ndcY: number,
   ) => { point: THREE.Vector3; object: THREE.Object3D } | null;
-  pickMeasurementEntityAtScreenPosition: (
-    ndcX: number,
-    ndcY: number,
-  ) => PickedEntity | null;
   isolateObject: (object: THREE.Object3D) => void;
   clearIsolation: () => void;
   showAllParts: () => void;
-  highlightEdgeAtScreenPosition: (
-    ndcX: number,
-    ndcY: number,
-    pickedEntity?: PickedEntity | null,
-  ) => void;
+  highlightEdgeAtScreenPosition: (ndcX: number, ndcY: number) => void;
   clearEdgeHighlight: () => void;
-  measureEdgeAtScreenPosition: (
-    ndcX: number,
-    ndcY: number,
-    pickedEntity?: PickedEntity | null,
-  ) => number | null;
+  measureEdgeAtScreenPosition: (ndcX: number, ndcY: number) => number | null;
   setControlsEnabled: (enabled: boolean) => void;
   setControlsPreset: (preset: "orbit3d" | "dxf2d") => void;
   setMeasurementSegment: (
     p1: THREE.Vector3 | null,
     p2: THREE.Vector3 | null,
     labelText?: string | null,
-    style?: "linear" | "diameter" | "radial" | "generic" | null,
-    labelAnchor?: THREE.Vector3 | null,
-    segmentAnchor?: THREE.Vector3 | null,
   ) => void;
   setMeasurementGraphicsScale: (scale: number) => void;
   getScreenshotDataURL: () => string;
@@ -132,14 +89,6 @@ export type ViewerControlsPresetConfig = {
   mouseButtons: OrbitControls["mouseButtons"];
   touches: OrbitControls["touches"];
 };
-
-export const LEGACY_SEGMENT_PICKER_EXACT_MODE_MESSAGE =
-  "Legacy segment picker is being used for CAD interaction.";
-
-export function reportLegacySegmentPickerUsageInExactCadMode(): void {
-  const stack = new Error(LEGACY_SEGMENT_PICKER_EXACT_MODE_MESSAGE).stack;
-  console.warn(LEGACY_SEGMENT_PICKER_EXACT_MODE_MESSAGE, stack);
-}
 
 export function getViewerControlsPresetConfig(
   preset: "orbit3d" | "dxf2d",
@@ -227,1176 +176,6 @@ export function createStainlessSteelMaterial(): THREE.MeshPhysicalMaterial {
     // preserve double-sided usage in viewer where needed via side override
     // Use physical material so environment lighting produces realistic reflections.
   });
-}
-
-type ViewerCadTopologyContext = {
-  ext: string;
-  topology: CadTopologyResult | null;
-};
-
-type ApproxCadEdgeKind = "boundary" | "sharp" | "tangent";
-export type ExactCadSingleEntityMeasurementMode =
-  | "auto"
-  | "length"
-  | "radius"
-  | "diameter"
-  | "arc_length"
-  | "central_angle";
-
-const EXACT_CAD_EXTENSIONS = new Set(["step", "stp", "iges", "igs", "brep"]);
-const APPROX_CAD_SHARP_ANGLE_DEG = 30;
-
-export type ExactCadEdgeDisplayOptions = {
-  boundaryEdges: boolean;
-  sharpEdges: boolean;
-  tangentEdges: "visible" | "phantom" | "removed";
-  seamEdges: boolean;
-  silhouettes: boolean;
-  hiddenEdges: boolean;
-  centerlines: boolean;
-};
-
-const DEFAULT_EXACT_CAD_EDGE_DISPLAY_OPTIONS: ExactCadEdgeDisplayOptions = {
-  boundaryEdges: true,
-  sharpEdges: true,
-  tangentEdges: "removed",
-  seamEdges: false,
-  silhouettes: false,
-  hiddenEdges: false,
-  centerlines: false,
-};
-
-export type ExactCurveFeatureSource = "analytic" | "sampled";
-
-type ExactCurveFeatureBase = {
-  featureId: string;
-  partId: string | null;
-  edgeIds: string[];
-  source: ExactCurveFeatureSource;
-  edgeKind: ExactEdgeKind;
-};
-
-export type ExactLineCurveFeature = ExactCurveFeatureBase & {
-  kind: "line";
-};
-
-export type ExactCircleOrArcCurveFeature = ExactCurveFeatureBase & {
-  kind: "circle" | "arc";
-  center: THREE.Vector3 | null;
-  normal: THREE.Vector3 | null;
-  radius: number | null;
-  closedLoop: boolean;
-  isFullCircle: boolean;
-  startPoint: THREE.Vector3 | null;
-  endPoint: THREE.Vector3 | null;
-  midPoint: THREE.Vector3 | null;
-  sweepAngleRad: number | null;
-  arcLength: number | null;
-};
-
-export type ExactCurveFeature =
-  | ExactLineCurveFeature
-  | ExactCircleOrArcCurveFeature;
-
-type ExactCadMeasurementAutoRequestContext = {
-  verticesById: ReadonlyMap<string, ExactVertex>;
-  edgesById: ReadonlyMap<string, ExactEdge>;
-  facesById: ReadonlyMap<string, ExactFace>;
-  modelDiagonal: number;
-  circularFeatureById?: ReadonlyMap<string, CircularFeature>;
-  circularFeatureIdByEdgeId?: ReadonlyMap<string, string>;
-  curveFeatureById?: ReadonlyMap<string, ExactCurveFeature>;
-};
-
-export type ExactCadAutoMeasurementResolution = {
-  request: ExactCadMeasurementRequest | null;
-  circularTarget: CircularMeasureTarget | null;
-};
-
-export type MeasurementSegmentStyle =
-  | "linear"
-  | "diameter"
-  | "radial"
-  | "generic";
-
-export type MeasurementArrowMode =
-  | "double-inward"
-  | "single-start";
-
-export type MeasurementProjectionContext = {
-  camera: THREE.Camera;
-  viewportWidth: number;
-  viewportHeight: number;
-};
-
-export type MeasurementArrowMetrics = {
-  style: MeasurementSegmentStyle;
-  worldLength: number;
-  segmentPx: number;
-  arrowLengthWorld: number;
-  baseHalfWidthWorld: number;
-  minArrowLengthWorld: number;
-  maxArrowLengthWorld: number;
-  targetArrowLengthWorld: number;
-  worldUnitsPerPixel: number;
-};
-
-export type MeasurementRenderedLayout = {
-  pathPoints: THREE.Vector3[];
-  arrowMode: MeasurementArrowMode;
-  arrowLengthWorld: number;
-  baseHalfWidthWorld: number;
-  labelAnchor: THREE.Vector3;
-  startArrowTip: THREE.Vector3;
-  endArrowTip: THREE.Vector3 | null;
-  startArrowDirection: THREE.Vector3;
-  endArrowDirection: THREE.Vector3 | null;
-};
-
-const measurementArrowRatioByStyle = {
-  linear: 0.14,
-  diameter: 0.13,
-  generic: 0.12,
-  radial: 0.1,
-} as const;
-
-export type ExactCadMeasurementOverlayInstruction =
-  | {
-      kind: "segment";
-      start: THREE.Vector3;
-      end: THREE.Vector3;
-      label: string;
-      style: MeasurementSegmentStyle;
-      labelAnchor?: THREE.Vector3 | null;
-      segmentAnchor?: THREE.Vector3 | null;
-    }
-  | {
-      kind: "label";
-      point: THREE.Vector3;
-      label: string;
-    }
-  | {
-      kind: "clear";
-    };
-
-export function exactCadPointToWorldForModelRoot(
-  point: THREE.Vector3 | null | undefined,
-  modelRoot: THREE.Object3D,
-): THREE.Vector3 | null {
-  if (!point) return null;
-  const clone = point.clone();
-  modelRoot.updateWorldMatrix(true, false);
-  return modelRoot.localToWorld(clone);
-}
-
-function sanitizeMeasurementViewportDimension(raw: number): number {
-  return Number.isFinite(raw) && raw > 0 ? raw : 1;
-}
-
-export function projectWorldToScreenPx(
-  point: THREE.Vector3,
-  projection: MeasurementProjectionContext,
-): { x: number; y: number; visible: boolean; ndc: THREE.Vector3 } {
-  const width = sanitizeMeasurementViewportDimension(projection.viewportWidth);
-  const height = sanitizeMeasurementViewportDimension(projection.viewportHeight);
-  const ndc = point.clone().project(projection.camera);
-  const finite =
-    Number.isFinite(ndc.x) && Number.isFinite(ndc.y) && Number.isFinite(ndc.z);
-  if (!finite) {
-    return { x: 0, y: 0, visible: false, ndc };
-  }
-
-  const x = ((ndc.x + 1) * 0.5) * width;
-  const y = ((1 - ndc.y) * 0.5) * height;
-  const visible =
-    ndc.z >= -1 &&
-    ndc.z <= 1 &&
-    ndc.x >= -1.2 &&
-    ndc.x <= 1.2 &&
-    ndc.y >= -1.2 &&
-    ndc.y <= 1.2;
-
-  return { x, y, visible, ndc };
-}
-
-export function getWorldUnitsPerPixelAt(
-  point: THREE.Vector3,
-  projection: MeasurementProjectionContext,
-): number {
-  const width = sanitizeMeasurementViewportDimension(projection.viewportWidth);
-  const height = sanitizeMeasurementViewportDimension(projection.viewportHeight);
-  const ndc = point.clone().project(projection.camera);
-  const finite =
-    Number.isFinite(ndc.x) && Number.isFinite(ndc.y) && Number.isFinite(ndc.z);
-
-  if (finite) {
-    const stepX = 2 / width;
-    const stepY = 2 / height;
-    const baseWorld = ndc.clone().unproject(projection.camera);
-    const worldX = new THREE.Vector3(ndc.x + stepX, ndc.y, ndc.z).unproject(
-      projection.camera,
-    );
-    const worldY = new THREE.Vector3(ndc.x, ndc.y + stepY, ndc.z).unproject(
-      projection.camera,
-    );
-    const dX = baseWorld.distanceTo(worldX);
-    const dY = baseWorld.distanceTo(worldY);
-    const candidates = [dX, dY].filter(
-      (value) => Number.isFinite(value) && value > 1e-12,
-    );
-    if (candidates.length > 0) {
-      return candidates.reduce((sum, value) => sum + value, 0) / candidates.length;
-    }
-  }
-
-  const camera: any = projection.camera;
-  if (camera?.isPerspectiveCamera) {
-    const distance = camera.position.distanceTo(point);
-    const fovRad = THREE.MathUtils.degToRad(camera.fov ?? 50);
-    return Math.max((2 * Math.tan(fovRad * 0.5) * distance) / height, 1e-9);
-  }
-  if (camera?.isOrthographicCamera) {
-    const zoom = Math.max(1e-9, camera.zoom ?? 1);
-    return Math.max(((camera.top - camera.bottom) / zoom) / height, 1e-9);
-  }
-  return 1;
-}
-
-export function getMeasurementSegmentLengthPx(
-  p1: THREE.Vector3,
-  p2: THREE.Vector3,
-  projection: MeasurementProjectionContext,
-): number {
-  const s1 = projectWorldToScreenPx(p1, projection);
-  const s2 = projectWorldToScreenPx(p2, projection);
-  if (
-    Number.isFinite(s1.x) &&
-    Number.isFinite(s1.y) &&
-    Number.isFinite(s2.x) &&
-    Number.isFinite(s2.y)
-  ) {
-    return Math.hypot(s2.x - s1.x, s2.y - s1.y);
-  }
-  const worldLength = p1.distanceTo(p2);
-  const midpoint = p1.clone().lerp(p2, 0.5);
-  const worldUnitsPerPixel = getWorldUnitsPerPixelAt(midpoint, projection);
-  return worldLength / Math.max(worldUnitsPerPixel, 1e-9);
-}
-
-export function resolveMeasurementArrowMetrics(params: {
-  style: MeasurementSegmentStyle;
-  p1: THREE.Vector3;
-  p2: THREE.Vector3;
-  projection: MeasurementProjectionContext;
-  measureGraphicsScale?: number;
-}): MeasurementArrowMetrics {
-  const { style, p1, p2, projection } = params;
-  const scale = THREE.MathUtils.clamp(params.measureGraphicsScale ?? 1, 0.1, 4);
-  const segmentPx = getMeasurementSegmentLengthPx(p1, p2, projection);
-  const worldLength = p1.distanceTo(p2);
-  const midpoint = p1.clone().lerp(p2, 0.5);
-  const worldUnitsPerPixel = getWorldUnitsPerPixelAt(midpoint, projection);
-  const minWorld = worldUnitsPerPixel * 6 * scale;
-  const maxWorld = worldUnitsPerPixel * 18 * scale;
-  const targetFromLine = worldLength * measurementArrowRatioByStyle[style];
-  const fitCap = worldLength * 0.18;
-  const maxAllowed = Math.max(
-    worldUnitsPerPixel * 4 * scale,
-    Math.min(maxWorld, fitCap),
-  );
-  const minAllowed = Math.min(minWorld, maxAllowed);
-  const arrowLengthWorld = Math.max(
-    THREE.MathUtils.clamp(targetFromLine, minAllowed, maxAllowed),
-    1e-9,
-  );
-  const baseHalfWidthWorld = Math.max(arrowLengthWorld * 0.42, 1e-9);
-
-  return {
-    style,
-    worldLength,
-    segmentPx,
-    arrowLengthWorld,
-    baseHalfWidthWorld,
-    minArrowLengthWorld: minAllowed,
-    maxArrowLengthWorld: maxAllowed,
-    targetArrowLengthWorld: targetFromLine,
-    worldUnitsPerPixel,
-  };
-}
-
-export function resolveMeasurementArrowVisibilityForMode(
-  mode: MeasurementArrowMode,
-): { showStartArrow: boolean; showEndArrow: boolean } {
-  if (mode === "single-start") {
-    return { showStartArrow: true, showEndArrow: false };
-  }
-  return { showStartArrow: true, showEndArrow: true };
-}
-
-function resolveCameraRightVector(camera: THREE.Camera): THREE.Vector3 {
-  camera.updateMatrixWorld();
-  const right = new THREE.Vector3().setFromMatrixColumn(camera.matrixWorld, 0);
-  if (right.lengthSq() <= 1e-12) {
-    right.set(1, 0, 0);
-  } else {
-    right.normalize();
-  }
-  return right;
-}
-
-function resolveStableDirection(
-  from: THREE.Vector3,
-  to: THREE.Vector3,
-  fallback: THREE.Vector3 = new THREE.Vector3(1, 0, 0),
-): THREE.Vector3 {
-  const direction = to.clone().sub(from);
-  if (direction.lengthSq() <= 1e-12) {
-    return fallback.clone().normalize();
-  }
-  return direction.normalize();
-}
-
-export function resolveMeasurementRenderedLayoutForOverlay(params: {
-  p1: THREE.Vector3;
-  p2: THREE.Vector3;
-  style: MeasurementSegmentStyle;
-  segmentAnchor: THREE.Vector3 | null;
-  projection: MeasurementProjectionContext;
-  measureGraphicsScale?: number;
-}): MeasurementRenderedLayout {
-  const { p1, p2, style, segmentAnchor, projection } = params;
-  const measureGraphicsScale = THREE.MathUtils.clamp(
-    params.measureGraphicsScale ?? 1,
-    0.1,
-    4,
-  );
-
-  if (style === "radial") {
-    const tip = segmentAnchor?.clone() ?? p2.clone();
-    const radialDir = resolveStableDirection(p1, tip);
-    const arrowMetrics = resolveMeasurementArrowMetrics({
-      style,
-      p1,
-      p2: tip,
-      projection,
-      measureGraphicsScale,
-    });
-    const tipWorldPerPixel = getWorldUnitsPerPixelAt(tip, projection);
-    const stemLength = tipWorldPerPixel * 24 * measureGraphicsScale;
-    const landingLength = tipWorldPerPixel * 46 * measureGraphicsScale;
-    const labelGap = tipWorldPerPixel * 10 * measureGraphicsScale;
-    const knee = tip.clone().addScaledVector(radialDir, stemLength);
-
-    const cameraRight = resolveCameraRightVector(projection.camera);
-    const tipNdc = tip.clone().project(projection.camera);
-    const landingSign = Number.isFinite(tipNdc.x) ? (tipNdc.x >= 0 ? 1 : -1) : 1;
-    const landingDir = cameraRight.multiplyScalar(landingSign);
-    const landingEnd = knee.clone().addScaledVector(landingDir, landingLength);
-    const labelAnchor = landingEnd.clone().addScaledVector(landingDir, labelGap);
-
-    return {
-      pathPoints: [tip, knee, landingEnd],
-      arrowMode: "single-start",
-      arrowLengthWorld: arrowMetrics.arrowLengthWorld,
-      baseHalfWidthWorld: arrowMetrics.baseHalfWidthWorld,
-      labelAnchor,
-      startArrowTip: tip.clone(),
-      endArrowTip: null,
-      startArrowDirection: resolveStableDirection(tip, knee, radialDir),
-      endArrowDirection: null,
-    };
-  }
-
-  const measuredStart = p1.clone();
-  const measuredEnd = p2.clone();
-  const measuredDir = resolveStableDirection(measuredStart, measuredEnd);
-  const arrowMetrics = resolveMeasurementArrowMetrics({
-    style,
-    p1: measuredStart,
-    p2: measuredEnd,
-    projection,
-    measureGraphicsScale,
-  });
-  const pathStart = measuredStart.clone();
-  const pathEnd = measuredEnd.clone();
-  const startArrowTip = measuredStart.clone();
-  const endArrowTip = measuredEnd.clone();
-
-  return {
-    pathPoints: [pathStart, pathEnd],
-    arrowMode: "double-inward",
-    arrowLengthWorld: arrowMetrics.arrowLengthWorld,
-    baseHalfWidthWorld: arrowMetrics.baseHalfWidthWorld,
-    labelAnchor: pathStart.clone().lerp(pathEnd, 0.5),
-    startArrowTip,
-    endArrowTip,
-    startArrowDirection: measuredDir.clone(),
-    endArrowDirection: measuredDir.clone().negate(),
-  };
-}
-
-function createFallbackMeasurementProjectionContext(params: {
-  p1: THREE.Vector3;
-  p2: THREE.Vector3;
-}): MeasurementProjectionContext {
-  const { p1, p2 } = params;
-  const center = p1.clone().lerp(p2, 0.5);
-  const separation = Math.max(p1.distanceTo(p2), 1);
-  const camera = new THREE.PerspectiveCamera(50, 1, 0.01, 10000);
-  camera.position.copy(center.clone().add(new THREE.Vector3(0, 0, separation * 4)));
-  camera.lookAt(center);
-  camera.updateProjectionMatrix();
-  camera.updateMatrixWorld(true);
-  return {
-    camera,
-    viewportWidth: 1000,
-    viewportHeight: 1000,
-  };
-}
-
-export function resolveMeasurementRenderedSegmentForOverlay(params: {
-  p1: THREE.Vector3;
-  p2: THREE.Vector3;
-  style: MeasurementSegmentStyle;
-  segmentAnchor: THREE.Vector3 | null;
-}): {
-  start: THREE.Vector3;
-  end: THREE.Vector3;
-  labelAnchor: THREE.Vector3;
-} {
-  const projection = createFallbackMeasurementProjectionContext({
-    p1: params.p1,
-    p2: params.p2,
-  });
-  const layout = resolveMeasurementRenderedLayoutForOverlay({
-    ...params,
-    projection,
-    measureGraphicsScale: 1,
-  });
-  if (params.style === "radial" && layout.pathPoints.length >= 2) {
-    const start = layout.pathPoints[0].clone();
-    const end = layout.pathPoints[1].clone();
-    return {
-      start,
-      end,
-      labelAnchor: layout.labelAnchor.clone(),
-    };
-  }
-  const start = layout.pathPoints[0]?.clone() ?? params.p1.clone();
-  const end =
-    layout.pathPoints[layout.pathPoints.length - 1]?.clone() ?? params.p2.clone();
-  return {
-    start,
-    end,
-    labelAnchor: layout.labelAnchor.clone(),
-  };
-}
-
-function toFinitePositiveNumber(raw: unknown): number | null {
-  const value = Number(raw);
-  if (!Number.isFinite(value) || value <= 0) return null;
-  return value;
-}
-
-function isCurveFeatureEffectivelyFullCircle(
-  feature: ExactCircleOrArcCurveFeature,
-): boolean {
-  return isCircularTargetEffectivelyFullCircle({
-    isFullCircle: feature.isFullCircle || feature.kind === "circle",
-    closedLoop: feature.closedLoop,
-    sweepAngleRad: feature.sweepAngleRad,
-    radius: feature.radius,
-    arcLength: feature.arcLength,
-    startPoint: feature.startPoint,
-    endPoint: feature.endPoint,
-  });
-}
-
-function scoreCylindricalFaceAtPoint(face: ExactFace, point: THREE.Vector3): number {
-  const radius = toFinitePositiveNumber(face.analytic?.radius);
-  const origin = face.analytic?.origin
-    ? new THREE.Vector3(
-        face.analytic.origin[0],
-        face.analytic.origin[1],
-        face.analytic.origin[2],
-      )
-    : null;
-  const axis = face.analytic?.axis
-    ? new THREE.Vector3(
-        face.analytic.axis[0],
-        face.analytic.axis[1],
-        face.analytic.axis[2],
-      )
-    : null;
-
-  if (origin && axis && axis.lengthSq() > 1e-12 && radius !== null) {
-    axis.normalize();
-    const projected = origin
-      .clone()
-      .addScaledVector(axis, point.clone().sub(origin).dot(axis));
-    const radialDistance = point.distanceTo(projected);
-    return Math.abs(radialDistance - radius);
-  }
-
-  if (origin) return point.distanceTo(origin);
-  return Number.POSITIVE_INFINITY;
-}
-
-function resolveCylindricalFaceFallbackEntityForPickedEdge(
-  pickedEdge: PickedEntity,
-  context: {
-    edgesById: ReadonlyMap<string, ExactEdge>;
-    facesById: ReadonlyMap<string, ExactFace>;
-  },
-): PickedEntity | null {
-  if (pickedEdge.kind !== "edge") return null;
-  const edge = context.edgesById.get(pickedEdge.edgeId);
-  if (!edge) return null;
-
-  const isValidCylindricalFace = (face: ExactFace | null): face is ExactFace =>
-    !!face &&
-    face.kind === "cylinder" &&
-    toFinitePositiveNumber(face.analytic?.radius) !== null;
-
-  for (const faceId of edge.adjacentFaceIds) {
-    const face = context.facesById.get(faceId) ?? null;
-    if (!isValidCylindricalFace(face)) continue;
-    return {
-      kind: "face",
-      partId: face.partId ?? edge.partId ?? pickedEdge.partId ?? null,
-      faceId: face.id,
-      point: pickedEdge.point.clone(),
-    };
-  }
-
-  let bestFace: ExactFace | null = null;
-  let bestScore = Number.POSITIVE_INFINITY;
-  for (const face of context.facesById.values()) {
-    if (!isValidCylindricalFace(face)) continue;
-    if ((face.partId ?? null) !== (edge.partId ?? null)) continue;
-    const score = scoreCylindricalFaceAtPoint(face, pickedEdge.point);
-    if (score < bestScore) {
-      bestScore = score;
-      bestFace = face;
-    }
-  }
-
-  if (!bestFace) return null;
-  return {
-    kind: "face",
-    partId: bestFace.partId ?? edge.partId ?? pickedEdge.partId ?? null,
-    faceId: bestFace.id,
-    point: pickedEdge.point.clone(),
-  };
-}
-
-function cloneCircularMeasureTarget(
-  target: CircularMeasureTarget | CircularFeature,
-): CircularMeasureTarget {
-  return {
-    partId: target.partId,
-    edgeIds: [...target.edgeIds],
-    center: target.center?.clone() ?? null,
-    normal: target.normal?.clone() ?? null,
-    radius: target.radius,
-    closedLoop: target.closedLoop,
-    isFullCircle: target.isFullCircle,
-    startPoint: target.startPoint?.clone() ?? null,
-    endPoint: target.endPoint?.clone() ?? null,
-    midPoint: target.midPoint?.clone() ?? null,
-    sweepAngleRad: target.sweepAngleRad,
-    arcLength: target.arcLength,
-    source: target.source,
-  };
-}
-
-function resolveCircularTargetFromCurveFeature(
-  feature: ExactCurveFeature | null | undefined,
-): CircularMeasureTarget | null {
-  if (!feature || (feature.kind !== "circle" && feature.kind !== "arc")) {
-    return null;
-  }
-  return {
-    partId: feature.partId,
-    edgeIds: [...feature.edgeIds],
-    center: feature.center?.clone() ?? null,
-    normal: feature.normal?.clone() ?? null,
-    radius: feature.radius,
-    closedLoop: feature.closedLoop,
-    isFullCircle: feature.isFullCircle,
-    startPoint: feature.startPoint?.clone() ?? null,
-    endPoint: feature.endPoint?.clone() ?? null,
-    midPoint: feature.midPoint?.clone() ?? null,
-    sweepAngleRad: feature.sweepAngleRad,
-    arcLength: feature.arcLength,
-    source: feature.source,
-  };
-}
-
-export function getAutoMeasurementRequestForPickedEntity(
-  pickedEntity: PickedEntity,
-  context: ExactCadMeasurementAutoRequestContext,
-): ExactCadAutoMeasurementResolution {
-  if (pickedEntity.kind === "curve_feature") {
-    const curveFeature =
-      context.curveFeatureById?.get(pickedEntity.featureId) ?? null;
-    const circularTarget = resolveCircularTargetFromCurveFeature(curveFeature);
-    if (!circularTarget) {
-      return { request: null, circularTarget: null };
-    }
-    const fullCircle = isCircularTargetEffectivelyFullCircle(circularTarget);
-    if (fullCircle) {
-      return {
-        request: { kind: "diameter", entity: pickedEntity, circularTarget },
-        circularTarget,
-      };
-    }
-    return {
-      request: { kind: "radius", entity: pickedEntity, circularTarget },
-      circularTarget,
-    };
-  }
-
-  if (pickedEntity.kind !== "edge") return { request: null, circularTarget: null };
-  const edge = context.edgesById.get(pickedEntity.edgeId);
-  if (!edge) return { request: null, circularTarget: null };
-
-  let circularTarget: CircularMeasureTarget | null = null;
-  const circularFeatureId = context.circularFeatureIdByEdgeId?.get(edge.id) ?? null;
-  if (circularFeatureId) {
-    const circularFeature = context.circularFeatureById?.get(circularFeatureId) ?? null;
-    circularTarget = circularFeature
-      ? cloneCircularMeasureTarget(circularFeature)
-      : null;
-  }
-  if (!circularTarget) {
-    circularTarget = resolveCircularMeasureTarget(pickedEntity, {
-      verticesById: context.verticesById,
-      edgesById: context.edgesById,
-      facesById: context.facesById,
-      modelDiagonal: context.modelDiagonal,
-    });
-  }
-
-  if (edge.curveKind === "ellipse" || edge.curveKind === "bspline") {
-    return {
-      request: { kind: "edge_length", edge: pickedEntity },
-      circularTarget,
-    };
-  }
-
-  if (edge.curveKind !== "circle") {
-    return {
-      request: { kind: "edge_length", edge: pickedEntity },
-      circularTarget: null,
-    };
-  }
-
-  if (circularTarget) {
-    const fullCircle = isCircularTargetEffectivelyFullCircle(circularTarget);
-    if (circularTarget.edgeIds.length > 1) {
-      console.debug("[CadViewer] Resolved circular feature", {
-        pickedEdgeId: edge.id,
-        mergedCircularEdges: circularTarget.edgeIds.length,
-        isFullCircle: circularTarget.isFullCircle,
-        effectiveFullCircle: fullCircle,
-      });
-    }
-    if (fullCircle) {
-      return {
-        request: { kind: "diameter", entity: pickedEntity, circularTarget },
-        circularTarget,
-      };
-    }
-    return {
-      request: { kind: "radius", entity: pickedEntity, circularTarget },
-      circularTarget,
-    };
-  }
-
-  const cylindricalFaceEntity = resolveCylindricalFaceFallbackEntityForPickedEdge(
-    pickedEntity,
-    {
-      edgesById: context.edgesById,
-      facesById: context.facesById,
-    },
-  );
-  if (cylindricalFaceEntity) {
-    return {
-      request: { kind: "radius", entity: cylindricalFaceEntity },
-      circularTarget: null,
-    };
-  }
-
-  return {
-    request: { kind: "edge_length", edge: pickedEntity },
-    circularTarget: null,
-  };
-}
-
-export function getAutoMeasurementRequestForPickedEdge(
-  pickedEdge: PickedEntity,
-  context: ExactCadMeasurementAutoRequestContext,
-): ExactCadAutoMeasurementResolution {
-  return getAutoMeasurementRequestForPickedEntity(pickedEdge, context);
-}
-
-export function formatExactCadMeasurementLabel(
-  result: ExactCadMeasurementResult,
-): string {
-  if (result.kind === "radius") {
-    return `R ${result.value.toFixed(2)} mm`;
-  }
-  if (result.kind === "diameter") {
-    return `Ø ${result.value.toFixed(2)} mm`;
-  }
-  if (result.kind === "central_angle") {
-    return `${result.value.toFixed(2)}°`;
-  }
-  if (result.kind === "arc_length") {
-    return `Arc ${result.value.toFixed(2)} mm`;
-  }
-  return `${result.value.toFixed(2)} ${result.unit}`;
-}
-
-export function buildExactCadMeasurementOverlayInstruction(
-  result: ExactCadMeasurementResult,
-  pickedEdge: PickedEntity,
-): ExactCadMeasurementOverlayInstruction {
-  const label = formatExactCadMeasurementLabel(result);
-  const display: ExactCadMeasurementDisplay | undefined = result.display;
-
-  if (!display) {
-    if (result.segment) {
-      const midpoint = result.segment.start
-        .clone()
-        .lerp(result.segment.end, 0.5);
-      return {
-        kind: "segment",
-        start: result.segment.start.clone(),
-        end: result.segment.end.clone(),
-        label,
-        style: "generic",
-        labelAnchor: midpoint,
-      };
-    }
-    if (result.kind === "arc_length" || result.kind === "central_angle") {
-      return {
-        kind: "label",
-        point: pickedEdge.point.clone(),
-        label,
-      };
-    }
-    return { kind: "clear" };
-  }
-
-  if (display.style === "linear") {
-    const midpoint = display.start.clone().lerp(display.end, 0.5);
-    return {
-      kind: "segment",
-      start: display.start.clone(),
-      end: display.end.clone(),
-      label,
-      style: "linear",
-      labelAnchor: midpoint,
-    };
-  }
-
-  if (display.style === "radial") {
-    return {
-      kind: "segment",
-      start: display.center.clone(),
-      end: display.point.clone(),
-      label,
-      style: "radial",
-      segmentAnchor: pickedEdge.point.clone(),
-    };
-  }
-
-  if (display.style === "diameter") {
-    const center = display.center.clone();
-    let direction = pickedEdge.point.clone().sub(center);
-    if (direction.lengthSq() <= 1e-12) {
-      direction = display.end.clone().sub(display.start);
-    }
-    if (direction.lengthSq() <= 1e-12) {
-      direction.set(1, 0, 0);
-    } else {
-      direction.normalize();
-    }
-    const radius = Math.max(result.value * 0.5, 1e-9);
-    const start = center.clone().addScaledVector(direction, -radius);
-    const end = center.clone().addScaledVector(direction, radius);
-    return {
-      kind: "segment",
-      start,
-      end,
-      label,
-      style: "diameter",
-      labelAnchor: start.clone().lerp(end, 0.5),
-    };
-  }
-
-  if (display.style === "arcLabel") {
-    return {
-      kind: "label",
-      point: display.point.clone(),
-      label,
-    };
-  }
-
-  if (display.style === "angle") {
-    const center = display.center.clone();
-    const v0 = display.start.clone().sub(center);
-    const v1 = display.end.clone().sub(center);
-    const radius = Math.max(v0.length(), v1.length(), 1e-9);
-    if (v0.lengthSq() > 1e-12) v0.normalize();
-    if (v1.lengthSq() > 1e-12) v1.normalize();
-    const bisector = v0.clone().add(v1);
-    const direction =
-      bisector.lengthSq() > 1e-12
-        ? bisector.normalize()
-        : v0.lengthSq() > 1e-12
-          ? v0
-          : new THREE.Vector3(1, 0, 0);
-    return {
-      kind: "label",
-      point: center.clone().addScaledVector(direction, radius * 0.55),
-      label,
-    };
-  }
-
-  return { kind: "clear" };
-}
-
-export function buildNonAutoExactCadMeasurementRequest(
-  entity: PickedEntity,
-  mode: ExactCadSingleEntityMeasurementMode,
-): ExactCadMeasurementRequest | null {
-  if (entity.kind !== "edge" && entity.kind !== "curve_feature") return null;
-  switch (mode) {
-    case "length":
-      if (entity.kind === "curve_feature") {
-        return { kind: "arc_length", entity };
-      }
-      return { kind: "edge_length", edge: entity };
-    case "radius":
-      return { kind: "radius", entity };
-    case "diameter":
-      return { kind: "diameter", entity };
-    case "arc_length":
-      return { kind: "arc_length", entity };
-    case "central_angle":
-      return { kind: "central_angle", entity };
-    default:
-      return null;
-  }
-}
-
-function attachCircularTargetToMeasurementRequest(
-  request: ExactCadMeasurementRequest | null,
-  circularTarget: CircularMeasureTarget | null,
-): ExactCadMeasurementRequest | null {
-  if (!request || !circularTarget) return request;
-  switch (request.kind) {
-    case "radius":
-    case "diameter":
-    case "arc_length":
-    case "central_angle":
-      if (request.circularTarget) return request;
-      return { ...request, circularTarget };
-    default:
-      return request;
-  }
-}
-
-export function resolveMeasurementAnchorEntity(
-  request: ExactCadMeasurementRequest | null,
-  fallbackEdge: PickedEntity,
-): PickedEntity {
-  if (!request) return fallbackEdge;
-  switch (request.kind) {
-    case "edge_length":
-      return request.edge;
-    case "radius":
-    case "diameter":
-    case "arc_length":
-    case "central_angle":
-      return request.entity;
-    default:
-      return fallbackEdge;
-  }
-}
-
-function normalizeLiveAutoCircularRequest(params: {
-  request: ExactCadMeasurementRequest | null;
-  measurementMode: ExactCadSingleEntityMeasurementMode;
-  context: ExactCadMeasurementAutoRequestContext;
-}): ExactCadMeasurementRequest | null {
-  const request = params.request;
-  if (!request) return null;
-  if (params.measurementMode !== "auto") return request;
-  if (request.kind !== "radius" && request.kind !== "diameter") return request;
-
-  let circularTarget = request.circularTarget ?? null;
-  if (!circularTarget) {
-    if (request.entity.kind === "curve_feature") {
-      circularTarget = resolveCircularTargetFromCurveFeature(
-        params.context.curveFeatureById?.get(request.entity.featureId) ?? null,
-      );
-    } else if (request.entity.kind === "edge") {
-      const featureId =
-        params.context.circularFeatureIdByEdgeId?.get(request.entity.edgeId) ?? null;
-      if (featureId) {
-        const featureTarget = resolveCircularTargetFromCurveFeature(
-          params.context.curveFeatureById?.get(featureId) ?? null,
-        );
-        if (featureTarget) {
-          circularTarget = featureTarget;
-        }
-      }
-      if (!circularTarget) {
-        circularTarget = resolveCircularMeasureTarget(request.entity, {
-          verticesById: params.context.verticesById,
-          edgesById: params.context.edgesById,
-          facesById: params.context.facesById,
-          modelDiagonal: params.context.modelDiagonal,
-        });
-      }
-    }
-  }
-
-  if (!circularTarget) return request;
-  const fullCircle = isCircularTargetEffectivelyFullCircle(circularTarget);
-  const expectedKind = fullCircle ? "diameter" : "radius";
-  if (request.kind === expectedKind && request.circularTarget) {
-    return request;
-  }
-  return {
-    kind: expectedKind,
-    entity: request.entity,
-    circularTarget,
-  };
-}
-
-type ExactCadPickIntersection = Pick<THREE.Intersection, "object" | "point">;
-
-function edgeIntersectionPriorityFromUserData(data: any): number {
-  return data?.__isHoleDepthEdge
-    ? 0
-    : data?.__isArcSeamEdge
-      ? 1
-      : data?.__isFeatureEdge
-        ? 2
-        : 3;
-}
-
-function compareExactCadRaycastIntersections(
-  a: Pick<
-    THREE.Intersection,
-    "distance" | "distanceToRay" | "object"
-  >,
-  b: Pick<
-    THREE.Intersection,
-    "distance" | "distanceToRay" | "object"
-  >,
-): number {
-  const ar = Number.isFinite((a as any).distanceToRay)
-    ? Number((a as any).distanceToRay)
-    : Infinity;
-  const br = Number.isFinite((b as any).distanceToRay)
-    ? Number((b as any).distanceToRay)
-    : Infinity;
-  if (ar !== br) return ar - br;
-  const ad = (a.object as any)?.userData ?? {};
-  const bd = (b.object as any)?.userData ?? {};
-  const ap = edgeIntersectionPriorityFromUserData(ad);
-  const bp = edgeIntersectionPriorityFromUserData(bd);
-  if (ap !== bp) return ap - bp;
-  return a.distance - b.distance;
-}
-
-export function sortExactCadRaycastIntersections(
-  intersections: readonly THREE.Intersection[],
-): THREE.Intersection[] {
-  return [...intersections].sort(compareExactCadRaycastIntersections);
-}
-
-function resolvePartIdFromIntersectionObject(
-  object: THREE.Object3D,
-  fallbackPartId: string | null,
-): string | null {
-  if (fallbackPartId && fallbackPartId.trim().length > 0) {
-    return fallbackPartId;
-  }
-  const userDataPartId = (object as any)?.userData?.__cadPartId;
-  if (typeof userDataPartId !== "string") return null;
-  return userDataPartId.trim().length > 0 ? userDataPartId : null;
-}
-
-export function collectSuppressedCircularExactEdgeIds(
-  curveFeatureById: ReadonlyMap<string, ExactCurveFeature>,
-): Set<string> {
-  const suppressed = new Set<string>();
-  for (const feature of curveFeatureById.values()) {
-    if (feature.kind !== "circle" && feature.kind !== "arc") continue;
-    for (const edgeId of feature.edgeIds) {
-      suppressed.add(edgeId);
-    }
-  }
-  return suppressed;
-}
-
-export function resolveExactCadPickedEntityFromIntersections(
-  curveIntersections: readonly ExactCadPickIntersection[],
-  edgeIntersections: readonly ExactCadPickIntersection[],
-  context: {
-    curveFeatureById: ReadonlyMap<string, ExactCurveFeature>;
-    edgesById: ReadonlyMap<string, ExactEdge>;
-  },
-): PickedEntity | null {
-  for (const intr of curveIntersections) {
-    const line = intr.object as THREE.Object3D;
-    const featureIdRaw = (line as any)?.userData?.__exactCurveFeatureId;
-    if (typeof featureIdRaw !== "string" || featureIdRaw.length === 0) continue;
-    const feature = context.curveFeatureById.get(featureIdRaw);
-    if (!feature || (feature.kind !== "circle" && feature.kind !== "arc")) continue;
-    return {
-      kind: "curve_feature",
-      partId: resolvePartIdFromIntersectionObject(line, feature.partId),
-      featureId: featureIdRaw,
-      point: intr.point.clone(),
-    };
-  }
-
-  for (const intr of edgeIntersections) {
-    const line = intr.object as THREE.Object3D;
-    const edgeIdRaw = (line as any)?.userData?.__exactEdgeId;
-    if (typeof edgeIdRaw !== "string" || edgeIdRaw.length === 0) continue;
-    const edge = context.edgesById.get(edgeIdRaw);
-    if (!edge) continue;
-    return {
-      kind: "edge",
-      partId: resolvePartIdFromIntersectionObject(line, edge.partId),
-      edgeId: edgeIdRaw,
-      point: intr.point.clone(),
-    };
-  }
-
-  return null;
-}
-
-export function resolveExactCadEntityPickResult(params: {
-  curveIntersections: readonly THREE.Intersection[];
-  edgeIntersections: readonly THREE.Intersection[];
-  curveFeatureById: ReadonlyMap<string, ExactCurveFeature>;
-  edgesById: ReadonlyMap<string, ExactEdge>;
-  sortIntersections?: (intersections: readonly THREE.Intersection[]) => THREE.Intersection[];
-}): PickedEntity | null {
-  const sortIntersections =
-    params.sortIntersections ?? sortExactCadRaycastIntersections;
-  const sortedCurve = sortIntersections(params.curveIntersections);
-  const sortedEdges = sortIntersections(params.edgeIntersections);
-  return resolveExactCadPickedEntityFromIntersections(sortedCurve, sortedEdges, {
-    curveFeatureById: params.curveFeatureById,
-    edgesById: params.edgesById,
-  });
-}
-
-export function resolveExactCadMeasurementSelection(params: {
-  pickedEntity: PickedEntity | null;
-  measurementMode: ExactCadSingleEntityMeasurementMode;
-  context: ExactCadMeasurementAutoRequestContext;
-}): {
-  request: ExactCadMeasurementRequest | null;
-  circularTarget: CircularMeasureTarget | null;
-  anchorEntity: PickedEntity | null;
-} {
-  if (!params.pickedEntity) {
-    return { request: null, circularTarget: null, anchorEntity: null };
-  }
-
-  const autoResolution = getAutoMeasurementRequestForPickedEntity(
-    params.pickedEntity,
-    params.context,
-  );
-  const baseRequest =
-    params.measurementMode === "auto"
-      ? autoResolution.request
-      : buildNonAutoExactCadMeasurementRequest(
-          params.pickedEntity,
-          params.measurementMode,
-        );
-  const request = attachCircularTargetToMeasurementRequest(
-    baseRequest,
-    autoResolution.circularTarget,
-  );
-  const anchorEntity = resolveMeasurementAnchorEntity(request, params.pickedEntity);
-
-  return { request, circularTarget: autoResolution.circularTarget, anchorEntity };
-}
-
-export function resolveExactCadCurveFeatureHoverPath(params: {
-  pickedEntity: PickedEntity | null;
-  curveFeatureById: ReadonlyMap<string, ExactCurveFeature>;
-  getWholeCurveFeaturePositions: (featureId: string) => number[] | null;
-}): {
-  featureId: string;
-  positions: number[];
-  endpointA: THREE.Vector3 | null;
-  endpointB: THREE.Vector3 | null;
-  usedWholeFeature: true;
-} | null {
-  const pickedEntity = params.pickedEntity;
-  if (!pickedEntity || pickedEntity.kind !== "curve_feature") return null;
-
-  const positions = params.getWholeCurveFeaturePositions(pickedEntity.featureId);
-  if (!positions || positions.length < 6) return null;
-
-  const feature = params.curveFeatureById.get(pickedEntity.featureId) ?? null;
-  const featureIsFullCircle =
-    feature && (feature.kind === "circle" || feature.kind === "arc")
-      ? isCurveFeatureEffectivelyFullCircle(feature)
-      : false;
-  if (featureIsFullCircle) {
-    return {
-      featureId: pickedEntity.featureId,
-      positions,
-      endpointA: null,
-      endpointB: null,
-      usedWholeFeature: true,
-    };
-  }
-
-  let endpointA: THREE.Vector3 | null = null;
-  let endpointB: THREE.Vector3 | null = null;
-
-  if (
-    feature &&
-    (feature.kind === "circle" || feature.kind === "arc") &&
-    feature.startPoint &&
-    feature.endPoint &&
-    !featureIsFullCircle
-  ) {
-    endpointA = feature.startPoint.clone();
-    endpointB = feature.endPoint.clone();
-  } else {
-    endpointA = new THREE.Vector3(positions[0], positions[1], positions[2]);
-    const last = positions.length - 3;
-    endpointB = new THREE.Vector3(
-      positions[last],
-      positions[last + 1],
-      positions[last + 2],
-    );
-  }
-
-  return {
-    featureId: pickedEntity.featureId,
-    positions,
-    endpointA,
-    endpointB,
-    usedWholeFeature: true,
-  };
 }
 
 export function createViewer(container: HTMLElement): Viewer {
@@ -2299,10 +1078,6 @@ export function createViewer(container: HTMLElement): Viewer {
     applyControlsPresetTo(orbitControls, controlsPreset);
     try {
       orbitControls.addEventListener("change", onControlsChanged as any);
-      orbitControls.addEventListener(
-        "end",
-        onControlsInteractionEnd as any,
-      );
     } catch {
       // ignore listener binding errors
     }
@@ -2314,19 +1089,11 @@ export function createViewer(container: HTMLElement): Viewer {
     emitViewChanged();
   }
 
-  function onControlsInteractionEnd() {
-    scheduleExactCurveFeatureResample("controls_end");
-  }
-
   function rebindControls(camera: THREE.Camera) {
     const prevTarget = controls?.target?.clone?.() ?? new THREE.Vector3();
     const prevEnabled = controls?.enabled ?? true;
     try {
       controls?.removeEventListener("change", onControlsChanged as any);
-      controls?.removeEventListener(
-        "end",
-        onControlsInteractionEnd as any,
-      );
     } catch {
       // ignore listener cleanup errors
     }
@@ -2532,1055 +1299,12 @@ export function createViewer(container: HTMLElement): Viewer {
   // Depth measurement overlays (stable seam + hole-depth connectors only).
   const edgeMeasurePickables: THREE.Object3D[] = [];
 
-  // Wireframe overlay state (per-mesh overlays for all visible meshes)
+  // Wireframe overlay state (single overlay when loading a single Mesh)
   let wireframeEnabled = false;
-  const wireframeOverlayGroup = new THREE.Group();
-  wireframeOverlayGroup.name = "wireframeOverlayGroup";
-  const wireframeOverlayLines: THREE.LineSegments[] = [];
-
-  // Exact CAD topology entities (internal-only for Phase C).
-  const verticesById = new Map<string, ExactVertex>();
-  const edgesById = new Map<string, ExactEdge>();
-  const facesById = new Map<string, ExactFace>();
-  const circularFeatureById = new Map<string, CircularFeature>();
-  const circularFeatureIdByEdgeId = new Map<string, string>();
-  const curveFeatureById = new Map<string, ExactCurveFeature>();
-  const curveFeatureIdByEdgeId = new Map<string, string>();
-  const curveFeatureRenderObjectsById = new Map<string, THREE.Line>();
-  const curveFeaturePickObjectsById = new Map<string, THREE.Line>();
-  const exactEdgeRenderObjectsById = new Map<string, THREE.LineSegments>();
-  const approxCadEdgeObjects: THREE.LineSegments[] = [];
-  let curveFeatureCount = 0;
-  let circleFeatureCount = 0;
-  let arcFeatureCount = 0;
-  let isExactCadMode = false;
-  let isApproxCadMode = false;
-  let currentCadExt: string | null = null;
-  let currentCadTopologyAvailability: CadTopologyAvailability | null = null;
-  let approxCadMeasurementFallbackReported = false;
-  let approxCadRenderedEdgeCount = 0;
-  let exactCadSingleEntityMeasurementMode: ExactCadSingleEntityMeasurementMode =
-    "auto";
-  let exactCadEdgeDisplayOptions: ExactCadEdgeDisplayOptions = {
-    ...DEFAULT_EXACT_CAD_EDGE_DISPLAY_OPTIONS,
-  };
-  const adaptiveCurveSagittaEpsilonPx = 0.75;
-  let exactCurveResampleRAFId: number | null = null;
-  const pendingExactCurveResampleReasons = new Set<string>();
-
-  function reportApproxCadMeasurementFallbackRuntimeOnce(
-    source: "pick" | "highlight" | "measure",
-  ): void {
-    if (!isApproxCadMode) return;
-    if (approxCadMeasurementFallbackReported) return;
-    approxCadMeasurementFallbackReported = true;
-    console.warn(
-      "[CadViewer] Exact CAD topology unavailable in current OCC runtime. Measurement interactions are running in approximate mode.",
-      {
-        source,
-        reason: currentCadTopologyAvailability?.reason ?? null,
-        message: currentCadTopologyAvailability?.message ?? null,
-      },
-    );
-  }
-
-  function isCadTopologyContext(
-    raw: unknown,
-  ): raw is ViewerCadTopologyContext {
-    if (!raw || typeof raw !== "object") return false;
-    const ctx = raw as Partial<ViewerCadTopologyContext>;
-    if (typeof ctx.ext !== "string") return false;
-    if (!EXACT_CAD_EXTENSIONS.has(ctx.ext.toLowerCase())) return false;
-    if (ctx.topology === null) return true;
-    if (!ctx.topology || typeof ctx.topology !== "object") return false;
-    return Array.isArray((ctx.topology as CadTopologyResult).edges);
-  }
-
-  function isCadTopologyAvailability(
-    raw: unknown,
-  ): raw is CadTopologyAvailability {
-    if (!raw || typeof raw !== "object") return false;
-    const availability = raw as Partial<CadTopologyAvailability>;
-    return (
-      typeof availability.exact === "boolean" &&
-      typeof availability.reason === "string" &&
-      typeof availability.message === "string"
-    );
-  }
-
-  function collectVisibleCadPartIds(): Set<string> {
-    const partIds = new Set<string>();
-    modelRoot.traverse((node: any) => {
-      if (!node || node === featureEdgesGroup || node === edgesGroup) return;
-      const rawPartId = node.userData?.__cadPartId;
-      if (typeof rawPartId !== "string") return;
-      const partId = rawPartId.trim();
-      if (!partId) return;
-      partIds.add(partId);
-    });
-    return partIds;
-  }
-
-  function buildSegmentPositionsFromSamplePoints(
-    samplePositions: Float32Array,
-    closed: boolean,
-  ): Float32Array | null {
-    const pointCount = Math.floor(samplePositions.length / 3);
-    if (pointCount < 2) return null;
-
-    const out: number[] = [];
-    for (let i = 0; i < pointCount - 1; i++) {
-      const a = i * 3;
-      const b = (i + 1) * 3;
-      out.push(
-        samplePositions[a],
-        samplePositions[a + 1],
-        samplePositions[a + 2],
-        samplePositions[b],
-        samplePositions[b + 1],
-        samplePositions[b + 2],
-      );
-    }
-
-    if (closed && pointCount > 2) {
-      const last = (pointCount - 1) * 3;
-      const first = 0;
-      const dx = samplePositions[last] - samplePositions[first];
-      const dy = samplePositions[last + 1] - samplePositions[first + 1];
-      const dz = samplePositions[last + 2] - samplePositions[first + 2];
-      if (dx * dx + dy * dy + dz * dz > 1e-20) {
-        out.push(
-          samplePositions[last],
-          samplePositions[last + 1],
-          samplePositions[last + 2],
-          samplePositions[first],
-          samplePositions[first + 1],
-          samplePositions[first + 2],
-        );
-      }
-    }
-
-    if (out.length < 6) return null;
-    return new Float32Array(out);
-  }
-
-  function cloneOptionalVector3(point: THREE.Vector3 | null | undefined): THREE.Vector3 | null {
-    return point ? point.clone() : null;
-  }
-
-  function normalizePartId(partId: string | null | undefined): string | null {
-    if (typeof partId !== "string") return null;
-    const trimmed = partId.trim();
-    return trimmed.length > 0 ? trimmed : null;
-  }
-
-  function resolveFeatureEdgeKind(edgeIds: string[]): ExactEdgeKind {
-    for (const edgeId of edgeIds) {
-      const kind = edgesById.get(edgeId)?.kind;
-      if (
-        kind === "boundary" ||
-        kind === "sharp" ||
-        kind === "tangent" ||
-        kind === "seam" ||
-        kind === "degenerated" ||
-        kind === "unknown"
-      ) {
-        return kind;
-      }
-    }
-    return "unknown";
-  }
-
-  function resolveCurveFeatureSource(
-    source: ExactCurveFeatureSource,
-  ): ExactCurveFeatureSource {
-    if (currentCadTopologyAvailability?.exact === false) return "sampled";
-    return source;
-  }
-
-  function buildCurveFeaturesFromTopology(): void {
-    curveFeatureById.clear();
-    curveFeatureIdByEdgeId.clear();
-    circularFeatureById.clear();
-    circularFeatureIdByEdgeId.clear();
-
-    const circularFeatureCache = buildCircularFeatureCache(
-      {
-        verticesById,
-        edgesById,
-        facesById,
-      },
-      {
-        tolerance: {
-          modelDiagonalFactor: 4e-5,
-          radiusFactor: 2e-3,
-          minimum: 5e-4,
-        },
-      },
-    );
-
-    circleFeatureCount = 0;
-    arcFeatureCount = 0;
-
-    for (const [featureId, feature] of circularFeatureCache.circularFeatureById) {
-      const source = resolveCurveFeatureSource(feature.source);
-      const circularFeature: CircularFeature = {
-        featureId,
-        ...cloneCircularMeasureTarget(feature),
-        source,
-      };
-      circularFeatureById.set(featureId, circularFeature);
-      const effectiveFullCircle =
-        isCircularTargetEffectivelyFullCircle(circularFeature);
-
-      const curveFeature: ExactCircleOrArcCurveFeature = {
-        kind: effectiveFullCircle ? "circle" : "arc",
-        featureId: circularFeature.featureId,
-        partId: normalizePartId(circularFeature.partId),
-        edgeIds: [...circularFeature.edgeIds],
-        source,
-        edgeKind: resolveFeatureEdgeKind(circularFeature.edgeIds),
-        center: cloneOptionalVector3(circularFeature.center),
-        normal: cloneOptionalVector3(circularFeature.normal),
-        radius: circularFeature.radius,
-        closedLoop: circularFeature.closedLoop,
-        isFullCircle: effectiveFullCircle,
-        startPoint: cloneOptionalVector3(circularFeature.startPoint),
-        endPoint: cloneOptionalVector3(circularFeature.endPoint),
-        midPoint: cloneOptionalVector3(circularFeature.midPoint),
-        sweepAngleRad: circularFeature.sweepAngleRad,
-        arcLength: circularFeature.arcLength,
-      };
-      curveFeatureById.set(featureId, curveFeature);
-      if (curveFeature.kind === "circle") circleFeatureCount += 1;
-      else arcFeatureCount += 1;
-    }
-
-    for (const [edgeId, featureId] of circularFeatureCache.circularFeatureIdByEdgeId) {
-      circularFeatureIdByEdgeId.set(edgeId, featureId);
-      curveFeatureIdByEdgeId.set(edgeId, featureId);
-    }
-
-    for (const edge of edgesById.values()) {
-      if (edge.curveKind !== "line") continue;
-      if (curveFeatureIdByEdgeId.has(edge.id)) continue;
-      const featureId = `line:${edge.id}`;
-      const lineFeature: ExactLineCurveFeature = {
-        kind: "line",
-        featureId,
-        partId: normalizePartId(edge.partId),
-        edgeIds: [edge.id],
-        source: resolveCurveFeatureSource("sampled"),
-        edgeKind: edge.kind,
-      };
-      curveFeatureById.set(featureId, lineFeature);
-      curveFeatureIdByEdgeId.set(edge.id, featureId);
-    }
-
-    curveFeatureCount = curveFeatureById.size;
-    console.debug("[CadViewer] Curve features built", {
-      curveFeatureCount,
-      circleFeatureCount,
-      arcFeatureCount,
-    });
-  }
-
-  function clearExactCadTopologyEntities() {
-    verticesById.clear();
-    edgesById.clear();
-    facesById.clear();
-    circularFeatureById.clear();
-    circularFeatureIdByEdgeId.clear();
-    curveFeatureById.clear();
-    curveFeatureIdByEdgeId.clear();
-    curveFeatureRenderObjectsById.clear();
-    curveFeaturePickObjectsById.clear();
-    exactEdgeRenderObjectsById.clear();
-    curveFeatureCount = 0;
-    circleFeatureCount = 0;
-    arcFeatureCount = 0;
-  }
-
-  function clearCadTopology() {
-    clearExactCadTopologyEntities();
-    approxCadEdgeObjects.length = 0;
-    isExactCadMode = false;
-    isApproxCadMode = false;
-    currentCadExt = null;
-    currentCadTopologyAvailability = null;
-    approxCadRenderedEdgeCount = 0;
-    pendingExactCurveResampleReasons.clear();
-    if (exactCurveResampleRAFId !== null) {
-      cancelAnimationFrame(exactCurveResampleRAFId);
-      exactCurveResampleRAFId = null;
-    }
-  }
-
-  function scheduleExactCurveFeatureResample(reason: string): void {
-    if (!isExactCadMode) return;
-    pendingExactCurveResampleReasons.add(reason);
-    if (exactCurveResampleRAFId !== null) return;
-
-    exactCurveResampleRAFId = requestAnimationFrame(() => {
-      exactCurveResampleRAFId = null;
-      if (!isExactCadMode) {
-        pendingExactCurveResampleReasons.clear();
-        return;
-      }
-      const reasonSummary = Array.from(pendingExactCurveResampleReasons).join("|");
-      pendingExactCurveResampleReasons.clear();
-      rebuildExactCadEdges(`adaptive_resample:${reasonSummary || "unknown"}`);
-    });
-  }
-
-  function setCadTopology(topology: CadTopologyResult | null | undefined) {
-    clearExactCadTopologyEntities();
-    if (!topology) return;
-
-    for (const vertex of topology.vertices ?? []) {
-      if (!vertex?.id) continue;
-      verticesById.set(vertex.id, vertex);
-    }
-    for (const edge of topology.edges ?? []) {
-      if (!edge?.id) continue;
-      edgesById.set(edge.id, edge);
-    }
-    for (const face of topology.faces ?? []) {
-      if (!face?.id) continue;
-      facesById.set(face.id, face);
-    }
-    buildCurveFeaturesFromTopology();
-  }
-
-  function isExactEdgeKindVisible(kind: ExactEdgeKind): boolean {
-    switch (kind) {
-      case "boundary":
-        return exactCadEdgeDisplayOptions.boundaryEdges;
-      case "sharp":
-        return exactCadEdgeDisplayOptions.sharpEdges;
-      case "tangent":
-        return exactCadEdgeDisplayOptions.tangentEdges !== "removed";
-      case "seam":
-        return exactCadEdgeDisplayOptions.seamEdges;
-      // Keep unknown/degenerated hidden by default in exact mode.
-      case "degenerated":
-      case "unknown":
-      default:
-        return false;
-    }
-  }
-
-  function isApproxCadEdgeKindVisible(kind: ApproxCadEdgeKind): boolean {
-    switch (kind) {
-      case "boundary":
-        return exactCadEdgeDisplayOptions.boundaryEdges;
-      case "sharp":
-        return exactCadEdgeDisplayOptions.sharpEdges;
-      case "tangent":
-        return exactCadEdgeDisplayOptions.tangentEdges !== "removed";
-      default:
-        return false;
-    }
-  }
-
-  function applyExactEdgeStyle(
-    line: THREE.Line | THREE.LineSegments,
-    kind: ExactEdgeKind,
-  ): void {
-    const material = line.material as THREE.LineBasicMaterial | undefined;
-    if (!material) return;
-
-    const tangentMode = exactCadEdgeDisplayOptions.tangentEdges;
-    const isTangentPhantom = kind === "tangent" && tangentMode === "phantom";
-    material.color.setHex(isTangentPhantom ? 0x4b5563 : 0x111111);
-    material.transparent = true;
-    material.opacity = isTangentPhantom ? 0.32 : 0.9;
-    material.depthWrite = false;
-    material.needsUpdate = true;
-  }
-
-  function applyApproxCadEdgeStyle(
-    line: THREE.LineSegments,
-    kind: ApproxCadEdgeKind,
-  ): void {
-    const material = line.material as THREE.LineBasicMaterial | undefined;
-    if (!material) return;
-
-    const tangentMode = exactCadEdgeDisplayOptions.tangentEdges;
-    const isTangentPhantom = kind === "tangent" && tangentMode === "phantom";
-    material.color.setHex(isTangentPhantom ? 0x4b5563 : 0x111111);
-    material.transparent = true;
-    material.opacity = isTangentPhantom ? 0.32 : 0.9;
-    material.depthWrite = false;
-    material.needsUpdate = true;
-  }
-
-  function countLineSegments(line: THREE.LineSegments): number {
-    const geometry = line.geometry as THREE.BufferGeometry | undefined;
-    if (!geometry) return 0;
-    if (geometry.index) {
-      return Math.floor(geometry.index.count / 2);
-    }
-    const pos = geometry.getAttribute("position") as THREE.BufferAttribute | undefined;
-    if (!pos) return 0;
-    return Math.floor(pos.count / 2);
-  }
-
-  function updateEngineeringEdgeVisibility() {
-    if (isExactCadMode) {
-      // Exact CAD mode controls exact topology edges only; silhouettes remain a
-      // separate, view-dependent concept and are not part of edge kind mapping.
-      for (const line of exactEdgeRenderObjectsById.values()) {
-        const kind = (line.userData?.__exactEdgeKind ?? "unknown") as ExactEdgeKind;
-        const kindVisible = isExactEdgeKindVisible(kind);
-        applyExactEdgeStyle(line, kind);
-        line.visible = featureEdgesEnabled && kindVisible;
-      }
-      for (const line of curveFeatureRenderObjectsById.values()) {
-        const kind = (line.userData?.__exactEdgeKind ?? "unknown") as ExactEdgeKind;
-        const kindVisible = isExactEdgeKindVisible(kind);
-        applyExactEdgeStyle(line, kind);
-        line.visible = featureEdgesEnabled && kindVisible;
-      }
-      for (const line of curveFeaturePickObjectsById.values()) {
-        const kind = (line.userData?.__exactEdgeKind ?? "unknown") as ExactEdgeKind;
-        const kindVisible = isExactEdgeKindVisible(kind);
-        line.visible = featureEdgesEnabled && kindVisible;
-      }
-
-      const prevSilhouette = silhouetteEdgesEnabled;
-      silhouetteEdgesEnabled = exactCadEdgeDisplayOptions.silhouettes;
-      if (prevSilhouette !== silhouetteEdgesEnabled) {
-        requestUpdateSilhouette?.();
-      }
-      approxCadRenderedEdgeCount = 0;
-    } else if (isApproxCadMode) {
-      let renderedSegmentCount = 0;
-      for (const line of approxCadEdgeObjects) {
-        const kind = (line.userData?.__approxCadEdgeKind ??
-          "boundary") as ApproxCadEdgeKind;
-        const kindVisible = isApproxCadEdgeKindVisible(kind);
-        applyApproxCadEdgeStyle(line, kind);
-        line.visible = featureEdgesEnabled && kindVisible;
-        if (line.visible) {
-          renderedSegmentCount += countLineSegments(line);
-        }
-      }
-      approxCadRenderedEdgeCount = renderedSegmentCount;
-
-      // Approximate CAD mode keeps seam/hidden/centerline features disabled.
-      const prevSilhouette = silhouetteEdgesEnabled;
-      silhouetteEdgesEnabled = false;
-      if (prevSilhouette !== silhouetteEdgesEnabled) {
-        requestUpdateSilhouette?.();
-      }
-    }
-
-    edgesGroup.visible = featureEdgesEnabled;
-    featureEdgesGroup.visible = featureEdgesEnabled;
-  }
-
-  function normalizePositiveAngle(angle: number): number {
-    const tau = Math.PI * 2;
-    let out = angle % tau;
-    if (out < 0) out += tau;
-    return out;
-  }
-
-  function choosePerpendicularDirection(normal: THREE.Vector3): THREE.Vector3 {
-    const fallback =
-      Math.abs(normal.x) < 0.9
-        ? new THREE.Vector3(1, 0, 0)
-        : new THREE.Vector3(0, 1, 0);
-    const direction = new THREE.Vector3().crossVectors(normal, fallback);
-    if (direction.lengthSq() <= 1e-12) {
-      return new THREE.Vector3(1, 0, 0);
-    }
-    return direction.normalize();
-  }
-
-  function clampInteger(value: number, min: number, max: number): number {
-    return Math.max(min, Math.min(max, Math.round(value)));
-  }
-
-  function projectWorldPointToViewport(
-    point: THREE.Vector3,
-  ): { x: number; y: number; valid: boolean } {
-    const width = Math.max(1, container.clientWidth);
-    const height = Math.max(1, container.clientHeight);
-    const ndc = point.clone().project(activeCamera);
-    const valid =
-      Number.isFinite(ndc.x) && Number.isFinite(ndc.y) && Number.isFinite(ndc.z);
-    if (!valid) {
-      return { x: 0, y: 0, valid: false };
-    }
-    return {
-      x: ((ndc.x + 1) * 0.5) * width,
-      y: ((1 - ndc.y) * 0.5) * height,
-      valid: true,
-    };
-  }
-
-  function estimateProjectedCircleRadiusPx(
-    center: THREE.Vector3,
-    basisU: THREE.Vector3,
-    basisV: THREE.Vector3,
-    radius: number,
-  ): number {
-    const centerScreen = projectWorldPointToViewport(center);
-    if (!centerScreen.valid) return 0;
-
-    const candidates = [
-      basisU.clone(),
-      basisU.clone().multiplyScalar(-1),
-      basisV.clone(),
-      basisV.clone().multiplyScalar(-1),
-    ];
-    let maxRadiusPx = 0;
-
-    for (const direction of candidates) {
-      const worldPoint = center.clone().addScaledVector(direction, radius);
-      const screen = projectWorldPointToViewport(worldPoint);
-      if (!screen.valid) continue;
-      const dx = screen.x - centerScreen.x;
-      const dy = screen.y - centerScreen.y;
-      maxRadiusPx = Math.max(maxRadiusPx, Math.hypot(dx, dy));
-    }
-
-    return Number.isFinite(maxRadiusPx) ? maxRadiusPx : 0;
-  }
-
-  function computeAdaptiveCurveFeatureSegmentCount(params: {
-    projectedRadiusPx: number;
-    isFullCircle: boolean;
-    sweepAngleRad: number;
-  }): number {
-    const radiusPx = Math.max(params.projectedRadiusPx, 1);
-    const cosineArg = THREE.MathUtils.clamp(
-      1 - adaptiveCurveSagittaEpsilonPx / radiusPx,
-      -1,
-      1,
-    );
-    let delta = 2 * Math.acos(cosineArg);
-    if (!Number.isFinite(delta) || delta <= 1e-6) {
-      delta = Math.PI / 256;
-    }
-
-    if (params.isFullCircle) {
-      const count = Math.ceil((Math.PI * 2) / delta);
-      return clampInteger(count, 64, 512);
-    }
-
-    const safeSweep = Math.max(1e-6, Math.abs(params.sweepAngleRad));
-    const count = Math.ceil(safeSweep / delta);
-    return clampInteger(count, 24, 512);
-  }
-
-  function resolveArcSweepAngleRad(params: {
-    feature: ExactCircleOrArcCurveFeature;
-    isFullCircle: boolean;
-    startAngle: number;
-    resolveAngle: (point: THREE.Vector3 | null) => number | null;
-  }): number | null {
-    const { feature, isFullCircle, startAngle, resolveAngle } = params;
-    let sweep = feature.sweepAngleRad;
-    const hasDistinctEndpoints = hasDistinctCircularEndpoints(
-      feature.startPoint,
-      feature.endPoint,
-    );
-    if (
-      !isFullCircle &&
-      hasDistinctEndpoints &&
-      Number.isFinite(sweep ?? NaN) &&
-      Math.abs(Math.abs(sweep as number) - Math.PI * 2) <= 1e-3
-    ) {
-      sweep = null;
-    }
-    if (!Number.isFinite(sweep ?? NaN) || (sweep ?? 0) <= 1e-9) {
-      const endAngle = resolveAngle(feature.endPoint);
-      const midAngle = resolveAngle(feature.midPoint);
-      if (endAngle !== null) {
-        let delta = normalizePositiveAngle(endAngle - startAngle);
-        if (midAngle !== null) {
-          const midDelta = normalizePositiveAngle(midAngle - startAngle);
-          if (midDelta > delta + 1e-6) {
-            delta = Math.PI * 2 - delta;
-          }
-        }
-        sweep = delta;
-      }
-    }
-    if (!Number.isFinite(sweep ?? NaN) || (sweep ?? 0) <= 1e-9) return null;
-    const maxOpenSweep = Math.PI * 2 - 1e-4;
-    return Math.min(
-      Math.abs(sweep as number),
-      isFullCircle ? Math.PI * 2 : maxOpenSweep,
-    );
-  }
-
-  function buildCurveFeatureAnalyticPolylinePositions(
-    feature: ExactCircleOrArcCurveFeature,
-  ): { positions: Float32Array; sampleCount: number } | null {
-    if (!feature.center || !feature.normal || !feature.radius) return null;
-    if (!Number.isFinite(feature.radius) || feature.radius <= 1e-12) return null;
-    const normal = feature.normal.clone();
-    if (normal.lengthSq() <= 1e-12) return null;
-    normal.normalize();
-
-    let basisU: THREE.Vector3 | null = null;
-    const candidatePoints = [feature.startPoint, feature.midPoint, feature.endPoint];
-    for (const point of candidatePoints) {
-      if (!point) continue;
-      const direction = point.clone().sub(feature.center);
-      direction.addScaledVector(normal, -direction.dot(normal));
-      if (direction.lengthSq() <= 1e-12) continue;
-      basisU = direction.normalize();
-      break;
-    }
-    if (!basisU) {
-      basisU = choosePerpendicularDirection(normal);
-    }
-    const basisV = new THREE.Vector3().crossVectors(normal, basisU).normalize();
-    if (basisV.lengthSq() <= 1e-12) return null;
-
-    const resolveAngle = (point: THREE.Vector3 | null): number | null => {
-      if (!point) return null;
-      const rel = point.clone().sub(feature.center as THREE.Vector3);
-      const x = rel.dot(basisU as THREE.Vector3);
-      const y = rel.dot(basisV);
-      if (!Number.isFinite(x) || !Number.isFinite(y)) return null;
-      return Math.atan2(y, x);
-    };
-
-    const startAngle = resolveAngle(feature.startPoint) ?? 0;
-    let sweep = feature.sweepAngleRad ?? 0;
-    const fullCircle = isCurveFeatureEffectivelyFullCircle(feature);
-
-    let sampleCount = 0;
-    if (fullCircle) {
-      sweep = Math.PI * 2;
-      const projectedRadiusPx = estimateProjectedCircleRadiusPx(
-        feature.center,
-        basisU as THREE.Vector3,
-        basisV,
-        feature.radius,
-      );
-      sampleCount = computeAdaptiveCurveFeatureSegmentCount({
-        projectedRadiusPx,
-        isFullCircle: true,
-        sweepAngleRad: sweep,
-      });
-    } else {
-      if (!feature.startPoint) return null;
-      const resolvedSweep = resolveArcSweepAngleRad({
-        feature,
-        isFullCircle: fullCircle,
-        startAngle,
-        resolveAngle,
-      });
-      if (!resolvedSweep) return null;
-      sweep = resolvedSweep;
-      const projectedRadiusPx = estimateProjectedCircleRadiusPx(
-        feature.center,
-        basisU as THREE.Vector3,
-        basisV,
-        feature.radius,
-      );
-      sampleCount = computeAdaptiveCurveFeatureSegmentCount({
-        projectedRadiusPx,
-        isFullCircle: false,
-        sweepAngleRad: sweep,
-      });
-    }
-
-    const positions: number[] = [];
-    for (let i = 0; i <= sampleCount; i++) {
-      const t = i / sampleCount;
-      const angle = startAngle + (sweep as number) * t;
-      const cos = Math.cos(angle);
-      const sin = Math.sin(angle);
-      const point = (feature.center as THREE.Vector3)
-        .clone()
-        .addScaledVector(basisU as THREE.Vector3, cos * feature.radius)
-        .addScaledVector(basisV, sin * feature.radius);
-      positions.push(point.x, point.y, point.z);
-    }
-    if (positions.length < 6) return null;
-    return {
-      positions: new Float32Array(positions),
-      sampleCount,
-    };
-  }
-
-  function buildCurveFeaturePreviewPolyline(
-    feature: ExactCircleOrArcCurveFeature,
-  ): {
-    positions: Float32Array;
-    source: ExactCurveFeatureSource;
-    sampleCount: number;
-  } | null {
-    const analytic = buildCurveFeatureAnalyticPolylinePositions(feature);
-    if (!analytic) return null;
-    return {
-      positions: analytic.positions,
-      source: feature.source,
-      sampleCount: analytic.sampleCount,
-    };
-  }
-
-  function rebuildExactCadEdges(reason = "unspecified") {
-    clearFeatureEdges();
-    if (!isExactCadMode) return;
-
-    const visiblePartIds = collectVisibleCadPartIds();
-    const hasPartFilter = visiblePartIds.size > 0;
-    const suppressedCircularEdgeIds =
-      collectSuppressedCircularExactEdgeIds(curveFeatureById);
-    let rebuiltCurveFeatures = 0;
-    let rebuiltCircleFeatures = 0;
-    let rebuiltArcFeatures = 0;
-    let totalAdaptiveSamples = 0;
-
-    for (const feature of curveFeatureById.values()) {
-      if (feature.kind !== "circle" && feature.kind !== "arc") continue;
-      if (
-        hasPartFilter &&
-        feature.partId &&
-        feature.partId.trim().length > 0 &&
-        !visiblePartIds.has(feature.partId)
-      ) {
-        continue;
-      }
-
-      const preview = buildCurveFeaturePreviewPolyline(feature);
-      if (!preview) {
-        console.warn("[CadViewer] Failed to build analytic curve feature preview", {
-          featureId: feature.featureId,
-          kind: feature.kind,
-          sourceEdgeCount: feature.edgeIds.length,
-        });
-        continue;
-      }
-      rebuiltCurveFeatures += 1;
-      if (feature.kind === "circle") {
-        rebuiltCircleFeatures += 1;
-      } else {
-        rebuiltArcFeatures += 1;
-      }
-      totalAdaptiveSamples += preview.sampleCount;
-
-      const renderGeometry = new THREE.BufferGeometry();
-      renderGeometry.setAttribute(
-        "position",
-        new THREE.BufferAttribute(preview.positions, 3),
-      );
-      renderGeometry.computeBoundingSphere();
-
-      const renderMaterial = new THREE.LineBasicMaterial({
-        color: 0x111111,
-        transparent: true,
-        opacity: 0.9,
-        depthWrite: false,
-      });
-      const renderLine = new THREE.Line(renderGeometry, renderMaterial);
-      renderLine.name = "exactCadCurveFeature";
-      renderLine.frustumCulled = false;
-      renderLine.userData.__edgeOverlay = true;
-      renderLine.userData.__isFeatureEdge = true;
-      renderLine.userData.__isExactCadCurveFeature = true;
-      renderLine.userData.__exactCurveFeatureId = feature.featureId;
-      renderLine.userData.__exactEdgeKind = feature.edgeKind;
-      renderLine.userData.__cadPartId = feature.partId;
-      renderLine.userData.__curveFeatureSource = preview.source;
-      featureEdgesGroup.add(renderLine);
-      featureEdgeLines.push(renderLine);
-      curveFeatureRenderObjectsById.set(feature.featureId, renderLine);
-
-      const pickGeometry = renderGeometry.clone();
-      const pickMaterial = new THREE.LineBasicMaterial({
-        color: 0x000000,
-        transparent: true,
-        opacity: 0,
-        depthTest: false,
-        depthWrite: false,
-      });
-      const pickLine = new THREE.Line(pickGeometry, pickMaterial);
-      pickLine.name = "exactCadCurveFeaturePick";
-      pickLine.frustumCulled = false;
-      pickLine.userData.__edgeOverlay = true;
-      pickLine.userData.__isFeatureEdge = true;
-      pickLine.userData.__isExactCadCurveFeature = true;
-      pickLine.userData.__isExactCadCurveFeaturePick = true;
-      pickLine.userData.__exactCurveFeatureId = feature.featureId;
-      pickLine.userData.__exactEdgeKind = feature.edgeKind;
-      pickLine.userData.__cadPartId = feature.partId;
-      pickLine.userData.__curveFeatureSource = preview.source;
-      featureEdgesGroup.add(pickLine);
-      featureEdgeLines.push(pickLine);
-      curveFeaturePickObjectsById.set(feature.featureId, pickLine);
-    }
-
-    for (const edge of edgesById.values()) {
-      if (
-        hasPartFilter &&
-        typeof edge.partId === "string" &&
-        edge.partId.trim().length > 0 &&
-        !visiblePartIds.has(edge.partId)
-      ) {
-        continue;
-      }
-      if (edge.curveKind === "circle") {
-        if (!suppressedCircularEdgeIds.has(edge.id)) {
-          console.warn("[CadViewer] Suppressing ungrouped circular exact edge", {
-            edgeId: edge.id,
-          });
-        }
-        continue;
-      }
-
-      const segmentPositions = buildSegmentPositionsFromSamplePoints(
-        edge.samplePositions,
-        edge.closed,
-      );
-      if (!segmentPositions) continue;
-
-      const geometry = new THREE.BufferGeometry();
-      geometry.setAttribute(
-        "position",
-        new THREE.BufferAttribute(segmentPositions, 3),
-      );
-      geometry.computeBoundingSphere();
-      const material = new THREE.LineBasicMaterial({
-        color: 0x111111,
-        transparent: true,
-        opacity: 0.9,
-        depthWrite: false,
-      });
-      const line = new THREE.LineSegments(geometry, material);
-      line.name = "exactCadEdge";
-      line.frustumCulled = false;
-      line.userData.__edgeOverlay = true;
-      line.userData.__isFeatureEdge = true;
-      line.userData.__isExactCadEdge = true;
-      line.userData.__exactEdgeId = edge.id;
-      line.userData.__exactEdgeKind = edge.kind;
-      line.userData.__cadPartId = edge.partId;
-      featureEdgesGroup.add(line);
-      featureEdgeLines.push(line);
-      // Exact CAD mode raycasts directly against exactEdgeRenderObjectsById.
-      // Legacy edgePickables are reserved for fallback mesh overlays only.
-      exactEdgeRenderObjectsById.set(edge.id, line);
-    }
-
-    console.debug("[CadViewer] Exact curve adaptive resample", {
-      exactCadModeActive: isExactCadMode,
-      adaptiveResamplingRebuiltCurveFeatures: true,
-      rebuildReason: reason,
-      curveFeaturesRebuilt: rebuiltCurveFeatures,
-      circleFeaturesRebuilt: rebuiltCircleFeatures,
-      arcFeaturesRebuilt: rebuiltArcFeatures,
-      totalAdaptiveSamples,
-    });
-
-    updateEngineeringEdgeVisibility();
-  }
-
-  function collectVisibleCadMeshes(): THREE.Mesh[] {
-    const meshes: THREE.Mesh[] = [];
-    modelRoot.traverse((child: any) => {
-      if (!child?.isMesh) return;
-      if (child?.userData?.__edgeOverlay) return;
-      if (!isEffectivelyVisible(child)) return;
-      meshes.push(child as THREE.Mesh);
-    });
-    return meshes;
-  }
-
-  function rebuildApproxCadEngineeringEdges() {
-    clearFeatureEdges();
-    if (!isApproxCadMode) return;
-
-    const sharpAngleRad = THREE.MathUtils.degToRad(APPROX_CAD_SHARP_ANGLE_DEG);
-    const weldTolerance = Math.max(modelDiagonal * 1e-6, 1e-8);
-    const tinySegmentEps = Math.max(modelDiagonal * 1e-5, 1e-7);
-    const tinySegmentEpsSq = tinySegmentEps * tinySegmentEps;
-
-    for (const mesh of collectVisibleCadMeshes()) {
-      const sourceGeometry = mesh.geometry as THREE.BufferGeometry | undefined;
-      if (!sourceGeometry) continue;
-
-      let indexedGeometry: THREE.BufferGeometry;
-      try {
-        indexedGeometry = BufferGeometryUtils.mergeVertices(
-          sourceGeometry.clone(),
-          weldTolerance,
-        );
-      } catch {
-        continue;
-      }
-
-      const position = indexedGeometry.getAttribute("position") as
-        | THREE.BufferAttribute
-        | undefined;
-      const indexArray = indexedGeometry.index?.array as ArrayLike<number> | undefined;
-      if (!position || !indexArray || indexArray.length < 3) {
-        indexedGeometry.dispose();
-        continue;
-      }
-
-      const faceCount = Math.floor(indexArray.length / 3);
-      if (faceCount === 0) {
-        indexedGeometry.dispose();
-        continue;
-      }
-
-      const normals = new Array<THREE.Vector3>(faceCount);
-      for (let fi = 0; fi < faceCount; fi++) {
-        const i0 = Number(indexArray[fi * 3]);
-        const i1 = Number(indexArray[fi * 3 + 1]);
-        const i2 = Number(indexArray[fi * 3 + 2]);
-        const p0 = new THREE.Vector3().fromBufferAttribute(position, i0);
-        const p1 = new THREE.Vector3().fromBufferAttribute(position, i1);
-        const p2 = new THREE.Vector3().fromBufferAttribute(position, i2);
-        const n = p1.clone().sub(p0).cross(p2.clone().sub(p0));
-        if (n.lengthSq() > 1e-20) {
-          n.normalize();
-        }
-        normals[fi] = n;
-      }
-
-      const edgeAdjacency = new Map<
-        string,
-        { a: number; b: number; adjacentFaces: number[] }
-      >();
-      const addFaceEdge = (v0: number, v1: number, faceIdx: number) => {
-        const a = Math.min(v0, v1);
-        const b = Math.max(v0, v1);
-        const key = `${a}:${b}`;
-        const record = edgeAdjacency.get(key);
-        if (record) {
-          record.adjacentFaces.push(faceIdx);
-          return;
-        }
-        edgeAdjacency.set(key, { a, b, adjacentFaces: [faceIdx] });
-      };
-
-      for (let fi = 0; fi < faceCount; fi++) {
-        const i0 = Number(indexArray[fi * 3]);
-        const i1 = Number(indexArray[fi * 3 + 1]);
-        const i2 = Number(indexArray[fi * 3 + 2]);
-        addFaceEdge(i0, i1, fi);
-        addFaceEdge(i1, i2, fi);
-        addFaceEdge(i2, i0, fi);
-      }
-
-      const boundaryPositions: number[] = [];
-      const sharpPositions: number[] = [];
-      const tangentPositions: number[] = [];
-      const pushSegment = (
-        aIdx: number,
-        bIdx: number,
-        kind: ApproxCadEdgeKind,
-      ): void => {
-        const ax = position.getX(aIdx);
-        const ay = position.getY(aIdx);
-        const az = position.getZ(aIdx);
-        const bx = position.getX(bIdx);
-        const by = position.getY(bIdx);
-        const bz = position.getZ(bIdx);
-        const dx = bx - ax;
-        const dy = by - ay;
-        const dz = bz - az;
-        if (dx * dx + dy * dy + dz * dz <= tinySegmentEpsSq) return;
-        const target =
-          kind === "boundary"
-            ? boundaryPositions
-            : kind === "sharp"
-              ? sharpPositions
-              : tangentPositions;
-        target.push(ax, ay, az, bx, by, bz);
-      };
-
-      for (const edge of edgeAdjacency.values()) {
-        const adjacentCount = edge.adjacentFaces.length;
-        if (adjacentCount === 1) {
-          pushSegment(edge.a, edge.b, "boundary");
-          continue;
-        }
-        if (adjacentCount === 2) {
-          const n0 = normals[edge.adjacentFaces[0]];
-          const n1 = normals[edge.adjacentFaces[1]];
-          if (!n0 || !n1 || n0.lengthSq() <= 1e-20 || n1.lengthSq() <= 1e-20) {
-            pushSegment(edge.a, edge.b, "boundary");
-            continue;
-          }
-          const angle = n0.angleTo(n1);
-          if (!Number.isFinite(angle)) {
-            pushSegment(edge.a, edge.b, "boundary");
-            continue;
-          }
-          pushSegment(
-            edge.a,
-            edge.b,
-            angle > sharpAngleRad ? "sharp" : "tangent",
-          );
-          continue;
-        }
-        // Treat non-manifold adjacency conservatively as boundary for visibility.
-        pushSegment(edge.a, edge.b, "boundary");
-      }
-
-      const createApproxEdgeObject = (
-        kind: ApproxCadEdgeKind,
-        positions: number[],
-      ): void => {
-        if (positions.length < 6) return;
-        const geometry = new THREE.BufferGeometry();
-        geometry.setAttribute(
-          "position",
-          new THREE.Float32BufferAttribute(new Float32Array(positions), 3),
-        );
-        geometry.computeBoundingSphere();
-
-        const material = new THREE.LineBasicMaterial({
-          color: 0x111111,
-          transparent: true,
-          opacity: 0.9,
-          depthWrite: false,
-        });
-        const line = new THREE.LineSegments(geometry, material);
-        line.name = "approxCadEdge";
-        line.frustumCulled = false;
-        line.renderOrder = (mesh.renderOrder ?? 0) + 1;
-        line.userData.__edgeOverlay = true;
-        line.userData.__isFeatureEdge = true;
-        line.userData.__isApproxCadEdge = true;
-        line.userData.__approxCadEdgeKind = kind;
-        if (typeof mesh.userData?.__cadPartId === "string") {
-          line.userData.__cadPartId = mesh.userData.__cadPartId;
-        }
-
-        mesh.add(line);
-        featureEdgeLines.push(line);
-        edgePickables.push(line);
-        approxCadEdgeObjects.push(line);
-      };
-
-      createApproxEdgeObject("boundary", boundaryPositions);
-      createApproxEdgeObject("sharp", sharpPositions);
-      createApproxEdgeObject("tangent", tangentPositions);
-      indexedGeometry.dispose();
-    }
-
-    updateEngineeringEdgeVisibility();
-  }
+  let wireframeLines: THREE.LineSegments | null = null;
 
   function updateFeatureEdgesVisibility() {
     try {
-      if (isExactCadMode || isApproxCadMode) {
-        updateEngineeringEdgeVisibility();
-        return;
-      }
       for (const ln of featureEdgeLines) {
         try {
           ln.visible = featureEdgesEnabled;
@@ -3614,69 +1338,7 @@ export function createViewer(container: HTMLElement): Viewer {
 
   function setFeatureEdgesEnabled(visible: boolean) {
     featureEdgesEnabled = !!visible;
-    if (isExactCadMode || isApproxCadMode) {
-      updateEngineeringEdgeVisibility();
-    } else {
-      updateFeatureEdgesVisibility();
-    }
-  }
-
-  function setExactCadEdgeDisplayOptions(
-    options: Partial<ExactCadEdgeDisplayOptions>,
-  ): void {
-    if (!options || typeof options !== "object") return;
-
-    const next: ExactCadEdgeDisplayOptions = {
-      ...exactCadEdgeDisplayOptions,
-    };
-
-    if (typeof options.boundaryEdges === "boolean") {
-      next.boundaryEdges = options.boundaryEdges;
-    }
-    if (typeof options.sharpEdges === "boolean") {
-      next.sharpEdges = options.sharpEdges;
-    }
-    if (
-      options.tangentEdges === "visible" ||
-      options.tangentEdges === "phantom" ||
-      options.tangentEdges === "removed"
-    ) {
-      next.tangentEdges = options.tangentEdges;
-    }
-    if (typeof options.seamEdges === "boolean") {
-      next.seamEdges = options.seamEdges;
-    }
-    if (typeof options.silhouettes === "boolean") {
-      next.silhouettes = options.silhouettes;
-    }
-    if (typeof options.hiddenEdges === "boolean") {
-      next.hiddenEdges = options.hiddenEdges;
-    }
-    if (typeof options.centerlines === "boolean") {
-      next.centerlines = options.centerlines;
-    }
-
-    exactCadEdgeDisplayOptions = next;
-    if (isExactCadMode || isApproxCadMode) {
-      updateEngineeringEdgeVisibility();
-    }
-  }
-
-  function setExactCadMeasurementMode(
-    mode: ExactCadSingleEntityMeasurementMode,
-  ): void {
-    if (
-      mode === "auto" ||
-      mode === "length" ||
-      mode === "radius" ||
-      mode === "diameter" ||
-      mode === "arc_length" ||
-      mode === "central_angle"
-    ) {
-      exactCadSingleEntityMeasurementMode = mode;
-      return;
-    }
-    exactCadSingleEntityMeasurementMode = "auto";
+    updateFeatureEdgesVisibility();
   }
 
   // Helper: dispose and remove any existing edge overlays
@@ -3740,11 +1402,6 @@ export function createViewer(container: HTMLElement): Viewer {
       featureEdgeLines.length = 0;
       edgePickables.length = 0;
       edgeMeasurePickables.length = 0;
-      exactEdgeRenderObjectsById.clear();
-      curveFeatureRenderObjectsById.clear();
-      curveFeaturePickObjectsById.clear();
-      approxCadEdgeObjects.length = 0;
-      approxCadRenderedEdgeCount = 0;
 
       // (No separate LineMaterial tracking for simple LineSegments overlays)
 
@@ -3767,88 +1424,49 @@ export function createViewer(container: HTMLElement): Viewer {
     }
   }
 
-  // Exact CAD engineering edges are not tessellation wireframe overlays.
-  // Wireframe is maintained as a separate overlay system.
-  function clearWireframeOverlays() {
+  // Wireframe overlay helpers
+  function disposeWireframeOverlay() {
     try {
-      for (const line of wireframeOverlayLines) {
-        try {
-          if (line.geometry) line.geometry.dispose();
-        } catch {
-          /* ignore */
-        }
-        try {
-          const mat = line.material as any;
-          if (Array.isArray(mat)) mat.forEach((m: any) => m?.dispose?.());
-          else mat?.dispose?.();
-        } catch {
-          /* ignore */
-        }
-        try {
-          if (line.parent) line.parent.remove(line);
-        } catch {
-          /* ignore */
-        }
+      if (wireframeLines) {
+        if (wireframeLines.geometry) wireframeLines.geometry.dispose();
+        if (wireframeLines.material)
+          (wireframeLines.material as any).dispose?.();
+        if (wireframeLines.parent) wireframeLines.parent.remove(wireframeLines);
+        wireframeLines = null;
       }
-      wireframeOverlayLines.length = 0;
-      wireframeOverlayGroup.clear();
     } catch {
       /* ignore */
     }
   }
 
-  function rebuildWireframeOverlays() {
-    clearWireframeOverlays();
+  function buildWireframeOverlay(mesh: THREE.Mesh) {
     try {
-      modelRoot.traverse((child: any) => {
-        if (!child?.isMesh || !child?.geometry) return;
-        if (!isEffectivelyVisible(child)) return;
-        if (child?.userData?.__edgeOverlay) return;
-        if (child?.userData?.__isFeatureEdge) return;
-        if (child?.userData?.__isExactCadEdge) return;
-
-        const mesh = child as THREE.Mesh;
-        const wfGeom = new THREE.WireframeGeometry(mesh.geometry);
-        const wfMat = new THREE.LineBasicMaterial({
-          color: 0x000000,
-          transparent: true,
-          opacity: 0.9,
-          depthTest: false,
-          depthWrite: false,
-        });
-        const lines = new THREE.LineSegments(wfGeom, wfMat);
-        lines.name = "wireframeOverlay";
-        lines.renderOrder = 9999;
-        lines.frustumCulled = false;
-        lines.userData.__wireframeOverlay = true;
-        lines.userData.__edgeOverlay = true;
-        lines.visible = !!wireframeEnabled;
-        // Parent to source mesh so transforms remain aligned.
-        mesh.add(lines);
-        wireframeOverlayLines.push(lines);
+      disposeWireframeOverlay();
+      if (!mesh || !mesh.geometry) return;
+      const wfGeom = new THREE.WireframeGeometry(mesh.geometry);
+      const wfMat = new THREE.LineBasicMaterial({
+        color: 0x000000,
+        transparent: true,
+        opacity: 0.9,
+        depthTest: false,
+        depthWrite: false,
       });
-      wireframeOverlayGroup.clear();
+      const lines = new THREE.LineSegments(wfGeom, wfMat);
+      lines.renderOrder = 9999;
+      lines.frustumCulled = false;
+      lines.userData.__edgeOverlay = true;
+      // add as a child of the mesh so it inherits transforms
+      mesh.add(lines);
+      wireframeLines = lines;
+      wireframeLines.visible = !!wireframeEnabled;
     } catch {
       /* ignore */
     }
   }
 
-  function updateWireframeOverlayVisibility() {
-    try {
-      for (const line of wireframeOverlayLines) {
-        try {
-          line.visible = !!wireframeEnabled;
-        } catch {
-          /* ignore */
-        }
-      }
-    } catch {
-      /* ignore */
-    }
-  }
-
-  // Legacy/fallback mesh edge overlay path:
-  // rebuilds THREE.EdgesGeometry outlines for non-exact CAD mode only.
+  // Rebuild feature edges by traversing mesh objects and attaching a LineSegments
+  // overlay using THREE.EdgesGeometry + THREE.LineSegments. Each overlay is added
+  // as a child of its source mesh so transforms always match.
   function rebuildFeatureEdges(thresholdAngleDeg = 40) {
     clearFeatureEdges();
 
@@ -3924,9 +1542,6 @@ export function createViewer(container: HTMLElement): Viewer {
   let measureBaseP1: THREE.Vector3 | null = null;
   let measureBaseP2: THREE.Vector3 | null = null;
   let measureBaseLabel: string | null = null;
-  let measureBaseLabelAnchor: THREE.Vector3 | null = null;
-  let measureBaseSegmentAnchor: THREE.Vector3 | null = null;
-  let measureBaseSegmentStyle: MeasurementSegmentStyle | null = null;
 
   const arrowMaterial = new THREE.MeshBasicMaterial({
     color: 0x000000,
@@ -4093,100 +1708,52 @@ export function createViewer(container: HTMLElement): Viewer {
     requestUpdateSilhouette?.();
   }
 
-  function collectExactCadEdgeRaycastTargets(): THREE.LineSegments[] {
-    const targets: THREE.LineSegments[] = [];
-    for (const line of exactEdgeRenderObjectsById.values()) {
-      if (!line?.isLineSegments) continue;
-      if (!line.visible) continue;
-      if (!isEffectivelyVisible(line)) continue;
-      targets.push(line);
-    }
-    return targets;
-  }
-
-  function collectCurveFeatureRaycastTargets(): THREE.Line[] {
-    const targets: THREE.Line[] = [];
-    for (const line of curveFeaturePickObjectsById.values()) {
-      if (!line?.isLine) continue;
-      if (!line.visible) continue;
-      if (!isEffectivelyVisible(line)) continue;
-      targets.push(line);
-    }
-    return targets;
-  }
-
-  function collectApproxCadEdgeRaycastTargets(): THREE.LineSegments[] {
-    const targets: THREE.LineSegments[] = [];
-    for (const line of approxCadEdgeObjects) {
-      if (!line?.isLineSegments) continue;
-      if (!line.visible) continue;
-      if (!isEffectivelyVisible(line)) continue;
-      targets.push(line);
-    }
-    return targets;
-  }
-
-  function collectFallbackEdgeRaycastTargets(params?: {
-    forMeasurement?: boolean;
-  }): THREE.LineSegments[] {
-    const targets: THREE.LineSegments[] = [];
-    for (const edgeObj of edgePickables) {
-      if (!edgeObj?.isLineSegments) continue;
-      const data = edgeObj.userData ?? {};
-      if (!data.__edgeOverlay) continue;
-      if (params?.forMeasurement && data.__isSilhouetteEdge) continue;
-      if (!isEffectivelyVisible(edgeObj)) continue;
-      targets.push(edgeObj);
-    }
-    return targets;
-  }
-
-  function collectActiveEdgeRaycastTargets(params?: {
-    forMeasurement?: boolean;
-  }): THREE.Object3D[] {
-    if (isExactCadMode) {
-      return [
-        ...collectCurveFeatureRaycastTargets(),
-        ...collectExactCadEdgeRaycastTargets(),
-      ];
-    }
-    if (isApproxCadMode) {
-      return collectApproxCadEdgeRaycastTargets();
-    }
-    // Generic mesh mode raycasts legacy THREE.EdgesGeometry overlays.
-    return collectFallbackEdgeRaycastTargets(params);
-  }
-
-  function sortEdgeIntersections(intersects: THREE.Intersection[]): void {
-    intersects.sort(compareExactCadRaycastIntersections);
-  }
-
   /**
-   * Raycasts only against active edge linework and returns a snapped point on
-   * the closest segment. Exact CAD mode uses exact sampled topology edges;
-   * fallback mesh mode uses legacy feature-edge overlays.
+   * Raycast only against feature edge LineSegments and return a snapped point on
+   * the closest segment. Returns { point, object } or null when nothing hit.
    */
   function pickEdgeAtScreenPosition(
     ndcX: number,
     ndcY: number,
   ): { point: THREE.Vector3; object: THREE.Object3D } | null {
-    if (currentCadExt && EXACT_CAD_EXTENSIONS.has(currentCadExt)) {
-      reportLegacySegmentPickerUsageInExactCadMode();
-    }
-
     const ndc = new THREE.Vector2(ndcX, ndcY);
     raycaster.setFromCamera(ndc, activeCamera);
 
-    const raycastTargets = collectActiveEdgeRaycastTargets();
-    if (raycastTargets.length === 0) return null;
-
+    // Raycast only against the tracked edge LineSegments for the model
+    if (edgePickables.length === 0) return null;
     const lineThreshold = computeLinePickThresholdWorld(8);
     (raycaster.params as any).Line = (raycaster.params as any).Line || {};
     (raycaster.params as any).Line.threshold = lineThreshold;
 
-    const intersects = raycaster.intersectObjects(raycastTargets, true);
+    const intersects = raycaster.intersectObjects(edgePickables, true);
     if (intersects.length === 0) return null;
-    sortEdgeIntersections(intersects);
+    intersects.sort((a, b) => {
+      const ar = Number.isFinite((a as any).distanceToRay)
+        ? Number((a as any).distanceToRay)
+        : Infinity;
+      const br = Number.isFinite((b as any).distanceToRay)
+        ? Number((b as any).distanceToRay)
+        : Infinity;
+      if (ar !== br) return ar - br;
+      const ad = (a.object as any)?.userData ?? {};
+      const bd = (b.object as any)?.userData ?? {};
+      const ap = ad.__isHoleDepthEdge
+        ? 0
+        : ad.__isArcSeamEdge
+          ? 1
+          : ad.__isFeatureEdge
+            ? 2
+            : 3;
+      const bp = bd.__isHoleDepthEdge
+        ? 0
+        : bd.__isArcSeamEdge
+          ? 1
+          : bd.__isFeatureEdge
+            ? 2
+            : 3;
+      if (ap !== bp) return ap - bp;
+      return a.distance - b.distance;
+    });
 
     // Use the nearest intersection first
     const intr = intersects[0];
@@ -4213,54 +1780,68 @@ export function createViewer(container: HTMLElement): Viewer {
     return { point: snapped, object: line };
   }
 
-  function getWorldPolylinePositions(line: THREE.Object3D): number[] | null {
-    const geometry = (line as any).geometry as THREE.BufferGeometry | undefined;
-    if (!geometry?.isBufferGeometry) return null;
-    const position = geometry.getAttribute("position") as
-      | THREE.BufferAttribute
-      | undefined;
-    if (!position || position.count < 2) return null;
+  /**
+   * Highlights an edge at the given screen position with a neon hover overlay.
+   * Raycasts against edgePickables, extracts hit segment endpoints, and draws
+   * a line + endpoint spheres with depthTest=false and high renderOrder.
+   */
+  function highlightEdgeAtScreenPosition(ndcX: number, ndcY: number): void {
+    const ndc = new THREE.Vector2(ndcX, ndcY);
+    raycaster.setFromCamera(ndc, activeCamera);
 
-    const out: number[] = [];
-    const point = new THREE.Vector3();
-    for (let i = 0; i < position.count; i++) {
-      point.fromBufferAttribute(position, i).applyMatrix4(line.matrixWorld);
-      out.push(point.x, point.y, point.z);
-    }
-    return out.length >= 6 ? out : null;
-  }
-
-  function getWholeCurveFeaturePositions(featureId: string): number[] | null {
-    const line = curveFeatureRenderObjectsById.get(featureId);
-    if (!line) return null;
-    return getWorldPolylinePositions(line);
-  }
-
-  function clearEdgeHoverEndpointSpheres(): void {
-    if (edgeHoverSphere1) {
-      scene.remove(edgeHoverSphere1);
-      edgeHoverSphere1.geometry.dispose();
-      (edgeHoverSphere1.material as THREE.Material).dispose();
-      edgeHoverSphere1 = null;
-    }
-    if (edgeHoverSphere2) {
-      scene.remove(edgeHoverSphere2);
-      edgeHoverSphere2.geometry.dispose();
-      (edgeHoverSphere2.material as THREE.Material).dispose();
-      edgeHoverSphere2 = null;
-    }
-  }
-
-  function renderEdgeHoverOverlay(
-    hoverPositions: number[],
-    endpointA: THREE.Vector3 | null,
-    endpointB: THREE.Vector3 | null,
-  ): void {
-    if (hoverPositions.length < 6) {
+    if (edgePickables.length === 0) {
       clearEdgeHighlight();
       return;
     }
 
+    const lineThreshold = computeLinePickThresholdWorld(8);
+    (raycaster.params as any).Line = (raycaster.params as any).Line || {};
+    (raycaster.params as any).Line.threshold = lineThreshold;
+
+    const intersects = raycaster.intersectObjects(edgePickables, true);
+    if (intersects.length === 0) {
+      clearEdgeHighlight();
+      return;
+    }
+    intersects.sort((a, b) => {
+      const ar = Number.isFinite((a as any).distanceToRay)
+        ? Number((a as any).distanceToRay)
+        : Infinity;
+      const br = Number.isFinite((b as any).distanceToRay)
+        ? Number((b as any).distanceToRay)
+        : Infinity;
+      if (ar !== br) return ar - br;
+      const ad = (a.object as any)?.userData ?? {};
+      const bd = (b.object as any)?.userData ?? {};
+      const ap = ad.__isHoleDepthEdge
+        ? 0
+        : ad.__isArcSeamEdge
+          ? 1
+          : ad.__isFeatureEdge
+            ? 2
+            : 3;
+      const bp = bd.__isHoleDepthEdge
+        ? 0
+        : bd.__isArcSeamEdge
+          ? 1
+          : bd.__isFeatureEdge
+            ? 2
+            : 3;
+      if (ap !== bp) return ap - bp;
+      return a.distance - b.distance;
+    });
+
+    const intr = intersects[0];
+    const line = intr.object as THREE.Object3D;
+    const endpoints =
+      getSegmentEndpointsFromLineIntersection(intr, line) ??
+      getClosestSegmentEndpointsToPoint(line, intr.point);
+    if (!endpoints) {
+      clearEdgeHighlight();
+      return;
+    }
+
+    // Draw neon hover overlay (thick, screen-space line)
     if (!edgeHoverLineMaterial) {
       edgeHoverLineMaterial = new LineMaterial({
         color: 0x00ffff,
@@ -4277,7 +1858,14 @@ export function createViewer(container: HTMLElement): Viewer {
     if (!edgeHoverLineGeometry) {
       edgeHoverLineGeometry = new LineGeometry();
     }
-    edgeHoverLineGeometry.setPositions(hoverPositions);
+    edgeHoverLineGeometry.setPositions([
+      endpoints.a.x,
+      endpoints.a.y,
+      endpoints.a.z,
+      endpoints.b.x,
+      endpoints.b.y,
+      endpoints.b.z,
+    ]);
 
     if (!edgeHoverLine) {
       edgeHoverLine = new Line2(edgeHoverLineGeometry, edgeHoverLineMaterial);
@@ -4288,10 +1876,7 @@ export function createViewer(container: HTMLElement): Viewer {
       edgeHoverLine.geometry = edgeHoverLineGeometry;
     }
 
-    clearEdgeHoverEndpointSpheres();
-
-    if (!endpointA || !endpointB) return;
-
+    // Endpoint spheres
     const sphereRadius = Math.max(0.1, modelDiagonal * 0.003);
     const sphereGeom = new THREE.SphereGeometry(sphereRadius, 16, 16);
     const sphereMat = new THREE.MeshBasicMaterial({
@@ -4300,245 +1885,25 @@ export function createViewer(container: HTMLElement): Viewer {
       depthWrite: false,
     });
 
+    if (edgeHoverSphere1) {
+      scene.remove(edgeHoverSphere1);
+      edgeHoverSphere1.geometry.dispose();
+      (edgeHoverSphere1.material as THREE.Material).dispose();
+    }
     edgeHoverSphere1 = new THREE.Mesh(sphereGeom, sphereMat.clone());
-    edgeHoverSphere1.position.copy(endpointA);
+    edgeHoverSphere1.position.copy(endpoints.a);
     edgeHoverSphere1.renderOrder = 10001;
     scene.add(edgeHoverSphere1);
 
+    if (edgeHoverSphere2) {
+      scene.remove(edgeHoverSphere2);
+      edgeHoverSphere2.geometry.dispose();
+      (edgeHoverSphere2.material as THREE.Material).dispose();
+    }
     edgeHoverSphere2 = new THREE.Mesh(sphereGeom, sphereMat);
-    edgeHoverSphere2.position.copy(endpointB);
+    edgeHoverSphere2.position.copy(endpoints.b);
     edgeHoverSphere2.renderOrder = 10001;
     scene.add(edgeHoverSphere2);
-  }
-
-  function resolveSegmentHoverFromRaycast(
-    ndcX: number,
-    ndcY: number,
-    raycastTargets: THREE.Object3D[],
-  ): {
-    hoverPositions: number[];
-    endpointA: THREE.Vector3;
-    endpointB: THREE.Vector3;
-  } | null {
-    if (raycastTargets.length === 0) return null;
-
-    const ndc = new THREE.Vector2(ndcX, ndcY);
-    raycaster.setFromCamera(ndc, activeCamera);
-
-    const lineThreshold = computeLinePickThresholdWorld(8);
-    (raycaster.params as any).Line = (raycaster.params as any).Line || {};
-    (raycaster.params as any).Line.threshold = lineThreshold;
-
-    const intersects = raycaster.intersectObjects(raycastTargets, true);
-    if (intersects.length === 0) return null;
-    sortEdgeIntersections(intersects);
-
-    const intr = intersects[0];
-    const line = intr.object as THREE.Object3D;
-    const endpoints =
-      getSegmentEndpointsFromLineIntersection(intr, line) ??
-      getClosestSegmentEndpointsToPoint(line, intr.point);
-    if (!endpoints) return null;
-
-    return {
-      hoverPositions: [
-        endpoints.a.x,
-        endpoints.a.y,
-        endpoints.a.z,
-        endpoints.b.x,
-        endpoints.b.y,
-        endpoints.b.z,
-      ],
-      endpointA: endpoints.a,
-      endpointB: endpoints.b,
-    };
-  }
-
-  /**
-   * Highlights an edge at the given screen position with a neon hover overlay.
-   * Raycasts against active edge targets (exact topology or fallback overlays),
-   * extracts hit segment endpoints, and draws a line + endpoint spheres with
-   * depthTest=false and high renderOrder.
-   */
-  function highlightEdgeAtScreenPosition(
-    ndcX: number,
-    ndcY: number,
-    pickedEntityOverride?: PickedEntity | null,
-  ): void {
-    if (isExactCadMode) {
-      const pickedEntity =
-        pickedEntityOverride ??
-        pickMeasurementEntityAtScreenPosition(ndcX, ndcY);
-      if (!pickedEntity) {
-        clearEdgeHighlight();
-        return;
-      }
-
-      const curveFeatureHover = resolveExactCadCurveFeatureHoverPath({
-        pickedEntity,
-        curveFeatureById,
-        getWholeCurveFeaturePositions,
-      });
-      if (curveFeatureHover) {
-        const hoverFeature =
-          curveFeatureById.get(curveFeatureHover.featureId) ?? null;
-        const hoverFeatureIsFullCircle =
-          hoverFeature &&
-          (hoverFeature.kind === "circle" || hoverFeature.kind === "arc")
-            ? isCurveFeatureEffectivelyFullCircle(hoverFeature)
-            : null;
-        const endpointA =
-          hoverFeature &&
-          (hoverFeature.kind === "circle" || hoverFeature.kind === "arc") &&
-          hoverFeatureIsFullCircle === false &&
-          hoverFeature.startPoint
-            ? hoverFeature.startPoint.clone()
-            : curveFeatureHover.endpointA;
-        const endpointB =
-          hoverFeature &&
-          (hoverFeature.kind === "circle" || hoverFeature.kind === "arc") &&
-          hoverFeatureIsFullCircle === false &&
-          hoverFeature.endPoint
-            ? hoverFeature.endPoint.clone()
-            : curveFeatureHover.endpointB;
-        renderEdgeHoverOverlay(
-          curveFeatureHover.positions,
-          endpointA,
-          endpointB,
-        );
-        console.debug("[CadViewer] Exact hover highlight path", {
-          exactCadModeActive: isExactCadMode,
-          pickedEntityKind: pickedEntity.kind,
-          usedWholeFeature: true,
-          usedSegmentFallback: false,
-          featureId: curveFeatureHover.featureId,
-          featureKind:
-            hoverFeature && (hoverFeature.kind === "circle" || hoverFeature.kind === "arc")
-              ? hoverFeature.kind
-              : null,
-          featureIsFullCircle: hoverFeatureIsFullCircle,
-        });
-        return;
-      }
-
-      if (pickedEntity.kind === "curve_feature") {
-        clearEdgeHighlight();
-        console.debug("[CadViewer] Exact hover highlight path", {
-          exactCadModeActive: isExactCadMode,
-          pickedEntityKind: pickedEntity.kind,
-          usedWholeFeature: false,
-          usedSegmentFallback: false,
-          featureId: pickedEntity.featureId,
-          reason: "missing_curve_feature_polyline",
-        });
-        return;
-      }
-
-      if (pickedEntity.kind !== "edge") {
-        clearEdgeHighlight();
-        console.debug("[CadViewer] Exact hover highlight path", {
-          exactCadModeActive: isExactCadMode,
-          pickedEntityKind: pickedEntity.kind,
-          usedWholeFeature: false,
-          usedSegmentFallback: false,
-          reason: "non_edge_entity",
-        });
-        return;
-      }
-
-      const exactEdgeLine = exactEdgeRenderObjectsById.get(pickedEntity.edgeId);
-      const wholeEdgePositions =
-        exactEdgeLine && isEffectivelyVisible(exactEdgeLine)
-          ? getWorldPolylinePositions(exactEdgeLine)
-          : null;
-      if (wholeEdgePositions) {
-        let endpointA: THREE.Vector3 | null = null;
-        let endpointB: THREE.Vector3 | null = null;
-        const edge = edgesById.get(pickedEntity.edgeId) ?? null;
-        if (edge?.vertexIds) {
-          const startVertex = verticesById.get(edge.vertexIds[0]) ?? null;
-          const endVertex = verticesById.get(edge.vertexIds[1]) ?? null;
-          if (startVertex?.point) {
-            endpointA = new THREE.Vector3(
-              startVertex.point[0],
-              startVertex.point[1],
-              startVertex.point[2],
-            );
-          }
-          if (endVertex?.point) {
-            endpointB = new THREE.Vector3(
-              endVertex.point[0],
-              endVertex.point[1],
-              endVertex.point[2],
-            );
-          }
-        }
-        if (!endpointA || !endpointB) {
-          endpointA = new THREE.Vector3(
-            wholeEdgePositions[0],
-            wholeEdgePositions[1],
-            wholeEdgePositions[2],
-          );
-          const last = wholeEdgePositions.length - 3;
-          endpointB = new THREE.Vector3(
-            wholeEdgePositions[last],
-            wholeEdgePositions[last + 1],
-            wholeEdgePositions[last + 2],
-          );
-        }
-        renderEdgeHoverOverlay(wholeEdgePositions, endpointA, endpointB);
-        console.debug("[CadViewer] Exact hover highlight path", {
-          exactCadModeActive: isExactCadMode,
-          pickedEntityKind: pickedEntity.kind,
-          usedWholeFeature: true,
-          usedSegmentFallback: false,
-          edgeId: pickedEntity.edgeId,
-        });
-        return;
-      }
-
-      const segmentHover = resolveSegmentHoverFromRaycast(
-        ndcX,
-        ndcY,
-        collectExactCadEdgeRaycastTargets(),
-      );
-      if (!segmentHover) {
-        clearEdgeHighlight();
-        return;
-      }
-      renderEdgeHoverOverlay(
-        segmentHover.hoverPositions,
-        segmentHover.endpointA,
-        segmentHover.endpointB,
-      );
-      console.debug("[CadViewer] Exact hover highlight path", {
-        exactCadModeActive: isExactCadMode,
-        pickedEntityKind: pickedEntity.kind,
-        usedWholeFeature: false,
-        usedSegmentFallback: true,
-        edgeId: pickedEntity.kind === "edge" ? pickedEntity.edgeId : null,
-      });
-      return;
-    }
-
-    if (isApproxCadMode) {
-      reportApproxCadMeasurementFallbackRuntimeOnce("highlight");
-    }
-
-    const segmentHover = resolveSegmentHoverFromRaycast(
-      ndcX,
-      ndcY,
-      collectActiveEdgeRaycastTargets(),
-    );
-    if (!segmentHover) {
-      clearEdgeHighlight();
-      return;
-    }
-    renderEdgeHoverOverlay(
-      segmentHover.hoverPositions,
-      segmentHover.endpointA,
-      segmentHover.endpointB,
-    );
   }
 
   /**
@@ -4557,572 +1922,171 @@ export function createViewer(container: HTMLElement): Viewer {
       edgeHoverLineMaterial.dispose();
       edgeHoverLineMaterial = null;
     }
-    clearEdgeHoverEndpointSpheres();
-  }
-
-  function pickExactCadEntityAtScreenPosition(
-    ndcX: number,
-    ndcY: number,
-  ): PickedEntity | null {
-    if (!isExactCadMode) return null;
-
-    const ndc = new THREE.Vector2(ndcX, ndcY);
-    raycaster.setFromCamera(ndc, activeCamera);
-
-    const lineThreshold = computeLinePickThresholdWorld(8);
-    (raycaster.params as any).Line = (raycaster.params as any).Line || {};
-    (raycaster.params as any).Line.threshold = lineThreshold;
-
-    const curveIntersects: THREE.Intersection[] = [];
-    const curveTargets = collectCurveFeatureRaycastTargets();
-    if (curveTargets.length > 0) {
-      curveIntersects.push(...raycaster.intersectObjects(curveTargets, true));
+    if (edgeHoverSphere1) {
+      scene.remove(edgeHoverSphere1);
+      edgeHoverSphere1.geometry.dispose();
+      (edgeHoverSphere1.material as THREE.Material).dispose();
+      edgeHoverSphere1 = null;
     }
-
-    const rawEdgeIntersects: THREE.Intersection[] = [];
-    const rawEdgeTargets = collectExactCadEdgeRaycastTargets();
-    if (rawEdgeTargets.length > 0) {
-      rawEdgeIntersects.push(...raycaster.intersectObjects(rawEdgeTargets, true));
+    if (edgeHoverSphere2) {
+      scene.remove(edgeHoverSphere2);
+      edgeHoverSphere2.geometry.dispose();
+      (edgeHoverSphere2.material as THREE.Material).dispose();
+      edgeHoverSphere2 = null;
     }
-
-    let pickedEntity = resolveExactCadEntityPickResult({
-      curveIntersections: curveIntersects,
-      edgeIntersections: rawEdgeIntersects,
-      curveFeatureById,
-      edgesById,
-      sortIntersections: (intersections) => {
-        const sorted = [...intersections];
-        sortEdgeIntersections(sorted);
-        return sorted;
-      },
-    });
-    if (!pickedEntity) {
-      pickedEntity = pickExactCadFaceAtScreenPosition(ndcX, ndcY);
-    }
-
-    if (!pickedEntity) {
-      console.debug("[CadViewer] Exact picker result", {
-        exactCadModeActive: isExactCadMode,
-        pickedEntityKind: null,
-      });
-      return null;
-    }
-
-    const exactLog: Record<string, unknown> = {
-      exactCadModeActive: isExactCadMode,
-      pickedEntityKind: pickedEntity.kind,
-      featureId: pickedEntity.kind === "curve_feature" ? pickedEntity.featureId : null,
-      edgeId: pickedEntity.kind === "edge" ? pickedEntity.edgeId : null,
-      faceId: pickedEntity.kind === "face" ? pickedEntity.faceId : null,
-    };
-    console.debug("[CadViewer] Exact picker result", exactLog);
-
-    return pickedEntity;
-  }
-
-  function scoreExactFaceForPoint(face: ExactFace, point: THREE.Vector3): number {
-    if (face.kind === "cylinder") {
-      return scoreCylindricalFaceAtPoint(face, point);
-    }
-    const origin = face.analytic?.origin
-      ? new THREE.Vector3(
-          face.analytic.origin[0],
-          face.analytic.origin[1],
-          face.analytic.origin[2],
-        )
-      : null;
-    if (face.kind === "plane" && origin && face.analytic?.normal) {
-      const normal = new THREE.Vector3(
-        face.analytic.normal[0],
-        face.analytic.normal[1],
-        face.analytic.normal[2],
-      );
-      if (normal.lengthSq() > 1e-12) {
-        normal.normalize();
-        return Math.abs(point.clone().sub(origin).dot(normal));
-      }
-    }
-    if (origin) {
-      return point.distanceTo(origin);
-    }
-    return Number.POSITIVE_INFINITY;
-  }
-
-  function pickExactCadFaceAtScreenPosition(
-    ndcX: number,
-    ndcY: number,
-  ): PickedEntity | null {
-    const meshTargets = collectVisibleMeshRaycastTargets();
-    if (meshTargets.length === 0 || facesById.size === 0) return null;
-
-    const ndc = new THREE.Vector2(ndcX, ndcY);
-    raycaster.setFromCamera(ndc, activeCamera);
-    const intersects = raycaster.intersectObjects(meshTargets, true);
-    if (intersects.length === 0) return null;
-
-    const bestHit = intersects[0];
-    const hitPartId = resolvePartIdFromIntersectionObject(bestHit.object, null);
-
-    const candidates: ExactFace[] = [];
-    for (const face of facesById.values()) {
-      if (hitPartId && face.partId && face.partId !== hitPartId) continue;
-      candidates.push(face);
-    }
-    if (candidates.length === 0) return null;
-
-    let bestFace = candidates[0];
-    let bestScore = scoreExactFaceForPoint(bestFace, bestHit.point);
-    for (let i = 1; i < candidates.length; i += 1) {
-      const candidate = candidates[i];
-      const candidateScore = scoreExactFaceForPoint(candidate, bestHit.point);
-      if (candidateScore < bestScore) {
-        bestScore = candidateScore;
-        bestFace = candidate;
-      }
-    }
-
-    return {
-      kind: "face",
-      partId: bestFace.partId ?? hitPartId ?? null,
-      faceId: bestFace.id,
-      point: bestHit.point.clone(),
-    };
-  }
-
-  function pickMeasurementEntityAtScreenPosition(
-    ndcX: number,
-    ndcY: number,
-  ): PickedEntity | null {
-    if (!isExactCadMode) {
-      reportApproxCadMeasurementFallbackRuntimeOnce("pick");
-      return null;
-    }
-    return pickExactCadEntityAtScreenPosition(ndcX, ndcY);
-  }
-
-  function collectVisibleMeshRaycastTargets(): THREE.Object3D[] {
-    const targets: THREE.Object3D[] = [];
-    modelRoot.traverse((obj: any) => {
-      if (!obj?.isMesh) return;
-      if (obj?.userData?.__edgeOverlay) return;
-      if (!isEffectivelyVisible(obj)) return;
-      targets.push(obj as THREE.Object3D);
-    });
-    return targets;
-  }
-
-  function exactCadPointToWorld(
-    point: THREE.Vector3 | null | undefined,
-  ): THREE.Vector3 | null {
-    return exactCadPointToWorldForModelRoot(point, modelRoot);
-  }
-
-  function applyExactCadMeasurementOverlay(
-    result: ExactCadMeasurementResult,
-    pickedEdge: PickedEntity,
-  ): void {
-    const overlay = buildExactCadMeasurementOverlayInstruction(result, pickedEdge);
-    if (overlay.kind === "segment") {
-      const worldStart = exactCadPointToWorld(overlay.start);
-      const worldEnd = exactCadPointToWorld(overlay.end);
-      if (!worldStart || !worldEnd) {
-        setMeasurementSegment(null, null, null, null, null, null);
-        return;
-      }
-      const worldSegmentAnchor =
-        overlay.style === "radial" ? pickedEdge.point.clone() : null;
-      const worldLabelAnchor = null;
-      setMeasurementSegment(
-        worldStart,
-        worldEnd,
-        overlay.label,
-        overlay.style,
-        worldLabelAnchor,
-        worldSegmentAnchor,
-      );
-      return;
-    }
-    if (overlay.kind === "label") {
-      const worldPoint = exactCadPointToWorld(overlay.point);
-      setMeasurementLabelAnchor(worldPoint, overlay.label);
-      return;
-    }
-    setMeasurementSegment(null, null, null, null, null, null);
   }
 
   /**
-   * Measures an edge at the given screen position.
-   * Exact CAD mode routes through PickedEntity + exact topology measurement.
-   * Approx CAD mode routes through CAD engineering edge overlays.
-   * Generic mesh mode routes through legacy approximate overlays/triangles.
+   * Measures an edge at the given screen position. Raycasts against measurement-capable
+   * overlays, extracts hit segment endpoints, calls setMeasurementSegment with start, end,
+   * and label, and returns the numeric length. If no overlay segment is hit, falls
+   * back to the closest edge of the hit mesh triangle.
    */
   function measureEdgeAtScreenPosition(
     ndcX: number,
     ndcY: number,
-    pickedEntityOverride?: PickedEntity | null,
   ): number | null {
-    if (isExactCadMode) {
-      const pickedEntity =
-        pickedEntityOverride ??
-        pickMeasurementEntityAtScreenPosition(ndcX, ndcY);
-      const measurementContext: ExactCadMeasurementAutoRequestContext = {
-        verticesById,
-        edgesById,
-        facesById,
-        modelDiagonal,
-        circularFeatureById,
-        circularFeatureIdByEdgeId,
-        curveFeatureById,
-      };
-      const selection = resolveExactCadMeasurementSelection({
-        pickedEntity,
-        measurementMode: exactCadSingleEntityMeasurementMode,
-        context: measurementContext,
-      });
-      const request = normalizeLiveAutoCircularRequest({
-        request: selection.request,
-        measurementMode: exactCadSingleEntityMeasurementMode,
-        context: measurementContext,
-      });
-      const anchorEntity =
-        pickedEntity && request
-          ? resolveMeasurementAnchorEntity(request, pickedEntity)
-          : selection.anchorEntity;
-      console.debug("[CadViewer] Exact measurement request", {
-        exactCadModeActive: isExactCadMode,
-        measurementMode: exactCadSingleEntityMeasurementMode,
-        pickedEntityKind: pickedEntity?.kind ?? null,
-        featureId:
-          pickedEntity?.kind === "curve_feature" ? pickedEntity.featureId : null,
-        edgeId: pickedEntity?.kind === "edge" ? pickedEntity.edgeId : null,
-        faceId: pickedEntity?.kind === "face" ? pickedEntity.faceId : null,
-        requestKind: request?.kind ?? null,
-      });
+    const ndc = new THREE.Vector2(ndcX, ndcY);
+    raycaster.setFromCamera(ndc, activeCamera);
 
-      if (!request) {
-        setMeasurementSegment(null, null, null, null, null);
-        return null;
-      }
-      if (!anchorEntity) return null;
-
-      const result = measureExactCad(request, {
-        verticesById,
-        edgesById,
-        facesById,
-        modelDiagonal,
-      });
-      if (!result || !Number.isFinite(result.value)) return null;
-
-      const displayResult =
-        currentCadTopologyAvailability?.exact === false && result.source !== "sampled"
-          ? { ...result, source: "sampled" as const }
-          : result;
-
-      applyExactCadMeasurementOverlay(displayResult, anchorEntity);
-
-      return displayResult.value;
-    }
-
-    if (isApproxCadMode) {
-      reportApproxCadMeasurementFallbackRuntimeOnce("measure");
-      const approxCadResult = measureApproximateMeshEdgeAtScreenPosition({
-        ndcX,
-        ndcY,
-        raycaster,
-        activeCamera,
-        measurePickables: collectApproxCadEdgeRaycastTargets(),
-        meshTargets: [],
-        sortEdgeIntersections,
-        getSegmentEndpointsFromLineIntersection,
-        getClosestSegmentEndpointsToPoint,
-      });
-      if (!approxCadResult) return null;
-
-      setMeasurementSegment(
-        approxCadResult.segment.start,
-        approxCadResult.segment.end,
-        approxCadResult.label,
-        "generic",
-        null,
-      );
-      return approxCadResult.length;
-    }
-
+    const measurePickables = edgePickables.filter((obj: any) => {
+      if (!obj?.isLineSegments) return false;
+      const data = obj.userData;
+      if (!data?.__edgeOverlay) return false;
+      if (data.__isSilhouetteEdge) return false;
+      return true;
+    });
     const lineThreshold = computeLinePickThresholdWorld(8);
     (raycaster.params as any).Line = (raycaster.params as any).Line || {};
     (raycaster.params as any).Line.threshold = lineThreshold;
 
-    const approxResult = measureApproximateMeshEdgeAtScreenPosition({
-      ndcX,
-      ndcY,
-      raycaster,
-      activeCamera,
-      measurePickables: collectFallbackEdgeRaycastTargets({
-        forMeasurement: true,
-      }),
-      meshTargets: collectVisibleMeshRaycastTargets(),
-      sortEdgeIntersections,
-      getSegmentEndpointsFromLineIntersection,
-      getClosestSegmentEndpointsToPoint,
+    if (measurePickables.length > 0) {
+      const intersects = raycaster.intersectObjects(measurePickables, true);
+      if (intersects.length > 0) {
+        intersects.sort((a, b) => {
+          const ar = Number.isFinite((a as any).distanceToRay)
+            ? Number((a as any).distanceToRay)
+            : Infinity;
+          const br = Number.isFinite((b as any).distanceToRay)
+            ? Number((b as any).distanceToRay)
+            : Infinity;
+          if (ar !== br) return ar - br;
+          const ad = (a.object as any)?.userData ?? {};
+          const bd = (b.object as any)?.userData ?? {};
+          const ap = ad.__isHoleDepthEdge
+            ? 0
+            : ad.__isArcSeamEdge
+              ? 1
+              : ad.__isFeatureEdge
+                ? 2
+                : 3;
+          const bp = bd.__isHoleDepthEdge
+            ? 0
+            : bd.__isArcSeamEdge
+              ? 1
+              : bd.__isFeatureEdge
+                ? 2
+                : 3;
+          if (ap !== bp) return ap - bp;
+          return a.distance - b.distance;
+        });
+      }
+
+      for (const intr of intersects) {
+        const line = intr.object as THREE.Object3D;
+        const hitData = (line as any)?.userData ?? {};
+        if (hitData.__isSilhouetteEdge) continue;
+
+        const endpoints =
+          getSegmentEndpointsFromLineIntersection(intr, line) ??
+          getClosestSegmentEndpointsToPoint(line, intr.point);
+        if (!endpoints) continue;
+
+        // Convert from modelRoot local space to world space for measurement overlay.
+        const v0Local = endpoints.a.clone();
+        const v1Local = endpoints.b.clone();
+        modelRoot.worldToLocal(v0Local);
+        modelRoot.worldToLocal(v1Local);
+        const v0World = v0Local.clone().applyMatrix4(modelRoot.matrixWorld);
+        const v1World = v1Local.clone().applyMatrix4(modelRoot.matrixWorld);
+
+        const length = v0World.distanceTo(v1World);
+        const label = Number.isFinite(length) ? `${length.toFixed(2)} mm` : null;
+        setMeasurementSegment(v0World, v1World, label);
+        return length;
+      }
+    }
+
+    const meshTargets: THREE.Object3D[] = [];
+    modelRoot.traverse((obj: any) => {
+      if (!obj?.isMesh) return;
+      if (obj?.userData?.__edgeOverlay) return;
+      if (!isEffectivelyVisible(obj)) return;
+      meshTargets.push(obj as THREE.Object3D);
     });
-    if (!approxResult) return null;
+    if (meshTargets.length === 0) return null;
 
-    setMeasurementSegment(
-      approxResult.segment.start,
-      approxResult.segment.end,
-      approxResult.label,
-      "generic",
-      null,
-    );
-    return approxResult.length;
-  }
-
-  function ensureMeasurementLabel(resolvedLabel: string): THREE.Sprite | null {
-    if (!measureLabel || measureLabelText !== resolvedLabel) {
-      const canvas = document.createElement("canvas");
-      const ctx = canvas.getContext("2d");
-      if (ctx) {
-        const fontSize = 26;
-        ctx.font = `${fontSize}px sans-serif`;
-        const metrics = ctx.measureText(resolvedLabel);
-        const padding = 20;
-        canvas.width = Math.ceil(metrics.width + padding * 2);
-        canvas.height = Math.ceil(fontSize + padding * 2);
-        ctx.font = `${fontSize}px sans-serif`;
-        ctx.fillStyle = "black";
-        ctx.strokeStyle = "white";
-        ctx.lineWidth = 4;
-        const x = padding;
-        const y = padding + fontSize * 0.8;
-        ctx.strokeText(resolvedLabel, x, y);
-        ctx.fillText(resolvedLabel, x, y);
-      }
-
-      const texture = new THREE.CanvasTexture(canvas);
-      const mat = new THREE.SpriteMaterial({
-        map: texture,
-        depthTest: false,
-        depthWrite: false,
-        sizeAttenuation: false,
-      });
-
-      if (measureLabel) {
-        if (measureLabel.material.map) {
-          measureLabel.material.map.dispose();
-        }
-        measureLabel.material.dispose();
-        measureLabel.material = mat;
-      } else {
-        measureLabel = new THREE.Sprite(mat);
-        measureLabel.renderOrder = 1000;
-        scene.add(measureLabel);
-      }
-      measureLabelText = resolvedLabel;
-    }
-    return measureLabel;
-  }
-
-  function getMeasurementViewportSize(): { width: number; height: number } {
-    const width =
-      renderer.domElement.clientWidth || container.clientWidth || 1;
-    const height =
-      renderer.domElement.clientHeight || container.clientHeight || 1;
-    return { width: Math.max(1, width), height: Math.max(1, height) };
-  }
-
-  function clampLabelNdcToViewport(
-    ndc: THREE.Vector3,
-    marginPx = 12,
-  ): THREE.Vector3 {
-    const { width, height } = getMeasurementViewportSize();
-    const marginX = THREE.MathUtils.clamp((marginPx * 2) / width, 0, 0.45);
-    const marginY = THREE.MathUtils.clamp((marginPx * 2) / height, 0, 0.45);
-    return new THREE.Vector3(
-      THREE.MathUtils.clamp(ndc.x, -1 + marginX, 1 - marginX),
-      THREE.MathUtils.clamp(ndc.y, -1 + marginY, 1 - marginY),
-      THREE.MathUtils.clamp(ndc.z, -0.99, 0.99),
-    );
-  }
-
-  function clampLabelNdcNearAnchor(
-    labelNdc: THREE.Vector3,
-    anchorNdc: THREE.Vector3,
-    maxDistancePx: number,
-  ): THREE.Vector3 {
-    if (
-      !Number.isFinite(anchorNdc.x) ||
-      !Number.isFinite(anchorNdc.y) ||
-      !Number.isFinite(anchorNdc.z)
-    ) {
-      return labelNdc;
-    }
-    const { width, height } = getMeasurementViewportSize();
-    const dxPx = ((labelNdc.x - anchorNdc.x) * width) / 2;
-    const dyPx = ((labelNdc.y - anchorNdc.y) * height) / 2;
-    const distancePx = Math.hypot(dxPx, dyPx);
-    if (!Number.isFinite(distancePx) || distancePx <= maxDistancePx) {
-      return labelNdc;
-    }
-    const scale = maxDistancePx / Math.max(distancePx, 1e-6);
-    return new THREE.Vector3(
-      anchorNdc.x + (labelNdc.x - anchorNdc.x) * scale,
-      anchorNdc.y + (labelNdc.y - anchorNdc.y) * scale,
-      labelNdc.z,
-    );
-  }
-
-  function placeMeasurementLabelFromNdc(
-    ndc: THREE.Vector3,
-    marginPx = 12,
-  ): void {
-    if (!measureLabel) return;
-    if (!Number.isFinite(ndc.x) || !Number.isFinite(ndc.y) || !Number.isFinite(ndc.z)) {
-      measureLabel.visible = false;
-      return;
-    }
-    const clampedNdc = clampLabelNdcToViewport(ndc, marginPx);
-    const worldPoint = clampedNdc.clone().unproject(activeCamera);
-
-    measureLabel.visible = true;
-    measureLabel.position.copy(worldPoint);
-    const baseLabelScale = 0.28;
-    measureLabel.scale.set(
-      baseLabelScale * measureGraphicsScale,
-      0.2 * measureGraphicsScale,
-      1,
-    );
-  }
-
-  function positionMeasurementLabel(
-    anchor: THREE.Vector3,
-    pixelOffsetX: number,
-    pixelOffsetY: number,
-    marginPx = 12,
-  ): void {
-    if (!measureLabel) return;
-    const projected = anchor.clone().project(activeCamera);
-    if (
-      !Number.isFinite(projected.x) ||
-      !Number.isFinite(projected.y) ||
-      !Number.isFinite(projected.z)
-    ) {
-      measureLabel.visible = false;
-      return;
-    }
-    const { width, height } = getMeasurementViewportSize();
-    const ndcOffsetX = (pixelOffsetX * 2) / width;
-    const ndcOffsetY = (pixelOffsetY * 2) / height;
-    placeMeasurementLabelFromNdc(
-      new THREE.Vector3(
-        projected.x + ndcOffsetX,
-        projected.y + ndcOffsetY,
-        projected.z,
-      ),
-      marginPx,
-    );
-  }
-
-  function positionMeasurementLabelForSegment(
-    p1: THREE.Vector3,
-    p2: THREE.Vector3,
-    style: MeasurementSegmentStyle,
-    anchor: THREE.Vector3 | null,
-  ): void {
-    if (!measureLabel) return;
-    const a = p1.clone().project(activeCamera);
-    const b = p2.clone().project(activeCamera);
-    if (
-      !Number.isFinite(a.x) ||
-      !Number.isFinite(a.y) ||
-      !Number.isFinite(a.z) ||
-      !Number.isFinite(b.x) ||
-      !Number.isFinite(b.y) ||
-      !Number.isFinite(b.z)
-    ) {
-      const fallbackAnchor =
-        anchor?.clone() ?? new THREE.Vector3().addVectors(p1, p2).multiplyScalar(0.5);
-      positionMeasurementLabel(fallbackAnchor, 0, 18 * measureGraphicsScale, 14);
-      return;
-    }
-
-    if (style === "radial") {
-      const anchorPoint = anchor?.clone() ?? p2.clone();
-      const anchorNdc = anchorPoint.clone().project(activeCamera);
+    const meshIntersects = raycaster.intersectObjects(meshTargets, true);
+    for (const meshHit of meshIntersects) {
+      const hitObj = meshHit.object as any;
+      if (!hitObj?.isMesh) continue;
+      if (hitObj?.userData?.__edgeOverlay) continue;
+      const face = meshHit.face;
+      const geometry = hitObj.geometry as THREE.BufferGeometry | undefined;
+      if (!face || !geometry?.isBufferGeometry) continue;
+      const posAttr = geometry.getAttribute("position") as
+        | THREE.BufferAttribute
+        | undefined;
+      if (!posAttr || posAttr.count < 3) continue;
+      const aIdx = Number(face.a);
+      const bIdx = Number(face.b);
+      const cIdx = Number(face.c);
       if (
-        Number.isFinite(anchorNdc.x) &&
-        Number.isFinite(anchorNdc.y) &&
-        Number.isFinite(anchorNdc.z)
+        !Number.isFinite(aIdx) ||
+        !Number.isFinite(bIdx) ||
+        !Number.isFinite(cIdx) ||
+        aIdx < 0 ||
+        bIdx < 0 ||
+        cIdx < 0 ||
+        aIdx >= posAttr.count ||
+        bIdx >= posAttr.count ||
+        cIdx >= posAttr.count
       ) {
-        const landingDir = new THREE.Vector2(b.x - a.x, b.y - a.y);
-        if (landingDir.lengthSq() <= 1e-12) {
-          landingDir.set(1, 0);
-        } else {
-          landingDir.normalize();
-        }
-        const nudgePx = 2 * measureGraphicsScale;
-        const { width, height } = getMeasurementViewportSize();
-        const labelNdc = clampLabelNdcToViewport(
-          new THREE.Vector3(
-            anchorNdc.x + (landingDir.x * nudgePx * 2) / width,
-            anchorNdc.y + (landingDir.y * nudgePx * 2) / height,
-            anchorNdc.z,
-          ),
-          14,
-        );
-        placeMeasurementLabelFromNdc(labelNdc, 14);
-        return;
+        continue;
       }
-      positionMeasurementLabel(anchorPoint, 0, 0, 14);
-      return;
-    }
 
-    const dx = b.x - a.x;
-    const dy = b.y - a.y;
-    const midNdc = new THREE.Vector2((a.x + b.x) * 0.5, (a.y + b.y) * 0.5);
-    const perp = new THREE.Vector2(-dy, dx);
-    if (perp.lengthSq() <= 1e-12) {
-      perp.set(0, 1);
-    } else {
-      perp.normalize();
-    }
+      const a = new THREE.Vector3()
+        .fromBufferAttribute(posAttr, aIdx)
+        .applyMatrix4(hitObj.matrixWorld);
+      const b = new THREE.Vector3()
+        .fromBufferAttribute(posAttr, bIdx)
+        .applyMatrix4(hitObj.matrixWorld);
+      const c = new THREE.Vector3()
+        .fromBufferAttribute(posAttr, cIdx)
+        .applyMatrix4(hitObj.matrixWorld);
 
-    const baseOffsetPxByStyle = {
-      linear: 24,
-      diameter: 16,
-      radial: 12,
-      generic: 20,
-    } as const;
-    const maxDistancePxByStyle = {
-      linear: 180,
-      diameter: 140,
-      radial: 110,
-      generic: 160,
-    } as const;
-    const pxOffset = baseOffsetPxByStyle[style] * measureGraphicsScale;
-    const { width, height } = getMeasurementViewportSize();
-    const ndcOffsetX = (perp.x * pxOffset * 2) / width;
-    const ndcOffsetY = (perp.y * pxOffset * 2) / height;
-    const midZ = (a.z + b.z) * 0.5;
-    let labelNdc = new THREE.Vector3(midNdc.x + ndcOffsetX, midNdc.y + ndcOffsetY, midZ);
-    labelNdc = clampLabelNdcToViewport(labelNdc, 14);
-
-    if (anchor) {
-      const anchorNdc = anchor.clone().project(activeCamera);
-      if (
-        Number.isFinite(anchorNdc.x) &&
-        Number.isFinite(anchorNdc.y) &&
-        Number.isFinite(anchorNdc.z)
-      ) {
-        labelNdc = clampLabelNdcNearAnchor(
-          labelNdc,
-          anchorNdc,
-          maxDistancePxByStyle[style] * measureGraphicsScale,
-        );
-        labelNdc = clampLabelNdcToViewport(labelNdc, 14);
+      let p0 = a;
+      let p1 = b;
+      let best = pointToSegmentDistanceSq(meshHit.point, a, b);
+      const dBC = pointToSegmentDistanceSq(meshHit.point, b, c);
+      if (dBC < best) {
+        best = dBC;
+        p0 = b;
+        p1 = c;
       }
+      const dCA = pointToSegmentDistanceSq(meshHit.point, c, a);
+      if (dCA < best) {
+        p0 = c;
+        p1 = a;
+      }
+
+      const length = p0.distanceTo(p1);
+      const label = Number.isFinite(length) ? `${length.toFixed(2)} mm` : null;
+      setMeasurementSegment(p0, p1, label);
+      return length;
     }
 
-    placeMeasurementLabelFromNdc(labelNdc, 14);
+    return null;
   }
 
   function updateMeasurementOverlay() {
@@ -5130,90 +2094,55 @@ export function createViewer(container: HTMLElement): Viewer {
       if (measureLine) measureLine.visible = false;
       if (measureArrow1) measureArrow1.visible = false;
       if (measureArrow2) measureArrow2.visible = false;
-
-      if (measureBaseLabelAnchor && measureBaseLabel) {
-        const sprite = ensureMeasurementLabel(measureBaseLabel);
-        if (!sprite) return;
-        positionMeasurementLabel(
-          measureBaseLabelAnchor,
-          0,
-          18 * measureGraphicsScale,
-          14,
-        );
-      } else if (measureLabel) {
-        measureLabel.visible = false;
-      }
+      if (measureLabel) measureLabel.visible = false;
       return;
     }
 
-    const baseP1 = measureBaseP1.clone();
-    const baseP2 = measureBaseP2.clone();
-    const activeStyle = measureBaseSegmentStyle ?? "generic";
-    const projectionSize = getMeasurementViewportSize();
-    const renderedLayout = resolveMeasurementRenderedLayoutForOverlay({
-      p1: baseP1,
-      p2: baseP2,
-      style: activeStyle,
-      segmentAnchor: measureBaseSegmentAnchor,
-      projection: {
-        camera: activeCamera,
-        viewportWidth: projectionSize.width,
-        viewportHeight: projectionSize.height,
-      },
-      measureGraphicsScale,
-    });
-    if (renderedLayout.pathPoints.length < 2) {
+    const p1 = measureBaseP1.clone();
+    const p2 = measureBaseP2.clone();
+    const dir = new THREE.Vector3().subVectors(p2, p1);
+    const len = dir.length();
+    if (len === 0) {
       if (measureLine) measureLine.visible = false;
       if (measureArrow1) measureArrow1.visible = false;
       if (measureArrow2) measureArrow2.visible = false;
       if (measureLabel) measureLabel.visible = false;
       return;
     }
-    const pathStart = renderedLayout.pathPoints[0];
-    const pathEnd = renderedLayout.pathPoints[renderedLayout.pathPoints.length - 1];
-    const mid = new THREE.Vector3()
-      .addVectors(pathStart, pathEnd)
-      .multiplyScalar(0.5);
+    dir.normalize();
+
+    const mid = new THREE.Vector3().addVectors(p1, p2).multiplyScalar(0.5);
     const viewDir = new THREE.Vector3()
       .subVectors(activeCamera.position, mid)
       .normalize();
     const overlayOffsetAmount = 0;
     const overlayOffset = viewDir.clone().multiplyScalar(overlayOffsetAmount);
-    const pathPointsOffset = renderedLayout.pathPoints.map((point) =>
-      point.clone().add(overlayOffset),
-    );
+    const p1o = p1.clone().add(overlayOffset);
+    const p2o = p2.clone().add(overlayOffset);
 
     if (!measureLineGeometry) {
       measureLineGeometry = new THREE.BufferGeometry();
-    }
-    const requiredVertexCount = Math.max(2, pathPointsOffset.length);
-    let pos = measureLineGeometry.getAttribute(
-      "position",
-    ) as THREE.BufferAttribute | null;
-    if (!pos || pos.count !== requiredVertexCount) {
       measureLineGeometry.setAttribute(
         "position",
-        new THREE.BufferAttribute(new Float32Array(requiredVertexCount * 3), 3),
+        new THREE.BufferAttribute(new Float32Array(6), 3),
       );
-      pos = measureLineGeometry.getAttribute("position") as THREE.BufferAttribute;
     }
-    for (let i = 0; i < requiredVertexCount; i += 1) {
-      const point = pathPointsOffset[i] ?? pathPointsOffset[pathPointsOffset.length - 1];
-      pos.setXYZ(i, point.x, point.y, point.z);
-    }
+    const pos = measureLineGeometry.getAttribute(
+      "position",
+    ) as THREE.BufferAttribute;
+    pos.setXYZ(0, p1o.x, p1o.y, p1o.z);
+    pos.setXYZ(1, p2o.x, p2o.y, p2o.z);
     pos.needsUpdate = true;
-    measureLineGeometry.setDrawRange(0, requiredVertexCount);
 
     if (!measureLine) {
       measureLine = new THREE.Line(measureLineGeometry, measureMaterial);
       measureLine.renderOrder = 999;
-      measureLine.frustumCulled = false;
       scene.add(measureLine);
     }
     measureLine.visible = true;
 
-    const arrowLength = renderedLayout.arrowLengthWorld;
-    const baseHalfWidth = renderedLayout.baseHalfWidthWorld;
+    const arrowLength = Math.max(len * 0.07, 5 * measureGraphicsScale);
+    const baseHalfWidth = arrowLength * 0.4;
 
     if (!measureArrow1Geometry) {
       measureArrow1Geometry = new THREE.BufferGeometry();
@@ -5274,142 +2203,119 @@ export function createViewer(container: HTMLElement): Viewer {
 
     measureArrowBillboard.quaternion.copy(activeCamera.quaternion);
     const billboardInvQuat = measureArrowBillboard.quaternion.clone().invert();
-    const toLocalDirection = (
-      direction: THREE.Vector3,
-      fallback: THREE.Vector3,
-    ): THREE.Vector3 => {
-      const localDirection = direction.clone().applyQuaternion(billboardInvQuat);
-      if (localDirection.lengthSq() <= 1e-12) {
-        return fallback.clone().normalize();
+
+    const p1Local = p1o.clone().applyQuaternion(billboardInvQuat);
+    const p2Local = p2o.clone().applyQuaternion(billboardInvQuat);
+    const dirLocal = new THREE.Vector3()
+      .subVectors(p2Local, p1Local)
+      .normalize();
+
+    measureArrow1.visible = true;
+    measureArrow2.visible = true;
+    measureArrow1.position.copy(p1Local);
+    measureArrow2.position.copy(p2Local);
+    measureArrow1.quaternion.setFromUnitVectors(
+      measureArrowXAxis,
+      dirLocal.clone().negate(),
+    );
+    measureArrow2.quaternion.setFromUnitVectors(measureArrowXAxis, dirLocal);
+
+    const resolvedLabel = measureBaseLabel ?? `${len.toFixed(2)} mm`;
+    if (!measureLabel || measureLabelText !== resolvedLabel) {
+      const canvas = document.createElement("canvas");
+      const ctx = canvas.getContext("2d");
+      if (ctx) {
+        const fontSize = 26;
+        ctx.font = `${fontSize}px sans-serif`;
+        const metrics = ctx.measureText(resolvedLabel);
+        const padding = 20;
+        canvas.width = Math.ceil(metrics.width + padding * 2);
+        canvas.height = Math.ceil(fontSize + padding * 2);
+        ctx.font = `${fontSize}px sans-serif`;
+        ctx.fillStyle = "black";
+        ctx.strokeStyle = "white";
+        ctx.lineWidth = 4;
+        const x = padding;
+        const y = padding + fontSize * 0.8;
+        ctx.strokeText(resolvedLabel, x, y);
+        ctx.fillText(resolvedLabel, x, y);
       }
-      return localDirection.normalize();
-    };
-    const arrowVisibility = resolveMeasurementArrowVisibilityForMode(
-      renderedLayout.arrowMode,
-    );
 
-    if (arrowVisibility.showStartArrow) {
-      const startTipLocal = renderedLayout.startArrowTip
-        .clone()
-        .add(overlayOffset)
-        .applyQuaternion(billboardInvQuat);
-      const startDirectionLocal = toLocalDirection(
-        renderedLayout.startArrowDirection,
-        measureArrowXAxis,
-      );
-      measureArrow1.visible = true;
-      measureArrow1.position.copy(startTipLocal);
-      measureArrow1.quaternion.setFromUnitVectors(
-        measureArrowXAxis,
-        startDirectionLocal,
-      );
+      const texture = new THREE.CanvasTexture(canvas);
+      const mat = new THREE.SpriteMaterial({
+        map: texture,
+        depthTest: false,
+        depthWrite: false,
+        sizeAttenuation: false,
+      });
+
+      if (measureLabel) {
+        if (measureLabel.material.map) {
+          measureLabel.material.map.dispose();
+        }
+        measureLabel.material.dispose();
+        measureLabel.material = mat;
+      } else {
+        measureLabel = new THREE.Sprite(mat);
+        measureLabel.renderOrder = 1000;
+        scene.add(measureLabel);
+      }
+      measureLabelText = resolvedLabel;
+    }
+
+    if (!measureLabel) return;
+
+    const a = p1o.clone().project(activeCamera);
+    const b = p2o.clone().project(activeCamera);
+    const dx = b.x - a.x;
+    const dy = b.y - a.y;
+    const midNDC = new THREE.Vector2((a.x + b.x) * 0.5, (a.y + b.y) * 0.5);
+    const perp = new THREE.Vector2(-dy, dx);
+    if (perp.lengthSq() === 0) {
+      perp.set(0, 1);
     } else {
-      measureArrow1.visible = false;
+      perp.normalize();
     }
-
-    if (
-      arrowVisibility.showEndArrow &&
-      renderedLayout.endArrowTip &&
-      renderedLayout.endArrowDirection
-    ) {
-      const endTipLocal = renderedLayout.endArrowTip
-        .clone()
-        .add(overlayOffset)
-        .applyQuaternion(billboardInvQuat);
-      const endDirectionLocal = toLocalDirection(
-        renderedLayout.endArrowDirection,
-        measureArrowXAxis.clone().negate(),
-      );
-      measureArrow2.visible = true;
-      measureArrow2.position.copy(endTipLocal);
-      measureArrow2.quaternion.setFromUnitVectors(
-        measureArrowXAxis,
-        endDirectionLocal,
-      );
-    } else {
-      measureArrow2.visible = false;
-    }
-
-    const measuredLength = baseP1.distanceTo(baseP2);
-    const resolvedLabel = measureBaseLabel ?? `${measuredLength.toFixed(2)} mm`;
-    const sprite = ensureMeasurementLabel(resolvedLabel);
-    if (!sprite) return;
-
-    const labelAnchor = (measureBaseLabelAnchor?.clone() ??
-      renderedLayout.labelAnchor.clone()
-    ).add(overlayOffset);
-    let labelSegmentStart = pathPointsOffset[0];
-    let labelSegmentEnd = pathPointsOffset[pathPointsOffset.length - 1];
-    if (activeStyle === "radial" && pathPointsOffset.length >= 3) {
-      labelSegmentStart = pathPointsOffset[pathPointsOffset.length - 2];
-      labelSegmentEnd = pathPointsOffset[pathPointsOffset.length - 1];
-    }
-    positionMeasurementLabelForSegment(
-      labelSegmentStart,
-      labelSegmentEnd,
-      activeStyle,
-      labelAnchor,
+    const pxOffset = 24 * measureGraphicsScale;
+    const width = renderer.domElement.clientWidth || 1;
+    const height = renderer.domElement.clientHeight || 1;
+    const ndcOffsetX = (perp.x * pxOffset * 2) / width;
+    const ndcOffsetY = (perp.y * pxOffset * 2) / height;
+    const midZ = (a.z + b.z) * 0.5;
+    const labelNDC = new THREE.Vector3(
+      midNDC.x + ndcOffsetX,
+      midNDC.y + ndcOffsetY,
+      midZ,
     );
-  }
+    labelNDC.unproject(activeCamera);
 
-  function setMeasurementLabelAnchor(
-    anchor: THREE.Vector3 | null,
-    labelText?: string | null,
-  ) {
-    if (anchor === null) {
-      setMeasurementSegment(null, null, null, null, null, null);
-      return;
-    }
-    measureBaseP1 = null;
-    measureBaseP2 = null;
-    measureBaseLabelAnchor = anchor.clone();
-    measureBaseSegmentAnchor = null;
-    measureBaseLabel = labelText ?? null;
-    measureBaseSegmentStyle = null;
-    if (!measureBaseLabel) {
-      measureLabelText = null;
-    }
-    updateMeasurementOverlay();
+    measureLabel.visible = true;
+    measureLabel.position.copy(labelNDC);
+    const baseLabelScale = 0.28;
+    measureLabel.scale.set(
+      baseLabelScale * measureGraphicsScale,
+      0.2 * measureGraphicsScale,
+      1,
+    );
   }
 
   function setMeasurementSegment(
     p1: THREE.Vector3 | null,
     p2: THREE.Vector3 | null,
     labelText?: string | null,
-    style: MeasurementSegmentStyle | null = null,
-    labelAnchor?: THREE.Vector3 | null,
-    segmentAnchor?: THREE.Vector3 | null,
-  ): void {
+  ) {
     if (p1 === null || p2 === null) {
       measureBaseP1 = null;
       measureBaseP2 = null;
       measureBaseLabel = null;
-      measureBaseLabelAnchor = null;
-      measureBaseSegmentAnchor = null;
-      measureBaseSegmentStyle = null;
       measureLabelText = null;
       updateMeasurementOverlay();
       return;
     }
 
-    const resolvedStyle = style ?? "generic";
-    const midpoint = p1.clone().lerp(p2, 0.5);
-    const fallbackLabelAnchor =
-      resolvedStyle === "radial" ? null : midpoint.clone();
-    const fallbackSegmentAnchor =
-      resolvedStyle === "radial" ? p2.clone() : midpoint.clone();
-    const resolvedLabelAnchor =
-      labelAnchor === undefined ? fallbackLabelAnchor : (labelAnchor?.clone() ?? null);
-    const resolvedSegmentAnchor =
-      segmentAnchor === undefined
-        ? fallbackSegmentAnchor
-        : (segmentAnchor?.clone() ?? null);
     measureBaseP1 = p1.clone();
     measureBaseP2 = p2.clone();
     measureBaseLabel = labelText ?? null;
-    measureBaseLabelAnchor = resolvedLabelAnchor;
-    measureBaseSegmentStyle = style;
-    measureBaseSegmentAnchor = resolvedSegmentAnchor;
     updateMeasurementOverlay();
   }
 
@@ -5454,62 +2360,19 @@ export function createViewer(container: HTMLElement): Viewer {
 
     const edgesGroup = new THREE.Group();
 
-    if (
-      isExactCadMode &&
-      (exactEdgeRenderObjectsById.size > 0 || curveFeatureRenderObjectsById.size > 0)
-    ) {
-      // Exact CAD mode snapshot uses exact edge lines + curve feature lines.
-      for (const line of curveFeatureRenderObjectsById.values()) {
-        if (!line.visible) continue;
-        const srcGeom = line.geometry as THREE.BufferGeometry | undefined;
-        if (!srcGeom) continue;
-        const snapshotGeom = srcGeom.clone();
-        snapshotGeom.applyMatrix4(line.matrixWorld);
-        const snapshotMat = new THREE.LineBasicMaterial({ color: 0x000000 });
-        const snapshotLine = new THREE.Line(snapshotGeom, snapshotMat);
-        snapshotLine.userData.__edgeOverlay = true;
-        edgesGroup.add(snapshotLine);
-      }
-      for (const line of exactEdgeRenderObjectsById.values()) {
-        if (!line.visible) continue;
-        const srcGeom = line.geometry as THREE.BufferGeometry | undefined;
-        if (!srcGeom) continue;
-        const snapshotGeom = srcGeom.clone();
-        snapshotGeom.applyMatrix4(line.matrixWorld);
-        const snapshotMat = new THREE.LineBasicMaterial({ color: 0x000000 });
-        const snapshotLine = new THREE.LineSegments(snapshotGeom, snapshotMat);
-        snapshotLine.userData.__edgeOverlay = true;
-        edgesGroup.add(snapshotLine);
-      }
-    } else if (isApproxCadMode && approxCadEdgeObjects.length > 0) {
-      // Approx CAD mode snapshot uses CAD engineering edge overlays.
-      for (const line of approxCadEdgeObjects) {
-        if (!line.visible) continue;
-        const srcGeom = line.geometry as THREE.BufferGeometry | undefined;
-        if (!srcGeom) continue;
-        const snapshotGeom = srcGeom.clone();
-        snapshotGeom.applyMatrix4(line.matrixWorld);
-        const snapshotMat = new THREE.LineBasicMaterial({ color: 0x000000 });
-        const snapshotLine = new THREE.LineSegments(snapshotGeom, snapshotMat);
-        snapshotLine.userData.__edgeOverlay = true;
-        edgesGroup.add(snapshotLine);
-      }
-    } else {
-      // Legacy/fallback mesh outline snapshot path.
-      modelRoot.traverse((obj: any) => {
-        if (!obj.isMesh || !obj.geometry) return;
-        if (!isEffectivelyVisible(obj)) return;
+    modelRoot.traverse((obj: any) => {
+      if (!obj.isMesh || !obj.geometry) return;
+      if (!isEffectivelyVisible(obj)) return;
 
-        const geom = obj.geometry as THREE.BufferGeometry;
-        const edgeThreshold = 40;
-        const edgesGeom = new THREE.EdgesGeometry(geom, edgeThreshold);
-        const edgesMat = new THREE.LineBasicMaterial({ color: 0x000000 });
-        const edges = new THREE.LineSegments(edgesGeom, edgesMat);
-        edges.userData.__edgeOverlay = true;
-        edges.applyMatrix4(obj.matrixWorld);
-        edgesGroup.add(edges);
-      });
-    }
+      const geom = obj.geometry as THREE.BufferGeometry;
+      const edgeThreshold = 40;
+      const edgesGeom = new THREE.EdgesGeometry(geom, edgeThreshold);
+      const edgesMat = new THREE.LineBasicMaterial({ color: 0x000000 });
+      const edges = new THREE.LineSegments(edgesGeom, edgesMat);
+      edges.userData.__edgeOverlay = true;
+      edges.applyMatrix4(obj.matrixWorld);
+      edgesGroup.add(edges);
+    });
 
     scene.add(edgesGroup);
 
@@ -6710,7 +3573,7 @@ export function createViewer(container: HTMLElement): Viewer {
   }
 
   function finalizePrimaryGeometryUpdate(
-    _primaryObject: THREE.Object3D | null,
+    primaryObject: THREE.Object3D | null,
     opts?: { refit?: boolean },
   ) {
     const translatedBox = normalizeModelRootToOriginMin();
@@ -6736,20 +3599,21 @@ export function createViewer(container: HTMLElement): Viewer {
       }
       // Create feature edges after the model has been positioned and matrices are up-to-date.
       modelRoot.updateWorldMatrix(true, true);
-      rebuildWireframeOverlays();
-      if (isExactCadMode) {
-        rebuildExactCadEdges("finalize_primary_geometry_update");
-      } else if (isApproxCadMode) {
-        rebuildApproxCadEngineeringEdges();
-      } else {
-        rebuildFeatureEdges();
+      // Build wireframe overlay for the primary mesh (separate overlay object)
+      if ((primaryObject as any)?.isMesh) {
+        try {
+          buildWireframeOverlay(primaryObject as THREE.Mesh);
+        } catch {
+          /* ignore */
+        }
       }
+      rebuildFeatureEdges();
     } else {
       // No geometry: reset bounds
       modelBounds = { min: 0, max: 0 };
       modelDiagonal = 0;
       clearFeatureEdges();
-      clearWireframeOverlays();
+      disposeWireframeOverlay();
     }
   }
 
@@ -6779,9 +3643,7 @@ export function createViewer(container: HTMLElement): Viewer {
 
     recenterGeometryAtOrigin(geom);
 
-    // Geometry replacement path is always mesh/fallback mode for now.
-    clearCadTopology();
-    clearWireframeOverlays();
+    disposeWireframeOverlay();
     clearFeatureEdges();
     clearEdgeHighlight();
     cadMeshData.delete(mesh);
@@ -6806,11 +3668,6 @@ export function createViewer(container: HTMLElement): Viewer {
     // For DXF, we might have many vertices but they are for lines.
     // If computeVertexNormals was called in mesh-loader, it might have normals.
 
-    // Mesh geometry loads use fallback edge overlays (no exact CAD topology context).
-    clearCadTopology();
-    clearFeatureEdges();
-    clearEdgeHighlight();
-
     // 2) Recenter geometry at origin
     recenterGeometryAtOrigin(geom);
 
@@ -6834,7 +3691,7 @@ export function createViewer(container: HTMLElement): Viewer {
 
     // Remove existing model children except the featureEdgesRoot, disposing resources
     // dispose wireframe overlay for old model before removing children
-    clearWireframeOverlays();
+    disposeWireframeOverlay();
     clearModelRootChildren();
     modelRoot.add(object);
 
@@ -6886,75 +3743,16 @@ export function createViewer(container: HTMLElement): Viewer {
     });
   }
 
-  function resolveCadTopologyContextFromObject(
-    object: THREE.Object3D,
-  ): ViewerCadTopologyContext | null {
-    const raw = object.userData?.__cadTopologyContext;
-    if (!isCadTopologyContext(raw)) return null;
-    return raw;
-  }
-
-  function resolveCadTopologyAvailabilityFromObject(
-    object: THREE.Object3D,
-  ): CadTopologyAvailability | null {
-    const raw = object.userData?.__cadTopologyAvailability;
-    if (!isCadTopologyAvailability(raw)) return null;
-    return raw;
-  }
-
   function loadObject3D(
     object: THREE.Object3D,
     options?: { explodeTopLevel?: boolean },
   ) {
     const isDxfSolid = object.userData?.__source === "dxf-solid";
     const explodeTopLevel = !!options?.explodeTopLevel;
-    const cadTopologyContext = resolveCadTopologyContextFromObject(object);
-    const cadTopologyAvailability =
-      resolveCadTopologyAvailabilityFromObject(object);
-
-    if (cadTopologyContext) {
-      currentCadExt = cadTopologyContext.ext.toLowerCase();
-      currentCadTopologyAvailability = cadTopologyAvailability;
-      console.debug("[CadViewer] topologyAvailability.exact", {
-        exact: currentCadTopologyAvailability?.exact ?? null,
-        reason: currentCadTopologyAvailability?.reason ?? null,
-      });
-      setCadTopology(cadTopologyContext.topology);
-      isExactCadMode = false;
-      isApproxCadMode = false;
-      approxCadRenderedEdgeCount = 0;
-
-      const cadExt = currentCadExt ?? "";
-      const isCadExt = EXACT_CAD_EXTENSIONS.has(cadExt);
-      const topology = cadTopologyContext.topology;
-      const hasTopology = topology !== null;
-      const topologyEdgeCount = topology?.edges.length ?? 0;
-
-      // Mode rules:
-      // - exact CAD mode: topology exists with at least one exact edge.
-      // - approx CAD mode: CAD extension with topology unavailable (null).
-      // - generic mesh mode: everything else.
-      isExactCadMode = isCadExt && hasTopology && topologyEdgeCount > 0;
-      isApproxCadMode = isCadExt && cadTopologyContext.topology === null;
-      if (isExactCadMode) {
-        setExactCadMeasurementMode("auto");
-        if (currentCadTopologyAvailability?.exact === false) {
-          console.warn(
-            "[CadViewer] topologyAvailability.exact is false; exact CAD interactions are running in sampled fallback mode.",
-            {
-              reason: currentCadTopologyAvailability.reason,
-              message: currentCadTopologyAvailability.message,
-            },
-          );
-        }
-      }
-    } else {
-      clearCadTopology();
-    }
 
     // Clear mesh-only overlays and edge highlights when switching to linework
     clearFeatureEdges();
-    clearWireframeOverlays();
+    disposeWireframeOverlay();
     clearEdgeHighlight();
 
     // Remove existing model children except the featureEdgesRoot, disposing resources
@@ -6997,15 +3795,7 @@ export function createViewer(container: HTMLElement): Viewer {
       updateClippingPlanes();
       if (hasAnyMesh) {
         modelRoot.updateWorldMatrix(true, true);
-        rebuildWireframeOverlays();
-        if (isExactCadMode) {
-          rebuildExactCadEdges("load_object3d");
-        } else if (isApproxCadMode) {
-          rebuildApproxCadEngineeringEdges();
-        } else {
-          rebuildFeatureEdges();
-        }
-        updateWireframeOverlayVisibility();
+        rebuildFeatureEdges();
         updateFeatureEdgesVisibility();
       }
     } else {
@@ -7013,33 +3803,14 @@ export function createViewer(container: HTMLElement): Viewer {
       modelDiagonal = 0;
       updateClippingPlanes();
     }
-
-    console.info("[CadViewer] Load diagnostics", {
-      ext: currentCadExt,
-      hasTopologyContext: !!cadTopologyContext,
-      topologyAvailabilityExact: currentCadTopologyAvailability?.exact ?? null,
-      topologyAvailabilityReason: currentCadTopologyAvailability?.reason ?? null,
-      exactCadModeActive: isExactCadMode,
-      approximateCadModeActive: isApproxCadMode,
-      exactEdgeCount: edgesById.size,
-      curveFeatureCount,
-      circleFeatureCount,
-      arcFeatureCount,
-      approximateCadEdgesRendered: approxCadRenderedEdgeCount,
-    });
-
     emitViewChanged();
   }
 
   function clear() {
     clearFeatureEdges();
-    clearWireframeOverlays();
-    clearCadTopology();
+    disposeWireframeOverlay();
     resetIsolationSnapshot();
-    clearModelRootChildren();
-    if (featureEdgesGroup.parent !== modelRoot) {
-      modelRoot.add(featureEdgesGroup);
-    }
+    modelRoot.clear();
     modelRoot.position.set(0, 0, 0);
     emitViewChanged();
   }
@@ -7094,7 +3865,6 @@ export function createViewer(container: HTMLElement): Viewer {
     // The user may call fitToScreen separately; controls should reflect new position.
     controls.update();
     requestUpdateSilhouette?.();
-    scheduleExactCurveFeatureResample("set_view");
     emitViewChanged();
   }
 
@@ -7105,7 +3875,6 @@ export function createViewer(container: HTMLElement): Viewer {
       rebindControls(activeCamera);
     }
     requestUpdateSilhouette?.();
-    scheduleExactCurveFeatureResample("set_projection");
     emitViewChanged();
   }
 
@@ -7132,7 +3901,6 @@ export function createViewer(container: HTMLElement): Viewer {
       edgeHoverLineMaterial.resolution.set(w, h);
     }
     updateCubeSize();
-    scheduleExactCurveFeatureResample("resize");
     emitViewChanged();
   }
 
@@ -7225,7 +3993,7 @@ export function createViewer(container: HTMLElement): Viewer {
     // Toggle the wireframe overlay visibility according to flag
     try {
       wireframeEnabled = !!wireframe;
-      updateWireframeOverlayVisibility();
+      if (wireframeLines) wireframeLines.visible = wireframeEnabled;
     } catch {}
   }
 
@@ -7268,7 +4036,6 @@ export function createViewer(container: HTMLElement): Viewer {
     // userZoom < 1 means further (larger padding)
     const padding = 1.5 / Math.max(0.1, zoom);
     fitCameraToBox(box, padding);
-    scheduleExactCurveFeatureResample("fit_to_screen");
     emitViewChanged();
   }
 
@@ -7317,7 +4084,6 @@ export function createViewer(container: HTMLElement): Viewer {
     controls.target.copy(center);
     controls.update();
     requestUpdateSilhouette?.();
-    scheduleExactCurveFeatureResample("frame_object");
     emitViewChanged();
   }
 
@@ -7481,7 +4247,7 @@ export function createViewer(container: HTMLElement): Viewer {
       clearEdgeHighlight();
     } catch {}
     try {
-      setMeasurementSegment(null, null, null, null, null);
+      setMeasurementSegment(null, null, null);
     } catch {}
     try {
       if (measureLine) {
@@ -7525,7 +4291,6 @@ export function createViewer(container: HTMLElement): Viewer {
     } catch {}
     try {
       controls.removeEventListener("change", onControlsChanged as any);
-      controls.removeEventListener("end", onControlsInteractionEnd as any);
     } catch {}
     try {
       controls.dispose();
@@ -7536,13 +4301,6 @@ export function createViewer(container: HTMLElement): Viewer {
       } catch {}
       silhouetteRAFId = null;
     }
-    if (exactCurveResampleRAFId !== null) {
-      try {
-        cancelAnimationFrame(exactCurveResampleRAFId);
-      } catch {}
-      exactCurveResampleRAFId = null;
-    }
-    pendingExactCurveResampleReasons.clear();
     // dispose feature edge overlays first
     try {
       clearFeatureEdges();
@@ -7551,7 +4309,7 @@ export function createViewer(container: HTMLElement): Viewer {
     }
     // dispose wireframe overlay if present
     try {
-      clearWireframeOverlays();
+      disposeWireframeOverlay();
     } catch {
       /* ignore */
     }
@@ -7649,14 +4407,11 @@ export function createViewer(container: HTMLElement): Viewer {
     setView,
     setProjection,
     setFeatureEdgesEnabled,
-    setExactCadEdgeDisplayOptions,
-    setExactCadMeasurementMode,
     resize,
     dispose,
     pickAtScreenPosition,
     pickMeshAtScreenPosition,
     pickEdgeAtScreenPosition,
-    pickMeasurementEntityAtScreenPosition,
     isolateObject,
     clearIsolation,
     showAllParts,

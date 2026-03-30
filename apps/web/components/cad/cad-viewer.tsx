@@ -9,19 +9,16 @@ import React, {
   forwardRef,
 } from "react";
 import * as THREE from "three";
-import * as BufferGeometryUtils from "three/examples/jsm/utils/BufferGeometryUtils.js";
 import { createViewer, Viewer } from "./viewer";
 import {
   analyzeCadSheetMetal,
   DEFAULT_WORKER_CAPABILITIES,
   getWorkerCapabilities,
-  loadCadAssemblyWithTopology,
+  loadCadAssemblyFile,
   loadMeshAssemblyAsObject3D,
   loadMeshFile,
   SheetMetalMeta,
-  type CadTopologyAvailability,
   unfoldCadSheetMetal,
-  type CadTopologyResult,
   type WorkerCapabilities,
 } from "./mesh-loader";
 import { parseDxfFromArrayBuffer } from "./dxf";
@@ -70,10 +67,6 @@ import {
   getDxfPreviewPanelVisibility,
   toggleDxfPreviewPanelDimensions,
 } from "./dxf-preview-panel-state";
-import {
-  runMeasurementClickInteraction,
-  runMeasurementHoverInteraction,
-} from "./cad-viewer-measurement-interaction";
 
 type Units = "mm" | "cm" | "m" | "in";
 type AssemblyLoadMode = "flat" | "parts";
@@ -90,11 +83,6 @@ type DisplayAssemblySnapshot = {
   root: THREE.Group;
   partRoots: Map<string, THREE.Object3D>;
 };
-type CadTopologyViewerContext = {
-  ext: CADExt;
-  topology: CadTopologyResult | null;
-  topologyAvailability: CadTopologyAvailability;
-};
 
 export const CAD_EXTS: ReadonlySet<CADExt> = new Set<CADExt>([
   "step",
@@ -107,65 +95,10 @@ export const CAD_EXTS: ReadonlySet<CADExt> = new Set<CADExt>([
 export const MESH_ASSEMBLY_EXTS: ReadonlySet<MeshAssemblyExt> =
   new Set<MeshAssemblyExt>(["obj", "3mf", "gltf", "glb"]);
 
-function buildMergedGeometryFromObject(
+function applyPartMetadata(
   object: THREE.Object3D,
-): THREE.BufferGeometry | null {
-  const meshGeometries: THREE.BufferGeometry[] = [];
-  object.updateWorldMatrix(true, true);
-  object.traverse((node: any) => {
-    if (!node?.isMesh) return;
-    const mesh = node as THREE.Mesh;
-    const sourceGeometry = mesh.geometry as THREE.BufferGeometry | undefined;
-    if (!sourceGeometry) return;
-    const worldBakedGeometry = sourceGeometry.clone();
-    worldBakedGeometry.applyMatrix4(mesh.matrixWorld);
-    meshGeometries.push(worldBakedGeometry);
-  });
-
-  if (meshGeometries.length === 0) return null;
-
-  let merged: THREE.BufferGeometry | null = null;
-  try {
-    merged =
-      meshGeometries.length === 1
-        ? meshGeometries[0]
-        : BufferGeometryUtils.mergeGeometries(meshGeometries, true);
-  } catch {
-    merged = null;
-  }
-
-  if (!merged) {
-    for (const geom of meshGeometries) {
-      try {
-        geom.dispose();
-      } catch {
-        /* ignore */
-      }
-    }
-    return null;
-  }
-
-  for (const geom of meshGeometries) {
-    if (geom === merged) continue;
-    try {
-      geom.dispose();
-    } catch {
-      /* ignore */
-    }
-  }
-
-  if (!merged.getAttribute("normal")) {
-    try {
-      merged.computeVertexNormals();
-    } catch {
-      /* ignore */
-    }
-  }
-
-  return merged;
-}
-
-function applyPartMetadata(object: THREE.Object3D, descriptor: PartDescriptor): void {
+  descriptor: PartDescriptor,
+): void {
   object.userData.__partKey = descriptor.key;
   object.userData.__partKind = descriptor.kind;
   if (descriptor.kind === "cad") {
@@ -352,8 +285,6 @@ function measureHasResult(measureMM: number | null) {
 
 const FORCE_SHOW_FLATTEN = false;
 const SHOW_SHEET_META_DEBUG = false;
-const MISSING_RUNTIME_TOPOLOGY_WARNING_MESSAGE =
-  "Exact CAD topology unavailable in current OCC runtime. Circle/arc measurement is running in approximate mode.";
 
 interface CadViewerProps {
   file?: File | string | null;
@@ -397,7 +328,7 @@ export const CadViewer = forwardRef<CadViewerRef, CadViewerProps>(
       backgroundColor,
       showViewCube = true,
       showHomeButton = true,
-      showFlatParts = false,
+      showFlatParts: _showFlatParts = true,
       assemblyLoadMode: assemblyLoadModeProp,
     },
     ref,
@@ -442,9 +373,6 @@ export const CadViewer = forwardRef<CadViewerRef, CadViewerProps>(
     );
     const [isExportingPart, setIsExportingPart] = useState(false);
     const [currentExt, setCurrentExt] = useState<string>("");
-    const [cadTopologyAvailability, setCadTopologyAvailability] =
-      useState<CadTopologyAvailability | null>(null);
-    const [cadTopologyEdgeCount, setCadTopologyEdgeCount] = useState(0);
     const [sheetMeta, setSheetMeta] = useState<SheetMetalMeta | null>(null);
     const [flatEnabled, setFlatEnabled] = useState(false);
     const [workerReady, setWorkerReady] = useState(false);
@@ -471,8 +399,6 @@ export const CadViewer = forwardRef<CadViewerRef, CadViewerProps>(
     const displayAssemblySnapshotRef = useRef<DisplayAssemblySnapshot | null>(
       null,
     );
-    const cadTopologyContextRef = useRef<CadTopologyViewerContext | null>(null);
-    const missingRuntimeTopologyWarningLoggedRef = useRef(false);
 
     // Synchronize show3D state with previewUrl prop
     useEffect(() => {
@@ -488,27 +414,10 @@ export const CadViewer = forwardRef<CadViewerRef, CadViewerProps>(
     const isDxfFile = currentExt === "dxf";
     const showDxfPreviewPanel =
       show3D && isDxfFile && loadedDxfDocument !== null;
-    const showMissingRuntimeTopologyWarning =
-      cadTopologyAvailability?.reason === "missing_runtime_support" &&
-      cadTopologyEdgeCount <= 0;
     const dxfPreviewPanelVisibility = useMemo(
       () => getDxfPreviewPanelVisibility(dxfPreviewPanelState),
       [dxfPreviewPanelState],
     );
-
-    useEffect(() => {
-      if (!showMissingRuntimeTopologyWarning) return;
-      if (missingRuntimeTopologyWarningLoggedRef.current) return;
-      missingRuntimeTopologyWarningLoggedRef.current = true;
-      console.warn(MISSING_RUNTIME_TOPOLOGY_WARNING_MESSAGE, {
-        reason: cadTopologyAvailability?.reason ?? null,
-        message: cadTopologyAvailability?.message ?? null,
-      });
-    }, [
-      showMissingRuntimeTopologyWarning,
-      cadTopologyAvailability?.reason,
-      cadTopologyAvailability?.message,
-    ]);
 
     useEffect(() => {
       if (!showDxfPreviewPanel || !dxfPreviewContainerRef.current) {
@@ -620,9 +529,6 @@ export const CadViewer = forwardRef<CadViewerRef, CadViewerProps>(
       dxfPreviewRootRef.current = null;
       setDxfOverlayRevision(0);
       displayAssemblySnapshotRef.current = null;
-      cadTopologyContextRef.current = null;
-      setCadTopologyAvailability(null);
-      setCadTopologyEdgeCount(0);
       if (!file) {
         setPartMenu(null);
         setParts([]);
@@ -904,64 +810,6 @@ export const CadViewer = forwardRef<CadViewerRef, CadViewerProps>(
       });
     }
 
-    function setCadTopologyContext(
-      context: CadTopologyViewerContext | null,
-    ): void {
-      cadTopologyContextRef.current = context;
-      setCadTopologyAvailability(context?.topologyAvailability ?? null);
-      setCadTopologyEdgeCount(context?.topology?.edges?.length ?? 0);
-    }
-
-    function setCadTopologyContextFromCadLoad(
-      ext: CADExt,
-      topology: CadTopologyResult | null | undefined,
-      topologyAvailability: CadTopologyAvailability,
-    ): void {
-      const normalizedTopology = topology ?? null;
-      setCadTopologyContext({
-        ext,
-        topology: normalizedTopology,
-        topologyAvailability,
-      });
-      console.info("[CadViewer] CAD topology availability", {
-        ext,
-        reason: topologyAvailability.reason,
-        message: topologyAvailability.message,
-        exact: topologyAvailability.exact,
-        hasTopology: !!normalizedTopology,
-        edgeCount: normalizedTopology?.edges?.length ?? 0,
-      });
-    }
-
-    function logCadTopologyLoadPath(path: string): void {
-      const context = cadTopologyContextRef.current;
-      if (!context) return;
-      console.info("[CadViewer] loadObject3D CAD topology context", {
-        path,
-        ext: context.ext,
-        reason: context.topologyAvailability.reason,
-        message: context.topologyAvailability.message,
-      });
-    }
-
-    function attachCadTopologyContext(object: THREE.Object3D): void {
-      const context = cadTopologyContextRef.current;
-      if (context) {
-        object.userData.__cadTopologyContext = {
-          ext: context.ext,
-          topology: context.topology,
-        };
-        object.userData.__cadTopologyAvailability = context.topologyAvailability;
-      } else {
-        if ("__cadTopologyContext" in object.userData) {
-          delete object.userData.__cadTopologyContext;
-        }
-        if ("__cadTopologyAvailability" in object.userData) {
-          delete object.userData.__cadTopologyAvailability;
-        }
-      }
-    }
-
     function replaceModelSession(next: ModelSession | null) {
       const prev = modelSessionRef.current;
       if (prev?.sourceObject && prev.sourceObject !== next?.sourceObject) {
@@ -984,8 +832,6 @@ export const CadViewer = forwardRef<CadViewerRef, CadViewerProps>(
       if (!assemblyDisplay) return false;
 
       setDimsFromObject(assemblyDisplay.root);
-      attachCadTopologyContext(assemblyDisplay.root);
-      logCadTopologyLoadPath("restore_assembly_view");
       viewer.loadObject3D(assemblyDisplay.root, { explodeTopLevel: true });
       viewer.setMaterialProperties(
         parseInt(materialColor.replace("#", "0x"), 16),
@@ -1034,8 +880,6 @@ export const CadViewer = forwardRef<CadViewerRef, CadViewerProps>(
       }
       const partObject = cloneDisplayPartRoot(snapshotPartRoot, descriptor);
 
-      attachCadTopologyContext(partObject);
-      logCadTopologyLoadPath("open_part_view");
       viewer.loadObject3D(partObject, { explodeTopLevel: false });
       viewer.setMaterialProperties(
         parseInt(materialColor.replace("#", "0x"), 16),
@@ -1090,7 +934,7 @@ export const CadViewer = forwardRef<CadViewerRef, CadViewerProps>(
               return;
             }
 
-            const assembly = await loadCadAssemblyWithTopology(file, worker);
+            const assembly = await loadCadAssemblyFile(file, worker);
             const session = createCadModelSession(assembly, {
               ext,
               originalName:
@@ -1176,7 +1020,6 @@ export const CadViewer = forwardRef<CadViewerRef, CadViewerProps>(
         viewerRef.current?.setMeasurementSegment(null, null, null);
 
         try {
-          setCadTopologyContext(null);
           viewerRef.current?.clear();
           if (ext === "dxf") {
             const buf =
@@ -1234,78 +1077,48 @@ export const CadViewer = forwardRef<CadViewerRef, CadViewerProps>(
           } else {
             viewerRef.current?.setControlsPreset("orbit3d");
             if (wasDxfViewRef.current) {
-              viewerRef.current?.setProjection("perspective"); wasDxfViewRef.current = false;
+              viewerRef.current?.setProjection("perspective");
+              wasDxfViewRef.current = false;
             }
 
             const usePartsMode = assemblyMode === "parts";
-            if (isCadExt(ext)) {
-              const assembly = await loadCadAssemblyWithTopology(
+            if (usePartsMode && isCadExt(ext)) {
+              const assembly = await loadCadAssemblyFile(
                 file,
                 workerRef.current!,
               );
-              setCadTopologyContextFromCadLoad(
+              const session = createCadModelSession(assembly, {
                 ext,
-                assembly.topology,
-                assembly.topologyAvailability,
-              );
-              if (usePartsMode) {
-                const session = createCadModelSession(assembly, {
-                  ext,
-                  originalName:
-                    typeof file === "string"
-                      ? file.split("/").pop() || file
-                      : file.name,
-                  originalFile: typeof file === "string" ? undefined : file,
-                  originalBytes: assembly.originalBytes,
-                });
-                disposeObject3DSafe(assembly.object);
-                if (isStale()) {
-                  disposeObject3DSafe(session.sourceObject);
-                  disposeObject3DSafe(session.displayObject);
-                  return;
-                }
-
-                const assemblyDisplay = reconstructAssemblyDisplayFromSource(session);
-                if (!assemblyDisplay) {
-                  throw new Error("Failed to reconstruct CAD assembly session.");
-                }
-                setDimsFromObject(assemblyDisplay.root);
-                attachCadTopologyContext(assemblyDisplay.root);
-                logCadTopologyLoadPath("load_cad_parts_mode");
-                viewerRef.current?.loadObject3D(assemblyDisplay.root, {
-                  explodeTopLevel: true,
-                });
-                replaceModelSession(session);
-                setParts(assemblyDisplay.parts);
-                setViewerMode({ kind: "assembly" });
-                loadedAssemblySession = session;
-                loadedAssemblyParts = assemblyDisplay.parts;
-              } else {
-                const formedCache = buildMergedGeometryFromObject(assembly.object);
-                if (isStale()) {
-                  disposeObject3DSafe(assembly.object);
-                  disposeGeometrySafe(formedCache);
-                  return;
-                }
-
-                setDimsFromObject(assembly.object);
-                attachCadTopologyContext(assembly.object);
-                logCadTopologyLoadPath("load_cad_flat_mode");
-                viewerRef.current?.loadObject3D(assembly.object, {
-                  explodeTopLevel: false,
-                });
-                setFormedGeom((prev) => {
-                  disposeGeometrySafe(prev);
-                  return formedCache;
-                });
-                replaceModelSession(null);
-                setParts([]);
-                setViewerMode({ kind: "assembly" });
-                displayAssemblySnapshotRef.current = null;
+                originalName:
+                  typeof file === "string"
+                    ? file.split("/").pop() || file
+                    : file.name,
+                originalFile: typeof file === "string" ? undefined : file,
+                originalBytes: assembly.originalBytes,
+              });
+              disposeObject3DSafe(assembly.object);
+              if (isStale()) {
+                disposeObject3DSafe(session.sourceObject);
+                disposeObject3DSafe(session.displayObject);
+                return;
               }
+
+              const assemblyDisplay =
+                reconstructAssemblyDisplayFromSource(session);
+              if (!assemblyDisplay) {
+                throw new Error("Failed to reconstruct CAD assembly session.");
+              }
+              setDimsFromObject(assemblyDisplay.root);
+              viewerRef.current?.loadObject3D(assemblyDisplay.root, {
+                explodeTopLevel: true,
+              });
+              replaceModelSession(session);
+              setParts(assemblyDisplay.parts);
+              setViewerMode({ kind: "assembly" });
+              loadedAssemblySession = session;
+              loadedAssemblyParts = assemblyDisplay.parts;
             } else if (usePartsMode && isMeshAssemblyExt(ext)) {
               const object = await loadMeshAssemblyAsObject3D(file);
-              setCadTopologyContext(null);
               const session = createMeshModelSession(object, {
                 ext,
                 originalName:
@@ -1327,7 +1140,6 @@ export const CadViewer = forwardRef<CadViewerRef, CadViewerProps>(
                 throw new Error("Failed to reconstruct mesh assembly session.");
               }
               setDimsFromObject(assemblyDisplay.root);
-              attachCadTopologyContext(assemblyDisplay.root);
               viewerRef.current?.loadObject3D(assemblyDisplay.root, {
                 explodeTopLevel: true,
               });
@@ -1337,7 +1149,6 @@ export const CadViewer = forwardRef<CadViewerRef, CadViewerProps>(
               loadedAssemblySession = session;
               loadedAssemblyParts = assemblyDisplay.parts;
             } else {
-              setCadTopologyContext(null);
               const geom = await loadMeshFile(file, workerRef.current!);
               if (isStale()) return;
               const formedCache = geom.clone();
@@ -1351,24 +1162,24 @@ export const CadViewer = forwardRef<CadViewerRef, CadViewerProps>(
               setParts([]);
               setViewerMode({ kind: "assembly" });
               displayAssemblySnapshotRef.current = null;
-            }
 
-            if (assemblyMode !== "parts" && isCadExt(ext)) {
-              analyzeCadSheetMetal(file, workerRef.current!)
-                .then((meta) => {
-                  if (isStale()) return;
-                  if (activeFileKeyRef.current !== fileKey) return;
-                  setSheetMeta(meta);
-                })
-                .catch(() => {
-                  if (isStale()) return;
-                  if (activeFileKeyRef.current !== fileKey) return;
-                  setSheetMeta({
-                    isAssembly: false,
-                    isSheetMetal: false,
-                    reason: "analysis_failed",
+              if (assemblyMode !== "parts" && isCadExt(ext)) {
+                analyzeCadSheetMetal(file, workerRef.current!)
+                  .then((meta) => {
+                    if (isStale()) return;
+                    if (activeFileKeyRef.current !== fileKey) return;
+                    setSheetMeta(meta);
+                  })
+                  .catch(() => {
+                    if (isStale()) return;
+                    if (activeFileKeyRef.current !== fileKey) return;
+                    setSheetMeta({
+                      isAssembly: false,
+                      isSheetMetal: false,
+                      reason: "analysis_failed",
+                    });
                   });
-                });
+              }
             }
           }
 
@@ -1449,11 +1260,9 @@ export const CadViewer = forwardRef<CadViewerRef, CadViewerProps>(
         }
       }
 
-      runMeasurementHoverInteraction({
-        viewer: viewerRef.current,
-        ndcX: x,
-        ndcY: y,
-      });
+      if (viewerRef.current.highlightEdgeAtScreenPosition) {
+        viewerRef.current.highlightEdgeAtScreenPosition(x, y);
+      }
     };
 
     const handleViewportPointerDown = (
@@ -1484,11 +1293,7 @@ export const CadViewer = forwardRef<CadViewerRef, CadViewerProps>(
       const x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
       const y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
 
-      const { length } = runMeasurementClickInteraction({
-        viewer: viewerRef.current,
-        ndcX: x,
-        ndcY: y,
-      });
+      const length = viewerRef.current.measureEdgeAtScreenPosition(x, y);
       if (length === null) return;
       setMeasureMM(length);
       pointerDownPosRef.current = null;
@@ -1650,19 +1455,16 @@ export const CadViewer = forwardRef<CadViewerRef, CadViewerProps>(
 
     const baseFlattenEligible =
       showControls && assemblyMode !== "parts" && isCadExt(currentExt);
-    const hasExplicitSheetMetalData =
-      sheetMeta?.isAssembly === false && sheetMeta?.isSheetMetal === true;
-    const sheetMetalUiEnabled = showFlatParts === true;
     const naturalFlattenVisible =
       baseFlattenEligible &&
-      hasExplicitSheetMetalData;
+      sheetMeta?.isAssembly === false &&
+      sheetMeta?.isSheetMetal === true;
     const forceFlattenVisible =
       FORCE_SHOW_FLATTEN &&
       baseFlattenEligible &&
       (currentExt === "step" || currentExt === "stp") &&
-      hasExplicitSheetMetalData;
-    const flattenControlVisible =
-      sheetMetalUiEnabled && (naturalFlattenVisible || forceFlattenVisible);
+      sheetMeta?.isAssembly === false;
+    const flattenControlVisible = naturalFlattenVisible || forceFlattenVisible;
 
     const handleFlatToggle = async (nextEnabled: boolean) => {
       const viewer = viewerRef.current;
@@ -1950,32 +1752,6 @@ export const CadViewer = forwardRef<CadViewerRef, CadViewerProps>(
             cursor: measureMode ? "crosshair" : "default",
           }}
         />
-
-        {showMissingRuntimeTopologyWarning && (
-          <div
-            style={{
-              position: "absolute",
-              top: "14px",
-              left: "50%",
-              transform: "translateX(-50%)",
-              zIndex: 15,
-              maxWidth: "min(92%, 720px)",
-              borderRadius: "10px",
-              border: "1px solid rgba(245, 158, 11, 0.7)",
-              background: "rgba(255, 251, 235, 0.96)",
-              boxShadow: "0 6px 18px rgba(120, 53, 15, 0.14)",
-              padding: "8px 12px",
-              fontSize: "12px",
-              fontWeight: 600,
-              lineHeight: 1.35,
-              color: "#7c2d12",
-              pointerEvents: "none",
-              textAlign: "center",
-            }}
-          >
-            {MISSING_RUNTIME_TOPOLOGY_WARNING_MESSAGE}
-          </div>
-        )}
 
         {showDxfPreviewPanel && (
           <div
