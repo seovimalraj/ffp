@@ -9,6 +9,9 @@
     "lib/api/__tests__/admin.contract.test.ts",
     "lib/api/__snapshots__/admin.contract.test.snap",
     "src/hooks/useAdminReviewQueue.ts",
-    "src/lib/router/**/*"
+    "src/lib/router/**/*",
+    "components/cad/viewer.ts",
+    "components/cad/cad-viewer.tsx",
+    "components/cad/cad-viewer-measurement-interaction.ts"
   ]
 }

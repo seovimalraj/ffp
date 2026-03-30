@@ -1,13 +1,34 @@
 /// <reference lib="webworker" />
 
 /* eslint-disable */
-type _TessReq = {
+import type {
+  CadTopologyAvailability,
+  CadTopologyResult,
+  ExactCurveKind,
+  ExactEdge,
+  ExactEdgeKind,
+  ExactFace,
+  ExactFaceKind,
+  ExactVertex,
+} from "../components/cad/exact-cad-topology";
+
+type TessReq = {
   id: string;
   type: "tessellate";
   payload: {
     buffer: ArrayBuffer;
     ext: "step" | "stp" | "iges" | "igs" | "brep";
     mode?: "flat" | "parts";
+    linearDeflection?: number;
+    angularDeflection?: number;
+  };
+};
+type TessWithTopologyReq = {
+  id: string;
+  type: "tessellate_with_topology";
+  payload: {
+    buffer: ArrayBuffer;
+    ext: "step" | "stp" | "iges" | "igs" | "brep";
     linearDeflection?: number;
     angularDeflection?: number;
   };
@@ -93,6 +114,15 @@ type TessPartsOk = {
   root: TessPartsNode | any;
   meshes: TessPartsMesh[];
 };
+type TessWithTopologyOk = {
+  id: string;
+  ok: true;
+  type: "tessellate_with_topology";
+  root: TessPartsNode | any;
+  meshes: TessPartsMesh[];
+  topology: CadTopologyResult | null;
+  topologyAvailability: CadTopologyAvailability;
+};
 type TessErr = { id: string; ok: false; error: string };
 
 type ExportPartReq = {
@@ -108,6 +138,7 @@ type ExportPartReq = {
 
 type WorkerCapabilities = {
   exactCadPartExport: boolean;
+  exactCadTopology: boolean;
   supportedExactCadFormats: Array<CadExactExportFormat>;
 };
 
@@ -129,6 +160,36 @@ type GetWorkerCapabilitiesOk = {
 const ctx: any = self as any;
 let occt: any | null = null;
 let appOrigin: string | null = null;
+const OCC_RUNTIME_JS_PATH = "/occ/occt-import-js.js" as const;
+const OCC_RUNTIME_WASM_PATH = "/occ/occt-import-js.wasm" as const;
+const REQUIRED_TOPOLOGY_RUNTIME_EXPORT = "TessellateWithTopology" as const;
+
+type RuntimeArtifactUrls = {
+  scriptUrl: string;
+  wasmUrl: string;
+};
+
+type TopologyRuntimeSelfTest = {
+  checked: boolean;
+  exportName: typeof REQUIRED_TOPOLOGY_RUNTIME_EXPORT;
+  exportType: string;
+  exportAvailable: boolean;
+  message: string;
+  runtimeSymbols: string[];
+  artifacts: RuntimeArtifactUrls;
+};
+
+type TopologyRuntimeSupport = {
+  exactCadTopology: boolean;
+  symbolName: string | null;
+  runtimeSymbols: string[];
+};
+
+let runtimeArtifactUrls: RuntimeArtifactUrls = {
+  scriptUrl: OCC_RUNTIME_JS_PATH,
+  wasmUrl: OCC_RUNTIME_WASM_PATH,
+};
+let topologyRuntimeSelfTest: TopologyRuntimeSelfTest | null = null;
 
 async function init() {
   if (occt) return occt;
@@ -144,16 +205,23 @@ async function init() {
     );
   }
 
-  // Construct absolute URL for the JS glue code
-  let scriptUrl: string;
+  // Construct absolute URLs for runtime artifacts.
+  let scriptUrl: string = OCC_RUNTIME_JS_PATH;
+  let wasmUrl: string = OCC_RUNTIME_WASM_PATH;
   try {
     scriptUrl =
       origin && origin !== "null"
-        ? new URL("/occ/occt-import-js.js", origin).href
-        : "/occ/occt-import-js.js";
+        ? new URL(OCC_RUNTIME_JS_PATH, origin).href
+        : OCC_RUNTIME_JS_PATH;
+    wasmUrl =
+      origin && origin !== "null"
+        ? new URL(OCC_RUNTIME_WASM_PATH, origin).href
+        : OCC_RUNTIME_WASM_PATH;
   } catch (_e) {
-    scriptUrl = "/occ/occt-import-js.js";
+    scriptUrl = OCC_RUNTIME_JS_PATH;
+    wasmUrl = OCC_RUNTIME_WASM_PATH;
   }
+  runtimeArtifactUrls = { scriptUrl, wasmUrl };
 
   try {
     // Load the JS glue from /public/occ/
@@ -173,6 +241,9 @@ async function init() {
   // Initialize the factory with robust file location for the .wasm asset
   occt = await factory({
     locateFile: (f: string) => {
+      if (f === "occt-import-js.wasm") {
+        return wasmUrl;
+      }
       try {
         return origin && origin !== "null"
           ? new URL(`/occ/${f}`, origin).href
@@ -187,6 +258,11 @@ async function init() {
     typeof (occt as any).AnalyzeSheetMetal,
   );
   console.log("[OCCT] ExportPart:", typeof (occt as any).ExportPart);
+  console.log(
+    "[OCCT] TessellateWithTopology:",
+    typeof (occt as any).TessellateWithTopology,
+  );
+  runTopologyRuntimeSelfTest(occt);
   return occt;
 }
 
@@ -308,6 +384,359 @@ function normalizeSheetMetalMeta(raw: any): SheetMetalMeta {
   };
 }
 
+function getAvailableTopologyRuntimeSymbols(mod: any): string[] {
+  if (!mod || typeof mod !== "object") return [];
+  const symbols = Object.keys(mod).filter(
+    (entry) =>
+      typeof mod?.[entry] === "function" &&
+      /topolog|tessellat|extract/i.test(entry),
+  );
+  symbols.sort((a, b) => a.localeCompare(b));
+  return symbols;
+}
+
+function buildMissingTopologyRuntimeMessage(runtimeSymbols: string[]): string {
+  const symbolList =
+    runtimeSymbols.length > 0 ? runtimeSymbols.join(", ") : "<none>";
+  return [
+    `Missing required OCCT runtime export '${REQUIRED_TOPOLOGY_RUNTIME_EXPORT}'.`,
+    `Artifacts: ${runtimeArtifactUrls.scriptUrl} and ${runtimeArtifactUrls.wasmUrl}.`,
+    `Detected topology-related runtime exports: ${symbolList}.`,
+  ].join(" ");
+}
+
+function runTopologyRuntimeSelfTest(mod: any): TopologyRuntimeSelfTest {
+  if (topologyRuntimeSelfTest?.checked) {
+    return topologyRuntimeSelfTest;
+  }
+
+  const runtimeSymbols = getAvailableTopologyRuntimeSymbols(mod);
+  const exportType = typeof mod?.[REQUIRED_TOPOLOGY_RUNTIME_EXPORT];
+  const exportAvailable = exportType === "function";
+  const message = exportAvailable
+    ? `Runtime export '${REQUIRED_TOPOLOGY_RUNTIME_EXPORT}' is available.`
+    : buildMissingTopologyRuntimeMessage(runtimeSymbols);
+
+  topologyRuntimeSelfTest = {
+    checked: true,
+    exportName: REQUIRED_TOPOLOGY_RUNTIME_EXPORT,
+    exportType,
+    exportAvailable,
+    message,
+    runtimeSymbols,
+    artifacts: runtimeArtifactUrls,
+  };
+
+  console.info("[OCCT][self-test] topology runtime capability", {
+    requiredExport: REQUIRED_TOPOLOGY_RUNTIME_EXPORT,
+    exportType,
+    exportAvailable,
+    scriptUrl: runtimeArtifactUrls.scriptUrl,
+    wasmUrl: runtimeArtifactUrls.wasmUrl,
+    runtimeSymbols,
+  });
+
+  if (!exportAvailable) {
+    console.error("[OCCT][self-test] topology runtime missing export", {
+      requiredExport: REQUIRED_TOPOLOGY_RUNTIME_EXPORT,
+      message,
+      scriptUrl: runtimeArtifactUrls.scriptUrl,
+      wasmUrl: runtimeArtifactUrls.wasmUrl,
+      runtimeSymbols,
+    });
+  }
+
+  return topologyRuntimeSelfTest;
+}
+
+function resolveTopologyRuntimeSupport(mod: any): TopologyRuntimeSupport {
+  const selfTest = runTopologyRuntimeSelfTest(mod);
+  return {
+    exactCadTopology: selfTest.exportAvailable,
+    symbolName: selfTest.exportAvailable ? selfTest.exportName : null,
+    runtimeSymbols: selfTest.runtimeSymbols,
+  };
+}
+
+function missingTopologyAvailability(mod: any): CadTopologyAvailability {
+  const support = resolveTopologyRuntimeSupport(mod);
+  const selfTest = topologyRuntimeSelfTest ?? runTopologyRuntimeSelfTest(mod);
+  return {
+    exact: false,
+    reason: "missing_runtime_support",
+    message: selfTest.message,
+    runtimeSymbols: support.runtimeSymbols,
+  };
+}
+
+function availableTopologyAvailability(mod: any): CadTopologyAvailability {
+  const support = resolveTopologyRuntimeSupport(mod);
+  return {
+    exact: true,
+    reason: "available",
+    message: `Exact CAD topology was extracted via runtime symbol '${support.symbolName ?? REQUIRED_TOPOLOGY_RUNTIME_EXPORT}'.`,
+    runtimeSymbols: support.runtimeSymbols,
+  };
+}
+
+function asString(raw: unknown, fallback: string): string {
+  if (typeof raw !== "string") return fallback;
+  const trimmed = raw.trim();
+  return trimmed.length > 0 ? trimmed : fallback;
+}
+
+function toBool(raw: unknown, fallback = false): boolean {
+  if (typeof raw === "boolean") return raw;
+  if (typeof raw === "number") return raw !== 0;
+  return fallback;
+}
+
+function toOptionalBool(raw: unknown): boolean | undefined {
+  if (typeof raw === "boolean") return raw;
+  if (typeof raw === "number") return raw !== 0;
+  return undefined;
+}
+
+function toNumber(raw: unknown): number | undefined {
+  const value = Number(raw);
+  return Number.isFinite(value) ? value : undefined;
+}
+
+function toVec3(raw: unknown): [number, number, number] | undefined {
+  if (!Array.isArray(raw) || raw.length < 3) return undefined;
+  const x = Number(raw[0]);
+  const y = Number(raw[1]);
+  const z = Number(raw[2]);
+  if (!Number.isFinite(x) || !Number.isFinite(y) || !Number.isFinite(z)) {
+    return undefined;
+  }
+  return [x, y, z];
+}
+
+function toStringArray(raw: unknown): string[] {
+  if (!Array.isArray(raw)) return [];
+  const out: string[] = [];
+  for (const entry of raw) {
+    if (typeof entry !== "string") continue;
+    const trimmed = entry.trim();
+    if (trimmed.length === 0) continue;
+    out.push(trimmed);
+  }
+  return out;
+}
+
+function isExactEdgeKind(raw: unknown): raw is ExactEdgeKind {
+  return (
+    raw === "boundary" ||
+    raw === "sharp" ||
+    raw === "tangent" ||
+    raw === "seam" ||
+    raw === "degenerated" ||
+    raw === "unknown"
+  );
+}
+
+function isExactCurveKind(raw: unknown): raw is ExactCurveKind {
+  return (
+    raw === "line" ||
+    raw === "circle" ||
+    raw === "ellipse" ||
+    raw === "bspline" ||
+    raw === "other"
+  );
+}
+
+function isExactFaceKind(raw: unknown): raw is ExactFaceKind {
+  return (
+    raw === "plane" ||
+    raw === "cylinder" ||
+    raw === "cone" ||
+    raw === "sphere" ||
+    raw === "torus" ||
+    raw === "bspline" ||
+    raw === "other"
+  );
+}
+
+function normalizeExactVertices(raw: unknown): ExactVertex[] {
+  if (!Array.isArray(raw)) return [];
+  const out: ExactVertex[] = [];
+  for (let index = 0; index < raw.length; index++) {
+    const item = raw[index];
+    if (!item || typeof item !== "object") continue;
+    const obj = item as any;
+    const point = toVec3(obj.point);
+    if (!point) continue;
+    out.push({
+      id: asString(obj.id, `v_${index}`),
+      partId: normalizePartId(obj.partId),
+      point,
+      tolerance: toNumber(obj.tolerance),
+    });
+  }
+  return out;
+}
+
+function normalizeExactEdges(raw: unknown): ExactEdge[] {
+  if (!Array.isArray(raw)) return [];
+  const out: ExactEdge[] = [];
+  for (let index = 0; index < raw.length; index++) {
+    const item = raw[index];
+    if (!item || typeof item !== "object") continue;
+    const obj = item as any;
+    const vertexIdsRaw = Array.isArray(obj.vertexIds) ? obj.vertexIds : null;
+    const vertexIds =
+      vertexIdsRaw &&
+      vertexIdsRaw.length >= 2 &&
+      typeof vertexIdsRaw[0] === "string" &&
+      typeof vertexIdsRaw[1] === "string"
+        ? ([vertexIdsRaw[0], vertexIdsRaw[1]] as [string, string])
+        : null;
+    const adjacentFaceIds = toStringArray(obj.adjacentFaceIds);
+    const samplePositions = toFloat32Array(obj.samplePositions);
+    if (samplePositions.length < 6) continue;
+
+    out.push({
+      id: asString(obj.id, `e_${index}`),
+      partId: normalizePartId(obj.partId),
+      vertexIds,
+      adjacentFaceIds,
+      kind: isExactEdgeKind(obj.kind) ? obj.kind : "unknown",
+      curveKind: isExactCurveKind(obj.curveKind) ? obj.curveKind : "other",
+      closed: toBool(obj.closed),
+      periodic: toBool(obj.periodic),
+      tolerance: toNumber(obj.tolerance),
+      samplePositions,
+      analytic: obj.analytic
+        ? {
+            radius: toNumber(obj.analytic?.radius),
+            diameter: toNumber(obj.analytic?.diameter),
+            center: toVec3(obj.analytic?.center),
+            axis: toVec3(obj.analytic?.axis),
+            normal: toVec3(obj.analytic?.normal),
+            startPoint: toVec3(obj.analytic?.startPoint),
+            endPoint: toVec3(obj.analytic?.endPoint),
+            midPoint: toVec3(obj.analytic?.midPoint),
+            sweepAngleRad: toNumber(obj.analytic?.sweepAngleRad),
+            isFullCircle: toOptionalBool(obj.analytic?.isFullCircle),
+          }
+        : undefined,
+    });
+  }
+  return out;
+}
+
+function normalizeExactFaces(raw: unknown): ExactFace[] {
+  if (!Array.isArray(raw)) return [];
+  const out: ExactFace[] = [];
+  for (let index = 0; index < raw.length; index++) {
+    const item = raw[index];
+    if (!item || typeof item !== "object") continue;
+    const obj = item as any;
+    out.push({
+      id: asString(obj.id, `f_${index}`),
+      partId: normalizePartId(obj.partId),
+      kind: isExactFaceKind(obj.kind) ? obj.kind : "other",
+      analytic: obj.analytic
+        ? {
+            origin: toVec3(obj.analytic?.origin),
+            normal: toVec3(obj.analytic?.normal),
+            axis: toVec3(obj.analytic?.axis),
+            radius: toNumber(obj.analytic?.radius),
+          }
+        : undefined,
+    });
+  }
+  return out;
+}
+
+function normalizeCadTopologyResult(
+  raw: unknown,
+  root: TessPartsNode,
+  meshes: TessPartsMesh[],
+): CadTopologyResult | null {
+  if (!raw || typeof raw !== "object") return null;
+  const obj = raw as any;
+  const vertices = normalizeExactVertices(obj.vertices);
+  const edges = normalizeExactEdges(obj.edges);
+  const faces = normalizeExactFaces(obj.faces);
+  if (vertices.length === 0 && edges.length === 0 && faces.length === 0) {
+    return null;
+  }
+  return {
+    root: obj.root ?? root,
+    meshes: obj.meshes ?? meshes,
+    vertices,
+    edges,
+    faces,
+  };
+}
+
+function collectTopologyTransferables(
+  topology: CadTopologyResult | null,
+): Transferable[] {
+  if (!topology) return [];
+  const transferables: Transferable[] = [];
+  for (const edge of topology.edges) {
+    if (edge.samplePositions instanceof Float32Array) {
+      transferables.push(edge.samplePositions.buffer);
+    }
+  }
+  return transferables;
+}
+
+function readCadResult(
+  mod: any,
+  ext: CADExt,
+  bytes: Uint8Array,
+  linearDeflection?: number,
+  angularDeflection?: number,
+) {
+  const params = buildOcctParams(linearDeflection, angularDeflection);
+
+  if (ext === "step" || ext === "stp") return mod.ReadStepFile(bytes, params);
+  if (ext === "iges" || ext === "igs") return mod.ReadIgesFile(bytes, params);
+  if (ext === "brep") return mod.ReadBrepFile(bytes, params);
+  throw new Error("Unsupported extension");
+}
+
+function packTessPartsPayload(res: any): {
+  root: TessPartsNode;
+  meshes: TessPartsMesh[];
+  transferables: Transferable[];
+} {
+  const sourceMeshes = Array.isArray(res?.meshes) ? (res.meshes as any[]) : [];
+  const meshes: TessPartsMesh[] = [];
+  const transferables: Transferable[] = [];
+
+  for (let meshIndex = 0; meshIndex < sourceMeshes.length; meshIndex++) {
+    const m = sourceMeshes[meshIndex];
+    const p = toFloat32Array(m?.attributes?.position?.array);
+    const nSrc = m?.attributes?.normal?.array;
+    const n = nSrc != null ? toFloat32Array(nSrc) : undefined;
+    const i = toUint32Array(m?.index?.array);
+
+    const packed: TessPartsMesh = {
+      name: typeof m?.name === "string" ? m.name : `Part ${meshIndex + 1}`,
+      partId: normalizePartId(m?.partId),
+      color: normalizeColor(m?.color),
+      positions: p,
+      indices: i,
+    };
+    if (n) packed.normals = n;
+    meshes.push(packed);
+
+    transferables.push(p.buffer, i.buffer);
+    if (n) transferables.push(n.buffer);
+  }
+
+  return {
+    root: normalizeRootNode(res?.root, meshes.length),
+    meshes,
+    transferables,
+  };
+}
+
 function isCadExt(ext: unknown): ext is CADExt {
   return (
     ext === "step" ||
@@ -326,8 +755,10 @@ function isCadExactExportFormat(
 
 function getWorkerCapabilities(mod: any): WorkerCapabilities {
   const exactCadPartExport = typeof mod?.ExportPart === "function";
+  const exactCadTopology = resolveTopologyRuntimeSupport(mod).exactCadTopology;
   return {
     exactCadPartExport,
+    exactCadTopology,
     supportedExactCadFormats: exactCadPartExport
       ? ["step", "iges", "brep"]
       : [],
@@ -356,6 +787,7 @@ ctx.onmessage = async (e: MessageEvent<any>) => {
     } catch {
       const fallback: WorkerCapabilities = {
         exactCadPartExport: false,
+        exactCadTopology: false,
         supportedExactCadFormats: [],
       };
       ctx.postMessage({
@@ -370,19 +802,22 @@ ctx.onmessage = async (e: MessageEvent<any>) => {
 
   if (type === "tessellate") {
     try {
-      const { buffer, ext, mode, linearDeflection, angularDeflection } = payload;
+      const req = payload as TessReq["payload"];
+      const { buffer, ext, mode, linearDeflection, angularDeflection } = req;
+      if (!isCadExt(ext)) {
+        throw new Error("Unsupported extension");
+      }
       const effectiveMode: "flat" | "parts" = mode ?? "flat";
       const u8 = new Uint8Array(buffer);
       const mod = await init();
 
-      const params = buildOcctParams(linearDeflection, angularDeflection);
-
-      let res: any;
-      if (ext === "step" || ext === "stp") res = mod.ReadStepFile(u8, params);
-      else if (ext === "iges" || ext === "igs")
-        res = mod.ReadIgesFile(u8, params);
-      else if (ext === "brep") res = mod.ReadBrepFile(u8, params);
-      else throw new Error("Unsupported extension");
+      const res = readCadResult(
+        mod,
+        ext,
+        u8,
+        linearDeflection,
+        angularDeflection,
+      );
 
       if (!res || !res.success) {
         const errMsg = res?.error
@@ -393,32 +828,7 @@ ctx.onmessage = async (e: MessageEvent<any>) => {
       }
 
       if (effectiveMode === "parts") {
-        const sourceMeshes = Array.isArray(res.meshes) ? (res.meshes as any[]) : [];
-        const meshes: TessPartsMesh[] = [];
-        const transferables: Transferable[] = [];
-
-        for (let meshIndex = 0; meshIndex < sourceMeshes.length; meshIndex++) {
-          const m = sourceMeshes[meshIndex];
-          const p = toFloat32Array(m?.attributes?.position?.array);
-          const nSrc = m?.attributes?.normal?.array;
-          const n = nSrc != null ? toFloat32Array(nSrc) : undefined;
-          const i = toUint32Array(m?.index?.array);
-
-          const packed: TessPartsMesh = {
-            name: typeof m?.name === "string" ? m.name : `Part ${meshIndex + 1}`,
-            partId: normalizePartId(m?.partId),
-            color: normalizeColor(m?.color),
-            positions: p,
-            indices: i,
-          };
-          if (n) packed.normals = n;
-          meshes.push(packed);
-
-          transferables.push(p.buffer, i.buffer);
-          if (n) transferables.push(n.buffer);
-        }
-
-        const root = normalizeRootNode(res.root, meshes.length);
+        const { root, meshes, transferables } = packTessPartsPayload(res);
 
         ctx.postMessage(
           { id, ok: true, mode: "parts", root, meshes } as TessPartsOk,
@@ -464,6 +874,96 @@ ctx.onmessage = async (e: MessageEvent<any>) => {
         pos.buffer,
         idx.buffer,
       ]);
+    } catch (err: any) {
+      ctx.postMessage({
+        id,
+        ok: false,
+        error: err?.message || String(err),
+      } as TessErr);
+    }
+    return;
+  }
+
+  if (type === "tessellate_with_topology") {
+    try {
+      const req = payload as TessWithTopologyReq["payload"];
+      if (!isCadExt(req?.ext)) {
+        throw new Error("Unsupported extension");
+      }
+
+      const mod = await init();
+      const sourceBytes = new Uint8Array(req.buffer);
+      const topologySupport = resolveTopologyRuntimeSupport(mod);
+      if (
+        !topologySupport.exactCadTopology ||
+        topologySupport.symbolName !== REQUIRED_TOPOLOGY_RUNTIME_EXPORT
+      ) {
+        const missing = missingTopologyAvailability(mod);
+        throw new Error(missing.message);
+      }
+
+      const topologyFn = mod[REQUIRED_TOPOLOGY_RUNTIME_EXPORT];
+      if (typeof topologyFn !== "function") {
+        const missing = missingTopologyAvailability(mod);
+        throw new Error(missing.message);
+      }
+
+      const topologyExtractionResult = topologyFn(sourceBytes, {
+        inputExt: req.ext,
+        ext: req.ext,
+        linearDeflection: req.linearDeflection,
+        angularDeflection: req.angularDeflection,
+        mesh: {
+          linearDeflection: req.linearDeflection ?? 0.001,
+          angularDeflection: req.angularDeflection ?? 0.5,
+        },
+      });
+      if (!topologyExtractionResult || topologyExtractionResult.success === false) {
+        throw new Error(
+          topologyExtractionResult?.error ||
+            "Exact topology extraction failed in runtime.",
+        );
+      }
+      if (!Array.isArray(topologyExtractionResult.meshes)) {
+        throw new Error(
+          `Runtime export '${REQUIRED_TOPOLOGY_RUNTIME_EXPORT}' returned no tessellated meshes.`,
+        );
+      }
+
+      const { root, meshes, transferables } = packTessPartsPayload(
+        topologyExtractionResult,
+      );
+      const topologyAvailability: CadTopologyAvailability =
+        availableTopologyAvailability(mod);
+      const topology = normalizeCadTopologyResult(
+        topologyExtractionResult?.topology ?? topologyExtractionResult,
+        root,
+        meshes,
+      );
+      if (!topology) {
+        throw new Error(
+          "Exact topology extraction completed but returned no topology entities.",
+        );
+      }
+      if (topology.edges.length === 0 || topology.faces.length === 0) {
+        throw new Error(
+          "Exact topology extraction returned zero edges/faces for this CAD input.",
+        );
+      }
+
+      const topologyTransfers = collectTopologyTransferables(topology);
+      ctx.postMessage(
+        {
+          id,
+          ok: true,
+          type: "tessellate_with_topology",
+          root,
+          meshes,
+          topology,
+          topologyAvailability,
+        } as TessWithTopologyOk,
+        [...transferables, ...topologyTransfers],
+      );
     } catch (err: any) {
       ctx.postMessage({
         id,
