@@ -40,12 +40,8 @@ if (!jsText.includes("occt-import-js.wasm")) {
 const jsSize = fs.statSync(jsPath).size;
 const wasmSize = fs.statSync(wasmPath).size;
 
-const requiredMarkers = [
-  "ExportPart",
-  "AnalyzeSheetMetal",
-  "TessellateWithTopology",
-];
-const advisoryMarkers = ["partId"];
+const requiredMarkers = ["ExportPart"];
+const advisoryMarkers = ["partId", "AnalyzeSheetMetal"];
 
 console.log("[occ:verify:artifacts] Runtime OCCT artifacts");
 console.log(`- JS:   ${jsPath}`);

@@ -6,23 +6,6 @@ import { ThreeMFLoader } from "three/examples/jsm/loaders/3MFLoader.js";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 import * as BufferGeometryUtils from "three/examples/jsm/utils/BufferGeometryUtils.js";
 import { createStainlessSteelMaterial } from "./viewer";
-import {
-  DEFAULT_CAD_TOPOLOGY_AVAILABILITY,
-  type CadTopologyAvailability,
-  type CadTopologyResult,
-} from "./exact-cad-topology";
-
-export type {
-  ExactVertex,
-  ExactEdgeKind,
-  ExactCurveKind,
-  ExactEdge,
-  ExactFaceKind,
-  ExactFace,
-  CadTopologyResult,
-  CadTopologyAvailability,
-  PickedEntity,
-} from "./exact-cad-topology";
 
 type TessReq = {
   id: string;
@@ -31,17 +14,6 @@ type TessReq = {
     buffer: ArrayBuffer;
     ext: "step" | "stp" | "iges" | "igs" | "brep";
     mode?: "flat" | "parts";
-    linearDeflection?: number;
-    angularDeflection?: number;
-  };
-};
-
-type TessWithTopologyReq = {
-  id: string;
-  type: "tessellate_with_topology";
-  payload: {
-    buffer: ArrayBuffer;
-    ext: "step" | "stp" | "iges" | "igs" | "brep";
     linearDeflection?: number;
     angularDeflection?: number;
   };
@@ -107,16 +79,6 @@ type TessPartsOk = {
   meshes: TessPartsMesh[];
 };
 
-type TessWithTopologyOk = {
-  id: string;
-  ok: true;
-  type: "tessellate_with_topology";
-  root: CadAssemblyNode | any;
-  meshes: TessPartsMesh[];
-  topology: CadTopologyResult | null;
-  topologyAvailability: CadTopologyAvailability;
-};
-
 type TessErr = { id: string; ok: false; error: string };
 type ExportPartOk = {
   id: string;
@@ -139,13 +101,11 @@ type MeshAssemblyExt = "obj" | "3mf" | "gltf" | "glb";
 
 export type WorkerCapabilities = {
   exactCadPartExport: boolean;
-  exactCadTopology: boolean;
   supportedExactCadFormats: Array<CadExactExportFormat>;
 };
 
 export const DEFAULT_WORKER_CAPABILITIES: WorkerCapabilities = {
   exactCadPartExport: false,
-  exactCadTopology: false,
   supportedExactCadFormats: [],
 };
 
@@ -193,11 +153,6 @@ export type CadAssemblyLoadResult = {
   meshes: THREE.Mesh[];
   originalBytes: ArrayBuffer;
   ext: CADExt;
-};
-
-export type CadAssemblyWithTopologyLoadResult = CadAssemblyLoadResult & {
-  topology: CadTopologyResult | null;
-  topologyAvailability: CadTopologyAvailability;
 };
 
 function applyStainlessSteelMaterialOverrides(root: any, doubleSide = false) {
@@ -391,65 +346,11 @@ function normalizeWorkerCapabilities(raw: unknown): WorkerCapabilities {
 
   const exactCadPartExport =
     !!caps.exactCadPartExport && supportedExactCadFormats.length > 0;
-  const exactCadTopology = !!caps.exactCadTopology;
 
   return {
     exactCadPartExport,
-    exactCadTopology,
     supportedExactCadFormats,
   };
-}
-
-function isCadTopologyAvailabilityReason(
-  value: unknown,
-): value is CadTopologyAvailability["reason"] {
-  return (
-    value === "available" ||
-    value === "missing_runtime_support" ||
-    value === "worker_request_unsupported" ||
-    value === "runtime_error"
-  );
-}
-
-function normalizeCadTopologyAvailability(
-  raw: unknown,
-): CadTopologyAvailability {
-  if (!raw || typeof raw !== "object") {
-    return { ...DEFAULT_CAD_TOPOLOGY_AVAILABILITY };
-  }
-
-  const availability = raw as CadTopologyAvailability;
-  const runtimeSymbols = Array.isArray(availability.runtimeSymbols)
-    ? availability.runtimeSymbols.filter(
-        (symbol): symbol is string =>
-          typeof symbol === "string" && symbol.trim().length > 0,
-      )
-    : undefined;
-
-  const reason = isCadTopologyAvailabilityReason(availability.reason)
-    ? availability.reason
-    : DEFAULT_CAD_TOPOLOGY_AVAILABILITY.reason;
-  const message =
-    typeof availability.message === "string" &&
-    availability.message.trim().length > 0
-      ? availability.message
-      : DEFAULT_CAD_TOPOLOGY_AVAILABILITY.message;
-
-  return {
-    exact: !!availability.exact,
-    reason,
-    message,
-    runtimeSymbols,
-  };
-}
-
-function normalizeCadTopologyResult(raw: unknown): CadTopologyResult | null {
-  if (!raw || typeof raw !== "object") return null;
-  const topology = raw as CadTopologyResult;
-  if (!Array.isArray(topology.vertices)) return null;
-  if (!Array.isArray(topology.edges)) return null;
-  if (!Array.isArray(topology.faces)) return null;
-  return topology;
 }
 
 async function resolveInputFile(file: File | string): Promise<{
@@ -528,58 +429,10 @@ export function resolveNodeMeshes(
   return resolved;
 }
 
-function buildCadAssemblyScene(
-  packedMeshes: TessPartsMesh[],
-  rawRoot: unknown,
-): { object: THREE.Group; root: CadAssemblyNode; meshes: THREE.Mesh[] } {
-  const group = new THREE.Group();
-  const meshes: THREE.Mesh[] = [];
-
-  for (let i = 0; i < packedMeshes.length; i++) {
-    const packed = packedMeshes[i];
-    const geom = new THREE.BufferGeometry();
-
-    geom.setAttribute("position", new THREE.BufferAttribute(packed.positions, 3));
-    geom.setIndex(new THREE.BufferAttribute(packed.indices, 1));
-    if (packed.normals) {
-      geom.setAttribute("normal", new THREE.BufferAttribute(packed.normals, 3));
-    } else {
-      try {
-        geom.computeVertexNormals();
-      } catch {
-        /* ignore */
-      }
-    }
-
-    const mat = createStainlessSteelMaterial().clone();
-    mat.side = THREE.DoubleSide;
-    const mesh = new THREE.Mesh(geom, mat);
-    mesh.name =
-      typeof packed.name === "string" && packed.name.trim().length > 0
-        ? packed.name
-        : `Part ${i + 1}`;
-    mesh.userData.__cadMeshIndex = i;
-    if (packed.partId) {
-      mesh.userData.__cadPartId = packed.partId;
-    }
-    if (packed.color) {
-      mesh.userData.__cadColor = packed.color;
-    }
-    group.add(mesh);
-    meshes.push(mesh);
-  }
-
-  const root = normalizeCadRoot(rawRoot, meshes.length);
-  if (typeof root.name === "string" && root.name.trim().length > 0) {
-    group.name = root.name;
-  }
-  return { object: group, root, meshes };
-}
-
-export async function loadCadAssemblyWithTopology(
+export async function loadCadAssemblyFile(
   file: File | string,
   worker: Worker,
-): Promise<CadAssemblyWithTopologyLoadResult> {
+): Promise<CadAssemblyLoadResult> {
   const { fileObj, ext } = await resolveInputFile(file);
   if (!isCADExt(ext)) {
     throw new Error("Unsupported CAD assembly format. Try STEP, IGES or BREP.");
@@ -589,99 +442,20 @@ export async function loadCadAssemblyWithTopology(
   const buf = await fileObj.arrayBuffer();
   const sourceBytes = buf.slice(0);
 
-  return new Promise<CadAssemblyWithTopologyLoadResult>((resolve, reject) => {
-    const handle = (
-      e: MessageEvent<TessWithTopologyOk | TessPartsOk | TessErr | TessFlatOk>,
-    ) => {
+  return new Promise<CadAssemblyLoadResult>((resolve, reject) => {
+    const handle = (e: MessageEvent<TessPartsOk | TessErr | TessFlatOk>) => {
       const data = e.data;
       if (!data || data.id !== id) return;
       worker.removeEventListener("message", handle as any);
 
       if (!data.ok) {
-        const topologyError =
-          "error" in data && typeof data.error === "string"
-            ? data.error
-            : "OpenCascade error";
-        const fallbackId = `${id}_fallback_parts`;
-        const fallbackBuffer = sourceBytes.slice(0);
-        const fallbackHandle = (
-          fallbackEvent: MessageEvent<TessPartsOk | TessErr | TessFlatOk>,
-        ) => {
-          const fallbackData = fallbackEvent.data;
-          if (!fallbackData || fallbackData.id !== fallbackId) return;
-          worker.removeEventListener("message", fallbackHandle as any);
-
-          if (!fallbackData.ok) {
-            reject(
-              new Error(
-                `${topologyError} Fallback tessellation failed: ${
-                  "error" in fallbackData &&
-                  typeof fallbackData.error === "string"
-                    ? fallbackData.error
-                    : "OpenCascade error"
-                }`,
-              ),
-            );
-            return;
-          }
-
-          if (!("mode" in fallbackData) || fallbackData.mode !== "parts") {
-            reject(
-              new Error(
-                `${topologyError} Fallback tessellation did not return parts data.`,
-              ),
-            );
-            return;
-          }
-
-          const built = buildCadAssemblyScene(
-            fallbackData.meshes,
-            fallbackData.root,
-          );
-          resolve({
-            ...built,
-            originalBytes: sourceBytes,
-            ext,
-            topology: null,
-            topologyAvailability: {
-              exact: false,
-              reason:
-                topologyError.includes("Missing required OCCT runtime export") ||
-                topologyError.includes("missing_runtime_support")
-                  ? "missing_runtime_support"
-                  : "runtime_error",
-              message: topologyError,
-            },
-          });
-        };
-
-        worker.addEventListener("message", fallbackHandle as any);
-        worker.postMessage(
-          {
-            id: fallbackId,
-            type: "tessellate",
-            payload: {
-              buffer: fallbackBuffer,
-              ext,
-              mode: "parts",
-            },
-          } as TessReq,
-          [fallbackBuffer],
-        );
-        return;
-      }
-
-      if ("type" in data && data.type === "tessellate_with_topology") {
-        const built = buildCadAssemblyScene(data.meshes, data.root);
-        resolve({
-          ...built,
-          originalBytes: sourceBytes,
-          ext,
-          topology: normalizeCadTopologyResult(data.topology),
-          topologyAvailability: normalizeCadTopologyAvailability(
-            data.topologyAvailability,
+        reject(
+          new Error(
+            "error" in data && typeof data.error === "string"
+              ? data.error
+              : "OpenCascade error",
           ),
-        });
+        );
         return;
       }
 
@@ -690,45 +464,63 @@ export async function loadCadAssemblyWithTopology(
         return;
       }
 
-      const built = buildCadAssemblyScene(data.meshes, data.root);
-      resolve({
-        ...built,
-        originalBytes: sourceBytes,
-        ext,
-        topology: null,
-        topologyAvailability: {
-          exact: false,
-          reason: "worker_request_unsupported",
-          message:
-            "Worker responded with tessellated parts only; exact topology request is unsupported by this worker build.",
-        },
-      });
+      const group = new THREE.Group();
+      const meshes: THREE.Mesh[] = [];
+
+      for (let i = 0; i < data.meshes.length; i++) {
+        const packed = data.meshes[i];
+        const geom = new THREE.BufferGeometry();
+
+        geom.setAttribute(
+          "position",
+          new THREE.BufferAttribute(packed.positions, 3),
+        );
+        geom.setIndex(new THREE.BufferAttribute(packed.indices, 1));
+        if (packed.normals) {
+          geom.setAttribute("normal", new THREE.BufferAttribute(packed.normals, 3));
+        } else {
+          try {
+            geom.computeVertexNormals();
+          } catch {
+            /* ignore */
+          }
+        }
+
+        const mat = createStainlessSteelMaterial().clone();
+        mat.side = THREE.DoubleSide;
+        const mesh = new THREE.Mesh(geom, mat);
+        mesh.name =
+          typeof packed.name === "string" && packed.name.trim().length > 0
+            ? packed.name
+            : `Part ${i + 1}`;
+        mesh.userData.__cadMeshIndex = i;
+        if (packed.partId) {
+          mesh.userData.__cadPartId = packed.partId;
+        }
+        if (packed.color) {
+          mesh.userData.__cadColor = packed.color;
+        }
+        group.add(mesh);
+        meshes.push(mesh);
+      }
+
+      const root = normalizeCadRoot(data.root, meshes.length);
+      if (typeof root.name === "string" && root.name.trim().length > 0) {
+        group.name = root.name;
+      }
+      resolve({ object: group, root, meshes, originalBytes: sourceBytes, ext });
     };
 
     worker.addEventListener("message", handle as any);
     worker.postMessage(
       {
         id,
-        type: "tessellate_with_topology",
-        payload: { buffer: buf, ext },
-      } as TessWithTopologyReq,
+        type: "tessellate",
+        payload: { buffer: buf, ext, mode: "parts" },
+      } as TessReq,
       [buf],
     );
   });
-}
-
-export async function loadCadAssemblyFile(
-  file: File | string,
-  worker: Worker,
-): Promise<CadAssemblyLoadResult> {
-  const result = await loadCadAssemblyWithTopology(file, worker);
-  return {
-    object: result.object,
-    root: result.root,
-    meshes: result.meshes,
-    originalBytes: result.originalBytes,
-    ext: result.ext,
-  };
 }
 
 export async function loadMeshAssemblyAsObject3D(
