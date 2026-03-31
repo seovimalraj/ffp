@@ -6,10 +6,9 @@ import { IOrderFull } from "../page";
 import { notify } from "@/lib/toast";
 import { apiClient } from "@/lib/api";
 import { useSession } from "next-auth/react";
-import { useMemo, useCallback, useState } from "react";
+import { useMemo, useCallback, useState, useEffect } from "react";
 import { UpdatePartStatusModal } from "@/components/modals/update-part-status-modal";
 import { RequestType } from "@/app/supplier/orders/[orderId]/page";
-import { OrderPhases } from "@cnc-quote/shared";
 import { kebabToTitleSafe } from "@/utils";
 
 interface Props {
@@ -28,6 +27,29 @@ export function RFQKanban({
   requests,
 }: Props) {
   const session = useSession();
+  const [phases, setPhases] = useState<any[]>([]);
+  const [loadingPhases, setLoadingPhases] = useState(true);
+
+  useEffect(() => {
+    if (orderId) {
+      fetchPhases();
+    }
+  }, [orderId]);
+
+  const fetchPhases = async () => {
+    try {
+      setLoadingPhases(true);
+      const response = await apiClient.get(`/order-workflows/instance/${orderId}`);
+      if (response.data.success && response.data.data) {
+        setPhases(response.data.data.phase_snapshot || []);
+      }
+    } catch (error) {
+      console.error("Error fetching workflow phases:", error);
+    } finally {
+      setLoadingPhases(false);
+    }
+  };
+
   const [pendingMove, setPendingMove] = useState<{
     itemId: string;
     toColumnId: string;
@@ -57,11 +79,13 @@ export function RFQKanban({
     }));
   }, [parts]);
 
-  const columns = OrderPhases.map((phase) => ({
-    id: phase,
-    title: kebabToTitleSafe(phase),
-    items: kanbanItems.filter((item) => item.status === phase),
-  }));
+  const columns = useMemo(() => {
+    return phases.map((phaseData) => ({
+      id: phaseData.key,
+      title: phaseData.label || kebabToTitleSafe(phaseData.key),
+      items: kanbanItems.filter((item) => item.status === phaseData.key),
+    }));
+  }, [phases, kanbanItems]);
 
   // Group items by status
   const kanbanBoard: KanbanBoardType = useMemo(
@@ -70,7 +94,7 @@ export function RFQKanban({
       title: "",
       columns,
     }),
-    [kanbanItems],
+    [columns],
   );
 
   const handleItemMove = (event: any) => {
@@ -134,6 +158,8 @@ export function RFQKanban({
     },
     [onItemClick, parts],
   );
+
+  if (loadingPhases) return <div className="p-10 text-center">Loading board...</div>;
 
   return (
     <div className="">

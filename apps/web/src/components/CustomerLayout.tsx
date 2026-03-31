@@ -55,7 +55,6 @@ export default function CustomerLayout({
   const router = useRouter();
 
   const { data, status } = useSession();
-
   useEffect(() => {
     if (status === "authenticated" && data?.user?.role !== "customer") {
       router.push(`/${data?.user?.role}`);

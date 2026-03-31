@@ -5,7 +5,7 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import AppHeader from "@/layout/AppHeader";
 import { cn } from "@/lib/utils";
-import { ChevronLeft, X, LogOut, Menu } from "lucide-react";
+import { ChevronLeft, X, LogOut, Menu, Search } from "lucide-react";
 import { signOut, useSession } from "next-auth/react";
 import { usePermissions } from "@/components/hooks/use-permissions";
 import { PermissionsNames } from "@cnc-quote/shared";
@@ -138,6 +138,27 @@ export default function SupplierLayout({
         </div>
 
         <nav className="flex-1 overflow-y-auto py-6 px-3 space-y-8 scrollbar-none invisible-scrollbar">
+          {/* Global Search Trigger */}
+          <div className="px-3 mb-2">
+            <button
+              onClick={() => setIsMegaMenuOpen(true)}
+              className="w-full flex items-center gap-3 px-3 py-2 rounded-xl bg-zinc-50 dark:bg-zinc-900 border border-zinc-200/50 dark:border-zinc-800/50 text-zinc-500 hover:text-violet-600 hover:border-violet-200 dark:hover:border-violet-800 transition-all group"
+            >
+              <Search size={18} className="group-hover:scale-110 transition-transform" />
+              <span className={cn(
+                "text-sm font-medium transition-opacity duration-300",
+                desktopOpen ? "opacity-100" : "lg:opacity-0"
+              )}>
+                Quick Search
+              </span>
+              {desktopOpen && (
+                <kbd className="ml-auto hidden xl:inline-flex items-center gap-1 h-5 px-1.5 font-sans text-[10px] font-medium text-zinc-400 bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded">
+                  /
+                </kbd>
+              )}
+            </button>
+          </div>
+
           <div>
             {filteredNav.section && desktopOpen && (
               <div className="px-3 mb-2">

@@ -201,3 +201,60 @@ export class RejectStatusDto {
   @IsNotEmpty()
   rejection_reason: string;
 }
+
+export class CreateOrderWorkflowPhaseDTO {
+  @IsString()
+  @IsNotEmpty()
+  label: string;
+
+  @IsString()
+  @IsNotEmpty()
+  key: string;
+
+  @IsInt()
+  order: number;
+
+  @IsArray()
+  @IsString({ each: true })
+  include: string[];
+
+  @IsString()
+  @IsNotEmpty()
+  color: string;
+}
+
+export class CreateOrderWorkflowTemplateDTO {
+  @IsString()
+  @IsNotEmpty()
+  name: string;
+
+  @IsString()
+  @IsOptional()
+  description: string;
+
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => CreateOrderWorkflowPhaseDTO)
+  phases: CreateOrderWorkflowPhaseDTO[];
+
+  @IsBoolean()
+  @IsOptional()
+  is_active?: boolean;
+
+  @IsString()
+  @IsOptional()
+  created_by?: string;
+}
+
+export class AssignWorkflowToOrderDTO {
+  @IsUUID()
+  @IsNotEmpty()
+  order_workflow_id: string;
+}
+
+export class UpdateOrderWorkflowInstanceDTO {
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => CreateOrderWorkflowPhaseDTO)
+  phase_snapshot: CreateOrderWorkflowPhaseDTO[];
+}

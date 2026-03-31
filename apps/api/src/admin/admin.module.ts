@@ -5,10 +5,17 @@ import { PermissionGuard } from 'src/permissions/permission.guard';
 import { PermissionCheckService } from 'src/permissions/permisson-check.service';
 import { AuthGuard } from 'src/auth/auth.guard';
 import { RolesGuard } from 'src/auth/roles.guard';
+import { AdminDashboardService } from './admin-dashboard.service';
 
 @Module({
   imports: [SupabaseModule],
   controllers: [AdminController],
-  providers: [PermissionGuard, PermissionCheckService, AuthGuard, RolesGuard],
+  providers: [
+    PermissionGuard,
+    PermissionCheckService,
+    AuthGuard,
+    RolesGuard,
+    AdminDashboardService,
+  ],
 })
 export class AdminModule {}

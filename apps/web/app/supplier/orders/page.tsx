@@ -5,7 +5,7 @@ import { DataTable, Column, DataTableSubRow } from "@/components/ui/data-table";
 import { Skeleton } from "@/components/ui/skeleton";
 import { StatusCards, StatusItem } from "@/components/ui/status-cards";
 import { apiClient } from "@/lib/api";
-import { formatCurrency, formatDate } from "@/lib/format";
+import { formatDate } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { CubeIcon } from "@heroicons/react/24/outline";
 import {
@@ -126,11 +126,7 @@ const Page = () => {
   }, []);
 
   const buildStatusCards = useCallback(
-    (statusCounts: {
-      total: number;
-      active: number;
-      completed: number;
-    }) => {
+    (statusCounts: { total: number; active: number; completed: number }) => {
       const cards: StatusItem[] = [
         {
           label: "Total Orders",

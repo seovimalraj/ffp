@@ -9,6 +9,8 @@ import { Button } from "@/components/ui/button";
 import { useRouter } from "next/navigation";
 import { useSession } from "next-auth/react";
 import { useMetaStore } from "@/components/store/title-store";
+import { useMegaMenu } from "@/hooks/use-mega-menu";
+import { cn } from "@/lib/utils";
 
 interface AppHeaderProps {
   setOpen: () => void;
@@ -19,18 +21,18 @@ const AppHeader = ({ setOpen }: AppHeaderProps) => {
   const router = useRouter();
   const session = useSession();
   const { pageTitle } = useMetaStore();
+  const { setIsOpen: setIsMegaMenuOpen } = useMegaMenu();
 
   const handleToggle = () => {
     setOpen();
     toggleMobileSidebar();
   };
-  const inputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
       if ((event.metaKey || event.ctrlKey) && event.key === "k") {
         event.preventDefault();
-        inputRef.current?.focus();
+        setIsMegaMenuOpen(true);
       }
     };
 
@@ -39,7 +41,7 @@ const AppHeader = ({ setOpen }: AppHeaderProps) => {
     return () => {
       document.removeEventListener("keydown", handleKeyDown);
     };
-  }, []);
+  }, [setIsMegaMenuOpen]);
 
   return (
     <header className="sticky top-0 z-30 flex h-16 w-full items-center bg-white/80 backdrop-blur-md border-b border-slate-200 px-4 lg:px-8">
@@ -87,12 +89,26 @@ const AppHeader = ({ setOpen }: AppHeaderProps) => {
         <div className="hidden lg:flex flex-1 max-w-xl">
           <div className="relative w-full group">
             <div className="absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none">
-              <Search className="w-4 h-4 text-slate-400 group-focus-within:text-blue-500 transition-colors" />
+              <Search
+                className={cn(
+                  "w-4 h-4 text-slate-400 transition-colors",
+                  session.data?.user.role === "admin"
+                    ? "group-focus-within:text-violet-500"
+                    : "group-focus-within:text-blue-500",
+                )}
+              />
             </div>
             <input
-              ref={inputRef}
               type="text"
-              className="block w-full h-10 pl-10 pr-12 text-sm text-slate-900 bg-slate-50 border border-transparent rounded-xl focus:bg-white focus:ring-2 focus:ring-blue-500/10 focus:border-blue-500/30 transition-all outline-none"
+              readOnly
+              onClick={() => setIsMegaMenuOpen(true)}
+              onFocus={() => setIsMegaMenuOpen(true)}
+              className={cn(
+                "block w-full h-10 pl-10 pr-12 text-sm text-slate-900 bg-slate-50 border border-transparent rounded-xl focus:bg-white transition-all outline-none cursor-pointer",
+                session.data?.user.role === "admin"
+                  ? "focus:ring-2 focus:ring-violet-500/10 focus:border-violet-500/30"
+                  : "focus:ring-2 focus:ring-blue-500/10 focus:border-blue-500/30",
+              )}
               placeholder="Search..."
             />
             <div className="absolute inset-y-0 right-0 flex items-center pr-3 pointer-events-none">

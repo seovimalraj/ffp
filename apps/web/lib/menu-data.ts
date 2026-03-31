@@ -25,6 +25,12 @@ import {
   Plug,
   ScrollText,
   LucideIcon,
+  MessageSquare,
+  UsersRound,
+  Building2,
+  Factory,
+  Target,
+  Newspaper,
 } from "lucide-react";
 
 export interface MenuItem {
@@ -256,6 +262,206 @@ export const menuSections: MenuSection[] = [
         slug: "audit-logs",
         route: "/settings/audit-logs",
         icon: ScrollText,
+      },
+    ],
+  },
+];
+
+export const adminMenuSections: MenuSection[] = [
+  {
+    title: "Operations",
+    slug: "admin-operations",
+    icon: LayoutDashboard,
+    items: [
+      {
+        label: "Dashboard",
+        slug: "dashboard",
+        route: "/admin",
+        icon: LayoutDashboard,
+      },
+      {
+        label: "Quotes",
+        slug: "quotes",
+        route: "/admin/quotes",
+        icon: ScrollText,
+      },
+      {
+        label: "Orders",
+        slug: "orders",
+        route: "/admin/orders",
+        icon: ShoppingCart,
+      },
+      {
+        label: "RFQs & Bids",
+        slug: "rfqs",
+        route: "/admin/rfqs",
+        icon: ClipboardList,
+      },
+      {
+        label: "Parts & Models",
+        slug: "parts",
+        route: "/admin/parts",
+        icon: Boxes,
+      },
+      {
+        label: "Internal Requests",
+        slug: "requests",
+        route: "/admin/requests",
+        icon: FileQuestion,
+      },
+      {
+        label: "Communications",
+        slug: "messages",
+        route: "/admin/messages",
+        icon: MessageSquare,
+      },
+    ],
+  },
+  {
+    title: "Relationships",
+    slug: "admin-crm",
+    icon: Users,
+    items: [
+      {
+        label: "Customers",
+        slug: "customers",
+        route: "/admin/customers",
+        icon: UsersRound,
+      },
+      {
+        label: "Organizations",
+        slug: "organizations",
+        route: "/admin/organizations",
+        icon: Building2,
+      },
+      {
+        label: "Suppliers",
+        slug: "suppliers",
+        route: "/admin/suppliers",
+        icon: Factory,
+      },
+    ],
+  },
+  {
+    title: "Logistics & Finance",
+    slug: "admin-finance",
+    icon: Receipt,
+    items: [
+      {
+        label: "Invoices",
+        slug: "invoices",
+        route: "/admin/invoices",
+        icon: Receipt,
+      },
+      {
+        label: "Shipments",
+        slug: "shipments",
+        route: "/admin/shipments",
+        icon: Package,
+      },
+      {
+        label: "Sales Analytics",
+        slug: "analytics",
+        route: "/admin/analytics",
+        icon: TrendingUp,
+      },
+    ],
+  },
+  {
+    title: "Catalog & Production",
+    slug: "admin-catalog",
+    icon: Boxes,
+    items: [
+      {
+        label: "Materials",
+        slug: "materials",
+        route: "/admin/catalog/materials",
+        icon: Package,
+      },
+      {
+        label: "Finishes",
+        slug: "finishes",
+        route: "/admin/catalog/finishes",
+        icon: Sparkles,
+      },
+      {
+        label: "Machines",
+        slug: "machines",
+        route: "/admin/machines",
+        icon: Cog,
+      },
+      {
+        label: "Tolerances",
+        slug: "tolerance",
+        route: "/admin/tolerance",
+        icon: Target,
+      },
+      {
+        label: "Capacity Plan",
+        slug: "capacity",
+        route: "/admin/capacity",
+        icon: CalendarClock,
+      },
+      {
+        label: "Pricing Strategy",
+        slug: "pricing",
+        route: "/admin/pricing",
+        icon: PiggyBank,
+      },
+      {
+        label: "Certifications",
+        slug: "certifications",
+        route: "/admin/catalog/certifications",
+        icon: BadgeCheck,
+      },
+    ],
+  },
+  {
+    title: "System & Governance",
+    slug: "admin-settings",
+    icon: Settings,
+    items: [
+      {
+        label: "Team Management",
+        slug: "team",
+        route: "/admin/settings/team",
+        icon: Users,
+      },
+      {
+        label: "Workflow Logic",
+        slug: "workflow",
+        route: "/admin/workflow-template",
+        icon: ClipboardList,
+      },
+      {
+        label: "Org Settings",
+        slug: "org-settings",
+        route: "/admin/settings/organization",
+        icon: Shield,
+      },
+      {
+        label: "Marketing Blogs",
+        slug: "blogs",
+        route: "/admin/blogs",
+        icon: Newspaper,
+      },
+      {
+        label: "API Integrations",
+        slug: "api-keys",
+        route: "/admin/settings/api-keys",
+        icon: KeyRound,
+      },
+      {
+        label: "Webhook Events",
+        slug: "webhooks",
+        route: "/admin/settings/webhooks",
+        icon: Plug,
+      },
+      {
+        label: "System Config",
+        slug: "sys-config",
+        route: "/admin/settings/system-config",
+        icon: Settings,
       },
     ],
   },
