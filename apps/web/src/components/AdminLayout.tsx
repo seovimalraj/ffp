@@ -1,228 +1,175 @@
 "use client";
-import React, { useState } from "react";
+
+import React, { useState, useMemo, useEffect } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import AppHeader from "@/layout/AppHeader";
 import { cn } from "@/lib/utils";
-import {
-  LayoutDashboard,
-  FileText,
-  ShoppingCart,
-  Users,
-  Building2,
-  TruckIcon,
-  BarChart3,
-  FileCheck,
-  Package,
-  Settings,
-  Database,
-  Factory,
-  Gauge,
-  Palette,
-  DollarSign,
-  Award,
-  Shield,
-  UsersRound,
-  Key,
-  Webhook,
-  Clipboard,
-  MessageSquare,
-  Target,
-  ChevronLeft,
-  Menu,
-  LogOut,
-  BadgeInfo,
-  Nut,
-  Newspaper,
-} from "lucide-react";
-import { Button } from "./ui/button";
+import { adminMenuSections } from "@/lib/menu-data";
+import { ChevronLeft, X, LogOut, Menu, Search } from "lucide-react";
 import { signOut, useSession } from "next-auth/react";
+import Logo from "@/components/ui/logo";
+import UserDropdown from "@/components/Header/UserDropdown";
+import NotificationDropdown from "@/components/Header/NotificationDropdown";
+import MegaMenu from "@/components/ui/mega-menu";
+import { useMegaMenu } from "@/hooks/use-mega-menu";
 
 interface AdminLayoutProps {
   readonly children: React.ReactNode;
 }
 
-const navigationGroups = [
-  {
-    name: "Main",
-    items: [
-      { label: "Dashboard", href: "/admin", icon: LayoutDashboard },
-      { label: "Quotes", href: "/admin/quotes", icon: FileText },
-      { label: "Orders", href: "/admin/orders", icon: ShoppingCart },
-      { label: "RFQs & Bids", href: "/admin/rfqs", icon: Clipboard },
-      { label: "Parts", href: "/admin/parts", icon: Nut },
-      { label: "Requests", href: "/admin/requests", icon: BadgeInfo },
-      { label: "Messages", href: "/admin/messages", icon: MessageSquare },
-      { label: "Customers", href: "/admin/customers", icon: Users },
-      { label: "Organizations", href: "/admin/organizations", icon: Building2 },
-      { label: "Suppliers", href: "/admin/suppliers", icon: TruckIcon },
-      { label: "Analytics", href: "/admin/analytics", icon: BarChart3 },
-      { label: "Invoices", href: "/admin/invoices", icon: FileCheck },
-      { label: "Shipments", href: "/admin/shipments", icon: Package },
-    ],
-  },
-  {
-    name: "Catalog",
-    items: [
-      { label: "Materials", href: "/admin/catalog/materials", icon: Database },
-      { label: "Tolerances", href: "/admin/tolerance", icon: Target },
-      { label: "Machines", href: "/admin/machines", icon: Factory },
-      { label: "Capacity", href: "/admin/capacity", icon: Gauge },
-      { label: "Finishes", href: "/admin/catalog/finishes", icon: Palette },
-      { label: "Pricing Engine", href: "/admin/pricing", icon: DollarSign },
-      {
-        label: "Certifications",
-        href: "/admin/catalog/certifications",
-        icon: Award,
-      },
-    ],
-  },
-  {
-    name: "Settings",
-    items: [
-      {
-        label: "Organization",
-        href: "/admin/settings/organization",
-        icon: Shield,
-      },
-      {
-        label: "Blogs",
-        href: "/admin/blogs",
-        icon: Newspaper,
-      },
-      { label: "Team", href: "/admin/settings/team", icon: UsersRound },
-      { label: "API Keys", href: "/admin/settings/api-keys", icon: Key },
-      { label: "Webhooks", href: "/admin/settings/webhooks", icon: Webhook },
-      {
-        label: "System Config",
-        href: "/admin/settings/system-config",
-        icon: Database,
-      },
-    ],
-  },
-];
-
 export default function AdminLayout({ children }: Readonly<AdminLayoutProps>) {
   const pathname = usePathname();
   const [mobileOpen, setMobileOpen] = useState(false);
   const [desktopOpen, setDesktopOpen] = useState(true);
+  const { data: session, status } = useSession();
+  const { isOpen: isMegaMenuOpen, setIsOpen: setIsMegaMenuOpen } =
+    useMegaMenu();
   const router = useRouter();
 
-  const handleSignOut = () => {
-    signOut();
-    router.push("/signin");
-  };
-
-  const { data, status } = useSession();
-
-  React.useEffect(() => {
+  useEffect(() => {
+    if (status === "loading") return;
     if (status === "unauthenticated") {
       router.push("/signin");
       return;
     }
-    if (status === "authenticated" && data?.user?.role !== "admin") {
-      router.push(`/${data?.user?.role}`);
+    if (status === "authenticated" && session?.user?.role !== "admin") {
+      router.push(`/${session?.user?.role}`);
     }
-  }, [data, status, router]);
 
-  // Don't render anything while the session is loading or a redirect is pending
-  if (status === "loading" || status === "unauthenticated") {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Toggle MegaMenu on '/' key if not in an input
+      if (
+        e.key === "/" &&
+        document.activeElement?.tagName !== "INPUT" &&
+        document.activeElement?.tagName !== "TEXTAREA"
+      ) {
+        e.preventDefault();
+        setIsMegaMenuOpen(true);
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [session, status, router, setIsMegaMenuOpen]);
+
+  // Block render until session is resolved
+  if (status === "loading") {
     return null;
   }
 
-  if (status === "authenticated" && data?.user?.role !== "admin") {
+  // Never render children if check would redirect
+  if (status !== "authenticated" || session?.user?.role !== "admin") {
     return null;
   }
 
   return (
-    <div className="flex h-screen w-full overflow-hidden bg-gradient-to-br from-slate-50 via-gray-50 to-slate-100 dark:from-gray-950 dark:via-slate-950 dark:to-gray-900">
-      {/* Sidebar */}
+    <div className="flex h-screen w-full overflow-hidden bg-gradient-to-br from-gray-50 via-zinc-50 to-slate-50 dark:from-gray-950 dark:via-zinc-950 dark:to-gray-900">
       <aside
         className={cn(
-          "bg-white/80 backdrop-blur-xl dark:bg-gray-900/80 border-r border-gray-200/50 dark:border-gray-800/50 flex flex-col fixed top-0 left-0 h-full z-40 transition-all duration-300 shadow-xl",
+          "bg-white dark:bg-zinc-950 border-r border-zinc-200 dark:border-zinc-800 flex flex-col fixed top-0 left-0 h-full z-40 transition-all duration-300 ease-in-out shadow-[1px_0_10px_rgba(0,0,0,0.02)]",
           "lg:static lg:h-full",
           mobileOpen
-            ? "translate-x-0 w-64"
+            ? "translate-x-0 w-64 shadow-2xl"
             : "-translate-x-64 w-64 lg:translate-x-0",
           desktopOpen ? "lg:w-64" : "lg:w-[72px]",
         )}
       >
-        {/* Header */}
-        <div className="h-16 flex items-center justify-between px-4 font-bold text-lg tracking-tight border-b border-gray-200/50 dark:border-gray-800/50 bg-gradient-to-r from-slate-700 to-gray-800 text-white shadow-lg">
-          <div
+        <div className="h-16 flex items-center justify-between px-4 border-b border-zinc-50 dark:border-zinc-900">
+          <Link
+            href="/admin"
             className={cn(
-              "flex items-center gap-2 transition-all duration-300 overflow-hidden whitespace-nowrap",
+              "flex items-center gap-2 transition-all duration-300 overflow-hidden",
               desktopOpen ? "opacity-100 w-auto" : "lg:opacity-0 lg:w-0",
             )}
           >
-            <Settings size={24} className="animate-pulse flex-shrink-0" />
-            <span>Admin Panel</span>
-          </div>
+            <div className="h-10 w-auto flex-shrink-0">
+              <Logo classNames="h-full w-auto object-contain" />
+            </div>
+          </Link>
 
-          <button
-            onClick={() => setDesktopOpen((o) => !o)}
-            className={cn(
-              "hidden lg:flex items-center justify-center w-8 h-8 rounded-lg hover:bg-white/10 text-white/80 hover:text-white transition-all duration-200",
-              !desktopOpen && "mx-auto",
-            )}
-            title={desktopOpen ? "Collapse" : "Expand"}
-          >
-            <ChevronLeft
+          <div className="flex items-center gap-1">
+            <button
+              onClick={() =>
+                mobileOpen ? setMobileOpen(false) : setDesktopOpen((o) => !o)
+              }
+              aria-label={desktopOpen ? "Collapse sidebar" : "Expand sidebar"}
               className={cn(
-                "w-5 h-5 transition-transform duration-300",
-                !desktopOpen && "rotate-180",
+                "flex items-center justify-center w-8 h-8 rounded-lg hover:bg-zinc-50 dark:hover:bg-zinc-900 text-zinc-400 hover:text-zinc-600 transition-all duration-200",
+                !desktopOpen && "mx-auto lg:flex hidden",
+                mobileOpen && "lg:hidden flex",
               )}
-            />
-          </button>
+            >
+              {mobileOpen ? (
+                <X size={18} />
+              ) : (
+                <ChevronLeft
+                  size={18}
+                  className={cn(
+                    "transition-transform duration-300",
+                    !desktopOpen && "rotate-180",
+                  )}
+                />
+              )}
+            </button>
+          </div>
         </div>
 
-        {/* Navigation */}
-        <nav className="flex-1 overflow-y-auto py-4 text-sm scrollbar-thin invisible-scrollbar scrollbar-thumb-gray-300 dark:scrollbar-thumb-gray-700">
-          {navigationGroups.map((group, idx) => (
-            <div key={idx} className="mb-6">
+        <nav className="flex-1 overflow-y-auto py-6 px-3 space-y-8 scrollbar-none invisible-scrollbar">
+          {adminMenuSections.map((group) => (
+            <div key={group.title}>
               {desktopOpen && (
-                <h3 className="px-6 mb-2 text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider whitespace-nowrap overflow-hidden">
-                  {group.name}
-                </h3>
+                <div className="px-3 mb-2">
+                  <h2 className="text-[11px] font-bold uppercase tracking-wider text-zinc-400 dark:text-zinc-500">
+                    {group.title}
+                  </h2>
+                </div>
               )}
-              <ul className="space-y-1 px-3">
+
+              <ul className="space-y-1">
                 {group.items.map((item) => {
                   const active =
-                    pathname === item.href ||
-                    (pathname?.startsWith(item.href + "/") &&
-                      item.href !== "/admin") ||
-                    (item.href === "/admin" && pathname === "/admin");
+                    pathname === item.route ||
+                    (pathname?.startsWith(item.route + "/") &&
+                      item.route !== "/admin") ||
+                    (item.route === "/admin" && pathname === "/admin");
                   const Icon = item.icon;
+
                   return (
-                    <li key={item.href}>
+                    <li key={item.route}>
                       <Link
-                        href={item.href}
+                        href={item.route}
                         className={cn(
-                          "flex items-center gap-3 rounded-lg px-4 py-2.5 font-medium transition-all duration-200 group relative",
+                          "flex items-center gap-3 rounded-xl px-3 py-2.5 text-[14px] font-medium transition-all duration-200 group relative",
                           active
-                            ? "bg-gradient-to-r from-slate-700 to-gray-800 text-white shadow-lg shadow-slate-500/30"
-                            : "text-gray-700 hover:bg-white dark:text-gray-300 dark:hover:bg-gray-800/50 hover:shadow-md",
-                          !desktopOpen && "lg:justify-center lg:px-2",
+                            ? "bg-violet-50/50 dark:bg-violet-900/10 text-violet-900 dark:text-violet-400"
+                            : "text-zinc-500 hover:bg-zinc-50 dark:hover:bg-zinc-900 hover:text-zinc-900 dark:hover:text-zinc-100",
+                          !desktopOpen && "lg:justify-center lg:px-0",
                         )}
                         title={!desktopOpen ? item.label : undefined}
                       >
                         <Icon
-                          size={18}
-                          className={cn("flex-shrink-0", !desktopOpen && "")}
+                          size={20}
+                          className={cn(
+                            "flex-shrink-0 transition-colors",
+                            active
+                              ? "text-violet-900 dark:text-violet-400"
+                              : "text-zinc-400 group-hover:text-zinc-600 dark:group-hover:text-zinc-300",
+                          )}
                         />
                         <span
                           className={cn(
-                            "transition-all duration-300 whitespace-nowrap overflow-hidden",
+                            "transition-all duration-300 whitespace-nowrap overflow-hidden text-ellipsis",
                             desktopOpen
                               ? "opacity-100 max-w-[200px]"
-                              : "lg:opacity-0 lg:max-w-0 font-normal hidden lg:block",
+                              : "lg:opacity-0 lg:max-w-0 font-normal",
                           )}
                         >
                           {item.label}
                         </span>
-                        {/* Mobile label logic if needed, but 'lg:hidden' spans usually work naturally.
-                            Actually, 'hidden lg:block' on the span might be too aggressive if we want it on mobile.
-                            CustomerLayout uses 'lg:opacity-0 lg:max-w-0' which animates it out. */}
+                        {active && desktopOpen && (
+                          <div className="absolute left-[-12px] top-1/2 -translate-y-1/2 w-1 h-6 bg-violet-600 rounded-r-full" />
+                        )}
                       </Link>
                     </li>
                   );
@@ -232,66 +179,52 @@ export default function AdminLayout({ children }: Readonly<AdminLayoutProps>) {
           ))}
         </nav>
 
-        {/* Footer */}
-        <div className="p-4 border-t border-gray-200/50 dark:border-gray-800/50 text-xs text-gray-500 dark:text-gray-400 bg-gray-50/50 dark:bg-gray-900/50">
+        <div className="p-3 mt-auto border-t border-zinc-100 dark:border-zinc-900 bg-zinc-50/30">
           <div
             className={cn(
               "flex items-center gap-2",
               desktopOpen ? "justify-between" : "flex-col justify-center",
             )}
           >
-            {desktopOpen ? (
-              <>
-                <div className="flex flex-col gap-2 w-full">
-                  <Button
-                    onClick={() => handleSignOut()}
-                    variant="outline"
-                    className="w-full justify-start gap-2 border-gray-200 dark:border-gray-700"
-                  >
-                    <LogOut size={16} />
-                    <span>Logout</span>
-                  </Button>
-                  <div className="flex items-center justify-between px-1">
-                    <Link
-                      href="/legal/privacy"
-                      className="hover:text-slate-700 transition-colors"
-                    >
-                      Privacy
-                    </Link>
-                    <span>·</span>
-                    <Link
-                      href="/legal/terms"
-                      className="hover:text-slate-700 transition-colors"
-                    >
-                      Terms
-                    </Link>
-                  </div>
+            <div className="flex items-center gap-2">
+              <UserDropdown />
+              {desktopOpen && (
+                <div className="flex flex-col min-w-0">
+                  <span className="text-[13px] font-semibold text-zinc-900 dark:text-zinc-100 truncate">
+                    {session?.user?.name || "Admin"}
+                  </span>
+                  <span className="text-[11px] text-zinc-500 truncate">
+                    Admin Portal
+                  </span>
                 </div>
-              </>
-            ) : (
-              <Button
-                onClick={() => handleSignOut()}
-                variant="ghost"
-                size="icon"
-                className="h-10 w-10 text-gray-500 hover:text-gray-900"
-                title="Logout"
+              )}
+            </div>
+            {desktopOpen && (
+              <button
+                onClick={() => signOut({ callbackUrl: "/signin" })}
+                className="p-1.5 text-zinc-400 hover:text-red-500 transition-colors"
+                title="Sign Out"
               >
-                <LogOut size={20} />
-              </Button>
+                <LogOut size={18} />
+              </button>
             )}
+            <NotificationDropdown />
           </div>
         </div>
       </aside>
 
-      <div className="flex flex-1 flex-col min-w-0">
+      <div className="flex flex-1 flex-col min-w-0 w-full overflow-hidden">
         <AppHeader setOpen={() => setDesktopOpen((o) => !o)} />
-        <main className="flex-1 overflow-y-auto p-6 md:p-8">{children}</main>
+
+        <main className="flex-1 overflow-y-auto scroll-smooth">
+          <div className="max-w-[1600px] mx-auto p-4 lg:p-8">{children}</div>
+        </main>
       </div>
 
-      {/* Mobile Toggle */}
+      {/* Mobile Floating Menu Button */}
       <button
         onClick={() => setMobileOpen((o) => !o)}
-        className="fixed bottom-6 right-6 z-50 flex lg:hidden items-center justify-center w-12 h-12 rounded-full bg-slate-800 text-white shadow-lg border border-slate-700 hover:bg-slate-700 transition-all active:scale-95"
+        className="fixed bottom-6 right-6 z-50 flex lg:hidden items-center justify-center w-12 h-12 rounded-full bg-violet-600 text-white shadow-lg shadow-violet-200 hover:bg-violet-700 transition-all active:scale-95"
       >
         {mobileOpen ? <ChevronLeft /> : <Menu />}
       </button>
@@ -299,10 +232,15 @@ export default function AdminLayout({ children }: Readonly<AdminLayoutProps>) {
       {/* Mobile Overlay */}
       {mobileOpen && (
         <div
-          className="fixed inset-0 bg-slate-900/20 backdrop-blur-[2px] z-30 lg:hidden transition-all duration-300"
+          className="fixed inset-0 bg-zinc-900/20 backdrop-blur-[2px] z-30 lg:hidden transition-all duration-300"
           onClick={() => setMobileOpen(false)}
         />
       )}
+
+      <MegaMenu
+        isOpen={isMegaMenuOpen}
+        onClose={() => setIsMegaMenuOpen(false)}
+      />
     </div>
   );
 }

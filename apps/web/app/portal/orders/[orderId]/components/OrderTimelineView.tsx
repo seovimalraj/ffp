@@ -6,11 +6,10 @@ import {
   Title,
   Subtitle,
 } from "@reactuiutils/horizontal-timeline";
-import { OrderPhases } from "@cnc-quote/shared";
 import { kebabToTitleSafe } from "@/utils";
 import { IOrderFull } from "../page";
 import { useSession } from "next-auth/react";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { apiClient } from "@/lib/api";
 import { notify } from "@/lib/toast";
@@ -76,6 +75,29 @@ export function OrderTimelineView({
   const session = useSession();
   const isSupplier = session.data?.user.role === "supplier";
   const isAdmin = session.data?.user.role === "admin";
+
+  const [phases, setPhases] = useState<any[]>([]);
+  const [loadingPhases, setLoadingPhases] = useState(true);
+
+  useEffect(() => {
+    if (orderId) {
+      fetchPhases();
+    }
+  }, [orderId]);
+
+  const fetchPhases = async () => {
+    try {
+      setLoadingPhases(true);
+      const response = await apiClient.get(`/order-workflows/instance/${orderId}`);
+      if (response.data.success && response.data.data) {
+        setPhases(response.data.data.phase_snapshot || []);
+      }
+    } catch (error) {
+      console.error("Error fetching workflow phases:", error);
+    } finally {
+      setLoadingPhases(false);
+    }
+  };
 
   const [pendingMove, setPendingMove] = useState<{
     itemId: string;
@@ -208,11 +230,13 @@ export function OrderTimelineView({
     }
   };
 
+  if (loadingPhases) return <div className="p-10 text-center">Loading workflow...</div>;
+
   return (
     <div className="space-y-8">
       {parts.map((part) => {
-        const currentIndex = OrderPhases.indexOf(part.status);
-        const nextStatus = OrderPhases[currentIndex + 1] || null;
+        const currentIndex = phases.findIndex((p) => p.key === part.status);
+        const nextStatus = phases[currentIndex + 1]?.key || null;
         const partRequests = requests?.[part.order_part_id] || [];
         const activeRequest = Array.isArray(partRequests)
           ? partRequests.find((r: any) => r.status === "active")
@@ -398,15 +422,16 @@ export function OrderTimelineView({
                 </div>
 
                 <div className="overflow-x-auto pb-4 scrollbar-hide">
-                  <Timeline minEvents={OrderPhases.length}>
-                    {OrderPhases.map((phase, idx) => {
+                  <Timeline minEvents={phases.length}>
+                    {phases.map((phaseData, idx) => {
+                      const phase = phaseData.key;
                       const isCompleted = idx < currentIndex;
                       const isCurrent = idx === currentIndex;
                       const Icon = statusIcons[idx] || statusIcons[0];
                       const color = isCompleted
                         ? "#10b981" // emerald-500
                         : isCurrent
-                          ? "#6366f1" // indigo-500
+                          ? phaseData.color || "#6366f1" // indigo-500
                           : "#e2e8f0"; // slate-200
 
                       return (

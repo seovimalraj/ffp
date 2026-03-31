@@ -173,7 +173,6 @@ export function SignUpForm() {
   return (
     <div className="w-full h-full p-8 lg:p-12 flex flex-col justify-center overflow-y-auto">
       <div className="max-w-md mx-auto w-full relative">
-
         {/* Production Order Intent Banner */}
         {intent === "production-order" && (
           <div className="mb-6 p-4 bg-orange-50 border border-orange-200 rounded-2xl flex items-start gap-3">
@@ -181,9 +180,12 @@ export function SignUpForm() {
               <ClipboardList className="w-5 h-5 text-orange-600" />
             </div>
             <div>
-              <p className="text-sm font-semibold text-orange-900">Book a Production Order</p>
+              <p className="text-sm font-semibold text-orange-900">
+                Book a Production Order
+              </p>
               <p className="text-xs text-orange-700 mt-0.5 leading-relaxed">
-                Create an account to book your production order. You'll be taken directly to the order form after signing up.
+                Create an account to book your production order. You'll be taken
+                directly to the order form after signing up.
               </p>
             </div>
           </div>

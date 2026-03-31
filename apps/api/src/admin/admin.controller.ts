@@ -18,6 +18,7 @@ import { Roles } from 'src/auth/roles.decorator';
 import { TemporalService } from 'src/temporal/temporal.service';
 import { generatePassword } from './admin.utils';
 import { hash } from 'bcrypt';
+import { AdminDashboardService } from './admin-dashboard.service';
 
 @Controller('admin')
 @UseGuards(AuthGuard, RolesGuard)
@@ -27,6 +28,7 @@ export class AdminController {
   constructor(
     private readonly supabaseService: SupabaseService,
     private readonly temporalService: TemporalService,
+    private readonly adminDashboardService: AdminDashboardService,
   ) {}
 
   @Get('/organizations')
@@ -336,5 +338,27 @@ export class AdminController {
     }
 
     return { suppliers: data ?? [] };
+  }
+
+  @Get('/stats')
+  @Roles(RoleNames.Admin)
+  async getStats(@Query('period') period: string) {
+    const [revenue, orders, growth, topStats, activity, leaderboards] = await Promise.all([
+      this.adminDashboardService.getRevenueTrend(period),
+      this.adminDashboardService.getOrderStatusDistribution(),
+      this.adminDashboardService.getPlatformGrowth(),
+      this.adminDashboardService.getTopLevelStats(),
+      this.adminDashboardService.getRecentActivity(),
+      this.adminDashboardService.getLeaderboards(),
+    ]);
+
+    return {
+      revenue,
+      orders,
+      growth,
+      topStats,
+      activity,
+      leaderboards,
+    };
   }
 }

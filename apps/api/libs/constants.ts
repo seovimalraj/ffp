@@ -93,6 +93,10 @@ export enum Tables {
   QuoteRequest = 'quote_request',
 
   QuoteRequestEvent = 'quote_request_event',
+
+  OrderWorkflowInstances = 'order_workflow_instances',
+
+  OrderWorkflowTemplates = 'order_workflow_templates',
 }
 
 /**
