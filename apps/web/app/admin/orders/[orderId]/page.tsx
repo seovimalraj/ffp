@@ -24,6 +24,7 @@ import { useMetaStore } from "@/components/store/title-store";
 import { RequestType } from "@/app/supplier/orders/[orderId]/page";
 import QuoteRequestHistory from "./components/quote-request-history";
 import { OrderTimelineView } from "@/app/portal/orders/[orderId]/components/OrderTimelineView";
+import { ModifyWorkflowModal } from "@/components/modals/modify-workflow-modal";
 import { LayoutGrid, List } from "lucide-react";
 import {
   OrderStatusHistoryProvider,
@@ -74,6 +75,7 @@ export type IOrderFull = {
       material: string;
       finish: string;
       tolerance: string;
+      process: string;
       inspection: string;
       notes: string;
       cad_file_url: string;
@@ -185,8 +187,30 @@ function AdminOrderInner({
   const [isEditingTracking, setIsEditingTracking] = useState(false);
   const [tempTracking, setTempTracking] = useState("");
   const [isAssignModalOpen, setIsAssignModalOpen] = useState(false);
+  const [isModifyWorkflowModalOpen, setIsModifyWorkflowModalOpen] =
+    useState(false);
+  const [currentWorkflowPhases, setCurrentWorkflowPhases] = useState<any[]>([]);
   const [viewMode, setViewMode] = useState<"kanban" | "timeline">("timeline");
   const { setPageTitle, resetTitle } = useMetaStore();
+
+  const fetchWorkflowPhases = async () => {
+    try {
+      const response = await apiClient.get(
+        `/order-workflows/instance/${orderId}`,
+      );
+      if (response.data.success && response.data.data) {
+        setCurrentWorkflowPhases(response.data.data.phase_snapshot || []);
+      }
+    } catch (error) {
+      console.error("Error fetching workflow phases:", error);
+    }
+  };
+
+  useEffect(() => {
+    if (activeTab === "workflow") {
+      fetchWorkflowPhases();
+    }
+  }, [activeTab, orderId]);
 
   const handleUpdateTracking = async () => {
     if (!tempTracking) return;
@@ -284,29 +308,37 @@ function AdminOrderInner({
         </div>
 
         {activeTab === "workflow" && (
-          <div className="flex items-center bg-slate-100 p-1 rounded-lg mb-2 mr-1">
+          <div className="flex gap-2 items-center">
             <button
-              onClick={() => setViewMode("timeline")}
-              className={`flex items-center gap-2 px-3 py-1 text-[10px] font-bold uppercase tracking-tight rounded-md transition-all ${
-                viewMode === "timeline"
-                  ? "bg-white text-indigo-600 shadow-sm"
-                  : "text-slate-500 hover:text-slate-700"
-              }`}
+              onClick={() => setIsModifyWorkflowModalOpen(true)}
+              className={`flex items-center gap-2 px-3 py-1 text-[10px] font-bold uppercase tracking-tight rounded-md transition-all bg-indigo-600 text-white hover:bg-indigo-700 shadow-sm`}
             >
-              <List className="w-3 h-3" />
-              <span>Timeline</span>
+              Modify Workflow
             </button>
-            <button
-              onClick={() => setViewMode("kanban")}
-              className={`flex items-center gap-2 px-3 py-1 text-[10px] font-bold uppercase tracking-tight rounded-md transition-all ${
-                viewMode === "kanban"
-                  ? "bg-white text-indigo-600 shadow-sm"
-                  : "text-slate-500 hover:text-slate-700"
-              }`}
-            >
-              <LayoutGrid className="w-3 h-3" />
-              <span>Kanban</span>
-            </button>
+            <div className="flex items-center bg-slate-100 p-1 rounded-lg mb-2 mr-1">
+              <button
+                onClick={() => setViewMode("timeline")}
+                className={`flex items-center gap-2 px-3 py-1 text-[10px] font-bold uppercase tracking-tight rounded-md transition-all ${
+                  viewMode === "timeline"
+                    ? "bg-white text-indigo-600 shadow-sm"
+                    : "text-slate-500 hover:text-slate-700"
+                }`}
+              >
+                <List className="w-3 h-3" />
+                <span>Timeline</span>
+              </button>
+              <button
+                onClick={() => setViewMode("kanban")}
+                className={`flex items-center gap-2 px-3 py-1 text-[10px] font-bold uppercase tracking-tight rounded-md transition-all ${
+                  viewMode === "kanban"
+                    ? "bg-white text-indigo-600 shadow-sm"
+                    : "text-slate-500 hover:text-slate-700"
+                }`}
+              >
+                <LayoutGrid className="w-3 h-3" />
+                <span>Kanban</span>
+              </button>
+            </div>
           </div>
         )}
       </div>
@@ -656,6 +688,17 @@ function AdminOrderInner({
         onClose={() => setIsAssignModalOpen(false)}
         orderId={orderId}
         onAssigned={onRefresh}
+      />
+
+      <ModifyWorkflowModal
+        isOpen={isModifyWorkflowModalOpen}
+        onClose={() => setIsModifyWorkflowModalOpen(false)}
+        orderId={orderId}
+        currentPhases={currentWorkflowPhases}
+        onSuccess={() => {
+          onRefresh();
+          fetchWorkflowPhases();
+        }}
       />
     </div>
   );

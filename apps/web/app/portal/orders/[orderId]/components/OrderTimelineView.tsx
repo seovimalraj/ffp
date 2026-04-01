@@ -88,7 +88,9 @@ export function OrderTimelineView({
   const fetchPhases = async () => {
     try {
       setLoadingPhases(true);
-      const response = await apiClient.get(`/order-workflows/instance/${orderId}`);
+      const response = await apiClient.get(
+        `/order-workflows/instance/${orderId}`,
+      );
       if (response.data.success && response.data.data) {
         setPhases(response.data.data.phase_snapshot || []);
       }
@@ -230,13 +232,20 @@ export function OrderTimelineView({
     }
   };
 
-  if (loadingPhases) return <div className="p-10 text-center">Loading workflow...</div>;
+  if (loadingPhases)
+    return <div className="p-10 text-center">Loading workflow...</div>;
 
   return (
     <div className="space-y-8">
       {parts.map((part) => {
-        const currentIndex = phases.findIndex((p) => p.key === part.status);
-        const nextStatus = phases[currentIndex + 1]?.key || null;
+        const partPhases = phases.filter(
+          (phase) =>
+            !phase?.include ||
+            phase?.include?.length === 0 ||
+            phase?.include?.includes(part.rfq_part.process),
+        );
+        const currentIndex = partPhases.findIndex((p) => p.key === part.status);
+        const nextStatus = partPhases[currentIndex + 1]?.key || null;
         const partRequests = requests?.[part.order_part_id] || [];
         const activeRequest = Array.isArray(partRequests)
           ? partRequests.find((r: any) => r.status === "active")
@@ -269,6 +278,66 @@ export function OrderTimelineView({
                           </div>
                         )}
                         <div className="absolute inset-0 bg-indigo-600/0 group-hover:bg-indigo-600/5 transition-colors duration-300" />
+                        <div className="absolute bottom-2 right-2 px-1.5 py-0.5 bg-white/90 backdrop-blur-sm border border-slate-100 rounded-md shadow-sm">
+                          <span className="text-[8px] font-black text-slate-500 tracking-tighter">
+                            {part.order_part_code}
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* Part Metadata Grid */}
+                      <div className="w-full grid grid-cols-2 gap-x-4 gap-y-3 pt-2">
+                        <div className="space-y-0.5">
+                          <span className="text-[9px] font-black text-slate-400 border-b border-slate-100 pb-0.5 block uppercase tracking-widest leading-none">
+                            Material
+                          </span>
+                          <span className="text-[11px] font-bold text-slate-700 truncate block leading-tight">
+                            {part.rfq_part.material || "N/A"}
+                          </span>
+                        </div>
+                        <div className="space-y-0.5 text-right">
+                          <span className="text-[9px] font-black text-slate-400 border-b border-slate-100 pb-0.5 block uppercase tracking-widest leading-none">
+                            Process
+                          </span>
+                          <span className="text-[11px] font-bold text-slate-700 truncate block leading-tight capitalize">
+                            {part.rfq_part.process?.replace("-", " ") || "N/A"}
+                          </span>
+                        </div>
+                        <div className="space-y-0.5">
+                          <span className="text-[9px] font-black text-slate-400 border-b border-slate-100 pb-0.5 block uppercase tracking-widest leading-none">
+                            Finish
+                          </span>
+                          <span className="text-[11px] font-bold text-slate-700 truncate block leading-tight">
+                            {part.rfq_part.finish || "Standard"}
+                          </span>
+                        </div>
+                        <div className="space-y-0.5 text-right">
+                          <span className="text-[9px] font-black text-slate-400 border-b border-slate-100 pb-0.5 block uppercase tracking-widest leading-none">
+                            Quantity
+                          </span>
+                          <span className="text-[11px] font-bold text-slate-700 truncate block leading-tight">
+                            {part.quantity} pcs
+                          </span>
+                        </div>
+                        <RoleCheck roles={["admin", "customer"]}>
+                          <div className="space-y-0.5">
+                            <span className="text-[9px] font-black text-slate-400 border-b border-slate-100 pb-0.5 block uppercase tracking-widest leading-none">
+                              Lead Time
+                            </span>
+                            <span className="text-[11px] font-bold text-slate-700 truncate block leading-tight">
+                              {part.lead_time} {part.lead_time_type}
+                            </span>
+                          </div>
+
+                          <div className="space-y-0.5 text-right">
+                            <span className="text-[9px] font-black text-slate-400 border-b border-slate-100 pb-0.5 block uppercase tracking-widest leading-none">
+                              Unit Price
+                            </span>
+                            <span className="text-[11px] font-bold text-indigo-600 truncate block leading-tight">
+                              ${part.unit_price.toFixed(2)}
+                            </span>
+                          </div>
+                        </RoleCheck>
                       </div>
                     </div>
                   </div>
@@ -422,109 +491,119 @@ export function OrderTimelineView({
                 </div>
 
                 <div className="overflow-x-auto pb-4 scrollbar-hide">
-                  <Timeline minEvents={phases.length}>
-                    {phases.map((phaseData, idx) => {
-                      const phase = phaseData.key;
-                      const isCompleted = idx < currentIndex;
-                      const isCurrent = idx === currentIndex;
-                      const Icon = statusIcons[idx] || statusIcons[0];
-                      const color = isCompleted
-                        ? "#10b981" // emerald-500
-                        : isCurrent
-                          ? phaseData.color || "#6366f1" // indigo-500
-                          : "#e2e8f0"; // slate-200
+                  <Timeline>
+                    {phases
+                      .filter(
+                        (phase) =>
+                          !phase?.include ||
+                          phase.include.length === 0 ||
+                          phase.include.includes(part.rfq_part.process),
+                      )
+                      .map((phaseData, idx) => {
+                        const phase = phaseData.key;
+                        const isCompleted = idx < currentIndex;
+                        const isCurrent = idx === currentIndex;
+                        const Icon = statusIcons[idx] || statusIcons[0];
+                        const color = isCompleted
+                          ? "#10b981" // emerald-500
+                          : isCurrent
+                            ? phaseData.color || "#6366f1" // indigo-500
+                            : "#e2e8f0"; // slate-200
 
-                      return (
-                        <Event
-                          key={phase}
-                          isFirst={idx === 0}
-                          color={color}
-                          icon={() => {
-                            return (
-                              <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-[30px] flex items-center justify-center">
-                                <Icon className="w-5 h-5 text-white" />
-                              </div>
-                            );
-                          }}
-                        >
-                          <motion.div
-                            className={`flex flex-col gap-1 p-3 rounded-xl transition-all duration-300 cursor-pointer hover:bg-slate-50 ${
-                              isCurrent
-                                ? "bg-indigo-50/50 ring-1 mt-2 ring-indigo-100 shadow-sm shadow-indigo-100/50"
-                                : ""
-                            }`}
-                            whileHover={{ y: -2 }}
+                        return (
+                          <Event
+                            key={phase}
+                            isFirst={idx === 0}
+                            color={color}
+                            icon={() => {
+                              return (
+                                <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-[30px] flex items-center justify-center">
+                                  <Icon className="w-5 h-5 text-white" />
+                                </div>
+                              );
+                            }}
                           >
-                            <div className="flex items-center gap-2 mb-1">
-                              {isCompleted ? (
-                                <div className="p-0.5 bg-emerald-100 rounded-full">
-                                  <LuCheck className="w-2.5 h-2.5 text-emerald-600" />
-                                </div>
-                              ) : isCurrent ? (
-                                <div className="p-0.5 bg-indigo-100 rounded-full animate-pulse">
-                                  <LuClock className="w-2.5 h-2.5 text-indigo-600" />
-                                </div>
-                              ) : (
-                                <div className="p-0.5 bg-slate-100 rounded-full">
-                                  <Icon className="w-2.5 h-2.5 text-slate-400" />
-                                </div>
-                              )}
+                            <motion.div
+                              className={`flex flex-col gap-1 p-3 rounded-xl transition-all duration-300 cursor-pointer hover:bg-slate-50 ${
+                                isCurrent
+                                  ? "bg-indigo-50/50 ring-1 mt-2 ring-indigo-100 shadow-sm shadow-indigo-100/50"
+                                  : ""
+                              }`}
+                              whileHover={{ y: -2 }}
+                            >
+                              <div className="flex items-center gap-2 mb-1">
+                                {isCompleted ? (
+                                  <div className="p-0.5 bg-emerald-100 rounded-full">
+                                    <LuCheck className="w-2.5 h-2.5 text-emerald-600" />
+                                  </div>
+                                ) : isCurrent ? (
+                                  <div className="p-0.5 bg-indigo-100 rounded-full animate-pulse">
+                                    <LuClock className="w-2.5 h-2.5 text-indigo-600" />
+                                  </div>
+                                ) : (
+                                  <div className="p-0.5 bg-slate-100 rounded-full">
+                                    <Icon className="w-2.5 h-2.5 text-slate-400" />
+                                  </div>
+                                )}
 
-                              <Title
-                                className={`!text-[11px] !m-0 font-bold tracking-tight uppercase ${
-                                  isCurrent
-                                    ? "text-indigo-600"
-                                    : isCompleted
-                                      ? "text-emerald-600"
-                                      : "text-slate-400"
-                                }`}
-                              >
-                                {kebabToTitleSafe(phase)}
-                              </Title>
-                            </div>
-
-                            <Subtitle className="!text-[10px] !m-0 text-slate-400 font-medium">
-                              {isCurrent
-                                ? "Current Phase"
-                                : isCompleted
-                                  ? "Completed"
-                                  : "Next Steps"}
-                            </Subtitle>
-
-                            <RoleCheck roles={["admin", "supplier"]}>
-                              <div className="mt-2 pt-2 border-t border-slate-100/50">
-                                <button
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    onStatusClick?.(part.order_part_id, phase);
-                                  }}
-                                  className="w-full flex items-center justify-between text-[9px] font-bold uppercase tracking-wider text-slate-400 hover:text-indigo-500 transition-colors group/history"
+                                <Title
+                                  className={`!text-[11px] !m-0 font-bold tracking-tight uppercase ${
+                                    isCurrent
+                                      ? "text-indigo-600"
+                                      : isCompleted
+                                        ? "text-emerald-600"
+                                        : "text-slate-400"
+                                  }`}
                                 >
-                                  <span>View History</span>
-                                  <LuArrowRight className="w-2.5 h-2.5 opacity-0 -translate-x-1 group-hover/history:opacity-100 group-hover/history:translate-x-0 transition-all" />
-                                </button>
+                                  {kebabToTitleSafe(phase)}
+                                </Title>
                               </div>
-                            </RoleCheck>
 
-                            {isAdmin && !isCurrent && (
-                              <motion.button
-                                whileHover={{ scale: 1.05 }}
-                                whileTap={{ scale: 0.95 }}
-                                onClick={() =>
-                                  setPendingMove({
-                                    itemId: part.order_part_id,
-                                    toColumnId: phase,
-                                  })
-                                }
-                                className="mt-2 py-1 px-2 bg-slate-50 hover:bg-indigo-50 text-[9px] text-slate-500 hover:text-indigo-600 border border-slate-200 hover:border-indigo-200 rounded-md font-bold uppercase tracking-wider transition-colors text-center shadow-sm"
-                              >
-                                Move Stage
-                              </motion.button>
-                            )}
-                          </motion.div>
-                        </Event>
-                      );
-                    })}
+                              <Subtitle className="!text-[10px] !m-0 text-slate-400 font-medium">
+                                {isCurrent
+                                  ? "Current Phase"
+                                  : isCompleted
+                                    ? "Completed"
+                                    : "Next Steps"}
+                              </Subtitle>
+
+                              <RoleCheck roles={["admin", "supplier"]}>
+                                <div className="mt-2 pt-2 border-t border-slate-100/50">
+                                  <button
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      onStatusClick?.(
+                                        part.order_part_id,
+                                        phase,
+                                      );
+                                    }}
+                                    className="w-full flex items-center justify-between text-[9px] font-bold uppercase tracking-wider text-slate-400 hover:text-indigo-500 transition-colors group/history"
+                                  >
+                                    <span>View History</span>
+                                    <LuArrowRight className="w-2.5 h-2.5 opacity-0 -translate-x-1 group-hover/history:opacity-100 group-hover/history:translate-x-0 transition-all" />
+                                  </button>
+                                </div>
+                              </RoleCheck>
+
+                              {isAdmin && !isCurrent && (
+                                <motion.button
+                                  whileHover={{ scale: 1.05 }}
+                                  whileTap={{ scale: 0.95 }}
+                                  onClick={() =>
+                                    setPendingMove({
+                                      itemId: part.order_part_id,
+                                      toColumnId: phase,
+                                    })
+                                  }
+                                  className="mt-2 py-1 px-2 bg-slate-50 hover:bg-indigo-50 text-[9px] text-slate-500 hover:text-indigo-600 border border-slate-200 hover:border-indigo-200 rounded-md font-bold uppercase tracking-wider transition-colors text-center shadow-sm"
+                                >
+                                  Move Stage
+                                </motion.button>
+                              )}
+                            </motion.div>
+                          </Event>
+                        );
+                      })}
                   </Timeline>
                 </div>
               </div>

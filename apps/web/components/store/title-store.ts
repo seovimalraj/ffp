@@ -9,36 +9,6 @@ interface MetaState {
   resetTitle: () => void;
 }
 
-const formatUrl = (
-  url: string,
-  baseUrl: string = "https://default.com",
-): string => {
-  if (!url || typeof url !== "string") return "";
-
-  try {
-    // 1. Handle relative URLs by providing a base
-    const parsed = new URL(url, baseUrl);
-
-    // 2. Check if the path or search params contain "undefined" or "null"
-    // This regex looks for /undefined or =undefined
-    const suspiciousPattern = /[=/](undefined|null)(\/|$|&)/i;
-
-    if (suspiciousPattern.test(parsed.href)) {
-      // console.warn(`Malformed URL detected and stripped: ${url}`);
-      return "";
-    }
-
-    // 3. Return the formatted string (relative or absolute based on your needs)
-    // If you started with a relative path, you might want to return just the pathname + search
-    return url.startsWith("http")
-      ? parsed.href
-      : parsed.pathname + parsed.search;
-  } catch (_e) {
-    // 4. Fallback: If URL constructor fails, it's definitely not a valid URL
-    return "";
-  }
-};
-
 type Role = "admin" | "supplier" | "customer";
 
 // Use 'Record' to ensure all roles are handled and provide a fallback
