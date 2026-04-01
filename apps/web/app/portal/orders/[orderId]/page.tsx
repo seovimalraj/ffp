@@ -66,6 +66,7 @@ export type IOrderFull = {
       inspection: string;
       notes: string;
       cad_file_url: string;
+      process: string;
       snapshot_2d_url: string | null;
     };
   }>;

@@ -145,6 +145,19 @@ export function KanbanBoard({
           }
         }
 
+        // Specific item move check
+        if (config?.canMoveItem) {
+          const item = prev.columns
+            .find((col) => col.id === activeColumn.id)
+            ?.items.find((i) => i.id === activeId);
+          if (
+            item &&
+            config.canMoveItem(item, activeColumn.id, overColumn.id) === false
+          ) {
+            return prev;
+          }
+        }
+
         // Check if item already exists in destination column (prevent duplicates)
         const itemAlreadyInDestination = overColumn.items.some(
           (item) => item.id === activeId,
@@ -225,6 +238,19 @@ export function KanbanBoard({
         });
         setSourceColumnId(null);
         return;
+      }
+
+      // Check if transition is allowed
+      if (config?.canMoveItem) {
+        const item = findItemById(activeId);
+        if (
+          item &&
+          config.canMoveItem(item, activeColumn.id, overColumn.id) === false
+        ) {
+          setBoard(originalBoard);
+          setSourceColumnId(null);
+          return;
+        }
       }
 
       const activeIndex = activeColumn.items.findIndex(

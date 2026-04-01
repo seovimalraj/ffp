@@ -75,6 +75,7 @@ export function RFQKanban({
         totalPrice: part.total_price,
         snapshot_2d_url: part.rfq_part.snapshot_2d_url,
         requests: requests,
+        process: part.rfq_part.process,
       },
     }));
   }, [parts]);
@@ -95,6 +96,21 @@ export function RFQKanban({
       columns,
     }),
     [columns],
+  );
+
+  const canMoveItem = useCallback(
+    (item: KanbanItem, _fromColumnId: string, toColumnId: string) => {
+      const phase = phases.find((p) => p.key === toColumnId);
+      if (!phase) return true;
+      if (
+        !phase.include ||
+        !Array.isArray(phase.include) ||
+        phase.include.length === 0
+      )
+        return true;
+      return phase.include.includes(item.metadata?.process);
+    },
+    [phases],
   );
 
   const handleItemMove = (event: any) => {
@@ -169,6 +185,7 @@ export function RFQKanban({
           allowAddTask: false,
           showColumnLimits: false,
           cardStyle: "detailed",
+          canMoveItem,
         }}
         onItemMove={handleItemMove}
         onItemClick={handleCardClick}

@@ -64,4 +64,9 @@ export interface KanbanConfig {
   showColumnLimits?: boolean;
   enableNotifications?: boolean;
   readOnly?: boolean;
+  canMoveItem?: (
+    item: KanbanItem,
+    fromColumnId: string,
+    toColumnId: string,
+  ) => boolean | Promise<boolean>;
 }

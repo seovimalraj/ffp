@@ -32,12 +32,22 @@ export type CreateWorkflowTemplateModalProps = {
   isOpen: boolean;
   onClose: () => void;
   onSuccess?: () => void;
+  initialPhases?: WorkflowPhase[];
+  initialFormData?: {
+    name: string;
+    description: string;
+    is_active: boolean;
+  };
+  orderIdForDirectAssignment?: string;
 };
 
 export const CreateWorkflowTemplateModal = ({
   isOpen,
   onClose,
   onSuccess,
+  initialPhases,
+  initialFormData,
+  orderIdForDirectAssignment,
 }: CreateWorkflowTemplateModalProps) => {
   const [step, setStep] = useState(0);
   const [loading, setLoading] = useState(false);
@@ -51,66 +61,56 @@ export const CreateWorkflowTemplateModal = ({
     is_active: true,
   });
 
-  const [phases, setPhases] = useState<WorkflowPhase[]>([
-    {
-      id: "ph-1",
-      label: "Pending",
-      key: "pending",
-      order: 0,
-      include: [],
-      color: "#94a3b8",
-    },
-    {
-      id: "ph-2",
-      label: "Backlog",
-      key: "backlog",
-      order: 1,
-      include: [],
-      color: "#6366f1",
-    },
-    {
-      id: "ph-3",
-      label: "Completed",
-      key: "completed",
-      order: 2,
-      include: [],
-      color: "#10b981",
-    },
-  ]);
+  const [phases, setPhases] = useState<WorkflowPhase[]>([]);
 
   useEffect(() => {
     if (isOpen) {
       setStep(0);
-      setFormData({ name: "", description: "", is_active: true });
-      // Restore defaults
-      setPhases([
-        {
-          id: "ph-1",
-          label: "Pending",
-          key: "pending",
-          order: 0,
-          include: [],
-          color: "#94a3b8",
-        },
-        {
-          id: "ph-2",
-          label: "Backlog",
-          key: "backlog",
-          order: 1,
-          include: [],
-          color: "#6366f1",
-        },
-        {
-          id: "ph-3",
-          label: "Completed",
-          key: "completed",
-          order: 2,
-          include: [],
-          color: "#10b981",
-        },
-      ]);
+      if (initialFormData) {
+        setFormData(initialFormData);
+      } else {
+        setFormData({ name: "", description: "", is_active: true });
+      }
+
+      if (initialPhases && initialPhases.length > 0) {
+        setPhases(
+          initialPhases.map((p, i) => ({
+            ...p,
+            id: p.id || `ph-${uuidv4()}`,
+            order: i,
+          })),
+        );
+      } else {
+        // Restore defaults
+        setPhases([
+          {
+            id: "ph-1",
+            label: "Pending",
+            key: "pending",
+            order: 0,
+            include: [],
+            color: "#94a3b8",
+          },
+          {
+            id: "ph-2",
+            label: "Backlog",
+            key: "backlog",
+            order: 1,
+            include: [],
+            color: "#6366f1",
+          },
+          {
+            id: "ph-3",
+            label: "Completed",
+            key: "completed",
+            order: 2,
+            include: [],
+            color: "#10b981",
+          },
+        ]);
+      }
     }
-  }, [isOpen]);
+  }, [isOpen, initialPhases, initialFormData]);
 
   const insertPhaseAt = (index: number) => {
     const newId = uuidv4();
@@ -161,8 +161,22 @@ export const CreateWorkflowTemplateModal = ({
           order: i,
         })),
       };
-      await apiClient.post("/order-workflows/templates", payload);
-      notify.success("Workflow template created");
+      const response = await apiClient.post(
+        "/order-workflows/templates",
+        payload,
+      );
+
+      if (orderIdForDirectAssignment && response.data.success) {
+        const templateId = response.data.data.id;
+        await apiClient.post(
+          `/order-workflows/assign/${orderIdForDirectAssignment}`,
+          {
+            order_workflow_id: templateId,
+          },
+        );
+      }
+
+      notify.success("Workflow template created and assigned");
       onSuccess?.();
       onClose();
     } catch (error: any) {
