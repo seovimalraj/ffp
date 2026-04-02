@@ -10,7 +10,6 @@ import {
   ChevronRight,
   ClipboardList,
 } from "lucide-react";
-import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { CreateWorkflowTemplateModal } from "./create-workflow-template-modal";
 import { SelectExistingWorkflowModal } from "./select-existing-workflow-modal";
@@ -119,7 +118,9 @@ export const ModifyWorkflowModal = ({
                     <button
                       key={opt.id}
                       onClick={() =>
-                        handleOptionSelect(opt.id as "new" | "existing" | "clone")
+                        handleOptionSelect(
+                          opt.id as "new" | "existing" | "clone",
+                        )
                       }
                       className={cn(
                         "group relative p-6 w-full text-left rounded-[1.5rem] border transition-all duration-300",
@@ -157,10 +158,10 @@ export const ModifyWorkflowModal = ({
 
               {/* Footer hint */}
               <div className="px-8 py-6 bg-slate-50 border-t border-slate-100 flex items-center justify-center gap-2">
-                 <div className="w-2 h-2 rounded-full bg-indigo-600 animate-pulse" />
-                 <span className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">
-                   Select an option to proceed
-                 </span>
+                <div className="w-2 h-2 rounded-full bg-indigo-600 animate-pulse" />
+                <span className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">
+                  Select an option to proceed
+                </span>
               </div>
             </motion.div>
           </div>
@@ -172,8 +173,9 @@ export const ModifyWorkflowModal = ({
         isOpen={activeSubModal === "new"}
         onClose={handleCloseSubModal}
         onSuccess={() => {
-            onSuccess();
-            handleCloseSubModal();
+          onSuccess();
+          onClose();
+          handleCloseSubModal();
         }}
       />
 
@@ -182,9 +184,9 @@ export const ModifyWorkflowModal = ({
         onClose={handleCloseSubModal}
         orderId={orderId}
         onSuccess={() => {
-            onSuccess();
-            handleCloseSubModal();
-            onClose(); // Close the main modal too
+          onSuccess();
+          handleCloseSubModal();
+          onClose(); // Close the main modal too
         }}
       />
 
@@ -193,12 +195,15 @@ export const ModifyWorkflowModal = ({
         onClose={handleCloseSubModal}
         initialPhases={currentPhases}
         initialFormData={{
-            name: "Modified Workflow for " + orderId,
-            description: "Customized from current order workflow",
-            is_active: false
+          name: "",
+          description: "Customized from current order workflow",
+          is_active: false,
         }}
-        onSuccess={onSuccess}
-        orderIdForDirectAssignment={orderId} // If we want to assign it directly too
+        onSuccess={() => {
+          onSuccess();
+          onClose();
+        }}
+        orderIdForDirectAssignment={orderId}
       />
     </>
   );
