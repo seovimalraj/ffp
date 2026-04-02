@@ -2,7 +2,14 @@
 import React, { useState, useEffect, useMemo } from "react";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Users, Plus, ArrowUpFromLine, Mail, Phone, CheckCircle2 } from "lucide-react";
+import {
+  Users,
+  Plus,
+  ArrowUpFromLine,
+  Mail,
+  Phone,
+  CheckCircle2,
+} from "lucide-react";
 import { apiClient } from "@/lib/api";
 import { DataTable, Column } from "@/components/ui/data-table";
 import { formatDate } from "@/lib/format";
@@ -35,7 +42,7 @@ export default function AdminCustomersPage() {
   const PAGE_LIMIT = 20;
 
   useEffect(() => {
-    setPageTitle("Customers");
+    setPageTitle("Users");
     return () => {
       resetTitle();
     };
@@ -84,7 +91,7 @@ export default function AdminCustomersPage() {
   const stats: StatusItem[] = useMemo(
     () => [
       {
-        label: "Total Customers",
+        label: "Total Users",
         value: totalCount,
         color: "indigo",
         icon: Users,
@@ -97,7 +104,7 @@ export default function AdminCustomersPage() {
   const columns: Column<Customer>[] = [
     {
       key: "name",
-      header: "Customer",
+      header: "User",
       render: (row) => (
         <div className="flex items-center gap-3">
           <div className="w-10 h-10 rounded-full bg-indigo-50 dark:bg-indigo-900/20 flex items-center justify-center text-indigo-600 dark:text-indigo-400 font-bold text-sm">
@@ -110,12 +117,12 @@ export default function AdminCustomersPage() {
             <div className="flex items-center gap-2">
               {row.verified ? (
                 <div className="flex items-center gap-1 text-[10px] text-green-600 dark:text-green-400 font-bold uppercase tracking-wider">
-                   <CheckCircle2 size={12} />
-                   Verified
+                  <CheckCircle2 size={12} />
+                  Verified
                 </div>
               ) : (
                 <div className="text-[10px] text-gray-400 font-bold uppercase tracking-wider">
-                   Pending
+                  Pending
                 </div>
               )}
             </div>
@@ -127,28 +134,28 @@ export default function AdminCustomersPage() {
       key: "contact",
       header: "Contact",
       render: (row) => (
-          <div className="flex flex-col gap-1">
-              <div className="flex items-center gap-2 text-xs text-gray-600 dark:text-gray-400">
-                  <Mail size={12} className="opacity-60" />
-                  {row.email}
-              </div>
-              {row.phone && (
-                  <div className="flex items-center gap-2 text-xs text-gray-600 dark:text-gray-400">
-                      <Phone size={12} className="opacity-60" />
-                      {row.phone}
-                  </div>
-              )}
+        <div className="flex flex-col gap-1">
+          <div className="flex items-center gap-2 text-xs text-gray-600 dark:text-gray-400">
+            <Mail size={12} className="opacity-60" />
+            {row.email}
           </div>
-      )
+          {row.phone && (
+            <div className="flex items-center gap-2 text-xs text-gray-600 dark:text-gray-400">
+              <Phone size={12} className="opacity-60" />
+              {row.phone}
+            </div>
+          )}
+        </div>
+      ),
     },
     {
       key: "company",
       header: "Company",
       render: (row) => (
-          <span className="text-gray-700 dark:text-gray-300 font-medium">
-              {row.organizations?.name || "Independent"}
-          </span>
-      )
+        <span className="text-gray-700 dark:text-gray-300 font-medium">
+          {row.organizations?.name || "Independent"}
+        </span>
+      ),
     },
     {
       key: "created_at",
@@ -171,7 +178,7 @@ export default function AdminCustomersPage() {
             Customers
           </h1>
           <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
-             Manage relationships and oversee all registered customer accounts
+            Manage relationships and oversee all registered customer accounts
           </p>
         </div>
         <div className="flex items-center gap-3">
@@ -190,7 +197,7 @@ export default function AdminCustomersPage() {
             disabled
           >
             <Plus size={14} />
-            <span>Add Customer</span>
+            <span>Add User</span>
           </Button>
         </div>
       </div>
@@ -231,7 +238,8 @@ export default function AdminCustomersPage() {
               actions={[
                 {
                   label: "View",
-                  onClick: (customer) => console.log("View customer", customer.id),
+                  onClick: (customer) =>
+                    console.log("View customer", customer.id),
                 },
               ]}
             />

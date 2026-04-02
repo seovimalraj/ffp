@@ -323,8 +323,8 @@ export const adminMenuSections: MenuSection[] = [
     icon: Users,
     items: [
       {
-        label: "Customers",
-        slug: "customers",
+        label: "Users",
+        slug: "users",
         route: "/admin/customers",
         icon: UsersRound,
       },
