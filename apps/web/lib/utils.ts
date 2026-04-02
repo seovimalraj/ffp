@@ -218,11 +218,23 @@ export function getQuantityRange(val: number = 1): number[] {
   }
 }
 
-export const processTranslator = {
+export const processTranslator: Record<string, string> = {
   "cnc-milling": "CNC Machining",
   "cnc-turning": "CNC Machining",
   "cnc-machining": "CNC Machining",
   "sheet-metal": "Sheet Metal",
   "injection-molding": "Injection Molding",
   "manual-quote": "Manual Quote",
+};
+
+export const processKeyTranslator: Record<string, string> = {
+  "cnc-milling": "cnc-machining",
+  "cnc-turning": "cnc-machining",
+  "cnc-machining": "cnc-machining",
+  "sheet-metal": "sheet-metal",
+  "injection-molding": "injection-molding",
+  extrusion: "extrusion",
+  casting: "casting",
+  forging: "forging",
+  "manual-quote": "manual-quote",
 };
