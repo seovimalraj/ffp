@@ -5,7 +5,7 @@ import { MegaMenuProvider } from "@/hooks/use-mega-menu";
 export default function Layout({ children }: { children: React.ReactNode }) {
   return (
     <MegaMenuProvider>
-      <AdminLayout>{children}</AdminLayout>;
+      <AdminLayout>{children}</AdminLayout>
     </MegaMenuProvider>
   );
 }

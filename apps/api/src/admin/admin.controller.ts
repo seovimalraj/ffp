@@ -340,17 +340,74 @@ export class AdminController {
     return { suppliers: data ?? [] };
   }
 
+  @Get('/customers')
+  @Roles(RoleNames.Admin)
+  async getCustomers(
+    @Query('limit') limit = '20',
+    @Query('offset') offset = '0',
+  ) {
+    const parsedLimit = Math.min(parseInt(limit, 10) || 20, 100);
+    const parsedOffset = parseInt(offset, 10) || 0;
+
+    const client = this.supabaseService.getClient();
+
+    try {
+      const { data, error, count } = await client
+        .from(Tables.UserTable)
+        .select(
+          `*, 
+          organizations (
+            id,
+            name,
+            display_name
+          )`,
+          { count: 'exact' },
+        )
+        .eq('role', RoleNames.Customer)
+        .order('created_at', { ascending: false })
+        .range(parsedOffset, parsedOffset + parsedLimit - 1);
+
+      if (error) {
+        this.logger.error({ error }, 'Failed to fetch customers');
+        throw new InternalServerErrorException('Failed to fetch customers');
+      }
+
+      const nextOffset =
+        parsedOffset + parsedLimit < (count ?? 0)
+          ? parsedOffset + parsedLimit
+          : null;
+
+      return {
+        success: true,
+        data: data ?? [],
+        pagination: {
+          offset: parsedOffset,
+          limit: parsedLimit,
+          nextOffset,
+          total: count ?? 0,
+          hasMore: nextOffset !== null,
+        },
+      };
+    } catch (err: any) {
+      this.logger.error({ err }, 'Unhandled customer fetch error');
+      throw new InternalServerErrorException(
+        'Unexpected error while fetching customers',
+      );
+    }
+  }
+
   @Get('/stats')
   @Roles(RoleNames.Admin)
   async getStats(@Query('period') period: string) {
-    const [revenue, orders, growth, topStats, activity, leaderboards] = await Promise.all([
-      this.adminDashboardService.getRevenueTrend(period),
-      this.adminDashboardService.getOrderStatusDistribution(),
-      this.adminDashboardService.getPlatformGrowth(),
-      this.adminDashboardService.getTopLevelStats(),
-      this.adminDashboardService.getRecentActivity(),
-      this.adminDashboardService.getLeaderboards(),
-    ]);
+    const [revenue, orders, growth, topStats, activity, leaderboards] =
+      await Promise.all([
+        this.adminDashboardService.getRevenueTrend(period),
+        this.adminDashboardService.getOrderStatusDistribution(),
+        this.adminDashboardService.getPlatformGrowth(),
+        this.adminDashboardService.getTopLevelStats(),
+        this.adminDashboardService.getRecentActivity(),
+        this.adminDashboardService.getLeaderboards(),
+      ]);
 
     return {
       revenue,
