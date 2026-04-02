@@ -41,6 +41,7 @@ import {
   LuImage,
 } from "react-icons/lu";
 import RoleCheck from "@/components/auth/role-check";
+import { processKeyTranslator } from "@/lib/utils";
 
 const statusIcons = [
   PiNumberZeroBold,
@@ -242,7 +243,9 @@ export function OrderTimelineView({
           (phase) =>
             !phase?.include ||
             phase?.include?.length === 0 ||
-            phase?.include?.includes(part.rfq_part.process),
+            phase?.include?.includes(
+              processKeyTranslator[part.rfq_part.process],
+            ),
         );
         const currentIndex = partPhases.findIndex((p) => p.key === part.status);
         const nextStatus = partPhases[currentIndex + 1]?.key || null;
@@ -300,7 +303,9 @@ export function OrderTimelineView({
                             Process
                           </span>
                           <span className="text-[11px] font-bold text-slate-700 truncate block leading-tight capitalize">
-                            {part.rfq_part.process?.replace("-", " ") || "N/A"}
+                            {processKeyTranslator[
+                              part.rfq_part.process
+                            ]?.replace("-", " ") || "N/A"}
                           </span>
                         </div>
                         <div className="space-y-0.5">
@@ -497,7 +502,9 @@ export function OrderTimelineView({
                         (phase) =>
                           !phase?.include ||
                           phase.include.length === 0 ||
-                          phase.include.includes(part.rfq_part.process),
+                          phase.include.includes(
+                            processKeyTranslator[part.rfq_part.process],
+                          ),
                       )
                       .map((phaseData, idx) => {
                         const phase = phaseData.key;
