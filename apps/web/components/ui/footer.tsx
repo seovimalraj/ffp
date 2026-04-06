@@ -69,8 +69,6 @@ const Footer = () => {
             (c: any) => c.key === "show_inhouse_footer",
           );
 
-          console.log(inhouseConfig);
-
           setContactInfo({
             email: emailConfig?.value || "support@frigate.ai",
             phone: phoneConfig
@@ -91,9 +89,9 @@ const Footer = () => {
 
   const quickLinks = [
     { label: "About Us", href: "https://frigate.ai/about-frigate/" },
+    { label: "Support", href: "/support" },
     { label: "Locations", href: "https://frigate.ai/locations/" },
     { label: "Instant Quote", href: "/instant-quote" },
-    { label: "Technical Support", href: "/support" },
   ];
 
   console.log(contactInfo);

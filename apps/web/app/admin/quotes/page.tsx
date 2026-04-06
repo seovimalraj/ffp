@@ -583,7 +583,7 @@ function AdminQuotesContent() {
           </div>
         ) : (
           <div className="animate-in fade-in duration-500">
-            <div className="bg-white dark:bg-gray-950/50 rounded-[2rem] border border-gray-100 dark:border-gray-800/60 overflow-hidden shadow-xl shadow-gray-200/20 dark:shadow-none">
+            <div className="bg-white dark:bg-gray-950/50 border border-gray-100 dark:border-gray-800/60 overflow-hidden shadow-xl shadow-gray-200/20 dark:shadow-none">
               <DataTable
                 columns={columns}
                 data={filteredQuotes}

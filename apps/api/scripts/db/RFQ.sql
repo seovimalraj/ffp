@@ -3,6 +3,7 @@ CREATE TABLE rfq (
   rfq_code VARCHAR(20) UNIQUE,
   user_id UUID NOT NULL REFERENCES users(id),
   final_price numeric(10, 2),
+  price_breakdown JSONB NOT NULL DEFAULT '[]';
   status VARCHAR(50) NOT NULL,
   organization_id UUID NOT NULL REFERENCES organizations(id),
   order_id UUID NOT NULL REFERENCES orders(id),
