@@ -686,6 +686,7 @@ export default function QuoteConfigPage() {
   });
 
   const deleteParts = async (partIds: string[]) => {
+    const toastId = notify.loading(`Deleting ${partIds.length} part(s)...`);
     try {
       const data = await apiClient.delete(`/rfq/${rfq.id}/remove-parts`, {
         data: {
@@ -694,14 +695,20 @@ export default function QuoteConfigPage() {
       });
 
       if (!data) {
-        notify.error("Failed to delete parts");
-        return;
+        notify.error("Failed to delete parts", undefined, toastId);
+        return false;
       }
 
-      notify.success(`Successfully deleted ${partIds.length} part(s)`);
+      notify.success(
+        `Successfully deleted ${partIds.length} part(s)`,
+        undefined,
+        toastId,
+      );
+      return true;
     } catch (error) {
       console.error(error);
-      notify.error("Failed to delete parts");
+      notify.error("Failed to delete parts", undefined, toastId);
+      return false;
     }
   };
 
@@ -759,8 +766,10 @@ export default function QuoteConfigPage() {
       return;
     }
 
-    await deleteParts([parts[indexToDelete].id]);
-    setParts((prev) => prev.filter((_, index) => index !== indexToDelete));
+    const success = await deleteParts([parts[indexToDelete].id]);
+    if (success) {
+      setParts((prev) => prev.filter((_, index) => index !== indexToDelete));
+    }
   };
 
   // Handle toggling part selection
@@ -907,18 +916,14 @@ export default function QuoteConfigPage() {
       notify.error("Cannot delete all parts. At least one part is required.");
       return;
     }
-    try {
-      await deleteParts(ids);
+    const success = await deleteParts(ids);
+    if (success) {
       setParts((prev) => prev.filter((p) => !ids?.includes(p.id)));
       setSelectedParts((prev) => {
         const newSet = new Set(prev);
         ids.forEach((id) => newSet.delete(id));
         return newSet;
       });
-      notify.success(`Deleted ${ids.length} part(s)`);
-    } catch (error) {
-      console.error("Failed to delete parts:", error);
-      notify.error("Failed to delete selection");
     }
   };
 
@@ -1425,8 +1430,8 @@ export default function QuoteConfigPage() {
     let isValid = true;
 
     for (const part of parts) {
-      if (typeof part.final_price === "number" && part.final_price < 150) {
-        notify.info(`Part ${part.fileName} has valuation below $150`);
+      if (typeof part.final_price === "number" && part.final_price < 500) {
+        notify.info(`Part ${part.fileName} has valuation below $500`);
         isValid = false;
       }
     }
@@ -1438,9 +1443,9 @@ export default function QuoteConfigPage() {
     try {
       setSaving(true);
 
-      if (standardPrice < 150) {
+      if (standardPrice < 500) {
         notify.error(
-          "Please revise the quote to a minimum value of $150 to proceed.",
+          "Please revise the quote to a minimum value of $500 to proceed.",
         );
         return;
       }
@@ -2072,6 +2077,24 @@ export default function QuoteConfigPage() {
                       Included
                     </span>
                   </div>
+
+                  {/* Promo Code Section */}
+                  <div className="mt-2 pt-4 border-t border-slate-100">
+                    <div className="flex gap-2">
+                      <input
+                        type="text"
+                        placeholder="Promo Code"
+                        className="flex h-10 w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all shadow-sm"
+                      />
+                      <Button
+                        variant="outline"
+                        className="h-10 px-4 border-blue-200 text-blue-600 hover:bg-blue-50 font-semibold rounded-lg shadow-sm transition-all active:scale-95 whitespace-nowrap"
+                      >
+                        Apply
+                      </Button>
+                    </div>
+                  </div>
+
                   <div className="pt-3 mt-3 border-t border-slate-200">
                     <div className="flex justify-between items-center">
                       <span className="text-base font-bold text-slate-900">

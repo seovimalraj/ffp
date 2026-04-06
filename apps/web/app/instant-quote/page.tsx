@@ -13,8 +13,6 @@ import {
   Sparkles,
   FileText,
   Shield,
-  Clock,
-  Award,
   Package,
   X,
   Loader2,
@@ -22,15 +20,11 @@ import {
   EyeOff,
   ArrowRight,
   User,
-  Settings,
-  Layers,
-  Box,
   LogOut,
   Building2,
   Phone,
 } from "lucide-react";
 import { analyzeCADFile, GeometryData } from "../../lib/cad-analysis";
-import { PricingBreakdown } from "../../lib/pricing-engine";
 import {
   Dialog,
   DialogContent,
@@ -68,16 +62,7 @@ import {
 } from "@/lib/validation/email.validation";
 import { CAD_MIME_MAP } from "@cnc-quote/shared";
 import pLimit from "p-limit";
-
-interface UploadedFileData {
-  file: File;
-  uploadedPath: string;
-  name: string;
-  size: number;
-  mimeType: string;
-  geometry?: GeometryData;
-  pricing?: PricingBreakdown;
-}
+// import { ManufacturingServices } from "./components/manufacturing-services";
 
 interface FileWithUrl extends File {
   alreadyUploadedUrl?: string;
@@ -262,7 +247,7 @@ export default function InstantQuotePage() {
                 try {
                   geometry = await analyzeCADFile(file);
                   status = "processed";
-                } catch (error) {
+                } catch (_error) {
                   console.warn(`Client-side analysis failed for ${file.name}`);
                 }
               }
@@ -485,15 +470,10 @@ export default function InstantQuotePage() {
       notify.success("Email verified successfully!");
       setShowOTPModal(false);
 
-      // session.update() triggers a re-fetch but the React session state won't
-      // reflect "authenticated" until the next render cycle. We set a pending
-      // flag here; the useEffect above will call handleUploadAndAuth() once the
-      // session actually becomes authenticated in the React context.
       if (files.length > 0) {
         pendingUploadRef.current = true;
       }
-      // Pass verified:true so the JWT callback (trigger === "update") merges it
-      // into the token → session.user.verified becomes true on next render.
+
       await session.update({ verified: true });
     } catch (err: any) {
       console.error(err);
@@ -929,113 +909,7 @@ export default function InstantQuotePage() {
             </div>
           </div>
 
-          {/* <section className="mb-24 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            <div className="lg:col-span-2 bg-white rounded-3xl p-8 border border-slate-100 shadow-sm hover:shadow-md transition-shadow">
-              <div className="flex flex-col h-full">
-                <div className="mb-6">
-                  <h2 className="text-2xl font-light text-slate-800">
-                    Manufacturing Capabilities
-                  </h2>
-                  <p className="text-slate-500 text-sm mt-2">
-                    Comprehensive solutions for every stage of development.
-                  </p>
-                </div>
-
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 flex-grow">
-                  {[
-                    {
-                      icon: Settings,
-                      title: "CNC Machining",
-                      desc: "Start to finish precision, ±0.005mm.",
-                    },
-                    {
-                      icon: Layers,
-                      title: "Vacuum Casting",
-                      desc: "Production molds for scalable plastics.",
-                    },
-                    {
-                      icon: Box,
-                      title: "Sheet Metal",
-                      desc: "Laser cutting & bending for durable parts.",
-                    },
-                    {
-                      icon: Package,
-                      title: "Injection Molding",
-                      desc: "Production molds for scalable plastics.",
-                    },
-                  ].map((item, i) => (
-                    <div
-                      key={i}
-                      className="p-4 rounded-xl bg-slate-50 border border-slate-100 hover:border-blue-200 hover:bg-blue-50/30 transition-colors group"
-                    >
-                      <div className="flex items-center gap-3 mb-2">
-                        <div className="p-2 bg-white rounded-lg shadow-sm text-blue-600 group-hover:text-blue-700">
-                          <item.icon className="w-4 h-4" />
-                        </div>
-                        <span className="font-semibold text-slate-700 text-sm">
-                          {item.title}
-                        </span>
-                      </div>
-                      <p className="text-xs text-slate-500 leading-relaxed pl-1">
-                        {item.desc}
-                      </p>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </div>
-
-            <div className="bg-gradient-to-b from-slate-900 to-slate-800 text-white rounded-3xl p-8 shadow-xl relative overflow-hidden group">
-              <div className="absolute top-0 right-0 w-64 h-64 bg-blue-500/20 rounded-full blur-3xl -mr-16 -mt-16 group-hover:bg-blue-500/30 transition-colors"></div>
-
-              <div className="relative z-10 h-full flex flex-col justify-between space-y-8">
-                <div>
-                  <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-blue-500/20 text-blue-300 text-xs font-medium mb-4 border border-blue-500/20">
-                    <Award className="w-3 h-3" /> Premium Quality
-                  </div>
-                  <h3 className="text-2xl font-light leading-tight">
-                    ISO 9001
-                    <br />
-                    <span className="font-semibold text-blue-400">
-                      Certified Precision
-                    </span>
-                  </h3>
-                </div>
-
-                <div className="space-y-6">
-                  <div className="flex gap-4">
-                    <div className="w-10 h-10 rounded-full bg-white/10 flex items-center justify-center flex-shrink-0">
-                      <Clock className="w-5 h-5 text-blue-300" />
-                    </div>
-                    <div>
-                      <p className="font-medium text-sm">Lightning Fast</p>
-                      <p className="text-xs text-slate-400 mt-1">
-                        Standard lead times from 3 days. Rush options available.
-                      </p>
-                    </div>
-                  </div>
-                  <div className="flex gap-4">
-                    <div className="w-10 h-10 rounded-full bg-white/10 flex items-center justify-center flex-shrink-0">
-                      <Shield className="w-5 h-5 text-purple-300" />
-                    </div>
-                    <div>
-                      <p className="font-medium text-sm">Full IP Protection</p>
-                      <p className="text-xs text-slate-400 mt-1">
-                        Strict NDAs and encrypted storage for your designs.
-                      </p>
-                    </div>
-                  </div>
-                </div>
-
-                <Button
-                  variant="outline"
-                  className="w-full transition-transform duration-300 ease-in-out border-white/20 bg-white/10 text-white hover:scale-105"
-                >
-                  View Certifications
-                </Button>
-              </div>
-            </div>
-          </section> */}
+          {/* <ManufacturingServices /> */}
         </main>
 
         {/* Auth Modal - Preserves functionality, updates style */}

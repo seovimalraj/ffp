@@ -2,12 +2,12 @@
 
 import { useEffect } from "react";
 import { motion } from "framer-motion";
-import { Check, X, AlertTriangle, Info } from "lucide-react";
+import { Check, X, AlertTriangle, Info, Loader2 } from "lucide-react";
 
 interface ToastCardProps {
   title: string;
   message?: string;
-  type?: "success" | "error" | "info" | "warning";
+  type?: "success" | "error" | "info" | "warning" | "loading";
   onClose?: () => void;
   autoClose?: boolean;
   duration?: number;
@@ -46,6 +46,12 @@ export function ToastCard({
       icon: Info,
       iconBg: "bg-blue-500",
     },
+    loading: {
+      gradient: "from-zinc-400 to-zinc-600",
+      glow: "shadow-zinc-500/25",
+      icon: Loader2,
+      iconBg: "bg-zinc-500",
+    },
   };
 
   const variant = variants[type];
@@ -76,7 +82,7 @@ export function ToastCard({
           transition={{ type: "spring", stiffness: 400, damping: 15, delay: 0.1 }}
           className={`flex-shrink-0 w-9 h-9 rounded-xl ${variant.iconBg} flex items-center justify-center shadow-lg`}
         >
-          <IconComponent className="w-5 h-5 text-white" strokeWidth={2.5} />
+          <IconComponent className={`w-5 h-5 text-white ${type === "loading" ? "animate-spin" : ""}`} strokeWidth={2.5} />
         </motion.div>
 
         {/* Content */}

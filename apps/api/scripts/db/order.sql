@@ -5,6 +5,7 @@ CREATE TABLE orders (
   created_by UUID NOT NULL REFERENCES users(id),
   rfq_id UUID REFERENCES rfq(id),
   status TEXT NOT NULL DEFAULT 'pending',
+  price_breakdown JSONB NOT NULL DEFAULT '[]';
   payment_status TEXT NOT NULL DEFAULT 'pending',
   subtotal NUMERIC(12, 2) NOT NULL,
   shipping_cost NUMERIC(12, 2) DEFAULT 0,

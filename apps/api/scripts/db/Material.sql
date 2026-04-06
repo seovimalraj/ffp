@@ -1,4 +1,4 @@
-create type stock_material_type as enum ('block', 'rod', 'plate');
+create type stock_material_type as enum ('block', 'bar', 'rod', 'plate');
 create type unit_type as enum (
     'mm',
     'cm',
@@ -16,7 +16,7 @@ CREATE TYPE organization_role_status AS ENUM ('active', 'inactive');
 -- --
 create table material (
     id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-    name text NOT NULL UNIQUE
+    name text NOT NULL UNIQUE--
 );
 CREATE INDEX idx_material_name ON material(name);
 -- --

@@ -215,7 +215,7 @@ export const PartStatusModal = ({
                       </h4>
                       <p className="text-[11px] text-zinc-500 font-medium leading-relaxed">
                         Part price must be at least{" "}
-                        <span className="text-zinc-900 font-bold">$150.00</span>
+                        <span className="text-zinc-900 font-bold">$500.00</span>
                         .
                       </p>
                       <div className="flex items-center gap-2 pt-1">
@@ -231,7 +231,7 @@ export const PartStatusModal = ({
                         </span>
                         {hasPriceIssue && (
                           <span className="text-[10px] font-medium text-zinc-400 italic">
-                            Missing ${(150 - totalPrice).toFixed(2)}
+                            Missing ${(500 - totalPrice).toFixed(2)}
                           </span>
                         )}
                       </div>

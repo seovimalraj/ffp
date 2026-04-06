@@ -177,7 +177,7 @@ export function PartCardItem({
   const { suggestionCountMap, setIsOpen } = useSuggestionContext();
 
   const totalPrice = calculatePrice(part, part.leadTimeType);
-  const hasPriceIssue = totalPrice < 150;
+  const hasPriceIssue = totalPrice < 500;
   const has2DIssue = !part.files2d || part.files2d.length === 0;
   const hasCaution = hasPriceIssue || has2DIssue;
 
