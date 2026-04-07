@@ -570,14 +570,15 @@ export default function InstantQuotePage() {
           <section className="relative z-10 max-w-4xl mx-auto mb-16">
             <div className="text-center mb-10">
               <h1 className="text-4xl md:text-5xl font-light text-slate-800 tracking-tight mb-4">
-                Instant Pricing.{" "}
+                Instant CNC & Sheet Metal Pricing from India. <br />
                 <span className="text-blue-600 font-normal">
-                  Production Speed.
+                  Prototype to Production.
                 </span>
               </h1>
               <p className="text-lg text-slate-500 max-w-2xl mx-auto font-light">
-                Upload your CAD files to get an AI-powered manufacturability
-                analysis and instant quote.
+                Our CNC and sheet metal partners supply parts to world's leading
+                on-demand platforms. Direct access same machines, same quality,
+                30-40% lower cost.
               </p>
             </div>
             <section className="max-w-4xl mx-auto mb-10 px-4">
@@ -887,24 +888,24 @@ export default function InstantQuotePage() {
             </p>
             <div className="flex flex-wrap justify-center gap-8 md:gap-16 opacity-50 grayscale hover:grayscale-0 transition-all duration-700">
               <img
-                src="https://frigate.ai/wp-content/uploads/2024/04/Reliance-1-150x90.png"
-                alt="Reliance"
-                className="aspect-auto h-20"
+                src="https://frigate.ai/wp-content/uploads/2025/12/Schuco.png"
+                alt="Schuco"
+                className="aspect-auto h-30 mt-3"
               />
               <img
-                src="https://frigate.ai/wp-content/uploads/2024/04/TATA-1-1-150x90.png"
+                src="https://frigate.ai/wp-content/uploads/2025/10/1.png"
                 alt="TATA"
-                className="aspect-auto h-20"
+                className="aspect-auto h-30"
               />
               <img
-                src="https://frigate.ai/wp-content/uploads/2024/07/Indian-oil-logo-300x113.png"
+                src="https://frigate.ai/wp-content/uploads/2025/10/2.png"
                 alt=""
-                className="aspect-auto h-20"
+                className="aspect-auto h-30"
               />
               <img
                 src="https://frigate.ai/wp-content/uploads/2024/07/MRG-logo-300x113.png"
-                alt=""
-                className="aspect-auto h-20"
+                alt="MRF"
+                className="aspect-auto h-20 mt-3"
               />
             </div>
           </div>
