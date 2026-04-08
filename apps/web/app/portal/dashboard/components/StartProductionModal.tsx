@@ -11,11 +11,22 @@ import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
 import { motion, AnimatePresence } from "framer-motion";
 import { cn } from "@/lib/utils";
-import { CheckCircle2, Package, FileText, Settings } from "lucide-react";
+import {
+  CheckCircle2,
+  Package,
+  FileText,
+  Settings,
+  Upload,
+  X,
+  FileIcon,
+  Loader2,
+  Paperclip,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { notify } from "@/lib/toast";
 import { apiClient } from "@/lib/api";
+import { useFileUpload } from "@/lib/hooks/use-file-upload";
 
 interface StartProductionModalProps {
   isOpen: boolean;
@@ -36,6 +47,9 @@ const StartProductionModal = ({
   const [projectDescription, setProjectDescription] = useState("");
   const [selectedServices, setSelectedServices] = useState<string[]>([]);
   const [availableServices, setAvailableServices] = useState<string[]>([]);
+  const [supportFiles, setSupportFiles] = useState<string[]>([]);
+
+  const { upload, isUploading } = useFileUpload();
 
   // Errors
   const [nameError, setNameError] = useState("");
@@ -115,6 +129,7 @@ const StartProductionModal = ({
         projectName,
         projectDescription,
         services: selectedServices,
+        support_files: supportFiles,
       });
 
       setIsSubmitted(true);
@@ -137,6 +152,7 @@ const StartProductionModal = ({
       setProjectName("");
       setProjectDescription("");
       setSelectedServices([]);
+      setSupportFiles([]);
       setNameError("");
       setDescriptionError("");
     }, 300);
@@ -148,6 +164,25 @@ const StartProductionModal = ({
         ? prev.filter((s) => s !== service)
         : [...prev, service],
     );
+  };
+
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files || files.length === 0) return;
+
+    for (let i = 0; i < files.length; i++) {
+      try {
+        const res = await upload(files[i]);
+        if (res?.url) {
+          setSupportFiles((prev) => [...prev, res.url]);
+        }
+      } catch (error) {
+        console.error("Failed to upload file:", error);
+        notify.error(`Failed to upload ${files[i].name}`);
+      }
+    }
+    // Reset input
+    e.target.value = "";
   };
 
   return (
@@ -275,6 +310,83 @@ const StartProductionModal = ({
                         <span className="text-[10px] font-bold tracking-wider uppercase bg-slate-100 text-slate-400 px-2 py-0.5 rounded-md">
                           {projectDescription.length} / 10 min
                         </span>
+                      </div>
+                    </div>
+
+                    {/* Support Files */}
+                    <div className="space-y-4">
+                      <Label className="text-sm font-semibold text-slate-700 flex items-center gap-2">
+                        <Paperclip className="w-4 h-4 text-slate-400" />
+                        Support Files
+                      </Label>
+
+                      <div className="grid grid-cols-1 gap-4">
+                        {/* File List */}
+                        {supportFiles.length > 0 && (
+                          <div className="space-y-2">
+                            {supportFiles.map((url, index) => (
+                              <motion.div
+                                key={url + index}
+                                initial={{ opacity: 0, x: -10 }}
+                                animate={{ opacity: 1, x: 0 }}
+                                className="flex items-center justify-between p-3 bg-slate-50 border border-slate-200 rounded-2xl group"
+                              >
+                                <div className="flex items-center gap-3">
+                                  <div className="w-8 h-8 rounded-lg bg-blue-50 flex items-center justify-center text-blue-600">
+                                    <FileIcon className="w-4 h-4" />
+                                  </div>
+                                  <span className="text-sm font-medium text-slate-600 truncate max-w-[200px]">
+                                    {url.split("/").pop()}
+                                  </span>
+                                </div>
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    setSupportFiles((prev) =>
+                                      prev.filter((_, i) => i !== index),
+                                    )
+                                  }
+                                  className="p-1.5 rounded-full hover:bg-red-50 hover:text-red-500 text-slate-400 transition-colors"
+                                >
+                                  <X className="w-4 h-4" />
+                                </button>
+                              </motion.div>
+                            ))}
+                          </div>
+                        )}
+
+                        {/* Upload Button */}
+                        <label
+                          className={cn(
+                            "relative group flex flex-col items-center justify-center p-8 border-2 border-dashed border-slate-200 rounded-[2.5rem] bg-slate-50/10 hover:bg-white hover:border-blue-400 transition-all cursor-pointer",
+                            isUploading && "opacity-50 cursor-not-allowed",
+                          )}
+                        >
+                          <input
+                            type="file"
+                            multiple
+                            className="hidden"
+                            onChange={handleFileUpload}
+                            disabled={isUploading}
+                          />
+                          <div className="w-12 h-12 rounded-2xl bg-white shadow-sm flex items-center justify-center mb-3 group-hover:scale-110 transition-transform">
+                            {isUploading ? (
+                              <Loader2 className="w-6 h-6 text-blue-500 animate-spin" />
+                            ) : (
+                              <Upload className="w-6 h-6 text-slate-400 group-hover:text-blue-500" />
+                            )}
+                          </div>
+                          <div className="text-center">
+                            <p className="text-sm font-bold text-slate-900">
+                              {isUploading
+                                ? "Uploading..."
+                                : "Click to upload files"}
+                            </p>
+                            <p className="text-xs text-slate-500 mt-1">
+                              PDF, Images, or CAD files (Max 10MB)
+                            </p>
+                          </div>
+                        </label>
                       </div>
                     </div>
                   </div>
