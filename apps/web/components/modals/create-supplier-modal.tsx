@@ -4,7 +4,13 @@ import { useRef, useState } from "react";
 import SteppedModal from "../ui/modal/SteppedModal";
 import Step from "../ui/modal/step";
 import { FormField, Input, Textarea } from "../ui/form-field";
-import { Building2, Upload, Loader2, Image as ImageIcon, X } from "lucide-react";
+import {
+  Building2,
+  Upload,
+  Loader2,
+  Image as ImageIcon,
+  X,
+} from "lucide-react";
 import { useFileUpload } from "@/lib/hooks/use-file-upload";
 import PhoneInput from "react-phone-number-input";
 import "react-phone-number-input/style.css";
@@ -17,7 +23,7 @@ const createSupplierSchema = z.object({
   organizationAddress: z.string().optional(),
   organizationLogoUrl: z.string().optional(),
   contactName: z.string().min(1, "Full name is required"),
-  contactEmail: z.string().email("Invalid email address"),
+  contactEmail: z.email("Invalid email address"),
   contactPhone: z.string().optional(),
 });
 
@@ -110,8 +116,8 @@ export function CreateSupplierModal({
     setIsSubmitting(true);
     try {
       await onSubmit(data);
-      reset();
       onClose();
+      reset();
     } catch (error) {
       console.error("Failed to create supplier:", error);
     } finally {
@@ -122,7 +128,7 @@ export function CreateSupplierModal({
   const handleClose = () => {
     if (isSubmitting) return;
     onClose();
-    reset(); // reset form when closing without submitting
+    reset();
   };
 
   return (
@@ -246,8 +252,9 @@ export function CreateSupplierModal({
             <div className="space-y-4">
               <div className="p-3 bg-blue-50/50 border border-blue-100 rounded-lg mb-2">
                 <p className="text-sm text-blue-800">
-                  This contact will be the primary administrator for the supplier
-                  portal and will receive the initial login instructions.
+                  This contact will be the primary administrator for the
+                  supplier portal and will receive the initial login
+                  instructions.
                 </p>
               </div>
 

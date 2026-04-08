@@ -1,7 +1,7 @@
 "use client";
 
 import type React from "react";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { X, ChevronLeft, ChevronRight, Check } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { cn } from "@/lib/utils";
@@ -22,7 +22,13 @@ export interface SteppedModalProps {
   onSubmit: (data: any) => void | Promise<void>;
   onValidateStep?: (step: number) => boolean | Promise<boolean>;
   submitLabel?: string;
-  children: React.ReactNode | ((props: { currentStep: number; isSubmitting: boolean; isLoading: boolean }) => React.ReactNode);
+  children:
+    | React.ReactNode
+    | ((props: {
+        currentStep: number;
+        isSubmitting: boolean;
+        isLoading: boolean;
+      }) => React.ReactNode);
   isLoading?: boolean;
 }
 
@@ -76,12 +82,19 @@ export default function SteppedModal({
     setIsSubmitting(true);
     try {
       await onSubmit({});
+      setCurrentStep(1);
     } catch (error) {
       console.error("Error submitting form:", error);
     } finally {
       setIsSubmitting(false);
     }
   };
+
+  useEffect(() => {
+    if (!isOpen) {
+      setCurrentStep(1);
+    }
+  }, [isOpen]);
 
   if (!isOpen) return null;
 
@@ -114,8 +127,14 @@ export default function SteppedModal({
                 {icon}
               </div>
               <div>
-                <h2 className="text-lg font-semibold text-slate-800 dark:text-white">{title}</h2>
-                {subtitle && <p className="text-sm text-slate-500 dark:text-slate-400">{subtitle}</p>}
+                <h2 className="text-lg font-semibold text-slate-800 dark:text-white">
+                  {title}
+                </h2>
+                {subtitle && (
+                  <p className="text-sm text-slate-500 dark:text-slate-400">
+                    {subtitle}
+                  </p>
+                )}
               </div>
             </div>
             <button
@@ -135,7 +154,8 @@ export default function SteppedModal({
                   <button
                     type="button"
                     onClick={() => {
-                      if (!isDisabled && step.id < currentStep) setCurrentStep(step.id);
+                      if (!isDisabled && step.id < currentStep)
+                        setCurrentStep(step.id);
                     }}
                     disabled={step.id > currentStep || isDisabled}
                     className="flex items-center gap-2.5 group disabled:cursor-not-allowed"
@@ -148,10 +168,14 @@ export default function SteppedModal({
                           : currentStep > step.id
                             ? "bg-violet-700 text-white"
                             : "bg-slate-200 dark:bg-slate-700 text-slate-500 dark:text-slate-400",
-                        isDisabled && "opacity-50"
+                        isDisabled && "opacity-50",
                       )}
                     >
-                      {currentStep > step.id ? <Check size={14} strokeWidth={3} /> : step.id}
+                      {currentStep > step.id ? (
+                        <Check size={14} strokeWidth={3} />
+                      ) : (
+                        step.id
+                      )}
                     </div>
                     <span
                       className={cn(
@@ -159,7 +183,7 @@ export default function SteppedModal({
                         currentStep >= step.id
                           ? "text-slate-800 dark:text-white"
                           : "text-slate-400 dark:text-slate-500",
-                        isDisabled && "opacity-50"
+                        isDisabled && "opacity-50",
                       )}
                     >
                       {step.title}
@@ -173,7 +197,7 @@ export default function SteppedModal({
                           currentStep > step.id
                             ? "bg-violet-900"
                             : "bg-slate-200 dark:bg-slate-700",
-                          isDisabled && "opacity-50"
+                          isDisabled && "opacity-50",
                         )}
                       />
                     </div>
@@ -189,7 +213,9 @@ export default function SteppedModal({
               <div className="flex items-center justify-center py-12">
                 <div className="flex flex-col items-center gap-3">
                   <div className="w-8 h-8 border-2 border-slate-200 dark:border-slate-700 border-t-violet-900 rounded-full animate-spin" />
-                  <p className="text-sm text-slate-500 dark:text-slate-400">Loading...</p>
+                  <p className="text-sm text-slate-500 dark:text-slate-400">
+                    Loading...
+                  </p>
                 </div>
               </div>
             ) : (
@@ -203,7 +229,9 @@ export default function SteppedModal({
                     transition={{ duration: 0.15 }}
                     className="overflow-visible"
                   >
-                    {typeof children === "function" ? children({ currentStep, isSubmitting, isLoading }) : children}
+                    {typeof children === "function"
+                      ? children({ currentStep, isSubmitting, isLoading })
+                      : children}
                   </motion.div>
                 </AnimatePresence>
               </form>

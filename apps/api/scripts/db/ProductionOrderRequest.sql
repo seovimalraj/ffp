@@ -12,6 +12,8 @@ CREATE TABLE production_order_request (
 
     manufacturing_services text[],
 
+    support_files text[],
+
     project_description text NOT NULL,
 
     created_at timestamptz NOT NULL DEFAULT now()

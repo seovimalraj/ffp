@@ -35,6 +35,7 @@ export class TechnicalSupportController {
       projectName: string;
       projectDescription: string;
       services: string[];
+      support_files?: string[];
     },
   ) {
     const client = this.supabaseService.getClient();
@@ -46,6 +47,7 @@ export class TechnicalSupportController {
         project_description: body.projectDescription,
         manufacturing_services: body.services,
         organization_id: currentUser.organizationId,
+        support_files: body.support_files || [],
       })
       .select()
       .single();
