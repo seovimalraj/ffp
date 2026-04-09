@@ -16,6 +16,10 @@ export class EnvironmentVariables {
 
   @IsString()
   @IsOptional()
+  ALLOWED_ORIGINS?: string;
+
+  @IsString()
+  @IsOptional()
   NODE_ENV?: string;
 }
 
