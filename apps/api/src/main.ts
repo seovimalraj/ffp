@@ -10,8 +10,13 @@ async function bootstrap() {
   const logger = new Logger('Bootstrap');
 
   app.use(helmet());
+  const allowedOrigins = configService.get<string>('ALLOWED_ORIGINS');
+  const origins = allowedOrigins 
+    ? allowedOrigins.split(',').map(o => o.trim()).filter(Boolean)
+    : [configService.get<string>('FRONTEND_URL')!];
+
   app.enableCors({
-    origin: [configService.get<string>('FRONTEND_URL')!],
+    origin: origins,
     credentials: true,
   });
 
