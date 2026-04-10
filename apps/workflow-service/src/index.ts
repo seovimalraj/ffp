@@ -8,6 +8,7 @@ import { Worker, NativeConnection } from "@temporalio/worker";
 
 import { logger } from "./lib/logger.js";
 import * as activities from "./activities/index.js";
+import { sendEmail } from "./lib/email.js";
 
 /**
  * =========================
@@ -65,6 +66,37 @@ app.get("/health", (c) => {
     status: "ok",
     service: "workflow-service",
   });
+});
+
+app.post("/test-email", async (c) => {
+  try {
+    const body = await c.req.json();
+    const { to, subject = "Test Email", text = "This is a test email from FFP Workflow Service." } = body;
+
+    if (!to) {
+      return c.json({ error: "Recipient email (to) is required" }, 400);
+    }
+
+    const res = await sendEmail({
+      to,
+      subject,
+      text,
+      html: `<p>${text}</p>`,
+    });
+
+    return c.json({
+      message: "Test email sent successfully",
+      details: res,
+    });
+  } catch (error: any) {
+    return c.json(
+      {
+        error: "Failed to send test email",
+        message: error.message,
+      },
+      500,
+    );
+  }
 });
 
 /**

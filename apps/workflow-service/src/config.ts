@@ -15,6 +15,10 @@ console.warn(
   `[Config] Temporal Address: ${process.env.TEMPORAL_ADDRESS || "localhost:7233"}`,
 );
 
+if (!process.env.SMTP_HOST || !process.env.SMTP_USER || !process.env.SMTP_PASSWORD) {
+  console.error("[Config] FATAL: Email configuration is missing! Check your .env file.");
+}
+
 export const config = {
   port: Number(process.env.PORT) || 6001,
   logLevel: process.env.LOG_LEVEL || "info",

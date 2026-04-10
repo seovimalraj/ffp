@@ -11,14 +11,13 @@ import { getOrderDocumentTemplate } from "../constants/email-templates/order-doc
 const transporter = nodemailer.createTransport({
   host: config.email.smtpHost,
   port: config.email.smtpPort,
-  secure: false,
-  requireTLS: true,
+  secure: config.email.smtpPort === 465, // Use SSL/TLS for port 465
   auth: {
     user: config.email.smtpUser,
     pass: config.email.smtpPassword,
   },
   connectionTimeout: 5000,
-  socketTimeout: 5000,
+  socketTimeout: 10000, // Increased timeout
 });
 
 export interface AttachmentType {
@@ -81,17 +80,7 @@ export const sendEmail = async ({
       }
     }
 
-    console.log({
-      host: config.email.smtpHost,
-      port: config.email.smtpPort,
-      secure: config.email.smtpPort === 2587,
-      auth: {
-        user: config.email.smtpUser,
-        pass: config.email.smtpPassword,
-      },
-      connectionTimeout: 5000,
-      socketTimeout: 5000,
-    });
+    // Removed redundant console.log
 
     const mailOptions = {
       from: config.email.smtpFrom,
@@ -107,7 +96,15 @@ export const sendEmail = async ({
     logger.info({ messageId: result.messageId, to }, "Email sent successfully");
     return { result: result, message: `Email sent to ${to}` };
   } catch (error: any) {
-    logger.error({ error: error.message, to }, "Failed to send email");
+    logger.error(
+      {
+        error: error.message,
+        to,
+        smtpHost: config.email.smtpHost,
+        smtpUser: config.email.smtpUser,
+      },
+      "Failed to send email",
+    );
     throw error;
   }
 };
