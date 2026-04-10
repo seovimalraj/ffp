@@ -40,12 +40,12 @@ const contactMethods = (
     title: "Email Support",
     description:
       "Get in touch with our team for general inquiries and order updates.",
-    value: "support@frigate.ai",
+    value: "manufacture@frigate.ai",
     icon: Mail,
     color: "text-blue-600",
     bgColor: "bg-blue-50",
     onClick: () => {
-      window.location.href = "mailto:support@frigate.ai";
+      window.location.href = "mailto:manufacture@frigate.ai";
     },
   },
   {
@@ -112,7 +112,12 @@ const contactMethods = (
 const SupportPage = () => {
   const session = useSession();
   const [isSupportOpen, setIsSupportOpen] = useState(false);
-  const [methods, setMethods] = useState(contactMethods(() => {}, () => {}));
+  const [methods, setMethods] = useState(
+    contactMethods(
+      () => {},
+      () => {},
+    ),
+  );
   const [isLoading, setIsLoading] = useState(true);
   const { setRedirectUrl } = useMetaStore();
   const router = useNextRouter();

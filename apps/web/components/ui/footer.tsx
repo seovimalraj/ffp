@@ -70,7 +70,7 @@ const Footer = () => {
           );
 
           setContactInfo({
-            email: emailConfig?.value || "support@frigate.ai",
+            email: emailConfig?.value || "manufacture@frigate.ai",
             phone: phoneConfig
               ? formatPhoneNumberIntl(phoneConfig.value)
               : "+91 97890 22345",

@@ -137,7 +137,7 @@ const OrderStatusChangeEmailTemplate = (
 
         <mj-text mj-class="muted" font-size="13px">
           Have technical questions about this phase? 
-          <a href="mailto:support@frigate.ai" style="color:#2563eb; text-decoration:none; font-weight: 600;">Contact your account manager</a>.
+          <a href="mailto:manufacture@frigate.ai" style="color:#2563eb; text-decoration:none; font-weight: 600;">Contact your account manager</a>.
         </mj-text>
       </mj-column>
     </mj-section>
@@ -324,7 +324,7 @@ const OrderCompletionEmailTemplate = (
 
         <mj-text mj-class="muted" font-size="13px">
           Your final invoice and quality inspection reports are available in your dashboard.
-          Need assistance? <a href="mailto:support@frigate.ai" style="color:#2563eb; text-decoration:none; font-weight: 600;">Contact Support</a>
+          Need assistance? <a href="mailto:manufacture@frigate.ai" style="color:#2563eb; text-decoration:none; font-weight: 600;">Contact Support</a>
         </mj-text>
       </mj-column>
     </mj-section>

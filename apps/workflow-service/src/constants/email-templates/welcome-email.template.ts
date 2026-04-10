@@ -59,7 +59,7 @@ export const WelcomeTemplate = (name: string = "Customer") => {
 
             <mj-text padding-top="32px">
               Need help getting started? Contact us at
-              <a class="link-style" href="mailto:support@frigate.ai">support@frigate.ai</a>.
+              <a class="link-style" href="mailto:manufacture@frigate.ai">manufacture@frigate.ai</a>.
             </mj-text>
 
           </mj-column>
