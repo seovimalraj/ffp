@@ -5,7 +5,7 @@ import { renderEmail } from "../lib/render-email.js";
 const SupplierWelcomeEmailTemplate = (
   name: string,
   organizationName: string,
-  password?: string
+  password?: string,
 ) => {
   const passwordBlock = password
     ? `<mj-text font-weight="700" padding-bottom="8px">Your Temporary Credentials:</mj-text>
@@ -86,7 +86,7 @@ const SupplierWelcomeEmailTemplate = (
 
         <mj-text padding-top="12px">
           Contact us at
-          <a href="mailto:support@frigate.ai" style="color:#2563eb; text-decoration:underline;">support@frigate.ai</a>.
+          <a href="mailto:manufacture@frigate.ai" style="color:#2563eb; text-decoration:underline;">manufacture@frigate.ai</a>.
         </mj-text>
 
       </mj-column>
@@ -113,15 +113,19 @@ const SupplierWelcomeEmailTemplate = (
   </mj-body>
 </mjml>
 `;
-}
+};
 
 export async function sendSupplierWelcomeEmail(
   email: string,
   name: string,
   organizationName: string,
-  password?: string
+  password?: string,
 ) {
-  const mjmlContent = SupplierWelcomeEmailTemplate(name, organizationName, password);
+  const mjmlContent = SupplierWelcomeEmailTemplate(
+    name,
+    organizationName,
+    password,
+  );
   const htmlContent = renderEmail(mjmlContent);
 
   const emailDetails: SendEmailDetails = {

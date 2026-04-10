@@ -34,6 +34,7 @@ import { CurrentUserDto } from '../auth/auth.dto';
 import { RFQStatuses } from './rfq.helpers';
 import { TemporalService } from '../temporal/temporal.service';
 import { RolesGuard } from 'src/auth/roles.guard';
+import { SupabaseClient } from '@supabase/supabase-js';
 
 @Controller('rfq')
 @UseGuards(AuthGuard, RolesGuard)
@@ -372,9 +373,28 @@ export class RfqController {
     };
   }
 
-  private async notifyVerifier(rfqId: string, userEmail: string) {
-    await this.temporalService.sendEmail({
-      to: process.env.VERIFIER_EMAIL,
+  private async notifyVerifier(
+    rfqId: string,
+    userEmail: string,
+    client: SupabaseClient<any, 'public', 'public', any, any>,
+  ) {
+    // 1. Fetch Admin/Verifier Email
+    const { data: configData, error: configError } = await client
+      .from(Tables.SystemConfig)
+      .select('value')
+      .eq('key', 'verifier_email_multi')
+      .single();
+
+    if (configError || !configData?.value) {
+      this.logger.error(
+        { configError },
+        'Failed to fetch verifier_email_multi from system_config',
+      );
+      throw configError || new Error('Config verifier_email_multi not found');
+    }
+
+    const template = (email: string) => ({
+      to: email,
       subject: 'New Manual Quote Request',
       text: `
       A new manual quote request has been submitted and requires review.
@@ -400,6 +420,19 @@ export class RfqController {
     `.trim(),
       name: 'Manual Quote System',
     });
+
+    let adminEmails: string[] = [];
+    try {
+      adminEmails = JSON.parse(configData.value);
+      if (!Array.isArray(adminEmails)) adminEmails = [configData.value];
+    } catch (_e) {
+      adminEmails = [configData.value];
+    }
+    await Promise.all(
+      adminEmails.map((email) =>
+        this.temporalService.sendEmail(template(email)),
+      ),
+    );
   }
 
   @Post('manual')
@@ -486,7 +519,7 @@ export class RfqController {
     // Side effect (non-blocking)
     // -------------------------
     try {
-      await this.notifyVerifier(rfqId, user.email);
+      await this.notifyVerifier(rfqId, user.email, client);
     } catch (err) {
       this.logger.error(
         { err, rfqId },

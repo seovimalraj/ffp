@@ -72,7 +72,7 @@ const OTPEmailTemplate = (name: string = "Customer", code: string) => `
 
         <mj-text padding-top="12px">
           Need help? Contact
-          <a href="mailto:support@frigate.ai" style="color:#2563eb; text-decoration:underline;">support@frigate.ai</a>.
+          <a href="mailto:manufacture@frigate.ai" style="color:#2563eb; text-decoration:underline;">manufacture@frigate.ai</a>.
         </mj-text>
 
       </mj-column>

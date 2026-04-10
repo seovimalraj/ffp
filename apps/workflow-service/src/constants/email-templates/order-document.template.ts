@@ -50,8 +50,8 @@ export const getOrderDocumentTemplate = (orderId: string, username: string) => `
 
         <mj-text padding-top="12px">
           If you have any questions contact
-          <a href="mailto:support@frigate.ai" style="color:#2563eb; text-decoration:underline;">
-            support@frigate.ai
+          <a href="mailto:manufacture@frigate.ai" style="color:#2563eb; text-decoration:underline;">
+            manufacture@frigate.ai
           </a>.
         </mj-text>
 
