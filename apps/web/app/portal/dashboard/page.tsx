@@ -33,6 +33,8 @@ import { buildUtmLink, cn, UtmMedium } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import StartProductionModal from "./components/StartProductionModal";
 import { SocialLinks } from "@cnc-quote/shared";
+import { useSocket } from "@/components/store/socket-store";
+import { notify } from "@/lib/toast";
 
 // Animation variants
 const containerVariants: Variants = {
@@ -75,6 +77,19 @@ export default function CustomerDashboardPage() {
   const [showProductionModal, setShowProductionModal] = useState(false);
 
   const { setPageTitle, resetTitle } = useMetaStore();
+  const socket = useSocket();
+
+  useEffect(() => {
+    socket.emit("join", { role: "admin" });
+
+    socket.on("notification", (data) => {
+      console.log("Notification:", data);
+    });
+
+    return () => {
+      socket.off("notification");
+    };
+  }, [socket]);
 
   useEffect(() => {
     setPageTitle("Home");

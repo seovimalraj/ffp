@@ -73,19 +73,20 @@ const nextConfig = {
   async headers() {
     return [
       {
-        source: '/:path*',
+        source: "/:path*",
         headers: [
           {
-            key: 'Permissions-Policy',
-            value: 'bluetooth=(), camera=(), microphone=(), geolocation=(), payment=(), usb=()',
+            key: "Permissions-Policy",
+            value:
+              "bluetooth=(), camera=(), microphone=(), geolocation=(), payment=(), usb=()",
           },
           {
-            key: 'X-Content-Type-Options',
-            value: 'nosniff',
+            key: "X-Content-Type-Options",
+            value: "nosniff",
           },
           {
-            key: 'X-Frame-Options',
-            value: 'SAMEORIGIN',
+            key: "Content-Security-Policy",
+            value: "frame-ancestors 'self' https://frigate.ai",
           },
         ],
       },
