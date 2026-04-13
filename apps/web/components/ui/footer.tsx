@@ -94,8 +94,6 @@ const Footer = () => {
     { label: "Instant Quote", href: "/instant-quote" },
   ];
 
-  console.log(contactInfo);
-
   return (
     <footer className="relative bg-white border-t border-slate-100 overflow-hidden font-sans">
       {/* Decorative Background Elements */}
