@@ -22,6 +22,7 @@ import { AdminModule } from './admin/admin.module';
 import { SystemModule } from './system/system.module';
 import { TechnicalSupportModule } from './technical-support/technical-support.module';
 import { QuoteRequestModule } from './quote-request/quote-request.module';
+import { NotificationsGateway } from './notifications/notifications.gateway';
 
 @Module({
   imports: [
@@ -65,6 +66,6 @@ import { QuoteRequestModule } from './quote-request/quote-request.module';
     QuoteRequestModule,
   ],
   controllers: [AppController],
-  providers: [AppService],
+  providers: [AppService, NotificationsGateway],
 })
 export class AppModule {}
