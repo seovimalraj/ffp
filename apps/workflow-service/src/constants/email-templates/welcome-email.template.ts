@@ -2,7 +2,7 @@ import { BaseEmailTemplate } from "./base.template.js";
 
 export const WelcomeTemplate = (name: string = "Customer") => {
   const content = `
-     <mj-section padding="">
+     <mj-section>
           <mj-column css-class="main-content" padding="20px" border-radius="8px">
 
             <mj-text mj-class="heading" padding-bottom="16px">

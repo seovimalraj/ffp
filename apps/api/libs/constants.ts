@@ -97,6 +97,8 @@ export enum Tables {
   OrderWorkflowInstances = 'order_workflow_instances',
 
   OrderWorkflowTemplates = 'order_workflow_templates',
+
+  Notification = 'notification',
 }
 
 /**

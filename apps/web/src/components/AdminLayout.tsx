@@ -10,7 +10,6 @@ import { ChevronLeft, X, LogOut, Menu, Search } from "lucide-react";
 import { signOut, useSession } from "next-auth/react";
 import Logo from "@/components/ui/logo";
 import UserDropdown from "@/components/Header/UserDropdown";
-import NotificationDropdown from "@/components/Header/NotificationDropdown";
 import MegaMenu from "@/components/ui/mega-menu";
 import { useMegaMenu } from "@/hooks/use-mega-menu";
 
@@ -208,7 +207,6 @@ export default function AdminLayout({ children }: Readonly<AdminLayoutProps>) {
                 <LogOut size={18} />
               </button>
             )}
-            <NotificationDropdown />
           </div>
         </div>
       </aside>

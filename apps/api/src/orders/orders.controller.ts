@@ -35,6 +35,7 @@ import { OrderService } from './order.service';
 import { TemporalService } from 'src/temporal/temporal.service';
 import { RolesGuard } from 'src/auth/roles.guard';
 import { Roles } from 'src/auth/roles.decorator';
+import { NotificationsService } from 'src/notifications/notifications.service';
 
 @Controller('orders')
 @UseGuards(AuthGuard, RolesGuard)
@@ -46,6 +47,7 @@ export class OrdersController {
     private readonly shippingAddressService: ShippingAddressService,
     private readonly ordersService: OrderService,
     private readonly temporalService: TemporalService,
+    private readonly notificationsService: NotificationsService,
   ) {}
 
   @Get()
@@ -334,6 +336,17 @@ export class OrdersController {
         `Error paying order: ${error.message}`,
       );
     }
+
+    // Notify customer
+    await this.notificationsService.createNotification({
+      user_id: currentUser.id,
+      organization_id: currentUser.organizationId,
+      title: 'Payment Successful',
+      message: `Your payment for order #${id} has been received.`,
+      type: 'success',
+      metadata: { orderId: id },
+    });
+
     return { data };
   }
 
@@ -577,13 +590,14 @@ export class OrdersController {
   async rejectRequest(
     @Param('requestId', ParseUUIDPipe) requestId: string,
     @Body() body: RejectStatusDto,
+    @CurrentUser() currentUser: CurrentUserDto,
   ) {
     const client = this.supabaseService.getClient();
 
-    // 1. Fetch the request to get workflow_id
+    // 1. Fetch the request to get workflow_id and requester
     const { data: request, error: fetchError } = await client
       .from(Tables.OrderStatusChangeRequests)
-      .select('workflow_id')
+      .select('workflow_id, created_by, order_id')
       .eq('id', requestId)
       .single();
 
@@ -597,13 +611,24 @@ export class OrdersController {
         status: 'rejected',
         rejection_reason: body.rejection_reason,
         reviwed_at: new Date().toISOString(),
-        // Note: You might want to track who rejected it in approved_by or a new rejected_by column
       })
       .eq('id', requestId);
 
     if (error) {
       this.logger.error(`Rejection error: ${error.message}`);
       throw new InternalServerErrorException('Could not reject request');
+    }
+
+    // Notify requester
+    if (request.created_by) {
+      await this.notificationsService.createNotification({
+        user_id: request.created_by,
+        organization_id: currentUser.organizationId, // Fallback or fetch from user
+        title: 'Status Change Rejected',
+        message: `Your status change request for order #${request.order_id} was rejected. Reason: ${body.rejection_reason}`,
+        type: 'error',
+        metadata: { requestId, orderId: request.order_id },
+      });
     }
 
     // 2. Signal Temporal Workflow
