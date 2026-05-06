@@ -23,6 +23,7 @@ import { SystemModule } from './system/system.module';
 import { TechnicalSupportModule } from './technical-support/technical-support.module';
 import { QuoteRequestModule } from './quote-request/quote-request.module';
 import { NotificationsGateway } from './notifications/notifications.gateway';
+import { NotificationsModule } from './notifications/notifications.module';
 
 @Module({
   imports: [
@@ -64,6 +65,7 @@ import { NotificationsGateway } from './notifications/notifications.gateway';
     SystemModule,
     TechnicalSupportModule,
     QuoteRequestModule,
+    NotificationsModule,
   ],
   controllers: [AppController],
   providers: [AppService, NotificationsGateway],

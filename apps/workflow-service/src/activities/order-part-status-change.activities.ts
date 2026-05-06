@@ -393,7 +393,7 @@ export async function fetchEssentials(
 
     const { data: order, error: orderError } = await supabase
       .from(Tables.OrdersTable)
-      .select("order_code")
+      .select("order_code, user_id")
       .eq("id", orderId)
       .single();
 
@@ -401,7 +401,11 @@ export async function fetchEssentials(
       throw error;
     }
 
-    return { shippingData: data, order_code: order?.order_code };
+    return { 
+      shippingData: data, 
+      order_code: order?.order_code, 
+      userId: order?.user_id 
+    };
   } catch (error) {
     logger.error({ error, orderId }, "Error fetching shipping information");
     throw error;

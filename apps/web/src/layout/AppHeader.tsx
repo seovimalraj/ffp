@@ -11,6 +11,7 @@ import { useSession } from "next-auth/react";
 import { useMetaStore } from "@/components/store/title-store";
 import { useMegaMenu } from "@/hooks/use-mega-menu";
 import { cn } from "@/lib/utils";
+import NotificationDropdown from "@/components/Header/NotificationDropdown";
 
 interface AppHeaderProps {
   setOpen: () => void;
@@ -45,7 +46,7 @@ const AppHeader = ({ setOpen }: AppHeaderProps) => {
 
   return (
     <header className="sticky top-0 z-30 flex h-16 w-full items-center bg-white/80 backdrop-blur-md border-b border-slate-200 px-4 lg:px-8">
-      <div className="flex items-center justify-between w-full">
+      <div className="flex items-center justify-around w-full">
         {/* Left section - Mobile Toggle & Logo */}
         <div className="flex items-center gap-4 lg:hidden">
           <button
@@ -86,7 +87,7 @@ const AppHeader = ({ setOpen }: AppHeaderProps) => {
         </div>
 
         {/* Center section - Search Area */}
-        <div className="hidden lg:flex flex-1 max-w-xl">
+        <div className="hidden lg:flex flex-1 max-w-xl gap-4">
           <div className="relative w-full group">
             <div className="absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none">
               <Search
@@ -120,19 +121,22 @@ const AppHeader = ({ setOpen }: AppHeaderProps) => {
           </div>
         </div>
 
-        {/* Right Section - Page Title or Contextual info */}
-        {session.data?.user.role === "customer" && (
-          <div className="hidden lg:flex items-center gap-4">
-            <div className="h-8 w-px bg-slate-200 mx-2" />
-            <Button
-              className="rounded-md"
-              variant="cta"
-              onClick={() => router.push("/instant-quote")}
-            >
-              New Quote
-            </Button>
-          </div>
-        )}
+        <div className="flex items-center gap-2 lg:gap-4 ml-auto">
+          <NotificationDropdown />
+
+          {session.data?.user.role === "customer" && (
+            <div className="hidden lg:flex items-center gap-4">
+              <div className="h-8 w-px bg-slate-200 mx-1" />
+              <Button
+                className="rounded-md"
+                variant="cta"
+                onClick={() => router.push("/instant-quote")}
+              >
+                New Quote
+              </Button>
+            </div>
+          )}
+        </div>
       </div>
     </header>
   );

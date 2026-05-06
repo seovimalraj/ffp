@@ -34,6 +34,8 @@ export const config = {
     url: process.env.SUPABASE_URL,
     anonKey: process.env.SUPABASE_ANON_KEY,
   },
+  apiUrl: process.env.API_URL || "http://localhost:4001",
+  internalApiKey: process.env.INTERNAL_API_KEY || "debug-secret-123",
   allowedOrigins: process.env.ALLOWED_ORIGINS
     ? process.env.ALLOWED_ORIGINS.split(",").map((o) => o.trim())
     : ["*"],

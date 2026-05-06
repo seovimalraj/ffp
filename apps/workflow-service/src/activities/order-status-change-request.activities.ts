@@ -209,3 +209,33 @@ export async function sendAdminReminder(requestData: OrderStatusChangeRequest) {
     throw error;
   }
 }
+
+export async function sendInappNotification(
+  event: string,
+  message: string,
+  organizationId: string,
+  userId: string,
+  metadata: Record<string, string>,
+) {
+  try {
+    const { data, error } = await supabase
+      .from(Tables.Notification)
+      .insert({
+        user_id: userId,
+        organization_id: organizationId,
+        message,
+        meta_data: metadata,
+      })
+      .select("*")
+      .single();
+
+    if (error) {
+      throw error;
+    }
+
+    return data;
+  } catch (error) {
+    logger.error({ error }, "Failed to send Inapp notification");
+    throw error;
+  }
+}

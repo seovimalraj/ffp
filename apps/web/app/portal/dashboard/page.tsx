@@ -77,19 +77,23 @@ export default function CustomerDashboardPage() {
   const [showProductionModal, setShowProductionModal] = useState(false);
 
   const { setPageTitle, resetTitle } = useMetaStore();
-  const socket = useSocket();
+  // const socket = useSocket();
 
-  useEffect(() => {
-    socket.emit("join", { role: "admin" });
+  // useEffect(() => {
+  //   // Only register this user's socket once the session is ready
+  //   if (!session?.user?.id) return;
 
-    socket.on("notification", (data) => {
-      console.log("Notification:", data);
-    });
+  //   socket.emit("join", { auth: session.user.id });
+  //   socket.emit("message", "something");
+  //   socket.on("receiveMessage", (data) => {
+  //     console.log("Notification:", data);
+  //     notify.info(data?.message ?? "New notification received!");
+  //   });
 
-    return () => {
-      socket.off("notification");
-    };
-  }, [socket]);
+  //   return () => {
+  //     socket.off("receiveMessage");
+  //   };
+  // }, [socket, session?.user?.id]);
 
   useEffect(() => {
     setPageTitle("Home");

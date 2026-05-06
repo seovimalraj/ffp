@@ -35,6 +35,8 @@
     "hono-pino": "^0.10.3",
     "mjml": "^4.18.0",
     "nodemailer": "^7.0.12",
-    "pino": "^10.3.0"
+    "pino": "^10.3.0",
+    "socket.io": "^4.8.3",
+    "socket.io-client": "^4.8.1"
   }
 }

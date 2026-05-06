@@ -1,11 +1,12 @@
 import { proxyActivities, log } from "@temporalio/workflow";
-import type * as activities from "../activities/order-part-status-change.activities.js";
+import type * as activities from "../activities/index.js";
 
 const {
   checkOrderCompletion,
   fetchEssentials,
   sendOrderStatusChangeEmail,
   sendOrderCompletionEmail,
+  pushNotificationActivity,
 } = proxyActivities<typeof activities>({
   startToCloseTimeout: "1 minute",
   retry: {
@@ -66,7 +67,9 @@ export async function orderPartStatusChangeWorkflow(
     throw new Error(errorMsg);
   }
 
-  // 3. Send appropriate email
+  const userId = (essentials as any).userId;
+
+  // 3. Send appropriate notifications
   if (allPartsCompleted) {
     log.info("Order fully completed. Sending overall completion email.", {
       orderId,
@@ -77,8 +80,19 @@ export async function orderPartStatusChangeWorkflow(
       shippingDetails,
       documents,
     );
+
+    // Push socket notification for order completion
+    if (userId) {
+      await pushNotificationActivity({
+        userId,
+        title: "Order Completed",
+        message: `Your order #${essentials.order_code} has been fully shipped!`,
+        type: "success",
+        metadata: { orderId },
+      });
+    }
   } else {
-    log.info("Sending part status change email.", {
+    log.info("Sending part status change notification.", {
       orderPartId,
       partName: currentPart.part_name,
       status: currentStatus,
@@ -100,6 +114,17 @@ export async function orderPartStatusChangeWorkflow(
       notes,
       documents,
     );
+
+    // Push socket notification for status change
+    if (userId) {
+      await pushNotificationActivity({
+        userId,
+        title: "Production Update",
+        message: `${currentPart.part_name} has moved to ${currentStatus}.`,
+        type: "info",
+        metadata: { orderId, orderPartId },
+      });
+    }
   }
 
   log.info("orderPartStatusChangeWorkflow completed successfully", {

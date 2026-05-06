@@ -14,7 +14,6 @@ import { useMegaMenu } from "@/hooks/use-mega-menu";
 import { useActiveMenuSection } from "@/lib/hooks/use-active-menu-section";
 import Logo from "@/components/ui/logo";
 import UserDropdown from "@/components/Header/UserDropdown";
-import NotificationDropdown from "@/components/Header/NotificationDropdown";
 
 interface SupplierLayoutProps {
   readonly children: React.ReactNode;
@@ -247,7 +246,6 @@ export default function SupplierLayout({
                 <LogOut size={18} />
               </button>
             )}
-            <NotificationDropdown />
           </div>
         </div>
       </aside>

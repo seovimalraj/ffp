@@ -17,7 +17,6 @@ import {
 } from "lucide-react";
 import Logo from "@/components/ui/logo";
 import UserDropdown from "@/components/Header/UserDropdown";
-import NotificationDropdown from "@/components/Header/NotificationDropdown";
 import { useSession } from "next-auth/react";
 
 interface CustomerLayoutProps {
@@ -232,7 +231,6 @@ export default function CustomerLayout({
                 </div>
               )}
             </div>
-            <NotificationDropdown />
           </div>
         </div>
       </aside>

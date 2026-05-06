@@ -11,9 +11,10 @@ import { RolesGuard } from 'src/auth/roles.guard';
 import { OrderWorkflowService } from './order-workflow.service';
 
 import { TemporalModule } from 'src/temporal/temporal.module';
+import { NotificationsModule } from 'src/notifications/notifications.module';
 
 @Module({
-  imports: [SupabaseModule, TemporalModule],
+  imports: [SupabaseModule, TemporalModule, NotificationsModule],
   controllers: [OrdersController, OrderWorkflowController],
   providers: [
     PermissionGuard,

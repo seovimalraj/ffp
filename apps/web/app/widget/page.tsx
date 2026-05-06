@@ -29,7 +29,7 @@ export default function WidgetPage() {
       if (response.data?.uploadId) {
         window.open(
           `/instant-quote?uploadId=${response.data.uploadId}`,
-          "_blank",
+          "_self",
         );
       } else {
         notify.error("Upload failed, invalid response from server.");

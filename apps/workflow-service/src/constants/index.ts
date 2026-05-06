@@ -82,6 +82,7 @@ export enum Tables {
   SupplierAssignments = "supplier_assignments",
   QuoteRequest = "quote_request",
   QuoteRequestEvent = "quote_request_event",
+  Notification = "notification",
 }
 
 /**

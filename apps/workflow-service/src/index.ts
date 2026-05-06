@@ -9,6 +9,7 @@ import { Worker, NativeConnection } from "@temporalio/worker";
 import { logger } from "./lib/logger.js";
 import * as activities from "./activities/index.js";
 import { sendEmail } from "./lib/email.js";
+import { getSocket } from "./lib/socket.js";
 
 /**
  * =========================
@@ -71,7 +72,11 @@ app.get("/health", (c) => {
 app.post("/test-email", async (c) => {
   try {
     const body = await c.req.json();
-    const { to, subject = "Test Email", text = "This is a test email from FFP Workflow Service." } = body;
+    const {
+      to,
+      subject = "Test Email",
+      text = "This is a test email from FFP Workflow Service.",
+    } = body;
 
     if (!to) {
       return c.json({ error: "Recipient email (to) is required" }, 400);
@@ -199,6 +204,9 @@ async function startServer() {
       logger.error({ err, worker: worker.name }, "Worker crashed");
     });
   }
+
+  // Initialize Socket connection
+  getSocket();
 
   // Start HTTP server
   serve({
