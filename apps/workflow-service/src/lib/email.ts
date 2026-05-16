@@ -12,6 +12,7 @@ const transporter = nodemailer.createTransport({
   host: config.email.smtpHost,
   port: config.email.smtpPort,
   secure: config.email.smtpPort === 465, // Use SSL/TLS for port 465
+  requireTLS: config.email.smtpPort === 587,
   auth: {
     user: config.email.smtpUser,
     pass: config.email.smtpPassword,
