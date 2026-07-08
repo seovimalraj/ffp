@@ -24,6 +24,11 @@ import {
   type CadTopologyResult,
   type WorkerCapabilities,
 } from "./mesh-loader";
+import {
+  detectSheetMetal,
+  type DetectionResult,
+} from "./sheet-metal-detector";
+import { unfoldGeometry, type UnfoldGeometryResult } from "./sm-unfold-engine";
 import { parseDxfFromArrayBuffer } from "./dxf";
 import { motion, AnimatePresence } from "framer-motion";
 import { ArrowLeft, Download, ExternalLink, Loader2 } from "lucide-react";
@@ -94,6 +99,13 @@ type CadTopologyViewerContext = {
   ext: CADExt;
   topology: CadTopologyResult | null;
   topologyAvailability: CadTopologyAvailability;
+};
+type PartUnfoldState = {
+  status: "folded" | "unfolding" | "unfolded" | "error";
+  flatGeometry: THREE.BufferGeometry | null;
+  originalGeometry: THREE.BufferGeometry | null;
+  flatDimensions: { width: number; height: number } | null;
+  errorReason: string | null;
 };
 
 export const CAD_EXTS: ReadonlySet<CADExt> = new Set<CADExt>([
@@ -355,6 +367,134 @@ const SHOW_SHEET_META_DEBUG = false;
 const MISSING_RUNTIME_TOPOLOGY_WARNING_MESSAGE =
   "Exact CAD topology unavailable in current OCC runtime. Circle/arc measurement is running in approximate mode.";
 
+type StepFileMetadata = {
+  fileName?: string;
+  timestamp?: string;
+  author?: string;
+  organization?: string;
+  preprocessorVersion?: string;
+  originatingSystem?: string;
+  description?: string;
+  schema?: string;
+};
+
+function readStepString(
+  str: string,
+  start: number,
+): { value: string; next: number } {
+  let i = start + 1;
+  let value = "";
+  while (i < str.length) {
+    if (str[i] === "'" && str[i + 1] === "'") {
+      value += "'";
+      i += 2;
+    } else if (str[i] === "'") {
+      i++;
+      break;
+    } else {
+      value += str[i];
+      i++;
+    }
+  }
+  return { value, next: i };
+}
+
+function findMatchingParen(text: string, openIndex: number): number {
+  let depth = 0;
+  let inString = false;
+  for (let i = openIndex; i < text.length; i++) {
+    const c = text[i];
+    if (inString) {
+      if (c === "'" && text[i + 1] === "'") {
+        i++;
+      } else if (c === "'") {
+        inString = false;
+      }
+    } else if (c === "'") {
+      inString = true;
+    } else if (c === "(") {
+      depth++;
+    } else if (c === ")") {
+      depth--;
+      if (depth === 0) return i;
+    }
+  }
+  return -1;
+}
+
+function parseStepEntityArgs(body: string): string[] {
+  const results: string[] = [];
+  let i = 0;
+  while (i < body.length) {
+    while (i < body.length && /[\s,]/.test(body[i])) i++;
+    if (i >= body.length) break;
+    if (body[i] === "(") {
+      const list: string[] = [];
+      i++;
+      while (i < body.length && body[i] !== ")") {
+        while (i < body.length && /[\s,]/.test(body[i])) i++;
+        if (i < body.length && body[i] === "'") {
+          const { value, next } = readStepString(body, i);
+          const trimmed = value.trim();
+          if (trimmed) list.push(trimmed);
+          i = next;
+        } else if (i < body.length && body[i] !== ")") {
+          i++;
+        }
+      }
+      if (i < body.length && body[i] === ")") i++;
+      results.push(list.join(", "));
+    } else if (body[i] === "'") {
+      const { value, next } = readStepString(body, i);
+      results.push(value.trim());
+      i = next;
+    } else {
+      while (i < body.length && body[i] !== "," && body[i] !== ")") i++;
+      results.push("");
+    }
+  }
+  return results;
+}
+
+function extractStepMetadata(buffer: ArrayBuffer): StepFileMetadata | null {
+  const text = new TextDecoder("utf-8", { fatal: false }).decode(buffer);
+  if (!/ISO-10303-21/i.test(text.slice(0, 64))) return null;
+
+  const endsecIdx = text.indexOf("ENDSEC");
+  const headerText = endsecIdx > 0 ? text.slice(0, endsecIdx) : text;
+
+  function extractEntity(name: string): string[] | null {
+    const pattern = new RegExp(`\\b${name}\\s*\\(`, "i");
+    const match = pattern.exec(headerText);
+    if (!match) return null;
+    const openIdx = match.index + match[0].length - 1;
+    const closeIdx = findMatchingParen(headerText, openIdx);
+    if (closeIdx === -1) return null;
+    return parseStepEntityArgs(headerText.slice(openIdx + 1, closeIdx));
+  }
+
+  const meta: StepFileMetadata = {};
+
+  const fn = extractEntity("FILE_NAME");
+  if (fn) {
+    if (fn[0]) meta.fileName = fn[0];
+    if (fn[1]) meta.timestamp = fn[1];
+    if (fn[2]) meta.author = fn[2];
+    if (fn[3]) meta.organization = fn[3];
+    if (fn[4]) meta.preprocessorVersion = fn[4];
+    if (fn[5]) meta.originatingSystem = fn[5];
+  }
+
+  const fd = extractEntity("FILE_DESCRIPTION");
+  if (fd && fd[0]) meta.description = fd[0];
+
+  const fs = extractEntity("FILE_SCHEMA");
+  if (fs && fs[0]) meta.schema = fs[0];
+
+  const hasAny = Object.values(meta).some((v) => v && v.trim().length > 0);
+  return hasAny ? meta : null;
+}
+
 interface CadViewerProps {
   file?: File | string | null;
   className?: string;
@@ -441,6 +581,8 @@ export const CadViewer = forwardRef<CadViewerRef, CadViewerProps>(
       null,
     );
     const [isExportingPart, setIsExportingPart] = useState(false);
+    const [cadFileMetadata, setCadFileMetadata] = useState<StepFileMetadata | null>(null);
+    const [showMetadataPanel, setShowMetadataPanel] = useState(false);
     const [currentExt, setCurrentExt] = useState<string>("");
     const [cadTopologyAvailability, setCadTopologyAvailability] =
       useState<CadTopologyAvailability | null>(null);
@@ -462,6 +604,13 @@ export const CadViewer = forwardRef<CadViewerRef, CadViewerProps>(
     >(undefined);
     const [isUnfolding, setIsUnfolding] = useState(false);
     const [flattenError, setFlattenError] = useState<string | null>(null);
+    const [partDetectionResults, setPartDetectionResults] = useState<Map<string, DetectionResult>>(new Map());
+    const [partUnfoldStates, setPartUnfoldStates] = useState<Map<string, PartUnfoldState>>(new Map());
+    const [flatModeDetection, setFlatModeDetection] = useState<DetectionResult | null>(null);
+    const [tessUnfoldFlatDimensions, setTessUnfoldFlatDimensions] = useState<{ width: number; height: number } | null>(null);
+    // Cached tessellation-unfold result for flat mode (single-part CAD view).
+    // Computed once per file on first Unfold click; formedGeom stays the exact refold source.
+    const tessUnfoldCacheRef = useRef<UnfoldGeometryResult | null>(null);
     const snapshotTakenRef = useRef(false);
     const loadRequestRef = useRef(0);
     const unfoldRequestRef = useRef(0);
@@ -611,6 +760,8 @@ export const CadViewer = forwardRef<CadViewerRef, CadViewerProps>(
 
     useEffect(() => {
       setCurrentExt(getFileExt(file) ?? "");
+      setCadFileMetadata(null);
+      setShowMetadataPanel(false);
       setViewerMode({ kind: "assembly" });
       setSelectedPartKey(null);
       setPartExportMessage(null);
@@ -635,6 +786,11 @@ export const CadViewer = forwardRef<CadViewerRef, CadViewerProps>(
         unfoldRequestRef.current += 1;
         clearFlatCache();
         clearFormedCache();
+        setPartDetectionResults(new Map());
+        setFlatModeDetection(null);
+        setTessUnfoldFlatDimensions(null);
+        clearTessUnfoldCache();
+        clearPartUnfoldStates();
       }
     }, [file]);
 
@@ -904,6 +1060,44 @@ export const CadViewer = forwardRef<CadViewerRef, CadViewerProps>(
       });
     }
 
+    // Phase 1 gate — log the real render meshes that feed the unfold engine
+    function logSheetMetalMeshes(source: THREE.Object3D | THREE.BufferGeometry) {
+      if ((source as THREE.BufferGeometry).isBufferGeometry) {
+        const geom = source as THREE.BufferGeometry;
+        console.log(
+          "[SM-MESH]", "(merged primary geometry)",
+          "verts:", geom.attributes.position?.count ?? 0,
+          "indexed:", !!geom.index,
+        );
+        return;
+      }
+      (source as THREE.Object3D).traverse((o: any) => {
+        if (!o?.isMesh) return;
+        const mesh = o as THREE.Mesh;
+        console.log(
+          "[SM-MESH]", mesh.name || "(unnamed)",
+          "verts:", mesh.geometry?.attributes?.position?.count ?? 0,
+          "indexed:", !!mesh.geometry?.index,
+        );
+      });
+    }
+
+    function clearTessUnfoldCache() {
+      const cached = tessUnfoldCacheRef.current;
+      if (cached) disposeGeometrySafe(cached.flatGeometry);
+      tessUnfoldCacheRef.current = null;
+    }
+
+    function clearPartUnfoldStates() {
+      setPartUnfoldStates((prev) => {
+        for (const state of prev.values()) {
+          disposeGeometrySafe(state.flatGeometry);
+          disposeGeometrySafe(state.originalGeometry);
+        }
+        return new Map();
+      });
+    }
+
     function setCadTopologyContext(
       context: CadTopologyViewerContext | null,
     ): void {
@@ -1046,6 +1240,17 @@ export const CadViewer = forwardRef<CadViewerRef, CadViewerProps>(
       setViewerMode({ kind: "part", partKey });
       setSelectedPartKey(partKey);
       setPartMenu(null);
+      // Reset unfold state for this part — the viewer just loaded fresh geometry
+      setPartUnfoldStates((prev) => {
+        const next = new Map(prev);
+        const existing = next.get(partKey);
+        if (existing) {
+          disposeGeometrySafe(existing.flatGeometry);
+          disposeGeometrySafe(existing.originalGeometry);
+        }
+        next.delete(partKey);
+        return next;
+      });
     }
 
     function backToAssemblyView(): void {
@@ -1150,8 +1355,12 @@ export const CadViewer = forwardRef<CadViewerRef, CadViewerProps>(
         const isStale = () => loadRequestRef.current !== requestId;
         activeFileKeyRef.current = fileKey;
         displayAssemblySnapshotRef.current = null;
+
+        clearTessUnfoldCache();
         let loadedAssemblySession: ModelSession | null = null;
         let loadedAssemblyParts: LoadedPart[] = [];
+        // Phase 3 — raw STEP text for Layer 1 analysis (populated below for STEP/STP files)
+        let rawStepText: string | null = null;
 
         setPartMenu(null);
         setParts([]);
@@ -1167,6 +1376,7 @@ export const CadViewer = forwardRef<CadViewerRef, CadViewerProps>(
         setMeasureMode(false);
         setMeasureMM(null);
         setSheetMeta(null);
+        setFlatModeDetection(null);
         setFlatEnabled(false);
         setFlattenError(null);
         setIsUnfolding(false);
@@ -1243,6 +1453,24 @@ export const CadViewer = forwardRef<CadViewerRef, CadViewerProps>(
                 file,
                 workerRef.current!,
               );
+              if ((ext === "step" || ext === "stp") && !isStale()) {
+                try {
+                  setCadFileMetadata(
+                    extractStepMetadata(assembly.originalBytes.slice(0, 65536)),
+                  );
+                } catch {
+                  /* metadata extraction is best-effort */
+                }
+                // Phase 3 — decode full STEP body for Layer 1 analysis
+                if (assembly.originalBytes.byteLength > 0 && assembly.originalBytes.byteLength <= 50 * 1024 * 1024) {
+                  try {
+                    rawStepText = new TextDecoder("utf-8", { fatal: false }).decode(assembly.originalBytes);
+                    console.log("[SM-STEP] Raw text captured, length:", rawStepText.length, "chars");
+                  } catch {
+                    rawStepText = null;
+                  }
+                }
+              }
               setCadTopologyContextFromCadLoad(
                 ext,
                 assembly.topology,
@@ -1286,6 +1514,27 @@ export const CadViewer = forwardRef<CadViewerRef, CadViewerProps>(
                   disposeObject3DSafe(assembly.object);
                   disposeGeometrySafe(formedCache);
                   return;
+                }
+
+                if (formedCache) {
+                  try {
+                    // TEMP Phase-1 diagnostic: confirm Box3 dims are available at load time
+                    const _bb = new THREE.Box3();
+                    formedCache.computeBoundingBox();
+                    if (formedCache.boundingBox) _bb.copy(formedCache.boundingBox);
+                    console.log(
+                      "[SM-BB]",
+                      "W:", (_bb.max.x - _bb.min.x).toFixed(1),
+                      "L:", (_bb.max.z - _bb.min.z).toFixed(1),
+                      "H:", (_bb.max.y - _bb.min.y).toFixed(1),
+                    );
+                    const rawName = typeof file === "string" ? (file.split("/").pop() || file) : file.name;
+                    const baseName = rawName.replace(/\.[^.]+$/, "");
+                    const flatDetection = detectSheetMetal(formedCache, baseName, rawStepText);
+                    setFlatModeDetection(flatDetection);
+                  } catch {
+                    setFlatModeDetection(null);
+                  }
                 }
 
                 setDimsFromObject(assembly.object);
@@ -1389,6 +1638,28 @@ export const CadViewer = forwardRef<CadViewerRef, CadViewerProps>(
                 loadedAssemblySession,
                 loadedAssemblyParts,
               );
+          }
+
+          // Per-part sheet metal detection — runs for every loaded part independently
+          // {/* SHEET_METAL_DETECTION_HOOK — parts mode: S1-S4 detection per loaded part */}
+          if (loadedAssemblyParts.length > 0) {
+            const detectionMap = new Map<string, DetectionResult>();
+            for (const lp of loadedAssemblyParts) {
+              try {
+                const merged = buildMergedGeometryFromObject(lp.object);
+                if (merged) {
+                  const partName = lp.rawName ?? lp.name;
+                  const result = detectSheetMetal(merged, partName, rawStepText);
+                  detectionMap.set(lp.key, result);
+                  merged.dispose();
+                }
+              } catch (detectionErr) {
+                console.error("[CadViewer] Sheet metal detection failed for part:", lp.key, detectionErr);
+              }
+            }
+            if (!isStale()) {
+              setPartDetectionResults(detectionMap);
+            }
           }
         } catch (err: any) {
           if (isStale()) return;
@@ -1615,6 +1886,8 @@ export const CadViewer = forwardRef<CadViewerRef, CadViewerProps>(
       setFlattenError(null);
       setIsUnfolding(false);
       unfoldRequestRef.current += 1;
+      setPartDetectionResults(new Map());
+      clearPartUnfoldStates();
     }, [assemblyMode]);
 
     useEffect(() => {
@@ -1663,6 +1936,32 @@ export const CadViewer = forwardRef<CadViewerRef, CadViewerProps>(
       hasExplicitSheetMetalData;
     const flattenControlVisible =
       sheetMetalUiEnabled && (naturalFlattenVisible || forceFlattenVisible);
+
+    // Per-part unfold control: visible when in part view and the selected part is sheet metal
+    const activePartKeyForUnfold =
+      assemblyMode === "parts" && viewerMode.kind === "part" ? viewerMode.partKey : null;
+    const activePartDetection = activePartKeyForUnfold
+      ? partDetectionResults.get(activePartKeyForUnfold)
+      : null;
+    const partUnfoldControlVisible =
+      showControls && activePartDetection?.isSheetMetal === true && activePartDetection?.hasBends === true;
+
+    const partAlreadyFlatVisible =
+      showControls && activePartDetection?.isSheetMetal === true && activePartDetection?.hasBends === false;
+
+    const flatModeTessUnfoldVisible =
+      showControls &&
+      assemblyMode !== "parts" &&
+      isCadExt(currentExt) &&
+      flatModeDetection?.isSheetMetal === true &&
+      flatModeDetection?.hasBends === true;
+
+    const flatModeAlreadyFlatVisible =
+      showControls &&
+      assemblyMode !== "parts" &&
+      isCadExt(currentExt) &&
+      flatModeDetection?.isSheetMetal === true &&
+      flatModeDetection?.hasBends === false;
 
     const handleFlatToggle = async (nextEnabled: boolean) => {
       const viewer = viewerRef.current;
@@ -1733,6 +2032,49 @@ export const CadViewer = forwardRef<CadViewerRef, CadViewerProps>(
       }
     };
 
+    const handleTessUnfoldToggle = (nextEnabled: boolean) => {
+      const viewer = viewerRef.current;
+      if (!viewer || !formedGeom) return;
+
+      if (!nextEnabled) {
+        // ── REFOLD: restore the original folded geometry exactly ─────────────
+        // formedGeom was cached before any unfold and is never mutated, so
+        // putting a clone of it back is an exact restore.
+        viewer.replacePrimaryGeometry(formedGeom.clone(), { refit: true });
+        setDimsFromGeometry(formedGeom);
+        setFlatEnabled(false);
+        setFlattenError(null);
+        setTessUnfoldFlatDimensions(null);
+        return;
+      }
+
+      if (!flatModeDetection?.isSheetMetal || !flatModeDetection?.hasBends) return;
+      setFlattenError(null);
+
+      try {
+        if (!tessUnfoldCacheRef.current) {
+          logSheetMetalMeshes(formedGeom);
+          tessUnfoldCacheRef.current = unfoldGeometry(formedGeom);
+        }
+        const result = tessUnfoldCacheRef.current;
+        if (!result) {
+          setFlattenError("No folds detected — cannot unfold this part.");
+          return;
+        }
+        // Real mesh transformation: the flat sheet is the actual part geometry
+        // with unbent vertices, lying on the grid bed as a 3D object.
+        viewer.replacePrimaryGeometry(result.flatGeometry.clone(), { refit: true });
+        setDimsFromGeometry(result.flatGeometry);
+        setFlatEnabled(true);
+        setTessUnfoldFlatDimensions({ width: result.flatWidth, height: result.flatLength });
+      } catch (err: any) {
+        setFlattenError(err?.message || "Failed to unfold sheet metal mesh.");
+        viewer.replacePrimaryGeometry(formedGeom.clone(), { refit: true });
+        setDimsFromGeometry(formedGeom);
+        setFlatEnabled(false);
+      }
+    };
+
     const handleKFactorChange = (raw: string) => {
       const parsed = Number(raw);
       if (!Number.isFinite(parsed)) return;
@@ -1773,6 +2115,126 @@ export const CadViewer = forwardRef<CadViewerRef, CadViewerProps>(
       clearFlatCache();
     };
 
+    const setPartUnfoldError = (partKey: string, reason: string): void => {
+      setPartUnfoldStates((prev) => {
+        const next = new Map(prev);
+        const existing = next.get(partKey);
+        if (existing) disposeGeometrySafe(existing.flatGeometry);
+        next.set(partKey, {
+          status: "error",
+          flatGeometry: null,
+          originalGeometry: null,
+          flatDimensions: null,
+          errorReason: reason,
+        });
+        return next;
+      });
+    };
+
+    const handlePartUnfold = (partKey: string): void => {
+      const viewer = viewerRef.current;
+      if (!viewer) return;
+
+      const detection = partDetectionResults.get(partKey);
+      if (!detection?.isSheetMetal) return;
+
+      // The pristine assembly snapshot holds the part's real render meshes;
+      // it is never mutated, so it doubles as the exact refold source.
+      const snapshot = displayAssemblySnapshotRef.current;
+      const partRoot = snapshot?.partRoots.get(partKey);
+      if (!partRoot) return;
+
+      const cached = partUnfoldStates.get(partKey);
+      let flatGeometry = cached?.flatGeometry ?? null;
+      let flatDimensions = cached?.flatDimensions ?? null;
+
+      if (!flatGeometry || !flatDimensions) {
+        logSheetMetalMeshes(partRoot);
+        const merged = buildMergedGeometryFromObject(partRoot);
+        if (!merged) {
+          setPartUnfoldError(partKey, "Part has no mesh geometry to unfold.");
+          return;
+        }
+        let result: UnfoldGeometryResult | null = null;
+        try {
+          result = unfoldGeometry(merged);
+        } catch (err: any) {
+          merged.dispose();
+          setPartUnfoldError(partKey, err?.message || "Failed to unfold sheet metal mesh.");
+          return;
+        }
+        merged.dispose();
+        if (!result) {
+          setPartUnfoldError(partKey, "No folds detected — cannot unfold this part.");
+          return;
+        }
+        flatGeometry = result.flatGeometry;
+        flatDimensions = { width: result.flatWidth, height: result.flatLength };
+      }
+      if (!flatGeometry || !flatDimensions) return;
+
+      // Show the unbent sheet as the real 3D object on the grid bed — the
+      // camera stays the normal perspective camera with orbit controls.
+      viewer.loadMeshFromGeometry(flatGeometry.clone());
+      viewer.setMaterialProperties(
+        parseInt(materialColor.replace("#", "0x"), 16),
+        wireframe,
+        xray,
+      );
+      setDimsFromGeometry(flatGeometry);
+
+      const finalFlatGeometry = flatGeometry;
+      const finalFlatDimensions = flatDimensions;
+      setPartUnfoldStates((prev) => {
+        const next = new Map(prev);
+        next.set(partKey, {
+          status: "unfolded",
+          flatGeometry: finalFlatGeometry,
+          originalGeometry: null,
+          flatDimensions: finalFlatDimensions,
+          errorReason: null,
+        });
+        return next;
+      });
+    };
+
+    const handlePartRefold = (partKey: string): void => {
+      const viewer = viewerRef.current;
+      const session = modelSessionRef.current;
+      if (!viewer || !session) return;
+
+      const descriptor = session.partMap.get(partKey);
+      const snapshot = displayAssemblySnapshotRef.current;
+      const snapshotPartRoot = snapshot?.partRoots.get(partKey);
+      if (!descriptor || !snapshotPartRoot) return;
+
+      // Reload the untouched folded part from the assembly snapshot — an
+      // exact restore of the original geometry, same path as openPartView.
+      const partObject = cloneDisplayPartRoot(snapshotPartRoot, descriptor);
+      attachCadTopologyContext(partObject);
+      viewer.loadObject3D(partObject, { explodeTopLevel: false });
+      viewer.setMaterialProperties(
+        parseInt(materialColor.replace("#", "0x"), 16),
+        wireframe,
+        xray,
+      );
+      setDimsFromObject(partObject);
+
+      setPartUnfoldStates((prev) => {
+        const next = new Map(prev);
+        const existing = next.get(partKey);
+        next.set(partKey, {
+          status: "folded",
+          // Keep the computed flat geometry so re-unfolding is instant
+          flatGeometry: existing?.flatGeometry ?? null,
+          originalGeometry: null,
+          flatDimensions: existing?.flatDimensions ?? null,
+          errorReason: null,
+        });
+        return next;
+      });
+    };
+
     const handleSnapshot = (type: "normal" | "outline") => {
       if (!viewerRef.current) return;
       const dataURL =
@@ -1809,7 +2271,11 @@ export const CadViewer = forwardRef<CadViewerRef, CadViewerProps>(
           reason: "Select an assembly part first.",
         };
       }
-      if (!workingPartExportPlan) {
+      const effectivePlan: PartExportPlan | null =
+        modelSession.kind === "cad"
+          ? { mode: "exact", format: "step" }
+          : workingPartExportPlan;
+      if (!effectivePlan) {
         return {
           enabled: false,
           plan: null,
@@ -1819,14 +2285,14 @@ export const CadViewer = forwardRef<CadViewerRef, CadViewerProps>(
       if (isExportingPart) {
         return {
           enabled: false,
-          plan: workingPartExportPlan,
+          plan: effectivePlan,
           reason: "Export in progress.",
         };
       }
       return {
         enabled: true,
-        plan: workingPartExportPlan,
-        reason: `Export part as ${workingPartExportPlan.format.toUpperCase()}`,
+        plan: effectivePlan,
+        reason: `Export part as ${effectivePlan.format.toUpperCase()}`,
       };
     };
 
@@ -2335,6 +2801,81 @@ export const CadViewer = forwardRef<CadViewerRef, CadViewerProps>(
                 </div>
               </div>
 
+              {/* SHEET METAL — already flat label (no bends) */}
+              {partAlreadyFlatVisible && (
+                <>
+                  <div className="h-px bg-slate-200/60 mx-1" />
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between">
+                      <span className="text-slate-500 text-xs font-medium">Sheet Metal</span>
+                      <span className="rounded-md bg-slate-100 px-2 py-1 text-xs font-medium text-slate-500">
+                        Already flat
+                      </span>
+                    </div>
+                  </div>
+                </>
+              )}
+
+              {/* UNFOLD_OPTION_SLOT */}
+              {partUnfoldControlVisible && activePartKeyForUnfold && (() => {
+                const partKey = activePartKeyForUnfold;
+                const unfoldState = partUnfoldStates.get(partKey);
+                const isUnfoldingPart = unfoldState?.status === "unfolding";
+                const isUnfolded = unfoldState?.status === "unfolded";
+                const hasUnfoldError = unfoldState?.status === "error";
+
+                return (
+                  <>
+                    <div className="h-px bg-slate-200/60 mx-1" />
+                    <div className="space-y-2">
+                      <div className="flex items-center justify-between">
+                        <span className="text-slate-500 text-xs font-medium">
+                          Sheet Metal
+                        </span>
+                        <button
+                          type="button"
+                          disabled={isUnfoldingPart}
+                          onClick={() => {
+                            if (isUnfolded) {
+                              handlePartRefold(partKey);
+                            } else {
+                              void handlePartUnfold(partKey);
+                            }
+                          }}
+                          className={`rounded-lg px-3 py-1.5 text-xs font-semibold transition-all ${
+                            isUnfolded
+                              ? "bg-blue-600 text-white shadow-md shadow-blue-200 border border-blue-600"
+                              : "bg-slate-50 border border-blue-200/70 text-slate-700 hover:bg-white hover:border-blue-300"
+                          } ${isUnfoldingPart ? "cursor-not-allowed opacity-60" : "cursor-pointer"}`}
+                        >
+                          {isUnfoldingPart
+                            ? "Unfolding..."
+                            : isUnfolded
+                              ? "Refold"
+                              : "Unfold"}
+                        </button>
+                      </div>
+                      {unfoldState?.flatDimensions && (
+                        <div className="bg-slate-50/50 rounded-lg px-2 py-1 border border-slate-200/40">
+                          <div className="text-[10px] uppercase tracking-wider text-slate-400 font-bold mb-0.5">
+                            Flat Pattern
+                          </div>
+                          <div className="text-[11px] font-mono text-slate-700">
+                            {`${fmt(convert(unfoldState.flatDimensions.width, units))} × ${fmt(convert(unfoldState.flatDimensions.height, units))} ${units}`}
+                          </div>
+                        </div>
+                      )}
+                      {hasUnfoldError && (
+                        <div className="text-[11px] font-medium text-rose-600 leading-snug">
+                          {unfoldState?.errorReason ??
+                            "Unfold not available for this part's geometry."}
+                        </div>
+                      )}
+                    </div>
+                  </>
+                );
+              })()}
+
               {flattenControlVisible && (
                 <>
                   <div className="h-px bg-slate-200/60 mx-1" />
@@ -2412,6 +2953,62 @@ export const CadViewer = forwardRef<CadViewerRef, CadViewerProps>(
                 </>
               )}
 
+              {/* SHEET METAL — already flat label (flat mode, no bends) */}
+              {flatModeAlreadyFlatVisible && (
+                <>
+                  <div className="h-px bg-slate-200/60 mx-1" />
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between">
+                      <span className="text-slate-500 text-xs font-medium">Sheet Metal</span>
+                      <span className="rounded-md bg-slate-100 px-2 py-1 text-xs font-medium text-slate-500">
+                        Already flat
+                      </span>
+                    </div>
+                  </div>
+                </>
+              )}
+
+              {/* UNFOLD_OPTION_SLOT — flat mode */}
+              {flatModeTessUnfoldVisible && (
+                <>
+                  <div className="h-px bg-slate-200/60 mx-1" />
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between">
+                      <span className="text-slate-500 text-xs font-medium">
+                        Sheet Metal
+                      </span>
+                      <button
+                        type="button"
+                        disabled={isUnfolding}
+                        onClick={() => void handleTessUnfoldToggle(!flatEnabled)}
+                        className={`rounded-lg px-3 py-1.5 text-xs font-semibold transition-all ${
+                          flatEnabled
+                            ? "bg-blue-600 text-white shadow-md shadow-blue-200 border border-blue-600"
+                            : "bg-slate-50 border border-blue-200/70 text-slate-700 hover:bg-white hover:border-blue-300"
+                        } ${isUnfolding ? "cursor-not-allowed opacity-60" : "cursor-pointer"}`}
+                      >
+                        {isUnfolding ? "Unfolding..." : flatEnabled ? "3D View" : "Unfold"}
+                      </button>
+                    </div>
+                    {flatEnabled && tessUnfoldFlatDimensions && (
+                      <div className="bg-slate-50/50 rounded-lg px-2 py-1 border border-slate-200/40">
+                        <div className="text-[10px] uppercase tracking-wider text-slate-400 font-bold mb-0.5">
+                          Flat Pattern
+                        </div>
+                        <div className="text-[11px] font-mono text-slate-700">
+                          {`${fmt(convert(tessUnfoldFlatDimensions.width, units))} × ${fmt(convert(tessUnfoldFlatDimensions.height, units))} ${units}`}
+                        </div>
+                      </div>
+                    )}
+                    {flattenError && (
+                      <div className="text-[11px] font-medium text-rose-600 leading-snug">
+                        {flattenError}
+                      </div>
+                    )}
+                  </div>
+                </>
+              )}
+
               <div className="h-px bg-slate-200/60 mx-1" />
 
               {/* Slicing Controls */}
@@ -2465,6 +3062,19 @@ export const CadViewer = forwardRef<CadViewerRef, CadViewerProps>(
                 </button>
               </div>
 
+              {cadFileMetadata !== null && (
+                <button
+                  onClick={() => setShowMetadataPanel((prev) => !prev)}
+                  className={`rounded-lg px-3 py-1.5 text-xs font-medium transition-all ${
+                    showMetadataPanel
+                      ? "bg-blue-600 text-white shadow-md shadow-blue-200 border border-blue-600"
+                      : "bg-slate-50 border border-slate-200/60 text-slate-600 hover:bg-white hover:border-blue-200"
+                  }`}
+                >
+                  View Metadata
+                </button>
+              )}
+
               {/* Dimensions Info */}
               {dimsMM && (
                 <>
@@ -2500,6 +3110,50 @@ export const CadViewer = forwardRef<CadViewerRef, CadViewerProps>(
                 </>
               )}
             </div>
+
+            {showMetadataPanel && cadFileMetadata !== null && (
+              <div className="flex flex-col gap-2 rounded-2xl bg-white/80 p-4 backdrop-blur-xl shadow-[0_8px_30px_rgba(0,0,0,0.08)] border border-slate-200/50 w-[260px] max-h-[70vh] overflow-y-auto text-sm text-slate-600 ring-1 ring-black/[0.02]">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-bold text-slate-900 tracking-wide">
+                    File Metadata
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setShowMetadataPanel(false)}
+                    className="bg-transparent border-0 cursor-pointer text-slate-400 hover:text-slate-600 text-base leading-none px-1 py-0.5"
+                    aria-label="Close metadata panel"
+                  >
+                    ×
+                  </button>
+                </div>
+                <div className="h-px bg-slate-200/60 mx-1" />
+                <div className="flex flex-col gap-2">
+                  {(
+                    [
+                      ["File Name", cadFileMetadata.fileName],
+                      ["Author", cadFileMetadata.author],
+                      ["Organization", cadFileMetadata.organization],
+                      ["Description", cadFileMetadata.description],
+                      ["Timestamp", cadFileMetadata.timestamp],
+                      ["Originating System", cadFileMetadata.originatingSystem],
+                      ["Preprocessor", cadFileMetadata.preprocessorVersion],
+                      ["Schema", cadFileMetadata.schema],
+                    ] as [string, string | undefined][]
+                  )
+                    .filter(([, value]) => value && value.trim().length > 0)
+                    .map(([label, value]) => (
+                      <div key={label} className="flex gap-2 items-start">
+                        <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider min-w-[88px] flex-shrink-0 pt-0.5">
+                          {label}
+                        </span>
+                        <span className="text-[11px] text-slate-800 font-medium break-words">
+                          {value}
+                        </span>
+                      </div>
+                    ))}
+                </div>
+              </div>
+            )}
 
             {assemblyMode === "parts" && parts.length > 0 && (
               <div className="w-[220px] max-h-[55vh] overflow-hidden flex flex-col gap-2 p-3 rounded-xl bg-white/90 border border-slate-200/70 shadow-[0_10px_24px_rgba(15,23,42,0.12)] backdrop-blur-xl ring-1 ring-black/[0.03]">

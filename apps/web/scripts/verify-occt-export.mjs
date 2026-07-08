@@ -7,8 +7,9 @@ import { fileURLToPath } from "node:url";
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const webDir = path.resolve(scriptDir, "..");
 const occDir = path.join(webDir, "public", "occ");
-const jsPath = path.join(occDir, "occt-import-js.js");
-const wasmPath = path.join(occDir, "occt-import-js.wasm");
+const runtimeBaseName = "occt-import-js.v2";
+const jsPath = path.join(occDir, `${runtimeBaseName}.js`);
+const wasmPath = path.join(occDir, `${runtimeBaseName}.wasm`);
 
 function sha256(filePath) {
   const hash = createHash("sha256");
@@ -33,8 +34,10 @@ if (!fs.existsSync(wasmPath)) fail(`missing WASM artifact: ${wasmPath}`);
 
 const jsText = fs.readFileSync(jsPath, "utf8");
 const wasmBin = fs.readFileSync(wasmPath);
-if (!jsText.includes("occt-import-js.wasm")) {
-  fail(`expected '${path.basename(jsPath)}' to reference 'occt-import-js.wasm'`);
+if (!jsText.includes(path.basename(wasmPath))) {
+  fail(
+    `expected '${path.basename(jsPath)}' to reference '${path.basename(wasmPath)}'`,
+  );
 }
 
 const jsSize = fs.statSync(jsPath).size;

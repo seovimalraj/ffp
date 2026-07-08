@@ -15,6 +15,10 @@ RUN pnpm install --frozen-lockfile
 COPY apps/web ./apps/web
 COPY packages ./packages
 
+# Verify OCCT runtime artifacts as a matched pair before building
+RUN node apps/web/scripts/verify-occt-export.mjs
+RUN node apps/web/scripts/verify-occt-export-runtime.mjs
+
 # Build
 RUN pnpm --filter web build
 

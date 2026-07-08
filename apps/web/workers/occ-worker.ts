@@ -160,8 +160,8 @@ type GetWorkerCapabilitiesOk = {
 const ctx: any = self as any;
 let occt: any | null = null;
 let appOrigin: string | null = null;
-const OCC_RUNTIME_JS_PATH = "/occ/occt-import-js.js" as const;
-const OCC_RUNTIME_WASM_PATH = "/occ/occt-import-js.wasm" as const;
+const OCC_RUNTIME_JS_PATH = "/occ/occt-import-js.v2.js" as const;
+const OCC_RUNTIME_WASM_PATH = "/occ/occt-import-js.v2.wasm" as const;
 const REQUIRED_TOPOLOGY_RUNTIME_EXPORT = "TessellateWithTopology" as const;
 
 type RuntimeArtifactUrls = {
@@ -235,13 +235,13 @@ async function init() {
   const factory = (ctx as any).occtimportjs;
   if (!factory)
     throw new Error(
-      "occtimportjs not found on global scope. Check if /public/occ/occt-import-js.js exists.",
+      "occtimportjs not found on global scope. Check if /public/occ/occt-import-js.v2.js exists.",
     );
 
   // Initialize the factory with robust file location for the .wasm asset
   occt = await factory({
     locateFile: (f: string) => {
-      if (f === "occt-import-js.wasm") {
+      if (f === "occt-import-js.wasm" || f === "occt-import-js.v2.wasm") {
         return wasmUrl;
       }
       try {

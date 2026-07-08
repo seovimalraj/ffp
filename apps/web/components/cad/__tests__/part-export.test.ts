@@ -139,30 +139,21 @@ describe("part-export helpers", () => {
 
   it("maps working export plan by source extension and worker capabilities", () => {
     const stepSession = makeCadSession();
-    assert.deepEqual(getWorkingPartExportPlan(stepSession, capsUnavailable), {
-      mode: "mesh",
-      format: "stl",
-    });
+    assert.equal(getWorkingPartExportPlan(stepSession, capsUnavailable), null);
     assert.deepEqual(getWorkingPartExportPlan(stepSession, capsExactAll), {
       mode: "exact",
       format: "step",
     });
 
     const igesSession: ModelSession = { ...stepSession, ext: "iges" };
-    assert.deepEqual(getWorkingPartExportPlan(igesSession, capsUnavailable), {
-      mode: "mesh",
-      format: "stl",
-    });
+    assert.equal(getWorkingPartExportPlan(igesSession, capsUnavailable), null);
     assert.deepEqual(getWorkingPartExportPlan(igesSession, capsExactAll), {
       mode: "exact",
       format: "iges",
     });
 
     const brepSession: ModelSession = { ...stepSession, ext: "brep" };
-    assert.deepEqual(getWorkingPartExportPlan(brepSession, capsUnavailable), {
-      mode: "mesh",
-      format: "stl",
-    });
+    assert.equal(getWorkingPartExportPlan(brepSession, capsUnavailable), null);
     assert.deepEqual(getWorkingPartExportPlan(brepSession, capsExactAll), {
       mode: "exact",
       format: "brep",
@@ -185,9 +176,6 @@ describe("part-export helpers", () => {
       mode: "mesh",
       format: "glb",
     });
-
-    const stlSession: ModelSession = { ...makeSession(), ext: "stl" };
-    assert.equal(getWorkingPartExportPlan(stlSession, capsUnavailable), null);
 
     const threemfSession: ModelSession = { ...makeSession(), ext: "3mf" };
     assert.deepEqual(getWorkingPartExportPlan(threemfSession, capsUnavailable), {
@@ -242,33 +230,4 @@ describe("part-export helpers", () => {
     assert.match(downloadRecord?.filename ?? "", /\.step$/i);
   });
 
-  it("falls back to STL mesh export when exact CAD export fails", async () => {
-    const session = makeCadSession();
-    let downloadRecord: { filename: string; size: number; mime: string } | null =
-      null;
-    const result = await exportSelectedPartFromSession(
-      session,
-      "cad:xcf:0:1",
-      { mode: "exact", format: "iges" },
-      {
-        worker: {} as Worker,
-        exportCadPartExactFn: async () => {
-          throw new Error("Exact export unavailable");
-        },
-      triggerDownloadFn: (data, filename, mime) => {
-          const blob = new Blob([data], { type: mime });
-          downloadRecord = { filename, size: blob.size, mime };
-        },
-      },
-    );
-    assert.deepEqual(result, {
-      mode: "mesh",
-      format: "stl",
-      fallbackFrom: "iges",
-    });
-    assert.ok(downloadRecord);
-    assert.equal(downloadRecord?.mime, "model/stl");
-    assert.ok((downloadRecord?.size ?? 0) > 0);
-    assert.match(downloadRecord?.filename ?? "", /\.stl$/i);
-  });
 });

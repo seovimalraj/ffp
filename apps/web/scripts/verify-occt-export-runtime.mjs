@@ -7,8 +7,9 @@ import { createRequire } from "node:module";
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const webDir = path.resolve(scriptDir, "..");
 const occDir = path.join(webDir, "public", "occ");
-const jsPath = path.join(occDir, "occt-import-js.js");
-const wasmPath = path.join(occDir, "occt-import-js.wasm");
+const runtimeBaseName = "occt-import-js.v2";
+const jsPath = path.join(occDir, `${runtimeBaseName}.js`);
+const wasmPath = path.join(occDir, `${runtimeBaseName}.wasm`);
 const sampleDir = path.join(webDir, "public", "samples");
 
 const CAD_EXTS = new Set(["step", "stp", "iges", "igs", "brep"]);

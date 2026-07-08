@@ -1,5 +1,4 @@
 import * as THREE from "three";
-import { STLExporter } from "three/examples/jsm/exporters/STLExporter.js";
 import { OBJExporter } from "three/examples/jsm/exporters/OBJExporter.js";
 import { GLTFExporter } from "three/examples/jsm/exporters/GLTFExporter.js";
 import {
@@ -11,7 +10,6 @@ import type { ModelSession, PartDescriptor } from "../model-session";
 import { findPartRootByKey, resolveObjectByPath } from "../model-session";
 
 export type PartExportFormat =
-  | "stl"
   | "obj"
   | "glb"
   | "step"
@@ -19,7 +17,7 @@ export type PartExportFormat =
   | "brep";
 export type PartExportPlan =
   | { mode: "exact"; format: "step" | "iges" | "brep" }
-  | { mode: "mesh"; format: "stl" | "obj" | "glb" };
+  | { mode: "mesh"; format: "obj" | "glb" };
 
 type PartExportValidationResult =
   | { ok: true; part: PartDescriptor }
@@ -28,7 +26,6 @@ type PartExportValidationResult =
 export type PartExportResult = {
   mode: "exact" | "mesh";
   format: PartExportFormat;
-  fallbackFrom?: CadExactExportFormat;
 };
 
 function isExportableMeshNode(node: THREE.Object3D): node is THREE.Mesh {
@@ -101,8 +98,8 @@ function formatLabel(format: PartExportFormat): string {
 
 function isMeshExportFormat(
   format: PartExportFormat,
-): format is "stl" | "obj" | "glb" {
-  return format === "stl" || format === "obj" || format === "glb";
+): format is "obj" | "glb" {
+  return format === "obj" || format === "glb";
 }
 
 function normalizePartName(name: string): string {
@@ -158,19 +155,19 @@ export function getWorkingPartExportPlan(
   if (ext === "step" || ext === "stp") {
     return supportsExactCadFormat(caps, "step")
       ? { mode: "exact", format: "step" }
-      : { mode: "mesh", format: "stl" };
+      : null;
   }
 
   if (ext === "iges" || ext === "igs") {
     return supportsExactCadFormat(caps, "iges")
       ? { mode: "exact", format: "iges" }
-      : { mode: "mesh", format: "stl" };
+      : null;
   }
 
   if (ext === "brep") {
     return supportsExactCadFormat(caps, "brep")
       ? { mode: "exact", format: "brep" }
-      : { mode: "mesh", format: "stl" };
+      : null;
   }
 
   if (ext === "obj") {
@@ -179,10 +176,6 @@ export function getWorkingPartExportPlan(
 
   if (ext === "gltf" || ext === "glb" || ext === "3mf") {
     return { mode: "mesh", format: "glb" };
-  }
-
-  if (ext === "stl") {
-    return null;
   }
 
   return null;
@@ -324,34 +317,9 @@ type SerializedPartPayload = {
   mime: string;
 };
 
-function meshMimeType(format: "stl" | "obj" | "glb"): string {
-  if (format === "stl") return "model/stl";
+function meshMimeType(format: "obj" | "glb"): string {
   if (format === "obj") return "text/plain;charset=utf-8";
   return "model/gltf-binary";
-}
-
-async function exportAsStlBinary(object: THREE.Object3D): Promise<SerializedPartPayload> {
-  const exporter = new STLExporter();
-  const serialized = exporter.parse(object, { binary: true }) as unknown;
-
-  if (serialized instanceof DataView) {
-    const sourceBytes = new Uint8Array(
-      serialized.buffer,
-      serialized.byteOffset,
-      serialized.byteLength,
-    );
-    const copied = new Uint8Array(serialized.byteLength);
-    copied.set(sourceBytes);
-    return { data: copied.buffer, mime: meshMimeType("stl") };
-  }
-  if (serialized instanceof ArrayBuffer) {
-    return { data: serialized, mime: meshMimeType("stl") };
-  }
-  if (typeof serialized === "string") {
-    return { data: serialized, mime: meshMimeType("stl") };
-  }
-
-  throw new Error("Failed to serialize STL payload.");
 }
 
 async function exportAsObj(object: THREE.Object3D): Promise<SerializedPartPayload> {
@@ -394,9 +362,6 @@ async function serializePartObject(
 ): Promise<SerializedPartPayload> {
   if (!isMeshExportFormat(format)) {
     throw new Error("Exact CAD formats are not mesh-serialized.");
-  }
-  if (format === "stl") {
-    return exportAsStlBinary(object);
   }
   if (format === "obj") {
     return exportAsObj(object);
@@ -463,7 +428,7 @@ function resolveDescriptorSourceObject(
 async function exportDescriptorAsMesh(
   session: ModelSession,
   descriptor: PartDescriptor,
-  format: "stl" | "obj" | "glb",
+  format: "obj" | "glb",
   download: typeof triggerDownload,
 ): Promise<PartExportResult> {
   const sourcePart = resolveDescriptorSourceObject(session, descriptor);
@@ -519,7 +484,11 @@ async function exportDescriptorAsExactCad(
     format,
   });
   const fileName = buildExportFileName(session, descriptor, result.format);
-  download(result.bytes, fileName, exactCadMimeType(result.format));
+  const exportBytes = result.bytes.buffer.slice(
+    result.bytes.byteOffset,
+    result.bytes.byteOffset + result.bytes.byteLength,
+  ) as ArrayBuffer;
+  download(exportBytes, fileName, exactCadMimeType(result.format));
   return { mode: "exact", format: result.format };
 }
 
@@ -542,46 +511,19 @@ export async function exportSelectedPartFromSession(
     return exportDescriptorAsMesh(session, descriptor, plan.format, download);
   }
 
-  try {
-    if (descriptor.kind !== "cad") {
-      throw new Error(
-        "Exact CAD export (STEP/IGES/BREP) is only available for CAD assembly sessions.",
-      );
-    }
-    return await exportDescriptorAsExactCad(
-      session,
-      descriptor,
-      plan.format,
-      options?.worker,
-      runExactExport,
-      download,
+  if (descriptor.kind !== "cad") {
+    throw new Error(
+      "Exact CAD export (STEP/IGES/BREP) is only available for CAD assembly sessions.",
     );
-  } catch (exactError) {
-    const exactErrorMessage =
-      exactError instanceof Error && exactError.message.trim().length > 0
-        ? exactError.message
-        : "Unknown exact export error.";
-    try {
-      const fallbackResult = await exportDescriptorAsMesh(
-        session,
-        descriptor,
-        "stl",
-        download,
-      );
-      return {
-        ...fallbackResult,
-        fallbackFrom: plan.format,
-      };
-    } catch (meshError) {
-      const meshErrorMessage =
-        meshError instanceof Error && meshError.message.trim().length > 0
-          ? meshError.message
-          : "Unknown STL fallback error.";
-      throw new Error(
-        `Exact CAD export (${plan.format.toUpperCase()}) failed: ${exactErrorMessage}. STL fallback failed: ${meshErrorMessage}`,
-      );
-    }
   }
+  return exportDescriptorAsExactCad(
+    session,
+    descriptor,
+    plan.format,
+    options?.worker,
+    runExactExport,
+    download,
+  );
 }
 
 export function makeSuccessfulExportMessage(format: PartExportFormat): string {

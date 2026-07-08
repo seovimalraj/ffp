@@ -2,6 +2,20 @@
 
 Date: 2026-03-19
 
+## 2026-03-31 Runtime Versioning Update
+
+The active worker runtime now resolves versioned artifacts:
+
+- `apps/web/public/occ/occt-import-js.v2.js`
+- `apps/web/public/occ/occt-import-js.v2.wasm`
+- JS glue import URL: `/occ/occt-import-js.v2.js`
+- WASM locate path: `/occ/occt-import-js.v2.wasm`
+
+Legacy artifacts are intentionally dual-served for one-release compatibility:
+
+- `apps/web/public/occ/occt-import-js.js`
+- `apps/web/public/occ/occt-import-js.wasm`
+
 ## Runtime Artifact Source Of Truth
 
 The running web worker loads OCCT runtime artifacts from:
