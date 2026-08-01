@@ -13,12 +13,19 @@ import {
   Param,
 } from '@nestjs/common';
 import { SupabaseService } from 'src/supabase/supabase.service';
-import { FileInterceptor, FilesInterceptor } from '@nestjs/platform-express';
+import {
+  AnyFilesInterceptor,
+  FileInterceptor,
+  FilesInterceptor,
+} from '@nestjs/platform-express';
 import { BucketNames, SQLFunctions, Tables } from '../../libs/constants';
 import { CurrentUser } from 'src/auth/user.decorator';
 import { CurrentUserDto } from 'src/auth/auth.dto';
 import { AuthGuard } from 'src/auth/auth.guard';
 import { Public } from 'src/auth/public.decorator';
+
+const MAX_DIRECT_UPLOAD_BYTES = 200 * 1024 * 1024;
+const MAX_DIRECT_UPLOAD_FILES = 20;
 
 @Controller('files')
 @UseGuards(AuthGuard)
@@ -96,6 +103,50 @@ export class FilesController {
       message: 'File uploaded successfully',
       url: meta.publicUrl,
       uploadId: meta.uploadId,
+    };
+  }
+
+  @Public()
+  @Post('direct')
+  @UseInterceptors(
+    AnyFilesInterceptor({
+      limits: {
+        fileSize: MAX_DIRECT_UPLOAD_BYTES,
+        files: MAX_DIRECT_UPLOAD_FILES,
+      },
+    }),
+  )
+  async uploadFilesDirect(
+    // eslint-disable-next-line no-undef
+    @UploadedFiles() files: Express.Multer.File[],
+  ) {
+    if (!files?.length) {
+      throw new BadRequestException('At least one file is required');
+    }
+
+    const uploaded = await Promise.all(
+      files.map(async (file) => {
+        const meta = await this.supabaseService.uploadFile(
+          file,
+          BucketNames.rfqStore,
+          undefined,
+          false,
+        );
+
+        return {
+          name: file.originalname,
+          size: file.size,
+          mimeType: file.mimetype,
+          url: meta.publicUrl,
+        };
+      }),
+    );
+
+    return {
+      message: 'File uploaded successfully',
+      url: uploaded[0].url,
+      urls: uploaded.map((entry) => entry.url),
+      files: uploaded,
     };
   }
 

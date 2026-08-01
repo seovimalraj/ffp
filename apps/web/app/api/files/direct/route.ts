@@ -7,7 +7,7 @@ export async function POST(request: NextRequest) {
   // Pass through the entire multipart/form-data body to the backend
   const formData = await request.formData();
   
-  const upstream = await proxyFetch(request, resolveApiUrl('/v1/api/files/direct'), {
+  const upstream = await proxyFetch(request, resolveApiUrl('/files/direct'), {
     method: 'POST',
     body: formData,
   });
