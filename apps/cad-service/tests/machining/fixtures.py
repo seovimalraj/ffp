@@ -151,6 +151,26 @@ def _is_vertical_edge(edge) -> bool:
         return False
 
 
+def block_with_hole_split_into_arcs(tmp_path: Path) -> str:
+    """A through hole whose wall is broken into two arcs, each under 180 deg.
+
+    A 20 mm bore runs through a 100 x 60 x 40 block. Two channels, one on each
+    side, cut from the outside into the bore across a 10 mm band centred on the
+    axis. Each channel removes a 60 deg wedge of bore wall over the full depth,
+    leaving two surviving arcs of about 120 deg.
+
+    Neither arc reaches the 180 deg wrap threshold on its own, so a per-face
+    test discards both and loses the hole entirely. Summing the fragments of the
+    segment gives ~240 deg and recovers it.
+    """
+    shape = _cut(_box(0, 0, 0, 100, 60, 40), _cylinder(50, 30, -5, 10.0, 50.0))
+    # +Y channel: |x - 50| <= 5 spans the arc from 60 deg to 120 deg.
+    shape = _cut(shape, _box(45, 30, -5, 10, 40, 50))
+    # -Y channel: the mirror image.
+    shape = _cut(shape, _box(45, -10, -5, 10, 40, 50))
+    return _write_step(shape, tmp_path / "block_with_hole_split_into_arcs.step")
+
+
 def two_body_assembly(tmp_path: Path) -> str:
     """Two disjoint solids in one file - must produce a MULTIPLE_SOLIDS warning."""
     compound = _fuse(_box(0, 0, 0, 20, 20, 20), _box(50, 0, 0, 20, 20, 20))
@@ -172,6 +192,7 @@ ALL_FIXTURES = (
     block_with_counterbored_hole,
     plate_with_boss,
     filleted_block,
+    block_with_hole_split_into_arcs,
     two_body_assembly,
     deep_hole_block,
 )

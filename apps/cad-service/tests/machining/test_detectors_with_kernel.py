@@ -175,6 +175,30 @@ class TestHoleDetector:
         diameters = sorted(step["diameter_mm"] for step in hole["steps"])
         assert diameters == pytest.approx([6.0, 12.0])
 
+    def test_a_bore_split_into_sub_threshold_arcs_is_still_found(
+        self, analyze, step_dir
+    ):
+        # Every surviving arc is under the 180 deg wrap threshold on its own;
+        # only summing the fragments of the segment recovers the hole.
+        result = analyze(fixtures.block_with_hole_split_into_arcs(step_dir))
+        holes = result["features"]["holes"]
+        assert len(holes) == 1, "the fragmented bore was lost"
+        assert holes[0]["diameter_mm"] == pytest.approx(20.0)
+
+    def test_a_fragmented_bore_reports_its_summed_wrap(self, analyze, step_dir):
+        hole = analyze(fixtures.block_with_hole_split_into_arcs(step_dir))["features"][
+            "holes"
+        ][0]
+        assert len(hole["face_ids"]) > 1
+        evidence = " ".join(hole["detection"]["evidence"])
+        assert "summed across" in evidence
+
+    def test_a_fragmented_bore_keeps_its_full_depth(self, analyze, step_dir):
+        hole = analyze(fixtures.block_with_hole_split_into_arcs(step_dir))["features"][
+            "holes"
+        ][0]
+        assert hole["depth_mm"] == pytest.approx(40.0, abs=1e-3)
+
     def test_multiple_holes_are_found_separately(self, analyze, step_dir):
         holes = analyze(fixtures.plate_with_hole_pattern(step_dir))["features"]["holes"]
         assert len(holes) == 4
@@ -190,10 +214,32 @@ class TestHoleDetector:
         hole = analyze(fixtures.simple_block_with_through_hole(step_dir))["features"][
             "holes"
         ][0]
-        assert hole["detection"]["method"] == "coaxial_grouping"
+        assert hole["detection"]["method"] in ("coaxial_grouping", "ray_casting")
         assert 0.0 < hole["detection"]["confidence"] <= 1.0
         assert hole["detection"]["evidence"]
         assert hole["detection"]["source"] == "GEOMETRY"
+
+    def test_through_status_is_measured_not_inferred_from_a_missing_face(
+        self, analyze, step_dir
+    ):
+        # Sampling for material past each end is a positive test; the absence of
+        # a closing face is not, since an open shell looks identical.
+        hole = analyze(fixtures.simple_block_with_through_hole(step_dir))["features"][
+            "holes"
+        ][0]
+        evidence = " ".join(hole["detection"]["evidence"])
+        assert "sampling for material" in evidence
+        assert hole["detection"]["confidence"] >= 0.9
+
+    def test_a_blind_hole_is_confirmed_by_two_independent_signals(
+        self, analyze, step_dir
+    ):
+        # Closing face *and* material beyond it - the strongest case available.
+        hole = analyze(fixtures.block_with_blind_hole(step_dir))["features"]["holes"][0]
+        evidence = " ".join(hole["detection"]["evidence"])
+        assert "confirmed by material beyond that end" in evidence
+        assert hole["detection"]["confidence"] >= 0.95
+        assert hole["status"] == "resolved"
 
 
 # ---------------------------------------------------------------------------

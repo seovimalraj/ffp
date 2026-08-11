@@ -14,6 +14,7 @@ from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Tuple
 
 from ..config import MachiningConfig
+from ..raycast import PointClassifier
 from ..records import CONE, CYLINDER, PLANE, FaceRecord, ShapeModel
 from ..schemas import (
     BoreFeature,
@@ -48,6 +49,8 @@ class CylindricalGroup:
     cones: List[FaceRecord]
     t_min: float
     t_max: float
+    #: Largest wrap found on any one bore segment, summed over its fragments.
+    wrap_span_deg: float = 360.0
 
     @property
     def primary(self) -> FaceRecord:
@@ -72,6 +75,9 @@ class HoleDetector:
     ) -> Tuple[List[HoleFeature], List[BoreFeature], List[BoreFeature]]:
         """Return ``(holes, bores, unresolved_internal_cylindrical_features)``."""
         groups = self._build_groups(model)
+        # One classifier for the whole model: construction is the costly
+        # part, each query after that is cheap.
+        classifier = PointClassifier(model, self.config)
 
         holes: List[HoleFeature] = []
         bores: List[BoreFeature] = []
@@ -80,11 +86,19 @@ class HoleDetector:
         for group in groups:
             classification = self._classify(group)
             if classification == "hole":
-                holes.append(self._build_hole(model, group, feature_id("HOLE", len(holes) + 1)))
+                holes.append(
+                    self._build_hole(
+                        model, group, feature_id("HOLE", len(holes) + 1), classifier
+                    )
+                )
             elif classification == "bore":
                 bores.append(
                     self._build_bore(
-                        model, group, feature_id("BORE", len(bores) + 1), "bore"
+                        model,
+                        group,
+                        feature_id("BORE", len(bores) + 1),
+                        "bore",
+                        classifier,
                     )
                 )
             else:
@@ -94,6 +108,7 @@ class HoleDetector:
                         group,
                         feature_id("ICF", len(unresolved) + 1),
                         "internal_cylindrical_feature",
+                        classifier,
                     )
                 )
 
@@ -106,29 +121,89 @@ class HoleDetector:
     # -- grouping ----------------------------------------------------------
 
     def _candidate_cylinders(self, model: ShapeModel) -> List[FaceRecord]:
-        """Concave cylinders that wrap far enough round to bound a hole."""
+        """Concave cylinders large enough to bound a hole.
+
+        Angular wrap is deliberately *not* filtered here. A boolean that cuts
+        into a bore - a pocket breaking through its wall, an intersecting hole -
+        splits one cylindrical face into several arcs, each below the wrap
+        threshold on its own. Rejecting them individually loses the whole hole,
+        so the test is deferred until the fragments have been reassembled by
+        :meth:`_bore_segments`.
+        """
         candidates = []
         for face in model.faces_of_type(CYLINDER):
             if face.is_internal is not True:
                 continue  # external cylinder -> shaft or boss, not a hole
             if not face.radius_mm or face.radius_mm <= 0:
                 continue
-            diameter = face.radius_mm * 2.0
-            if diameter < self.config.min_hole_diameter_mm:
+            if face.radius_mm * 2.0 < self.config.min_hole_diameter_mm:
                 continue
-            span = face.angular_span_deg
-            if span is not None and span < self.config.hole_min_angular_span_deg:
-                continue  # a partial wrap is a corner blend or a wall fragment
             candidates.append(face)
         return candidates
+
+    def _bore_segments(
+        self, members: List[FaceRecord], axis: Vec, origin: Vec
+    ) -> List[List[FaceRecord]]:
+        """Cluster one coaxial stack into physical bore segments.
+
+        Faces belong to the same segment when they share a radius *and* overlap
+        along the axis - that is, when they are arcs of the same physical bore
+        rather than different diameters stacked above one another (a
+        counterbore) or separate bores on a shared axis.
+        """
+        segments: List[List[FaceRecord]] = []
+        for face in sorted(members, key=lambda f: f.id):
+            radius = face.radius_mm or 0.0
+            low, high = axial_range(face, axis, origin)
+            placed = False
+            for segment in segments:
+                reference = segment[0]
+                if abs((reference.radius_mm or 0.0) - radius) > self.config.coaxial_tolerance_mm:
+                    continue
+                if any(
+                    self._overlaps(axial_range(other, axis, origin), (low, high))
+                    for other in segment
+                ):
+                    segment.append(face)
+                    placed = True
+                    break
+            if not placed:
+                segments.append([face])
+        return segments
+
+    def _overlaps(self, a: Tuple[float, float], b: Tuple[float, float]) -> bool:
+        """True when two axial intervals share any extent."""
+        tolerance = self.config.linear_tolerance_mm
+        return a[0] <= b[1] + tolerance and b[0] <= a[1] + tolerance
+
+    def _qualifying_faces(
+        self, members: List[FaceRecord], axis: Vec, origin: Vec
+    ) -> Tuple[List[FaceRecord], float]:
+        """Keep only fragments belonging to a sufficiently wrapped bore.
+
+        Returns the surviving faces and the largest summed wrap found, which is
+        reported as detection evidence.
+        """
+        kept: List[FaceRecord] = []
+        best_span = 0.0
+        for segment in self._bore_segments(members, axis, origin):
+            span = sum(face.angular_span_deg or 360.0 for face in segment)
+            best_span = max(best_span, span)
+            if span >= self.config.hole_min_angular_span_deg:
+                kept.extend(segment)
+        return sorted(kept, key=lambda f: f.id), best_span
 
     def _build_groups(self, model: ShapeModel) -> List[CylindricalGroup]:
         cylinders = self._candidate_cylinders(model)
         groups: List[CylindricalGroup] = []
 
-        for members in group_coaxial(cylinders, self.config):
-            axis = canonical_axis(members[0].axis)
-            origin = members[0].axis_location
+        for coaxial_members in group_coaxial(cylinders, self.config):
+            axis = canonical_axis(coaxial_members[0].axis)
+            origin = coaxial_members[0].axis_location
+
+            members, best_span = self._qualifying_faces(coaxial_members, axis, origin)
+            if not members:
+                continue  # only partial wraps - a blend or a wall, not a bore
             ranges = [axial_range(face, axis, origin) for face in members]
             t_min = min(r[0] for r in ranges)
             t_max = max(r[1] for r in ranges)
@@ -147,6 +222,7 @@ class HoleDetector:
                     cones=cones,
                     t_min=t_min,
                     t_max=t_max,
+                    wrap_span_deg=best_span,
                 )
             )
 
@@ -198,12 +274,20 @@ class HoleDetector:
     # -- geometry ----------------------------------------------------------
 
     def _bottom_cap(
-        self, model: ShapeModel, group: CylindricalGroup
+        self,
+        model: ShapeModel,
+        group: CylindricalGroup,
+        closed_t: Optional[float] = None,
     ) -> Tuple[Optional[FaceRecord], Optional[float]]:
         """Find a planar or conical face closing one end of the stack.
 
-        Returns ``(cap_face, cap_parameter)``. ``None`` means neither end is
-        closed, i.e. the hole passes through.
+        Returns ``(cap_face, cap_parameter)``. ``None`` means no closing face
+        was found.
+
+        When ``closed_t`` is given the search is restricted to that end. The
+        material probe knows which end is actually closed, and without that
+        constraint any planar face perpendicular to the bore can pass for a
+        bottom - a pocket floor the hole runs through being the common case.
         """
         member_ids = {f.id for f in group.cylinders} | {f.id for f in group.cones}
         for face in group.cylinders:
@@ -229,6 +313,8 @@ class HoleDetector:
                     if neighbor.area_mm2 > max_cap_area:
                         continue
                     low, high = axial_range(neighbor, group.axis, group.origin)
+                    if not self._touches_end(low, high, closed_t):
+                        continue
                     return neighbor, (low + high) / 2.0
 
         # A conical drill point also closes the hole.
@@ -239,22 +325,108 @@ class HoleDetector:
                 continue
             low, high = axial_range(cone, group.axis, group.origin)
             mid = (low + high) / 2.0
+            if not self._touches_end(low, high, closed_t):
+                continue
             # Only a cone at an *end* of the stack is a bottom, not a countersink
             # (which sits at the entry and is handled separately).
-            if abs(mid - group.t_min) < abs(mid - group.t_max):
+            if closed_t is not None or abs(mid - group.t_min) < abs(mid - group.t_max):
                 return cone, mid
         return None, None
 
+    def _touches_end(
+        self, low: float, high: float, closed_t: Optional[float]
+    ) -> bool:
+        """True when an axial interval reaches the known closed end."""
+        if closed_t is None:
+            return True  # no constraint available - accept either end
+        tolerance = self.config.linear_tolerance_mm * 100
+        return low <= closed_t + tolerance and high >= closed_t - tolerance
+
+    def _probe_ends(
+        self, group: CylindricalGroup, classifier: Optional[PointClassifier]
+    ) -> Tuple[Optional[bool], Optional[bool]]:
+        """Is there material immediately past each end of the bore?
+
+        Returns ``(material_beyond_t_min, material_beyond_t_max)``; ``None``
+        where the kernel could not answer.
+
+        This is the positive counterpart to :meth:`_bottom_cap`. Sampling a
+        point just past the end and asking the solid classifier whether it sits
+        in material settles through-vs-blind by measurement, rather than by the
+        absence of a face - which an open shell or a dropped face imitates
+        exactly.
+        """
+        if classifier is None or not classifier.available:
+            return None, None
+
+        offset = self.config.hole_end_probe_offset_mm
+        below = axis_point(group.origin, group.axis, group.t_min - offset)
+        above = axis_point(group.origin, group.axis, group.t_max + offset)
+        return classifier.is_material(below), classifier.is_material(above)
+
+    def _resolve_ends(
+        self,
+        model: ShapeModel,
+        group: CylindricalGroup,
+        ends: Tuple[Optional[bool], Optional[bool]],
+    ) -> Tuple[Optional[bool], Optional[FaceRecord], Optional[float], str, float, Optional[str]]:
+        """Decide through vs blind, and find the face that closes a blind end.
+
+        Returns ``(through, cap, closed_t, method, confidence, reason)``.
+
+        The material probe decides *whether* and *which* end is closed,
+        because it measures the solid directly. The cap face is then looked
+        for only at that end, where it characterises the bottom geometry
+        rather than being asked to prove the bore is blind.
+        """
+        material_below, material_above = ends
+
+        if material_below is None and material_above is None:
+            # No classifier: fall back to inferring from the face alone.
+            cap, cap_t = self._bottom_cap(model, group)
+            if cap is None:
+                return True, None, None, "cap_absence", 0.7, None
+            return False, cap, cap_t, "cap_face", 0.9, None
+
+        if not material_below and not material_above:
+            return True, None, None, "solid_classification", 0.95, None
+
+        closed_t = group.t_min if material_below else group.t_max
+        cap, cap_t = self._bottom_cap(model, group, closed_t)
+        if cap is not None:
+            return (
+                False,
+                cap,
+                cap_t,
+                "cap_face_and_solid_classification",
+                0.98,
+                None,
+            )
+        return (
+            False,
+            None,
+            closed_t,
+            "solid_classification",
+            0.8,
+            (
+                "Material lies beyond one end of the bore but no closing face "
+                "was identified; the hole is blind, though its bottom geometry "
+                "could not be characterised."
+            ),
+        )
+
     def _entry_direction(
-        self, group: CylindricalGroup, cap_t: Optional[float]
+        self, group: CylindricalGroup, closed_t: Optional[float]
     ) -> Tuple[Vec, float]:
         """Axis pointing out of the hole, plus the entry parameter.
 
         For a blind hole the tool retracts away from the closed end. For a
-        through hole either end is valid, so the canonical axis is kept to make
+        through hole either end is valid, so the canonical axis is kept to keep
         the output reproducible.
         """
-        if cap_t is not None and abs(cap_t - group.t_max) < abs(cap_t - group.t_min):
+        if closed_t is not None and abs(closed_t - group.t_max) < abs(
+            closed_t - group.t_min
+        ):
             return scale(group.axis, -1.0), group.t_min
         return group.axis, group.t_max
 
@@ -339,10 +511,17 @@ class HoleDetector:
 
     # -- builders ----------------------------------------------------------
 
-    def _common(self, model: ShapeModel, group: CylindricalGroup) -> Dict[str, Any]:
-        cap, cap_t = self._bottom_cap(model, group)
-        through = cap is None
-        entry_axis, entry_t = self._entry_direction(group, cap_t)
+    def _common(
+        self,
+        model: ShapeModel,
+        group: CylindricalGroup,
+        classifier: Optional[PointClassifier],
+    ) -> Dict[str, Any]:
+        ends = self._probe_ends(group, classifier)
+        through, cap, closed_t, method, confidence, conflict = self._resolve_ends(
+            model, group, ends
+        )
+        entry_axis, entry_t = self._entry_direction(group, closed_t)
         counters = self._counter_features(group, entry_axis, entry_t)
 
         position = axis_point(group.origin, group.axis, entry_t)
@@ -358,6 +537,9 @@ class HoleDetector:
         return {
             "cap": cap,
             "through": through,
+            "method": method,
+            "confidence": confidence,
+            "conflict": conflict,
             "entry_axis": entry_axis,
             "position": position,
             "diameter": diameter,
@@ -367,29 +549,51 @@ class HoleDetector:
             "face_ids": face_ids,
         }
 
-    def _detection(self, group: CylindricalGroup, through: bool, cap) -> Detection:
+    _METHOD_EVIDENCE = {
+        "cap_face_and_solid_classification": (
+            "closed by a face and confirmed by material beyond that end"
+        ),
+        "solid_classification": "decided by sampling for material past each end",
+        "cap_face": "closed by a face; no material probe available",
+        "cap_absence": (
+            "no closing face and no material probe - through inferred from "
+            "absence, which an open shell would imitate"
+        ),
+        "conflicting": "the closing face and the material probe disagree",
+    }
+
+    def _detection(self, group: CylindricalGroup, common: Dict[str, Any]) -> Detection:
+        cap = common["cap"]
+        fragments = len(group.cylinders)
         evidence = [
-            f"{len(group.cylinders)} coaxial concave cylindrical face(s)",
-            f"angular span {round(group.cylinders[0].angular_span_deg or 0.0, 1)} deg",
+            f"{fragments} coaxial concave cylindrical face(s)",
+            (
+                f"bore wrap {round(group.wrap_span_deg, 1)} deg"
+                + (f" summed across {fragments} fragments" if fragments > 1 else "")
+            ),
+            self._METHOD_EVIDENCE.get(common["method"], common["method"]),
         ]
         if cap is not None:
-            evidence.append(f"closed by face {cap.id} - blind")
-            confidence = 0.95
-        else:
-            evidence.append("no closing face found on either end - through")
-            # Absence of a cap is weaker evidence than its presence: an open
-            # shell or a missing face produces the same signature.
-            confidence = 0.85
+            evidence.append(f"closing face {cap.id}")
+        evidence.append("through" if common["through"] else "blind")
         return Detection(
-            method=DetectionMethod.COAXIAL_GROUPING,
-            confidence=confidence,
+            method=(
+                DetectionMethod.RAY_CASTING
+                if "solid_classification" in common["method"]
+                else DetectionMethod.COAXIAL_GROUPING
+            ),
+            confidence=common["confidence"],
             evidence=evidence,
         )
 
     def _build_hole(
-        self, model: ShapeModel, group: CylindricalGroup, hole_id: str
+        self,
+        model: ShapeModel,
+        group: CylindricalGroup,
+        hole_id: str,
+        classifier: Optional[PointClassifier] = None,
     ) -> HoleFeature:
-        c = self._common(model, group)
+        c = self._common(model, group, classifier)
         counters = c["counters"]
         return HoleFeature(
             id=hole_id,
@@ -402,7 +606,11 @@ class HoleDetector:
             axis=Vector3.from_tuple(c["entry_axis"]),
             depth_diameter_ratio=c["ratio"],
             face_ids=c["face_ids"],
-            detection=self._detection(group, c["through"], c["cap"]),
+            detection=self._detection(group, c),
+            status=(
+                FeatureStatus.AMBIGUOUS if c["conflict"] else FeatureStatus.RESOLVED
+            ),
+            reason=c["conflict"],
             is_stepped=counters["is_stepped"],
             has_counterbore=counters["has_counterbore"],
             has_countersink=counters["has_countersink"],
@@ -414,10 +622,16 @@ class HoleDetector:
         )
 
     def _build_bore(
-        self, model: ShapeModel, group: CylindricalGroup, bore_id: str, type_name: str
+        self,
+        model: ShapeModel,
+        group: CylindricalGroup,
+        bore_id: str,
+        type_name: str,
+        classifier: Optional[PointClassifier] = None,
     ) -> BoreFeature:
-        c = self._common(model, group)
-        ambiguous = type_name == "internal_cylindrical_feature"
+        c = self._common(model, group, classifier)
+        unresolved_type = type_name == "internal_cylindrical_feature"
+        ambiguous = unresolved_type or bool(c["conflict"])
         return BoreFeature(
             id=bore_id,
             type=type_name,
@@ -430,13 +644,14 @@ class HoleDetector:
             is_stepped=c["counters"]["is_stepped"],
             face_ids=c["face_ids"],
             status=FeatureStatus.AMBIGUOUS if ambiguous else FeatureStatus.RESOLVED,
-            reason=(
+            reason=c["conflict"]
+            or (
                 "Internal cylindrical surface is above the hole diameter limit "
                 f"({self.config.max_hole_diameter_mm} mm) but below the bore depth "
                 f"threshold ({self.config.bore_min_depth_mm} mm); geometry alone "
                 "cannot separate a bore from a shallow recess."
-                if ambiguous
+                if unresolved_type
                 else None
             ),
-            detection=self._detection(group, c["through"], c["cap"]),
+            detection=self._detection(group, c),
         )

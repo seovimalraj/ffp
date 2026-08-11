@@ -20,6 +20,7 @@
   "bore_min_diameter_mm": 25.0,
   "bore_min_depth_mm": 10.0,
   "hole_min_angular_span_deg": 180.0,
+  "hole_end_probe_offset_mm": 0.05,
   "countersink_max_half_angle_deg": 75.0,
   "counterbore_min_diameter_ratio": 1.15,
 

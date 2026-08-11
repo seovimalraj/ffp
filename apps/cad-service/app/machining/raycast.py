@@ -24,6 +24,62 @@ from .vectors import Vec, add, normalize, scale
 logger = logging.getLogger(__name__)
 
 
+class PointClassifier:
+    """Answers "is there material at this point?".
+
+    Where :class:`RayProbe` asks what a straight line meets, this asks about a
+    single point, which is what settles whether a bore is closed off. Reused
+    across queries because building the OCCT classifier is the expensive part.
+    """
+
+    def __init__(self, model: ShapeModel, config: MachiningConfig):
+        self.model = model
+        self.config = config
+        self._classifier = self._make_classifier()
+
+    @property
+    def available(self) -> bool:
+        return self._classifier is not None
+
+    def _make_classifier(self) -> Optional[Any]:
+        if occ.BRepClass3d_SolidClassifier is None or self.model._occ_shape is None:
+            return None
+        try:
+            return occ.BRepClass3d_SolidClassifier(self.model._occ_shape)
+        except Exception as exc:  # pragma: no cover - binding dependent
+            logger.warning("Solid classifier unavailable: %s", exc)
+            return None
+
+    def state(self, point: Vec) -> Optional[str]:
+        """``"IN"`` (inside material), ``"OUT"``, ``"ON"``, or ``None``."""
+        if self._classifier is None:
+            return None
+        try:
+            self._classifier.Perform(
+                occ.gp_Pnt(point[0], point[1], point[2]),
+                self.config.linear_tolerance_mm,
+            )
+            state = self._classifier.State()
+        except Exception as exc:
+            logger.debug("Point classification failed at %s: %s", point, exc)
+            return None
+
+        if occ.TopAbs_IN is not None and state == occ.TopAbs_IN:
+            return "IN"
+        if occ.TopAbs_OUT is not None and state == occ.TopAbs_OUT:
+            return "OUT"
+        if occ.TopAbs_ON is not None and state == occ.TopAbs_ON:
+            return "ON"
+        return None
+
+    def is_material(self, point: Vec) -> Optional[bool]:
+        """True when the point lies in solid material; ``None`` if unknown."""
+        state = self.state(point)
+        if state is None:
+            return None
+        return state == "IN"
+
+
 class RayProbe:
     """Answers "can a straight line reach this point from this direction?"."""
 

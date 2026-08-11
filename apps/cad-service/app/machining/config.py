@@ -79,8 +79,17 @@ class MachiningConfig(BaseModel):
     hole_min_angular_span_deg: float = Field(
         default=180.0,
         description=(
-            "Cylindrical faces spanning less than this are treated as fillets or "
-            "partial walls, not holes."
+            "Minimum angular wrap for a bore, summed across every coaxial "
+            "fragment at that radius. A boolean can split one bore into several "
+            "arcs, so the test applies to the reassembled segment rather than to "
+            "each face; below this the geometry is a fillet or a partial wall."
+        ),
+    )
+    hole_end_probe_offset_mm: float = Field(
+        default=0.05,
+        description=(
+            "How far past a bore's end to sample when deciding through vs blind. "
+            "A closing wall thinner than this reads as open."
         ),
     )
     countersink_max_half_angle_deg: float = Field(
