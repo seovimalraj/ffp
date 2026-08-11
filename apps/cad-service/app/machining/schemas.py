@@ -75,6 +75,7 @@ class WarningCode(str, Enum):
     MULTIPLE_SOLIDS = "MULTIPLE_SOLIDS"
     NO_SOLID = "NO_SOLID"
     OPEN_SHELL = "OPEN_SHELL"
+    GEOMETRY_REPAIRED = "GEOMETRY_REPAIRED"
     INVALID_GEOMETRY = "INVALID_GEOMETRY"
     UNIT_ASSUMED = "UNIT_ASSUMED"
     DETECTOR_FAILED = "DETECTOR_FAILED"
@@ -229,6 +230,9 @@ class FaceDetail(BaseModel):
     surface_type: SurfaceType
     area_mm2: float
     bounding_box: BoundingBox
+    centroid: Optional[Vector3] = Field(
+        default=None, description="Area centroid - the anchor for a marker."
+    )
     normal: Optional[Vector3] = Field(
         default=None, description="Outward normal at the face centre (planar faces)."
     )
@@ -671,6 +675,51 @@ class AnalysisError(BaseModel):
     detail: Optional[Dict[str, Any]] = None
 
 
+class EdgeEntity(BaseModel):
+    """One topological edge, positioned for selection and overlay drawing."""
+
+    edge_id: int
+    curve_type: str = Field(description="LINE | CIRCLE | ELLIPSE | BSPLINE | OTHER")
+    start: Vector3
+    end: Vector3
+    midpoint: Vector3
+    length_mm: float
+    radius_mm: Optional[float] = None
+    axis: Optional[Vector3] = None
+    is_closed: bool = False
+    is_seam: bool = Field(
+        default=False, description="Closing line of a periodic surface, not a real boundary."
+    )
+    face_ids: List[int] = Field(default_factory=list)
+
+
+class VertexEntity(BaseModel):
+    """One topological vertex."""
+
+    vertex_id: int
+    position: Vector3
+
+
+class TopologyEntities(BaseModel):
+    """Selectable B-Rep entities, returned when ``include_topology_entities=true``.
+
+    Coordinates are in the same CAD frame as every other position in this
+    response, so a viewer can place them with one shared transform.
+    """
+
+    faces: List[FaceDetail] = Field(default_factory=list)
+    edges: List[EdgeEntity] = Field(default_factory=list)
+    vertices: List[VertexEntity] = Field(default_factory=list)
+    face_count: int = Field(default=0, description="Total in the model, before any cap.")
+    edge_count: int = 0
+    vertex_count: int = 0
+    truncated: bool = Field(
+        default=False,
+        description="True when a list was capped; counts still report the true totals.",
+    )
+    entity_limit: int = 0
+
+
 class DebugGeometry(BaseModel):
     """Only populated when ``include_debug_geometry=true``."""
 
@@ -690,6 +739,7 @@ class MachiningAnalysisOptions(BaseModel):
     include_face_details: bool = False
     include_feature_details: bool = True
     include_debug_geometry: bool = False
+    include_topology_entities: bool = False
 
 
 class MachiningAnalysisResponse(BaseModel):
@@ -709,6 +759,13 @@ class MachiningAnalysisResponse(BaseModel):
     topology: TopologyInfo = Field(default_factory=TopologyInfo)
     surface_summary: SurfaceSummary = Field(default_factory=SurfaceSummary)
     face_details: Optional[List[FaceDetail]] = None
+    topology_entities: Optional[TopologyEntities] = Field(
+        default=None,
+        description=(
+            "Selectable faces, edges and vertices for a 3D viewer. Opt-in: the "
+            "list is large for real parts."
+        ),
+    )
 
     features: FeatureCollection = Field(default_factory=FeatureCollection)
     feature_patterns: List[FeaturePattern] = Field(default_factory=list)

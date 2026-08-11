@@ -9,7 +9,7 @@ from typing import Any, Dict, List, Optional, Set, Tuple
 from . import occ
 from .config import MachiningConfig
 from .faces import FaceClassifier
-from .records import EdgeRecord, MassProperties, ShapeModel
+from .records import EdgeRecord, MassProperties, ShapeModel, VertexRecord
 from .schemas import AnalysisWarning, TopologyInfo, WarningCode
 from .vectors import Vec, normalize
 
@@ -40,6 +40,7 @@ class TopologyAnalyzer:
         self._fill_bbox(shape, model)
         self._build_faces(shape, model)
         self._build_edges_and_adjacency(model)
+        self._build_vertices(shape, model)
         return model
 
     def _count_topology(self, shape: Any, model: ShapeModel) -> None:
@@ -89,6 +90,27 @@ class TopologyAnalyzer:
             model.faces[face_id] = record
             model._occ_faces[face_id] = face
         return faces
+
+    def _build_vertices(self, shape: Any, model: ShapeModel) -> None:
+        """Record vertex positions so a viewer can offer them for selection.
+
+        Positions only - a vertex carries no other geometry worth reporting.
+        """
+        if occ.BRep_Tool is None:
+            return
+        point_of = occ._resolve_static((occ.BRep_Tool,), "Pnt")
+        if point_of is None:
+            logger.debug("BRep_Tool.Pnt unavailable; vertices not positioned")
+            return
+        for index, raw in enumerate(
+            occ.iter_unique_shapes(shape, occ.TopAbs_VERTEX), start=1
+        ):
+            try:
+                model.vertices[index] = VertexRecord(
+                    id=index, position=_pnt(point_of(occ.to_vertex(raw)))
+                )
+            except Exception as exc:
+                logger.debug("Vertex %s position failed: %s", index, exc)
 
     # -- edges -------------------------------------------------------------
 

@@ -159,6 +159,18 @@ def _load(module: str, *names: str) -> tuple:
 (Bnd_Box,) = _load("Bnd", "Bnd_Box")
 (brepbndlib, BRepBndLib) = _load("BRepBndLib", "brepbndlib", "BRepBndLib")
 
+# --- shape healing --------------------------------------------------------
+(BRepBuilderAPI_Sewing, BRepBuilderAPI_MakeSolid) = _load(
+    "BRepBuilderAPI", "BRepBuilderAPI_Sewing", "BRepBuilderAPI_MakeSolid"
+)
+(ShapeFix_Solid, ShapeFix_Shell, ShapeFix_Shape) = _load(
+    "ShapeFix", "ShapeFix_Solid", "ShapeFix_Shell", "ShapeFix_Shape"
+)
+(BRep_Builder,) = _load("BRep", "BRep_Builder")
+(TopoDS_Compound, TopoDS_Shell, TopoDS_Solid) = _load(
+    "TopoDS", "TopoDS_Compound", "TopoDS_Shell", "TopoDS_Solid"
+)
+
 # --- surface access -------------------------------------------------------
 (BRep_Tool,) = _load("BRep", "BRep_Tool")
 (breptools, BRepTools) = _load("BRepTools", "breptools", "BRepTools")
@@ -358,6 +370,24 @@ def to_face(shape: Any) -> Any:
 
 def to_edge(shape: Any) -> Any:
     return _downcast(shape, "Edge")
+
+
+def to_vertex(shape: Any) -> Any:
+    return _downcast(shape, "Vertex")
+
+
+def to_shell(shape: Any) -> Any:
+    return _downcast(shape, "Shell")
+
+
+def make_compound(shapes: list) -> Any:
+    """Wrap several shapes in a TopoDS_Compound."""
+    builder = BRep_Builder()
+    compound = TopoDS_Compound()
+    builder.MakeCompound(compound)
+    for shape in shapes:
+        builder.Add(compound, shape)
+    return compound
 
 
 def iter_shapes(shape: Any, shape_type: Any):

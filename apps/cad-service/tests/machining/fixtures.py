@@ -34,6 +34,8 @@ if KERNEL:  # pragma: no branch - import guard
     _step = _mod("STEPControl")
     _explorer = _mod("TopExp")
     _abs = _mod("TopAbs")
+    _brep = _mod("BRep")
+    _topods = _mod("TopoDS")
 
 
 def _write_step(shape, path: Path) -> str:
@@ -169,6 +171,47 @@ def block_with_hole_split_into_arcs(tmp_path: Path) -> str:
     # -Y channel: the mirror image.
     shape = _cut(shape, _box(45, -10, -5, 10, 40, 50))
     return _write_step(shape, tmp_path / "block_with_hole_split_into_arcs.step")
+
+
+def _shells_only(shape):
+    """Strip a solid down to its shells - what a lossy converter often emits."""
+    builder = _brep.BRep_Builder()
+    compound = _topods.TopoDS_Compound()
+    builder.MakeCompound(compound)
+    explorer = _explorer.TopExp_Explorer(shape, _abs.TopAbs_ShapeEnum.TopAbs_SHELL)
+    while explorer.More():
+        builder.Add(compound, _topods.TopoDS.Shell_s(explorer.Current()))
+        explorer.Next()
+    return compound
+
+
+def shell_without_solid(tmp_path: Path) -> str:
+    """The block-with-hole part exported as loose shells, with no solid.
+
+    Reproduces the common `..._converted.stp` case: the geometry is complete and
+    closeable, but the exporter never built a solid. Sewing must recover it.
+    """
+    solid = _cut(_box(0, 0, 0, 100, 60, 20), _cylinder(30, 30, -5, 5.0, 30.0))
+    return _write_step(_shells_only(solid), tmp_path / "shell_without_solid.stp")
+
+
+def open_surface_patch(tmp_path: Path) -> str:
+    """Two faces of a box - a genuine surface model that cannot be closed.
+
+    Sewing these leaves an open shell, so this must still be rejected rather
+    than sewn into a bogus solid.
+    """
+    solid = _box(0, 0, 0, 100, 60, 20)
+    builder = _brep.BRep_Builder()
+    compound = _topods.TopoDS_Compound()
+    builder.MakeCompound(compound)
+    explorer = _explorer.TopExp_Explorer(solid, _abs.TopAbs_ShapeEnum.TopAbs_FACE)
+    kept = 0
+    while explorer.More() and kept < 2:
+        builder.Add(compound, _topods.TopoDS.Face_s(explorer.Current()))
+        kept += 1
+        explorer.Next()
+    return _write_step(compound, tmp_path / "open_surface_patch.stp")
 
 
 def two_body_assembly(tmp_path: Path) -> str:

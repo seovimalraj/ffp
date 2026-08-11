@@ -114,11 +114,20 @@ class FaceRecord:
 
 
 @dataclass
+class VertexRecord:
+    """One topological vertex."""
+
+    id: int
+    position: Vec = (0.0, 0.0, 0.0)
+
+
+@dataclass
 class ShapeModel:
     """Flattened B-Rep plus the adjacency indices detectors need."""
 
     faces: Dict[int, FaceRecord] = field(default_factory=dict)
     edges: Dict[int, EdgeRecord] = field(default_factory=dict)
+    vertices: Dict[int, VertexRecord] = field(default_factory=dict)
 
     solid_count: int = 0
     shell_count: int = 0

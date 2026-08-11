@@ -162,6 +162,14 @@ async def analyze_machining_endpoint(
             "consumers."
         ),
     ),
+    include_topology_entities: bool = Form(
+        False,
+        description=(
+            "Return selectable faces, edges and vertices with their "
+            "coordinates, for a 3D viewer. Capped per category; the counts "
+            "always report the model total."
+        ),
+    ),
 ):
     config = get_machining_config()
 
@@ -198,6 +206,7 @@ async def analyze_machining_endpoint(
             include_face_details=include_face_details,
             include_feature_details=include_feature_details,
             include_debug_geometry=include_debug_geometry,
+            include_topology_entities=include_topology_entities,
         )
 
         # Import and analysis are CPU-bound OCCT work; keep the event loop free.

@@ -49,6 +49,24 @@ class MachiningConfig(BaseModel):
         description="Refuse models above this face count to bound analysis time.",
     )
 
+    # --- shape healing ----------------------------------------------------
+    repair_open_shells: bool = Field(
+        default=True,
+        description=(
+            "When a file contains shells but no solid, sew them and build "
+            "solids rather than rejecting it. Converted STEP files commonly "
+            "need this."
+        ),
+    )
+    sew_tolerance_mm: float = Field(
+        default=0.01,
+        description=(
+            "Gap below which adjacent faces are sewn together during repair. "
+            "Too large fuses genuinely separate walls; too small leaves the "
+            "shell open."
+        ),
+    )
+
     # --- numeric tolerances ----------------------------------------------
     linear_tolerance_mm: float = Field(
         default=1e-4, description="Distance below which two points are the same point."
@@ -172,6 +190,16 @@ class MachiningConfig(BaseModel):
     stock_round_up_to_mm: float = Field(
         default=0.0,
         description="Round each stock dimension up to a multiple of this (0 disables).",
+    )
+
+    # --- topology entities ------------------------------------------------
+    max_topology_entities: int = Field(
+        default=4000,
+        description=(
+            "Cap on faces, edges and vertices returned per category when "
+            "include_topology_entities is set. A real part has tens of "
+            "thousands; sending them all would dwarf the rest of the payload."
+        ),
     )
 
     # --- output -----------------------------------------------------------

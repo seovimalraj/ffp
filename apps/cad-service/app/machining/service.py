@@ -46,6 +46,7 @@ from .schemas import (
     AnalysisWarning,
     BoundingBox,
     DebugGeometry,
+    EdgeEntity,
     FaceDetail,
     FeatureCollection,
     FileInfo,
@@ -54,8 +55,10 @@ from .schemas import (
     MachiningAnalysisResponse,
     ModelInfo,
     MomentsOfInertia,
+    TopologyEntities,
     UnitSystem,
     Vector3,
+    VertexEntity,
     WarningCode,
 )
 from .stock import StockAnalyzer
@@ -160,6 +163,13 @@ class MachiningAnalysisService:
         )
         if options.include_face_details:
             response.face_details = self._face_details(model)
+        if options.include_topology_entities:
+            response.topology_entities = self._stage(
+                "topology_entities",
+                timings,
+                warnings,
+                lambda: self._topology_entities(model, warnings),
+            )
 
         pmi = self._stage(
             "pmi",
@@ -412,28 +422,100 @@ class MachiningAnalysisService:
         )
 
     def _face_details(self, model: ShapeModel) -> List[FaceDetail]:
-        details: List[FaceDetail] = []
-        for face in sorted(model.faces.values(), key=lambda f: f.id):
-            details.append(
-                FaceDetail(
-                    face_id=face.id,
-                    surface_type=to_surface_type_enum(face.surface_type),
-                    area_mm2=round(face.area_mm2, self.config.area_decimals),
-                    bounding_box=self._bounding_box(face.bbox_min, face.bbox_max),
-                    normal=Vector3.from_tuple(face.normal) if face.normal else None,
-                    axis=Vector3.from_tuple(face.axis) if face.axis else None,
-                    axis_location=(
-                        Vector3.from_tuple(face.axis_location) if face.axis_location else None
+        return [
+            self._face_detail(face)
+            for face in sorted(model.faces.values(), key=lambda f: f.id)
+        ]
+
+    def _face_detail(self, face) -> FaceDetail:
+        return FaceDetail(
+            face_id=face.id,
+            surface_type=to_surface_type_enum(face.surface_type),
+            area_mm2=round(face.area_mm2, self.config.area_decimals),
+            bounding_box=self._bounding_box(face.bbox_min, face.bbox_max),
+            centroid=Vector3.from_tuple(face.centroid),
+            normal=Vector3.from_tuple(face.normal) if face.normal else None,
+            axis=Vector3.from_tuple(face.axis) if face.axis else None,
+            axis_location=(
+                Vector3.from_tuple(face.axis_location)
+                if face.axis_location
+                else None
+            ),
+            radius_mm=face.radius_mm,
+            minor_radius_mm=face.minor_radius_mm,
+            cone_half_angle_deg=face.cone_half_angle_deg,
+            angular_span_deg=face.angular_span_deg,
+            is_internal=face.is_internal,
+            edge_count=len(face.edge_ids),
+        )
+
+    def _topology_entities(
+        self, model: ShapeModel, warnings: List[AnalysisWarning]
+    ) -> TopologyEntities:
+        """Faces, edges and vertices, capped, for a selectable viewer.
+
+        The counts always report the model's true totals; ``truncated``
+        says whether the lists themselves were cut short, so a viewer can
+        tell 'this part has 40 edges' from 'you are seeing 4000 of 90000'.
+        """
+        limit = self.config.max_topology_entities
+        face_ids = sorted(model.faces)
+        edge_ids = sorted(model.edges)
+        vertex_ids = sorted(model.vertices)
+
+        truncated = (
+            len(face_ids) > limit
+            or len(edge_ids) > limit
+            or len(vertex_ids) > limit
+        )
+        if truncated:
+            warnings.append(
+                AnalysisWarning(
+                    code=WarningCode.LARGE_MODEL,
+                    message=(
+                        f"Topology entity lists were capped at {limit} per "
+                        "category. Counts still reflect the whole model."
                     ),
-                    radius_mm=face.radius_mm,
-                    minor_radius_mm=face.minor_radius_mm,
-                    cone_half_angle_deg=face.cone_half_angle_deg,
-                    angular_span_deg=face.angular_span_deg,
-                    is_internal=face.is_internal,
-                    edge_count=len(face.edge_ids),
+                    detail={
+                        "faces": len(face_ids),
+                        "edges": len(edge_ids),
+                        "vertices": len(vertex_ids),
+                        "limit": limit,
+                    },
                 )
             )
-        return details
+
+        return TopologyEntities(
+            faces=[self._face_detail(model.faces[i]) for i in face_ids[:limit]],
+            edges=[self._edge_entity(model.edges[i]) for i in edge_ids[:limit]],
+            vertices=[
+                VertexEntity(
+                    vertex_id=i,
+                    position=Vector3.from_tuple(model.vertices[i].position),
+                )
+                for i in vertex_ids[:limit]
+            ],
+            face_count=len(face_ids),
+            edge_count=len(edge_ids),
+            vertex_count=len(vertex_ids),
+            truncated=truncated,
+            entity_limit=limit,
+        )
+
+    def _edge_entity(self, edge) -> EdgeEntity:
+        return EdgeEntity(
+            edge_id=edge.id,
+            curve_type=edge.curve_type,
+            start=Vector3.from_tuple(edge.start),
+            end=Vector3.from_tuple(edge.end),
+            midpoint=Vector3.from_tuple(edge.midpoint),
+            length_mm=round(edge.length_mm, self.config.length_decimals),
+            radius_mm=edge.radius_mm,
+            axis=Vector3.from_tuple(edge.axis) if edge.axis else None,
+            is_closed=edge.is_closed,
+            is_seam=edge.is_seam,
+            face_ids=list(edge.face_ids),
+        )
 
     def _append_ambiguity_warnings(
         self, features: FeatureCollection, warnings: List[AnalysisWarning]

@@ -170,8 +170,8 @@ class CADParser:
                 "corrupt or contain only non-geometric entities.",
             )
 
+        shape = self._ensure_solid(shape, file_format, warnings)
         is_valid = self._check_validity(shape, warnings)
-        self._require_solid(shape, file_format, warnings)
 
         return LoadedModel(
             shape=shape,
@@ -284,25 +284,120 @@ class CADParser:
             )
         return valid
 
-    def _require_solid(self, shape, file_format: str, warnings: List[AnalysisWarning]) -> None:
-        """Reject models with no solid; warn (never silently ignore) on many."""
+    def _ensure_solid(self, shape, file_format: str, warnings: List[AnalysisWarning]):
+        """Return a shape containing at least one solid, repairing if needed.
+
+        A STEP file that carries only shells is usually a solid whose faces
+        were never sewn - a routine export artefact rather than unusable
+        geometry. Sewing is attempted first, and only a genuine surface model
+        (one that cannot be closed) is rejected.
+        """
         solids = list(occ.iter_unique_shapes(shape, occ.TopAbs_SOLID))
         shells = list(occ.iter_unique_shapes(shape, occ.TopAbs_SHELL))
         faces = list(occ.iter_unique_shapes(shape, occ.TopAbs_FACE))
 
+        if not solids and faces and self.config.repair_open_shells:
+            if len(faces) > self.config.max_faces:
+                raise CADParseError(
+                    "MODEL_TOO_COMPLEX",
+                    (
+                        f"The model has {len(faces)} faces, above the "
+                        f"{self.config.max_faces} face limit for this endpoint."
+                    ),
+                    status_code=422,
+                )
+            repaired = self._sew_into_solids(shape)
+            if repaired is not None:
+                rebuilt = list(occ.iter_unique_shapes(repaired, occ.TopAbs_SOLID))
+                warnings.append(
+                    AnalysisWarning(
+                        code=WarningCode.GEOMETRY_REPAIRED,
+                        message=(
+                            f"The file contained {len(shells)} shell(s) and no "
+                            f"solid. The faces were sewn into {len(rebuilt)} "
+                            "solid(s) before analysis. Volume and any result "
+                            "that depends on it should be sanity-checked "
+                            "against the source model."
+                        ),
+                        detail={
+                            "shells_in_file": len(shells),
+                            "solids_after_repair": len(rebuilt),
+                            "sew_tolerance_mm": self.config.sew_tolerance_mm,
+                        },
+                    )
+                )
+                shape = repaired
+                solids = rebuilt
+
+        self._require_solid(shape, file_format, warnings, solids, shells, faces)
+        return shape
+
+    def _sew_into_solids(self, shape):
+        """Sew loose faces and upgrade the resulting shells to solids.
+
+        Returns the repaired shape, or ``None`` when nothing could be closed.
+        """
+        if occ.BRepBuilderAPI_Sewing is None or occ.ShapeFix_Solid is None:
+            logger.info("Shape healing unavailable in this kernel build")
+            return None
+        try:
+            sewing = occ.BRepBuilderAPI_Sewing(self.config.sew_tolerance_mm)
+            sewing.Add(shape)
+            sewing.Perform()
+            sewn = sewing.SewedShape()
+        except Exception as exc:
+            logger.warning("Sewing failed: %s", exc)
+            return None
+
+        solids = []
+        for raw_shell in occ.iter_unique_shapes(sewn, occ.TopAbs_SHELL):
+            try:
+                solid = occ.ShapeFix_Solid().SolidFromShell(occ.to_shell(raw_shell))
+            except Exception as exc:
+                logger.debug("SolidFromShell failed: %s", exc)
+                continue
+            if solid is None or solid.IsNull():
+                continue
+            # A shell that could not be closed comes back as a shell, not a
+            # solid; only count genuine solids.
+            if list(occ.iter_unique_shapes(solid, occ.TopAbs_SOLID)):
+                solids.append(solid)
+
+        if not solids:
+            return None
+        try:
+            return solids[0] if len(solids) == 1 else occ.make_compound(solids)
+        except Exception as exc:
+            logger.warning("Could not assemble repaired solids: %s", exc)
+            return solids[0]
+
+    def _require_solid(
+        self,
+        shape,
+        file_format: str,
+        warnings: List[AnalysisWarning],
+        solids,
+        shells,
+        faces,
+    ) -> None:
+        """Reject models with no solid; warn (never silently ignore) on many."""
         if not solids:
             if shells or faces:
                 raise CADParseError(
                     "NO_SOLID_GEOMETRY",
                     (
                         f"The model contains {len(shells)} shell(s) and "
-                        f"{len(faces)} face(s) but no closed solid. Machining "
-                        "analysis requires at least one valid solid. "
+                        f"{len(faces)} face(s) but no closed solid, and sewing "
+                        f"them at {self.config.sew_tolerance_mm} mm did not "
+                        "close the volume. This is a surface model, or its "
+                        "faces have gaps wider than the sewing tolerance. "
+                        "Re-export as a solid, or retry with a larger "
+                        "MACHINING_SEW_TOLERANCE_MM."
                         + (
-                            "IGES is a surface format; export a solid STEP file "
-                            "instead."
+                            " Note that IGES is a surface format and often has "
+                            "no solid to export."
                             if file_format == "IGES"
-                            else "Re-export the part as a solid."
+                            else ""
                         )
                     ),
                     status_code=422,

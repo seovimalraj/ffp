@@ -497,6 +497,59 @@ class TestValidationBehaviour:
         assert result["model"]["solid_count"] == 2
         assert result["model"]["is_multi_body"] is True
 
+    def test_a_shell_only_file_is_repaired_rather_than_rejected(
+        self, analyze, step_dir
+    ):
+        # The common `..._converted.stp` case: complete geometry that the
+        # exporter never sewed into a solid.
+        result = analyze(fixtures.shell_without_solid(step_dir))
+        assert result["success"] is True
+        assert result["model"]["solid_count"] == 1
+        assert "GEOMETRY_REPAIRED" in {w["code"] for w in result["warnings"]}
+
+    def test_a_repaired_model_still_measures_correctly(self, analyze, step_dir):
+        import math
+
+        result = analyze(fixtures.shell_without_solid(step_dir))
+        expected = 100 * 60 * 20 - math.pi * 25 * 20
+        assert result["geometry"]["volume_mm3"] == pytest.approx(expected, rel=1e-4)
+        assert len(result["features"]["holes"]) == 1
+        assert result["features"]["holes"][0]["subtype"] == "through"
+
+    def test_the_repair_warning_says_what_was_changed(self, analyze, step_dir):
+        warning = next(
+            w
+            for w in analyze(fixtures.shell_without_solid(step_dir))["warnings"]
+            if w["code"] == "GEOMETRY_REPAIRED"
+        )
+        assert "sewn" in warning["message"]
+        assert warning["detail"]["solids_after_repair"] == 1
+
+    def test_a_genuine_surface_model_is_still_rejected(self, parser, step_dir):
+        # Two loose faces cannot bound a volume, and sewing must not pretend
+        # otherwise.
+        import os
+
+        from app.machining.parser import CADParseError
+
+        path = fixtures.open_surface_patch(step_dir)
+        with pytest.raises(CADParseError) as exc:
+            parser.load(path, os.path.basename(path), os.path.getsize(path), "0")
+        assert exc.value.code == "NO_SOLID_GEOMETRY"
+        assert "sewing" in exc.value.message.lower()
+
+    def test_repair_can_be_disabled(self, step_dir):
+        import os
+
+        from app.machining.config import MachiningConfig
+        from app.machining.parser import CADParseError, CADParser
+
+        strict = CADParser(MachiningConfig(repair_open_shells=False))
+        path = fixtures.shell_without_solid(step_dir)
+        with pytest.raises(CADParseError) as exc:
+            strict.load(path, os.path.basename(path), os.path.getsize(path), "0")
+        assert exc.value.code == "NO_SOLID_GEOMETRY"
+
     def test_a_corrupt_file_is_rejected(self, parser, tmp_path):
         from app.machining.parser import CADParseError
 
@@ -543,6 +596,96 @@ class TestDeterminism:
         first = [h["id"] for h in analyze(path)["features"]["holes"]]
         second = [h["id"] for h in analyze(path)["features"]["holes"]]
         assert first == second == ["HOLE-001", "HOLE-002", "HOLE-003", "HOLE-004"]
+
+
+class TestTopologyEntities:
+    """Selectable faces, edges and vertices for the 3D viewer."""
+
+    def test_entities_are_opt_in(self, analyze, step_dir):
+        result = analyze(fixtures.simple_block_with_through_hole(step_dir))
+        assert result["topology_entities"] is None
+
+    def test_every_entity_category_is_returned(self, analyze, step_dir):
+        entities = analyze(
+            fixtures.simple_block_with_through_hole(step_dir),
+            include_topology_entities=True,
+        )["topology_entities"]
+        assert entities["face_count"] == 7
+        assert entities["edge_count"] > 0
+        assert entities["vertex_count"] > 0
+        assert len(entities["faces"]) == entities["face_count"]
+
+    def test_counts_agree_with_the_model_block(self, analyze, step_dir):
+        result = analyze(
+            fixtures.simple_block_with_through_hole(step_dir),
+            include_topology_entities=True,
+        )
+        entities = result["topology_entities"]
+        assert entities["face_count"] == result["model"]["face_count"]
+        assert entities["edge_count"] == result["model"]["edge_count"]
+        assert entities["vertex_count"] == result["model"]["vertex_count"]
+
+    def test_faces_carry_a_centroid_to_anchor_a_marker(self, analyze, step_dir):
+        faces = analyze(
+            fixtures.simple_block_with_through_hole(step_dir),
+            include_topology_entities=True,
+        )["topology_entities"]["faces"]
+        assert all(face["centroid"] is not None for face in faces)
+
+    def test_edges_carry_endpoints_and_length(self, analyze, step_dir):
+        edges = analyze(
+            fixtures.simple_block_with_through_hole(step_dir),
+            include_topology_entities=True,
+        )["topology_entities"]["edges"]
+        for edge in edges:
+            assert edge["length_mm"] > 0
+            assert edge["start"] and edge["end"] and edge["midpoint"]
+        assert any(edge["curve_type"] == "CIRCLE" for edge in edges), "bore rim missing"
+
+    def test_vertices_carry_positions(self, analyze, step_dir):
+        vertices = analyze(
+            fixtures.simple_block_with_through_hole(step_dir),
+            include_topology_entities=True,
+        )["topology_entities"]["vertices"]
+        assert vertices
+        # A 100 x 60 x 20 block: every corner sits on the bounding box.
+        assert any(
+            v["position"] == {"x": 0.0, "y": 0.0, "z": 0.0} for v in vertices
+        )
+
+    def test_entity_coordinates_share_the_model_frame(self, analyze, step_dir):
+        # A viewer applies one transform to everything, so entity coordinates
+        # must sit inside the reported bounding box.
+        result = analyze(
+            fixtures.simple_block_with_through_hole(step_dir),
+            include_topology_entities=True,
+        )
+        box = result["geometry"]["bounding_box"]
+        for vertex in result["topology_entities"]["vertices"]:
+            position = vertex["position"]
+            for axis in ("x", "y", "z"):
+                assert box["min"][axis] - 1e-6 <= position[axis] <= box["max"][axis] + 1e-6
+
+    def test_the_cap_is_configurable_and_reports_truncation(self, parser, step_dir):
+        import os
+
+        from app.machining.config import MachiningConfig
+        from app.machining.schemas import MachiningAnalysisOptions
+        from app.machining.service import analyze_machining
+
+        path = fixtures.simple_block_with_through_hole(step_dir)
+        loaded = parser.load(path, os.path.basename(path), os.path.getsize(path), "0")
+        result = analyze_machining(
+            loaded,
+            MachiningAnalysisOptions(include_topology_entities=True),
+            MachiningConfig(max_topology_entities=3),
+        )
+        entities = result["topology_entities"]
+        assert len(entities["faces"]) == 3
+        assert entities["truncated"] is True
+        # Counts still describe the whole model, not the truncated list.
+        assert entities["face_count"] == 7
+        assert "LARGE_MODEL" in {w["code"] for w in result["warnings"]}
 
 
 class TestOptions:

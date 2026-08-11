@@ -121,6 +121,18 @@ export type Viewer = {
     y: number;
     visible: boolean;
   };
+  /**
+   * World-space bounds of the loaded model.
+   *
+   * The viewer re-centres geometry on load, so CAD-space coordinates from an
+   * external analysis cannot be placed without knowing where the model ended
+   * up. Comparing these bounds against the source bounding box recovers the
+   * transform by measurement rather than by assuming one.
+   */
+  getModelWorldBox: () => {
+    min: { x: number; y: number; z: number };
+    max: { x: number; y: number; z: number };
+  } | null;
 };
 
 export type ViewerControlsPresetConfig = {
@@ -7686,5 +7698,13 @@ export function createViewer(container: HTMLElement): Viewer {
     getRendererSize,
     onViewChanged,
     projectWorldToScreen,
+    getModelWorldBox: () => {
+      const box = new THREE.Box3().setFromObject(modelRoot);
+      if (box.isEmpty()) return null;
+      return {
+        min: { x: box.min.x, y: box.min.y, z: box.min.z },
+        max: { x: box.max.x, y: box.max.y, z: box.max.z },
+      };
+    },
   };
 }
