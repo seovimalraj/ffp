@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useDropzone } from "react-dropzone";
 import {
   AlertCircle,
@@ -12,7 +12,7 @@ import {
   X,
 } from "lucide-react";
 
-import { CadViewer, type CadViewerRef } from "@/components/cad/cad-viewer";
+import { CadViewer } from "@/components/cad/cad-viewer";
 import type {
   MachiningAnalysisResponse,
   MachiningCapabilities,
@@ -21,10 +21,7 @@ import type {
 import { isMachiningError } from "@/types/machining-analysis";
 
 import { AnalysisPanel } from "./components/analysis-panel";
-import { EntityPanel } from "./components/entity-panel";
-import { FeatureOverlay } from "./components/feature-overlay";
-import { buildSelectableEntities } from "./lib/selectable";
-import { formatBytes, formatDuration, unitLabel } from "./lib/format";
+import { formatBytes, formatDuration } from "./lib/format";
 
 /**
  * CAD machining analysis workbench.
@@ -58,12 +55,7 @@ export default function MachiningAnalysisPage() {
     null,
   );
   const [selectedFeatureId, setSelectedFeatureId] = useState<string | null>(null);
-  const [hoveredFeatureId, setHoveredFeatureId] = useState<string | null>(null);
   const [includeFaceDetails, setIncludeFaceDetails] = useState(false);
-  // Faces, edges and vertices are heavy, so they are fetched on demand.
-  const [includeTopology, setIncludeTopology] = useState(false);
-  const [sidePanel, setSidePanel] = useState<"entities" | "analysis">("entities");
-  const viewerRef = useRef<CadViewerRef | null>(null);
 
   // Abort an in-flight analysis when a new file is dropped, so a slow response
   // for the previous part cannot overwrite the new one.
@@ -89,12 +81,13 @@ export default function MachiningAnalysisPage() {
   useEffect(() => () => requestRef.current?.abort(), []);
 
   const analyze = useCallback(
-    async (target: File, withFaceDetails: boolean, withTopology = false) => {
+    async (target: File, withFaceDetails: boolean) => {
       requestRef.current?.abort();
       const controller = new AbortController();
       requestRef.current = controller;
 
       setStatus({ kind: "analyzing" });
+      setSelectedFeatureId(null);
 
       const body = new FormData();
       body.append("file", target);
@@ -102,7 +95,6 @@ export default function MachiningAnalysisPage() {
       body.append("include_feature_details", "true");
       body.append("include_face_details", String(withFaceDetails));
       body.append("include_debug_geometry", "false");
-      body.append("include_topology_entities", String(withTopology));
 
       try {
         const response = await fetch("/api/cad/analyze-machining", {
@@ -140,9 +132,7 @@ export default function MachiningAnalysisPage() {
       const next = accepted[0];
       if (!next) return;
       setFile(next);
-      setSelectedFeatureId(null);
-      setIncludeTopology(false);
-      void analyze(next, includeFaceDetails, false);
+      void analyze(next, includeFaceDetails);
     },
     [analyze, includeFaceDetails],
   );
@@ -159,21 +149,7 @@ export default function MachiningAnalysisPage() {
     setFile(null);
     setStatus({ kind: "idle" });
     setSelectedFeatureId(null);
-    setHoveredFeatureId(null);
-    setIncludeTopology(false);
   };
-
-  const loadTopology = useCallback(() => {
-    if (!file) return;
-    setIncludeTopology(true);
-    void analyze(file, includeFaceDetails, true);
-  }, [analyze, file, includeFaceDetails]);
-
-  const result = status.kind === "done" ? status.result : null;
-  const entities = useMemo(
-    () => (result ? buildSelectableEntities(result, unitLabel(result)) : []),
-    [result],
-  );
 
   const kernelReady = capabilities?.kernel_available ?? true;
 
@@ -233,7 +209,7 @@ export default function MachiningAnalysisPage() {
 
           {file && status.kind !== "analyzing" && (
             <button
-              onClick={() => void analyze(file, includeFaceDetails, includeTopology)}
+              onClick={() => void analyze(file, includeFaceDetails)}
               className="flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 shadow-sm transition-colors hover:bg-slate-50"
             >
               <RefreshCw className="h-3.5 w-3.5" />
@@ -276,22 +252,10 @@ export default function MachiningAnalysisPage() {
           <>
             <section className="relative min-w-0 flex-1 bg-white">
               <CadViewer
-                ref={viewerRef}
                 file={file}
                 showControls
                 className="h-full w-full"
                 backgroundColor="#ffffff"
-              />
-
-              <FeatureOverlay
-                viewerRef={viewerRef}
-                entities={entities}
-                analysisBox={result?.geometry?.bounding_box ?? null}
-                selectedId={selectedFeatureId}
-                hoveredId={hoveredFeatureId}
-                onSelect={setSelectedFeatureId}
-                onHover={setHoveredFeatureId}
-                ready={Boolean(result)}
               />
 
               {status.kind === "analyzing" && (
@@ -336,7 +300,7 @@ export default function MachiningAnalysisPage() {
                     {status.message}
                   </p>
                   <button
-                    onClick={() => void analyze(file, includeFaceDetails, includeTopology)}
+                    onClick={() => void analyze(file, includeFaceDetails)}
                     className="mt-1 rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50"
                   >
                     Try again
@@ -345,47 +309,11 @@ export default function MachiningAnalysisPage() {
               )}
 
               {status.kind === "done" && (
-                <>
-                  <div className="flex shrink-0 border-b border-slate-200">
-                    {(
-                      [
-                        ["entities", `Features${entities.length ? ` (${entities.length})` : ""}`],
-                        ["analysis", "Analysis"],
-                      ] as Array<["entities" | "analysis", string]>
-                    ).map(([key, label]) => (
-                      <button
-                        key={key}
-                        onClick={() => setSidePanel(key)}
-                        className={`flex-1 px-3 py-2 text-xs font-medium transition-colors ${
-                          sidePanel === key
-                            ? "border-b-2 border-blue-600 text-blue-700"
-                            : "border-b-2 border-transparent text-slate-500 hover:text-slate-800"
-                        }`}
-                      >
-                        {label}
-                      </button>
-                    ))}
-                  </div>
-
-                  {sidePanel === "entities" ? (
-                    <EntityPanel
-                      entities={entities}
-                      selectedId={selectedFeatureId}
-                      hoveredId={hoveredFeatureId}
-                      onSelect={setSelectedFeatureId}
-                      onHover={setHoveredFeatureId}
-                      topologyAvailable={Boolean(status.result.topology_entities)}
-                      onRequestTopology={loadTopology}
-                      loadingTopology={includeTopology && !status.result.topology_entities}
-                    />
-                  ) : (
-                    <AnalysisPanel
-                      result={status.result}
-                      selectedFeatureId={selectedFeatureId}
-                      onSelectFeature={setSelectedFeatureId}
-                    />
-                  )}
-                </>
+                <AnalysisPanel
+                  result={status.result}
+                  selectedFeatureId={selectedFeatureId}
+                  onSelectFeature={setSelectedFeatureId}
+                />
               )}
 
               {status.kind === "idle" && (

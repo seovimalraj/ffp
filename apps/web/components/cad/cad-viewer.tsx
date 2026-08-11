@@ -520,11 +520,6 @@ interface CadViewerProps {
 
 export interface CadViewerRef {
   getSnapshot: (type?: "normal" | "outline") => string | undefined;
-  /**
-   * The underlying viewer, for overlays that must follow the camera.
-   * Null until a model has finished loading.
-   */
-  getViewer: () => Viewer | null;
 }
 
 export const CadViewer = forwardRef<CadViewerRef, CadViewerProps>(
@@ -857,7 +852,6 @@ export const CadViewer = forwardRef<CadViewerRef, CadViewerProps>(
           ? viewerRef.current.getScreenshotDataURL()
           : viewerRef.current.getOutlineSnapshotDataURL();
       },
-      getViewer: () => viewerRef.current,
     }));
 
     useEffect(() => {

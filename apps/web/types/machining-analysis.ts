@@ -124,8 +124,6 @@ export interface FaceDetail {
   surface_type: SurfaceType;
   area_mm2: number;
   bounding_box: BoundingBox;
-  /** Area centroid — the anchor a viewer places a marker on. */
-  centroid: Vector3 | null;
   normal: Vector3 | null;
   axis: Vector3 | null;
   axis_location: Vector3 | null;
@@ -375,45 +373,6 @@ export interface PMIInfo {
   note: string;
 }
 
-/** One topological edge, positioned for selection and overlay drawing. */
-export interface EdgeEntity {
-  edge_id: number;
-  curve_type: "LINE" | "CIRCLE" | "ELLIPSE" | "BSPLINE" | "OTHER" | string;
-  start: Vector3;
-  end: Vector3;
-  midpoint: Vector3;
-  length_mm: number;
-  radius_mm: number | null;
-  axis: Vector3 | null;
-  is_closed: boolean;
-  /** Closing line of a periodic surface, not a real shell boundary. */
-  is_seam: boolean;
-  face_ids: number[];
-}
-
-export interface VertexEntity {
-  vertex_id: number;
-  position: Vector3;
-}
-
-/**
- * Selectable B-Rep entities, present when `include_topology_entities=true`.
- *
- * Coordinates share the CAD frame used by every other position in the
- * response, so a viewer places them all with one transform. The `*_count`
- * fields always describe the whole model even when the lists are capped.
- */
-export interface TopologyEntities {
-  faces: FaceDetail[];
-  edges: EdgeEntity[];
-  vertices: VertexEntity[];
-  face_count: number;
-  edge_count: number;
-  vertex_count: number;
-  truncated: boolean;
-  entity_limit: number;
-}
-
 export type WarningCode =
   | "MULTIPLE_SOLIDS"
   | "NO_SOLID"
@@ -449,7 +408,6 @@ export interface MachiningAnalysisResponse {
     include_face_details: boolean;
     include_feature_details: boolean;
     include_debug_geometry: boolean;
-    include_topology_entities: boolean;
   };
   analysis_duration_ms: number | null;
   file: FileInfo;
@@ -458,8 +416,6 @@ export interface MachiningAnalysisResponse {
   topology: TopologyInfo;
   surface_summary: SurfaceSummary;
   face_details: FaceDetail[] | null;
-  /** Selectable faces, edges and vertices. Opt-in; null unless requested. */
-  topology_entities: TopologyEntities | null;
   features: FeatureCollection;
   feature_patterns: FeaturePattern[];
   feature_dimensions: FeatureDimensionRatio[];
