@@ -1,0 +1,335 @@
+"""OpenCASCADE binding shim.
+
+Supports both binding flavours with the same call sites:
+
+* ``OCP``            (preferred - CadQuery's binding, newer OCCT)
+* ``pythonocc-core`` (accepted - module root ``OCC.Core``)
+
+Both expose identical OCCT class names; only the package root differs. Every
+other module in this package imports symbols from here rather than importing
+``OCC.Core.*`` or ``OCP.*`` directly, so the rest of the code is
+binding-agnostic and importable even when no kernel is installed (the symbols
+are simply ``None`` and :func:`require_kernel` raises).
+"""
+
+from __future__ import annotations
+
+import importlib
+import logging
+from typing import Any, Optional
+
+logger = logging.getLogger(__name__)
+
+#: Module roots probed in preference order.
+_BINDING_ROOTS = ("OCP", "OCC.Core")
+
+_binding_name: Optional[str] = None
+_root: Optional[str] = None
+
+
+def _probe() -> Optional[str]:
+    """Return the importable binding root, or ``None`` when no kernel exists."""
+    for root in _BINDING_ROOTS:
+        try:
+            importlib.import_module(f"{root}.TopoDS")
+            return root
+        except Exception:  # pragma: no cover - depends on the environment
+            continue
+    return None
+
+
+_root = _probe()
+_binding_name = {"OCP": "OCP", "OCC.Core": "pythonocc-core"}.get(_root or "")
+
+
+def kernel_available() -> bool:
+    """True when an OpenCASCADE Python binding is importable."""
+    return _root is not None
+
+
+def kernel_name() -> Optional[str]:
+    """Name of the active binding (``OCP`` / ``pythonocc-core``) or ``None``."""
+    return _binding_name
+
+
+def require_kernel() -> None:
+    """Raise when no CAD kernel is installed.
+
+    Callers convert this into an HTTP 503 - the service is deployable without
+    OCCT, but the machining endpoint cannot function without it.
+    """
+    if not kernel_available():
+        raise KernelUnavailable(
+            "No OpenCASCADE binding found. Install 'OCP' (preferred) or "
+            "'pythonocc-core' (conda-forge) to enable machining analysis."
+        )
+
+
+class KernelUnavailable(RuntimeError):
+    """Raised when OCCT is needed but not installed."""
+
+
+def _load(module: str, *names: str) -> tuple:
+    """Import ``names`` from ``<root>.<module>``; return ``None`` placeholders.
+
+    Missing individual symbols are tolerated because the two bindings differ in
+    a handful of helper names across OCCT versions; each call site that depends
+    on an optional symbol checks for ``None`` first.
+    """
+    if _root is None:
+        return tuple(None for _ in names)
+    try:
+        mod = importlib.import_module(f"{_root}.{module}")
+    except Exception as exc:  # pragma: no cover
+        logger.debug("machining: optional OCC module %s unavailable: %s", module, exc)
+        return tuple(None for _ in names)
+    return tuple(getattr(mod, name, None) for name in names)
+
+
+# --- topology -------------------------------------------------------------
+(TopoDS_Shape, TopoDS_Face, TopoDS_Edge, topods, TopoDS) = _load(
+    "TopoDS", "TopoDS_Shape", "TopoDS_Face", "TopoDS_Edge", "topods", "TopoDS"
+)
+(TopExp_Explorer, topexp) = _load("TopExp", "TopExp_Explorer", "topexp")
+(
+    TopAbs_SOLID,
+    TopAbs_SHELL,
+    TopAbs_FACE,
+    TopAbs_EDGE,
+    TopAbs_VERTEX,
+    TopAbs_COMPOUND,
+    TopAbs_WIRE,
+    TopAbs_REVERSED,
+    TopAbs_FORWARD,
+) = _load(
+    "TopAbs",
+    "TopAbs_SOLID",
+    "TopAbs_SHELL",
+    "TopAbs_FACE",
+    "TopAbs_EDGE",
+    "TopAbs_VERTEX",
+    "TopAbs_COMPOUND",
+    "TopAbs_WIRE",
+    "TopAbs_REVERSED",
+    "TopAbs_FORWARD",
+)
+(TopTools_IndexedDataMapOfShapeListOfShape, TopTools_IndexedMapOfShape) = _load(
+    "TopTools",
+    "TopTools_IndexedDataMapOfShapeListOfShape",
+    "TopTools_IndexedMapOfShape",
+)
+
+# --- geometry adaptors ----------------------------------------------------
+(BRepAdaptor_Surface, BRepAdaptor_Curve) = _load(
+    "BRepAdaptor", "BRepAdaptor_Surface", "BRepAdaptor_Curve"
+)
+(
+    GeomAbs_Plane,
+    GeomAbs_Cylinder,
+    GeomAbs_Cone,
+    GeomAbs_Sphere,
+    GeomAbs_Torus,
+    GeomAbs_BezierSurface,
+    GeomAbs_BSplineSurface,
+    GeomAbs_SurfaceOfRevolution,
+    GeomAbs_SurfaceOfExtrusion,
+    GeomAbs_OffsetSurface,
+    GeomAbs_OtherSurface,
+    GeomAbs_Line,
+    GeomAbs_Circle,
+    GeomAbs_Ellipse,
+    GeomAbs_BSplineCurve,
+) = _load(
+    "GeomAbs",
+    "GeomAbs_Plane",
+    "GeomAbs_Cylinder",
+    "GeomAbs_Cone",
+    "GeomAbs_Sphere",
+    "GeomAbs_Torus",
+    "GeomAbs_BezierSurface",
+    "GeomAbs_BSplineSurface",
+    "GeomAbs_SurfaceOfRevolution",
+    "GeomAbs_SurfaceOfExtrusion",
+    "GeomAbs_OffsetSurface",
+    "GeomAbs_OtherSurface",
+    "GeomAbs_Line",
+    "GeomAbs_Circle",
+    "GeomAbs_Ellipse",
+    "GeomAbs_BSplineCurve",
+)
+
+# --- properties -----------------------------------------------------------
+(GProp_GProps,) = _load("GProp", "GProp_GProps")
+(brepgprop, BRepGProp) = _load("BRepGProp", "brepgprop", "BRepGProp")
+(Bnd_Box,) = _load("Bnd", "Bnd_Box")
+(brepbndlib, BRepBndLib) = _load("BRepBndLib", "brepbndlib", "BRepBndLib")
+
+# --- surface access -------------------------------------------------------
+(BRep_Tool,) = _load("BRep", "BRep_Tool")
+(breptools, BRepTools) = _load("BRepTools", "breptools", "BRepTools")
+(BRepLProp_SLProps,) = _load("BRepLProp", "BRepLProp_SLProps")
+(BRepCheck_Analyzer,) = _load("BRepCheck", "BRepCheck_Analyzer")
+(BRepClass3d_SolidClassifier,) = _load("BRepClass3d", "BRepClass3d_SolidClassifier")
+(TopAbs_IN, TopAbs_OUT, TopAbs_ON) = _load("TopAbs", "TopAbs_IN", "TopAbs_OUT", "TopAbs_ON")
+
+# --- ray casting (accessibility) -----------------------------------------
+(BRepIntCurveSurface_Inter,) = _load("BRepIntCurveSurface", "BRepIntCurveSurface_Inter")
+(gp_Pnt, gp_Dir, gp_Vec, gp_Lin, gp_Ax1, gp_Pln, gp_XYZ) = _load(
+    "gp", "gp_Pnt", "gp_Dir", "gp_Vec", "gp_Lin", "gp_Ax1", "gp_Pln", "gp_XYZ"
+)
+
+# --- readers --------------------------------------------------------------
+(STEPControl_Reader,) = _load("STEPControl", "STEPControl_Reader")
+(IGESControl_Reader,) = _load("IGESControl", "IGESControl_Reader")
+(IFSelect_RetDone,) = _load("IFSelect", "IFSelect_RetDone")
+(Interface_Static,) = _load("Interface", "Interface_Static")
+
+# --- STEP metadata / PMI (XCAF) ------------------------------------------
+(STEPCAFControl_Reader,) = _load("STEPCAFControl", "STEPCAFControl_Reader")
+(TDocStd_Document,) = _load("TDocStd", "TDocStd_Document")
+(XCAFDoc_DocumentTool,) = _load("XCAFDoc", "XCAFDoc_DocumentTool")
+(TDF_LabelSequence, TDF_Label) = _load("TDF", "TDF_LabelSequence", "TDF_Label")
+(TDataStd_Name,) = _load("TDataStd", "TDataStd_Name")
+(TCollection_ExtendedString, TCollection_AsciiString) = _load(
+    "TCollection", "TCollection_ExtendedString", "TCollection_AsciiString"
+)
+(BinXCAFDrivers,) = _load("BinXCAFDrivers", "BinXCAFDrivers")
+
+
+def surface_props(shape: Any) -> float:
+    """Surface area of ``shape`` in file units (mm)."""
+    props = GProp_GProps()
+    _surface_properties(shape, props)
+    return float(props.Mass())
+
+
+def volume_props(shape: Any):
+    """Return the OCCT volume ``GProp_GProps`` for ``shape``."""
+    props = GProp_GProps()
+    _volume_properties(shape, props)
+    return props
+
+
+def linear_props(shape: Any):
+    """Return the OCCT linear (edge length) ``GProp_GProps`` for ``shape``."""
+    props = GProp_GProps()
+    _linear_properties(shape, props)
+    return props
+
+
+def _resolve_static(holders: tuple, *names: str):
+    """Find a callable across binding naming conventions.
+
+    OCP suffixes every static method with ``_s`` (``Add_s``), pythonocc exposes
+    a lowercase singleton with the bare name (``brepbndlib.Add``), and older
+    pythonocc builds used module-level ``brepbndlib_Add`` functions. Trying all
+    three is what keeps a single call site working on both bindings.
+    """
+    for holder in holders:
+        if holder is None:
+            continue
+        for name in names:
+            for candidate in (name, f"{name}_s"):
+                fn = getattr(holder, candidate, None)
+                if fn is not None:
+                    return fn
+    return None
+
+
+def _call_gprop(name: str, shape: Any, props: Any) -> None:
+    """Invoke a BRepGProp routine across binding/version naming differences."""
+    fn = _resolve_static((brepgprop, BRepGProp), name)
+    if fn is None:
+        raise KernelUnavailable(f"BRepGProp.{name} unavailable in this binding")
+    fn(shape, props)
+
+
+def _volume_properties(shape: Any, props: Any) -> None:
+    _call_gprop("VolumeProperties", shape, props)
+
+
+def _surface_properties(shape: Any, props: Any) -> None:
+    _call_gprop("SurfaceProperties", shape, props)
+
+
+def _linear_properties(shape: Any, props: Any) -> None:
+    _call_gprop("LinearProperties", shape, props)
+
+
+def add_to_bbox(shape: Any, box: Any, use_triangulation: bool = False) -> None:
+    """``BRepBndLib::Add`` across bindings."""
+    fn = _resolve_static((brepbndlib, BRepBndLib), "Add", "brepbndlib_Add")
+    if fn is None:
+        raise KernelUnavailable("BRepBndLib.Add unavailable in this binding")
+    fn(shape, box, use_triangulation)
+
+
+def face_uv_bounds(face: Any) -> tuple:
+    """``BRepTools::UVBounds`` across bindings -> ``(umin, umax, vmin, vmax)``."""
+    fn = _resolve_static((breptools, BRepTools), "UVBounds")
+    if fn is None:
+        raise KernelUnavailable("BRepTools.UVBounds unavailable in this binding")
+    result = fn(face)
+    if result is not None:
+        return tuple(float(v) for v in result)
+    raise KernelUnavailable("BRepTools.UVBounds returned no bounds")
+
+
+def map_shapes_and_ancestors(shape: Any, child_type: Any, parent_type: Any):
+    """``TopExp::MapShapesAndAncestors`` across bindings."""
+    fn = _resolve_static((topexp, _topexp_class()), "MapShapesAndAncestors")
+    if fn is None:
+        raise KernelUnavailable("TopExp.MapShapesAndAncestors unavailable")
+    mapping = TopTools_IndexedDataMapOfShapeListOfShape()
+    fn(shape, child_type, parent_type, mapping)
+    return mapping
+
+
+def _topexp_class():
+    """The ``TopExp`` static class, which OCP exposes alongside the module."""
+    if _root is None:
+        return None
+    try:
+        return getattr(importlib.import_module(f"{_root}.TopExp"), "TopExp", None)
+    except Exception:  # pragma: no cover
+        return None
+
+
+def _downcast(shape: Any, kind: str) -> Any:
+    """Cast a generic ``TopoDS_Shape`` to ``TopoDS_Face`` / ``TopoDS_Edge``.
+
+    ``TopExp_Explorer`` and the ancestor maps hand back base-class shapes, but
+    ``BRepAdaptor_Surface``/``BRepAdaptor_Curve`` only accept the concrete type.
+    """
+    fn = _resolve_static((topods, TopoDS), kind)
+    if fn is None:
+        return shape
+    try:
+        return fn(shape)
+    except Exception:
+        return shape
+
+
+def to_face(shape: Any) -> Any:
+    return _downcast(shape, "Face")
+
+
+def to_edge(shape: Any) -> Any:
+    return _downcast(shape, "Edge")
+
+
+def iter_shapes(shape: Any, shape_type: Any):
+    """Yield every sub-shape of ``shape_type`` contained in ``shape``."""
+    explorer = TopExp_Explorer(shape, shape_type)
+    while explorer.More():
+        yield explorer.Current()
+        explorer.Next()
+
+
+def iter_unique_shapes(shape: Any, shape_type: Any):
+    """Yield each distinct sub-shape once (``TopExp_Explorer`` repeats shared ones)."""
+    seen = TopTools_IndexedMapOfShape()
+    for sub in iter_shapes(shape, shape_type):
+        if not seen.Contains(sub):
+            seen.Add(sub)
+            yield sub

@@ -1,0 +1,61 @@
+{
+  "_comment": [
+    "Effective thresholds for POST /api/v1/cad/analyze-machining.",
+    "Every value is a geometric decision boundary - there are no prices,",
+    "rates, machines or processes here, by design.",
+    "Override a single value with MACHINING_<FIELD_NAME_UPPERCASE>, or point",
+    "MACHINING_CONFIG_PATH at a different JSON file. See app/machining/config.py."
+  ],
+
+  "max_upload_bytes": 104857600,
+  "max_faces": 50000,
+
+  "linear_tolerance_mm": 0.0001,
+  "angular_tolerance_deg": 1.0,
+  "tangency_tolerance_deg": 5.0,
+  "coaxial_tolerance_mm": 0.05,
+
+  "min_hole_diameter_mm": 0.5,
+  "max_hole_diameter_mm": 25.0,
+  "bore_min_diameter_mm": 25.0,
+  "bore_min_depth_mm": 10.0,
+  "hole_min_angular_span_deg": 180.0,
+  "countersink_max_half_angle_deg": 75.0,
+  "counterbore_min_diameter_ratio": 1.15,
+
+  "pocket_min_depth_mm": 0.5,
+  "pocket_min_wall_count": 3,
+  "pocket_min_area_mm2": 4.0,
+  "slot_min_aspect_ratio": 3.0,
+  "slot_max_width_mm": 50.0,
+  "keyway_max_width_mm": 25.0,
+
+  "boss_min_height_mm": 1.0,
+  "boss_min_diameter_mm": 1.0,
+
+  "fillet_max_radius_mm": 50.0,
+  "chamfer_max_width_mm": 10.0,
+  "chamfer_min_angle_deg": 10.0,
+  "chamfer_max_angle_deg": 80.0,
+  "chamfer_max_aspect_for_band": 0.35,
+
+  "deep_hole_depth_diameter_ratio": 5.0,
+  "very_deep_hole_depth_diameter_ratio": 10.0,
+  "deep_pocket_depth_width_ratio": 4.0,
+  "small_hole_diameter_mm": 2.0,
+  "thin_wall_thickness_mm": 1.5,
+  "narrow_slot_width_mm": 3.0,
+
+  "tool_diameter_safety_factor": 1.0,
+  "min_practical_tool_diameter_mm": 0.5,
+
+  "accessibility_ray_clearance_mm": 1.0,
+  "accessibility_hit_tolerance_mm": 0.5,
+
+  "stock_allowance_mm": 2.5,
+  "stock_round_up_to_mm": 0.0,
+
+  "length_decimals": 3,
+  "area_decimals": 2,
+  "volume_decimals": 2
+}

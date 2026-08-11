@@ -6,6 +6,7 @@ import logging
 
 from .routers import analyze, gltf, health
 from .api import manufacturability_scoring, conversion
+from .api.v1 import machining as machining_v1
 from .workers.celery import celery_app
 from . import otel
 from . import logging_config
@@ -29,15 +30,127 @@ def _background_ml_pretrain():
     except Exception as exc:
         logger.warning("ML pre-training background task failed: %s (continuing without ML)", exc)
 
+API_DESCRIPTION = """
+CAD analysis and conversion service.
+
+Upload a CAD file and get back geometry, manufacturing features, meshes for
+preview, or a manufacturability assessment.
+
+### Where to start
+
+* **machining-analysis** - `POST /api/v1/cad/analyze-machining` extracts
+  machining-relevant geometry from STEP/IGES/BREP deterministically. Start here
+  for CNC feature extraction.
+* **analyze** - general multi-format analysis (STEP, IGES, STL, OBJ, DXF).
+* **gltf** - GLB meshes for the 3D viewer.
+
+### Units
+
+All linear dimensions are millimetres and all areas are mm² unless an endpoint
+documents otherwise. STEP files are read with the OpenCASCADE unit pinned to
+MM, so a file authored in inches yields the same numbers as one authored in
+millimetres.
+
+### CAD kernel
+
+STEP/IGES/BREP handling needs an OpenCASCADE binding (`OCP` or
+`pythonocc-core`). When neither is installed, those endpoints return
+**503**; STL and DXF handling is unaffected.
+"""
+
+OPENAPI_TAGS = [
+    {
+        "name": "machining-analysis",
+        "description": (
+            "**Deterministic CNC geometry extraction.** Answers *what geometry "
+            "exists* - bounding box, mass properties, face classification, "
+            "holes, bores, pockets, slots, bosses, fillets, chamfers, threads, "
+            "repeated-feature patterns, tool-diameter constraints, "
+            "accessibility and setup candidates, and a bounding-box stock "
+            "estimate.\n\n"
+            "It deliberately does **not** estimate cost, select a machine or "
+            "process, or produce a price - those belong to downstream services. "
+            "No LLM is involved: the same file always returns the same JSON."
+        ),
+        "externalDocs": {
+            "description": "Endpoint README - detectors, thresholds, error codes",
+            "url": "https://github.com/seovimalraj/cnc-quote/blob/main/apps/cad-service/app/machining/README.md",
+        },
+    },
+    {
+        "name": "analyze",
+        "description": (
+            "General CAD analysis across STEP, IGES, STL, OBJ and DXF, including "
+            "process classification and DFM checks. Asynchronous via Celery "
+            "(`POST /analyze`, then poll `GET /analyze/{task_id}`) or immediate "
+            "via `POST /analyze/sync`."
+        ),
+    },
+    {
+        "name": "gltf",
+        "description": (
+            "GLB mesh generation for the 3D viewer, with low/med/high levels of "
+            "detail cached by file hash."
+        ),
+    },
+    {
+        "name": "scoring",
+        "description": "Manufacturability scoring over previously extracted features.",
+    },
+    {
+        "name": "conversion",
+        "description": "Direct STEP/IGES to STL/OBJ tessellation and download.",
+    },
+    {
+        "name": "health",
+        "description": "Liveness and readiness, including Celery and system resources.",
+    },
+]
+
+
+def _openapi_servers():
+    """Server list for the Swagger 'Servers' selector.
+
+    The deployed origin comes from PUBLIC_BASE_URL when set, so 'Try it out'
+    targets the right host instead of defaulting to the docs page origin.
+    """
+    servers = []
+    public = os.getenv("PUBLIC_BASE_URL")
+    if public:
+        servers.append({"url": public.rstrip("/"), "description": "Deployed"})
+    port = os.getenv("PORT", "8001")
+    servers.append({"url": f"http://localhost:{port}", "description": "Local development"})
+    return servers
+
+
 def create_app():
     global otel_initialized
-    
+
     app = FastAPI(
         title="CAD Service",
-        description="CAD analysis and conversion service for CNC Quote",
+        description=API_DESCRIPTION,
         version="1.0.0",
         docs_url="/docs",
-        redoc_url="/redoc"
+        redoc_url="/redoc",
+        openapi_url="/openapi.json",
+        openapi_tags=OPENAPI_TAGS,
+        servers=_openapi_servers(),
+        # A `url` rather than an `email`: FastAPI types Contact.email as
+        # EmailStr, which pulls in the optional email-validator package.
+        contact={
+            "name": "Frigate Engineering",
+            "url": "https://github.com/seovimalraj/cnc-quote/tree/main/apps/cad-service",
+        },
+        swagger_ui_parameters={
+            # Collapsed by default: the machining response schema is large and
+            # an expanded page is unreadable.
+            "docExpansion": "none",
+            "defaultModelsExpandDepth": 1,
+            "displayRequestDuration": True,
+            "filter": True,
+            "tryItOutEnabled": True,
+            "persistAuthorization": True,
+        },
     )
 
     # Initialize observability (once)
@@ -72,6 +185,10 @@ def create_app():
     app.include_router(health.router, tags=["health"])
     app.include_router(manufacturability_scoring.router, prefix="/scoring", tags=["scoring"])
     app.include_router(conversion.router, prefix="/convert", tags=["conversion"])
+    # Deterministic machining geometry extraction (no cost, no pricing).
+    app.include_router(
+        machining_v1.router, prefix="/api/v1/cad", tags=["machining-analysis"]
+    )
 
     @app.get("/")
     async def root():

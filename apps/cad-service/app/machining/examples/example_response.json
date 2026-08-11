@@ -1,0 +1,967 @@
+{
+  "success": true,
+  "analysis_version": "1.0",
+  "kernel": "OCP",
+  "units": "mm",
+  "options": {
+    "unit_system": "metric",
+    "include_face_details": false,
+    "include_feature_details": true,
+    "include_debug_geometry": false
+  },
+  "analysis_duration_ms": null,
+  "file": {
+    "filename": "demo_bracket.step",
+    "format": "STEP",
+    "file_size_bytes": 95534,
+    "sha256": "<sha256 of the uploaded file>"
+  },
+  "model": {
+    "solid_count": 1,
+    "shell_count": 1,
+    "face_count": 28,
+    "edge_count": 77,
+    "vertex_count": 51,
+    "wire_count": 38,
+    "compound_count": 0,
+    "is_valid": true,
+    "has_open_shells": false,
+    "is_multi_body": false
+  },
+  "geometry": {
+    "bounding_box": {
+      "min": {
+        "x": -0.0,
+        "y": -0.0,
+        "z": -0.0
+      },
+      "max": {
+        "x": 120.0,
+        "y": 80.0,
+        "z": 35.0
+      },
+      "length_mm": 120.0,
+      "width_mm": 80.0,
+      "height_mm": 35.0,
+      "diagonal_mm": 148.408
+    },
+    "volume_mm3": 321652.57,
+    "surface_area_mm2": 37648.81,
+    "center_of_mass": {
+      "x": 60.291,
+      "y": 39.988,
+      "z": 17.131
+    },
+    "moments_of_inertia": {
+      "ixx": 208143146.43480754,
+      "iyy": 423962659.63826656,
+      "izz": 568118730.5573089,
+      "ixy": 37939.16223394871,
+      "ixz": -1277602.3090651035,
+      "iyz": 61576.459856271744,
+      "principal": [
+        568123291.0709623,
+        423962640.19806105,
+        208138605.36135975
+      ]
+    },
+    "is_closed_volume": true,
+    "source": "GEOMETRY"
+  },
+  "topology": {
+    "faces_per_solid": [
+      28
+    ],
+    "closed_shell_count": 1,
+    "open_shell_count": 0,
+    "free_edge_count": 0,
+    "seam_edge_count": 5,
+    "max_faces_per_edge": 2,
+    "euler_characteristic": 2
+  },
+  "surface_summary": {
+    "planar_faces": 21,
+    "cylindrical_faces": 7,
+    "conical_faces": 0,
+    "spherical_faces": 0,
+    "toroidal_faces": 0,
+    "freeform_faces": 0,
+    "other_faces": 0,
+    "total_faces": 28,
+    "internal_cylindrical_faces": 7,
+    "external_cylindrical_faces": 0
+  },
+  "face_details": null,
+  "features": {
+    "holes": [
+      {
+        "id": "HOLE-001",
+        "type": "hole",
+        "detection": {
+          "method": "coaxial_grouping",
+          "confidence": 0.95,
+          "evidence": [
+            "1 coaxial concave cylindrical face(s)",
+            "angular span 360.0 deg",
+            "closed by face 26 - blind"
+          ],
+          "source": "GEOMETRY"
+        },
+        "status": "resolved",
+        "reason": null,
+        "face_ids": [
+          24,
+          26
+        ],
+        "subtype": "blind",
+        "diameter_mm": 8.0,
+        "radius_mm": 4.0,
+        "depth_mm": 29.00000020000001,
+        "through": false,
+        "position": {
+          "x": 60.0,
+          "y": 40.0,
+          "z": -1.0000000028043132e-07
+        },
+        "axis": {
+          "x": -0.0,
+          "y": -0.0,
+          "z": -1.0
+        },
+        "quantity": 1,
+        "depth_diameter_ratio": 3.625000025000001,
+        "is_stepped": false,
+        "has_counterbore": false,
+        "has_countersink": false,
+        "counterbore_diameter_mm": null,
+        "counterbore_depth_mm": null,
+        "countersink_diameter_mm": null,
+        "countersink_angle_deg": null,
+        "coaxial_feature_ids": [],
+        "steps": []
+      },
+      {
+        "id": "HOLE-002",
+        "type": "hole",
+        "detection": {
+          "method": "coaxial_grouping",
+          "confidence": 0.85,
+          "evidence": [
+            "1 coaxial concave cylindrical face(s)",
+            "angular span 360.0 deg",
+            "no closing face found on either end - through"
+          ],
+          "source": "GEOMETRY"
+        },
+        "status": "resolved",
+        "reason": null,
+        "face_ids": [
+          7
+        ],
+        "subtype": "through",
+        "diameter_mm": 6.0,
+        "radius_mm": 3.0,
+        "depth_mm": 35.0000002,
+        "through": true,
+        "position": {
+          "x": 15.0,
+          "y": 15.0,
+          "z": 35.0000001
+        },
+        "axis": {
+          "x": 0.0,
+          "y": 0.0,
+          "z": 1.0
+        },
+        "quantity": 1,
+        "depth_diameter_ratio": 5.833333366666667,
+        "is_stepped": false,
+        "has_counterbore": false,
+        "has_countersink": false,
+        "counterbore_diameter_mm": null,
+        "counterbore_depth_mm": null,
+        "countersink_diameter_mm": null,
+        "countersink_angle_deg": null,
+        "coaxial_feature_ids": [],
+        "steps": []
+      },
+      {
+        "id": "HOLE-003",
+        "type": "hole",
+        "detection": {
+          "method": "coaxial_grouping",
+          "confidence": 0.85,
+          "evidence": [
+            "1 coaxial concave cylindrical face(s)",
+            "angular span 360.0 deg",
+            "no closing face found on either end - through"
+          ],
+          "source": "GEOMETRY"
+        },
+        "status": "resolved",
+        "reason": null,
+        "face_ids": [
+          8
+        ],
+        "subtype": "through",
+        "diameter_mm": 6.0,
+        "radius_mm": 3.0,
+        "depth_mm": 35.0000002,
+        "through": true,
+        "position": {
+          "x": 105.0,
+          "y": 15.0,
+          "z": 35.0000001
+        },
+        "axis": {
+          "x": 0.0,
+          "y": 0.0,
+          "z": 1.0
+        },
+        "quantity": 1,
+        "depth_diameter_ratio": 5.833333366666667,
+        "is_stepped": false,
+        "has_counterbore": false,
+        "has_countersink": false,
+        "counterbore_diameter_mm": null,
+        "counterbore_depth_mm": null,
+        "countersink_diameter_mm": null,
+        "countersink_angle_deg": null,
+        "coaxial_feature_ids": [],
+        "steps": []
+      },
+      {
+        "id": "HOLE-004",
+        "type": "hole",
+        "detection": {
+          "method": "coaxial_grouping",
+          "confidence": 0.85,
+          "evidence": [
+            "1 coaxial concave cylindrical face(s)",
+            "angular span 360.0 deg",
+            "no closing face found on either end - through"
+          ],
+          "source": "GEOMETRY"
+        },
+        "status": "resolved",
+        "reason": null,
+        "face_ids": [
+          9
+        ],
+        "subtype": "through",
+        "diameter_mm": 6.0,
+        "radius_mm": 3.0,
+        "depth_mm": 35.0000002,
+        "through": true,
+        "position": {
+          "x": 15.0,
+          "y": 65.0,
+          "z": 35.0000001
+        },
+        "axis": {
+          "x": 0.0,
+          "y": 0.0,
+          "z": 1.0
+        },
+        "quantity": 1,
+        "depth_diameter_ratio": 5.833333366666667,
+        "is_stepped": false,
+        "has_counterbore": false,
+        "has_countersink": false,
+        "counterbore_diameter_mm": null,
+        "counterbore_depth_mm": null,
+        "countersink_diameter_mm": null,
+        "countersink_angle_deg": null,
+        "coaxial_feature_ids": [],
+        "steps": []
+      },
+      {
+        "id": "HOLE-005",
+        "type": "hole",
+        "detection": {
+          "method": "coaxial_grouping",
+          "confidence": 0.85,
+          "evidence": [
+            "1 coaxial concave cylindrical face(s)",
+            "angular span 360.0 deg",
+            "no closing face found on either end - through"
+          ],
+          "source": "GEOMETRY"
+        },
+        "status": "resolved",
+        "reason": null,
+        "face_ids": [
+          23
+        ],
+        "subtype": "through",
+        "diameter_mm": 6.0,
+        "radius_mm": 3.0,
+        "depth_mm": 35.0000002,
+        "through": true,
+        "position": {
+          "x": 105.0,
+          "y": 65.0,
+          "z": 35.0000001
+        },
+        "axis": {
+          "x": 0.0,
+          "y": 0.0,
+          "z": 1.0
+        },
+        "quantity": 1,
+        "depth_diameter_ratio": 5.833333366666667,
+        "is_stepped": false,
+        "has_counterbore": false,
+        "has_countersink": false,
+        "counterbore_diameter_mm": null,
+        "counterbore_depth_mm": null,
+        "countersink_diameter_mm": null,
+        "countersink_angle_deg": null,
+        "coaxial_feature_ids": [],
+        "steps": []
+      }
+    ],
+    "bores": [],
+    "internal_cylindrical_features": [],
+    "pockets": [
+      {
+        "id": "POCKET-001",
+        "type": "pocket",
+        "detection": {
+          "method": "topology_and_surface_analysis",
+          "confidence": 0.9,
+          "evidence": [
+            "planar floor face 27 recessed below the silhouette",
+            "6 enclosing wall face(s)",
+            "depth 8.0 mm along the floor normal",
+            "floor boundary fully enclosed by walls"
+          ],
+          "source": "GEOMETRY"
+        },
+        "status": "resolved",
+        "reason": null,
+        "face_ids": [
+          14,
+          15,
+          16,
+          20,
+          21,
+          24,
+          27
+        ],
+        "length_mm": 30.000000200000002,
+        "width_mm": 30.000000200000002,
+        "depth_mm": 8.000000100000001,
+        "area_mm2": 874.8672587712816,
+        "bottom_type": "planar",
+        "closed": true,
+        "corner_radius_mm": 4.0,
+        "minimum_internal_radius_mm": 4.0,
+        "machining_direction": [
+          0.0,
+          0.0,
+          1.0
+        ],
+        "position": {
+          "x": 44.61785693953886,
+          "y": 40.0,
+          "z": 27.0
+        },
+        "depth_width_ratio": 0.26666666822222224,
+        "wall_count": 6
+      },
+      {
+        "id": "POCKET-002",
+        "type": "pocket",
+        "detection": {
+          "method": "topology_and_surface_analysis",
+          "confidence": 0.9,
+          "evidence": [
+            "planar floor face 28 recessed below the silhouette",
+            "4 enclosing wall face(s)",
+            "depth 5.0 mm along the floor normal",
+            "floor boundary fully enclosed by walls"
+          ],
+          "source": "GEOMETRY"
+        },
+        "status": "resolved",
+        "reason": null,
+        "face_ids": [
+          16,
+          17,
+          18,
+          19,
+          28
+        ],
+        "length_mm": 10.000000200000002,
+        "width_mm": 6.000000200000002,
+        "depth_mm": 5.000000100000001,
+        "area_mm2": 59.999999999999986,
+        "bottom_type": "planar",
+        "closed": true,
+        "corner_radius_mm": null,
+        "minimum_internal_radius_mm": null,
+        "machining_direction": [
+          0.0,
+          0.0,
+          1.0
+        ],
+        "position": {
+          "x": 25.0,
+          "y": 43.0,
+          "z": 30.0
+        },
+        "depth_width_ratio": 0.8333333222222225,
+        "wall_count": 4
+      }
+    ],
+    "slots": [
+      {
+        "id": "SLOT-001",
+        "type": "slot",
+        "detection": {
+          "method": "topology_and_surface_analysis",
+          "confidence": 0.8,
+          "evidence": [
+            "planar floor face 25 recessed below the silhouette",
+            "4 enclosing wall face(s)",
+            "depth 5.0 mm along the floor normal",
+            "length/width aspect ratio 6.07 >= 3.0"
+          ],
+          "source": "GEOMETRY"
+        },
+        "status": "resolved",
+        "reason": null,
+        "face_ids": [
+          10,
+          11,
+          12,
+          13,
+          25
+        ],
+        "subtype": "blind_slot",
+        "length_mm": 36.39444892453599,
+        "width_mm": 6.000000200000002,
+        "depth_mm": 5.000000100000005,
+        "through": false,
+        "corner_radius_mm": 7.0,
+        "orientation": {
+          "x": -1.0,
+          "y": 0.0,
+          "z": 0.0
+        },
+        "machining_direction": [
+          0.0,
+          0.0,
+          1.0
+        ],
+        "position": {
+          "x": 82.99027821239552,
+          "y": 43.04620314651584,
+          "z": 29.999999999999996
+        },
+        "depth_width_ratio": 0.833333322222223
+      }
+    ],
+    "bosses": [],
+    "threads": [],
+    "fillets": [],
+    "chamfers": [],
+    "fillet_summary": {
+      "count": 0,
+      "unique_radii_mm": [],
+      "minimum_radius_mm": null,
+      "minimum_internal_radius_mm": null
+    },
+    "chamfer_summary": {
+      "count": 0,
+      "sizes_mm": [],
+      "unique_angles_deg": []
+    }
+  },
+  "feature_patterns": [
+    {
+      "type": "repeated_hole",
+      "feature_type": "hole",
+      "feature_count": 4,
+      "feature_ids": [
+        "HOLE-002",
+        "HOLE-003",
+        "HOLE-004",
+        "HOLE-005"
+      ],
+      "pattern_type": "rectangular",
+      "diameter_mm": 6.0,
+      "length_mm": null,
+      "width_mm": null,
+      "depth_mm": 35.0000002,
+      "spacing_mm": null,
+      "axis": {
+        "x": 0.0,
+        "y": 0.0,
+        "z": 1.0
+      },
+      "detection": {
+        "method": "topology_and_surface_analysis",
+        "confidence": 0.95,
+        "evidence": [
+          "4 features identical on diameter and depth",
+          "positions form a rectangular arrangement"
+        ],
+        "source": "GEOMETRY"
+      }
+    }
+  ],
+  "feature_dimensions": [
+    {
+      "feature_id": "HOLE-001",
+      "feature_type": "hole",
+      "diameter_mm": 8.0,
+      "width_mm": null,
+      "depth_mm": 29.00000020000001,
+      "depth_diameter_ratio": 3.625000025000001,
+      "depth_width_ratio": null
+    },
+    {
+      "feature_id": "HOLE-002",
+      "feature_type": "hole",
+      "diameter_mm": 6.0,
+      "width_mm": null,
+      "depth_mm": 35.0000002,
+      "depth_diameter_ratio": 5.833333366666667,
+      "depth_width_ratio": null
+    },
+    {
+      "feature_id": "HOLE-003",
+      "feature_type": "hole",
+      "diameter_mm": 6.0,
+      "width_mm": null,
+      "depth_mm": 35.0000002,
+      "depth_diameter_ratio": 5.833333366666667,
+      "depth_width_ratio": null
+    },
+    {
+      "feature_id": "HOLE-004",
+      "feature_type": "hole",
+      "diameter_mm": 6.0,
+      "width_mm": null,
+      "depth_mm": 35.0000002,
+      "depth_diameter_ratio": 5.833333366666667,
+      "depth_width_ratio": null
+    },
+    {
+      "feature_id": "HOLE-005",
+      "feature_type": "hole",
+      "diameter_mm": 6.0,
+      "width_mm": null,
+      "depth_mm": 35.0000002,
+      "depth_diameter_ratio": 5.833333366666667,
+      "depth_width_ratio": null
+    },
+    {
+      "feature_id": "POCKET-001",
+      "feature_type": "pocket",
+      "diameter_mm": null,
+      "width_mm": 30.000000200000002,
+      "depth_mm": 8.000000100000001,
+      "depth_diameter_ratio": null,
+      "depth_width_ratio": 0.26666666822222224
+    },
+    {
+      "feature_id": "POCKET-002",
+      "feature_type": "pocket",
+      "diameter_mm": null,
+      "width_mm": 6.000000200000002,
+      "depth_mm": 5.000000100000001,
+      "depth_diameter_ratio": null,
+      "depth_width_ratio": 0.8333333222222225
+    },
+    {
+      "feature_id": "SLOT-001",
+      "feature_type": "slot",
+      "diameter_mm": null,
+      "width_mm": 6.000000200000002,
+      "depth_mm": 5.000000100000005,
+      "depth_diameter_ratio": null,
+      "depth_width_ratio": 0.833333322222223
+    }
+  ],
+  "machining_flags": [
+    {
+      "feature_id": "HOLE-002",
+      "flag": "DEEP_HOLE",
+      "reason": "depth_diameter_ratio = 5.833 >= 5.0",
+      "threshold": 5.0,
+      "value": 5.8333
+    },
+    {
+      "feature_id": "HOLE-003",
+      "flag": "DEEP_HOLE",
+      "reason": "depth_diameter_ratio = 5.833 >= 5.0",
+      "threshold": 5.0,
+      "value": 5.8333
+    },
+    {
+      "feature_id": "HOLE-004",
+      "flag": "DEEP_HOLE",
+      "reason": "depth_diameter_ratio = 5.833 >= 5.0",
+      "threshold": 5.0,
+      "value": 5.8333
+    },
+    {
+      "feature_id": "HOLE-005",
+      "flag": "DEEP_HOLE",
+      "reason": "depth_diameter_ratio = 5.833 >= 5.0",
+      "threshold": 5.0,
+      "value": 5.8333
+    }
+  ],
+  "machining_constraints": [
+    {
+      "feature_id": "POCKET-001",
+      "feature_type": "pocket",
+      "tooling_constraints": {
+        "minimum_internal_radius_mm": 4.0,
+        "maximum_tool_diameter_mm": 8.0,
+        "note": "Geometric limit only. No cutting parameters, tool selection, or feeds and speeds are implied."
+      }
+    },
+    {
+      "feature_id": "SLOT-001",
+      "feature_type": "slot",
+      "tooling_constraints": {
+        "minimum_internal_radius_mm": 7.0,
+        "maximum_tool_diameter_mm": 14.0,
+        "note": "Geometric limit only. No cutting parameters, tool selection, or feeds and speeds are implied."
+      }
+    }
+  ],
+  "accessibility": [
+    {
+      "feature_id": "HOLE-001",
+      "feature_type": "hole",
+      "accessibility": {
+        "+X": false,
+        "-X": false,
+        "+Y": false,
+        "-Y": false,
+        "+Z": true,
+        "-Z": true
+      },
+      "accessible_direction_count": 2,
+      "primary_direction": "-Z",
+      "requires_rotation": false,
+      "requires_advanced_axis_analysis": false,
+      "detection": {
+        "method": "ray_casting",
+        "confidence": 0.9,
+        "evidence": [
+          "2 of 6 principal directions clear",
+          "obstruction tested by ray casting against the solid"
+        ],
+        "source": "GEOMETRY"
+      }
+    },
+    {
+      "feature_id": "HOLE-002",
+      "feature_type": "hole",
+      "accessibility": {
+        "+X": false,
+        "-X": false,
+        "+Y": false,
+        "-Y": false,
+        "+Z": true,
+        "-Z": true
+      },
+      "accessible_direction_count": 2,
+      "primary_direction": "+Z",
+      "requires_rotation": false,
+      "requires_advanced_axis_analysis": false,
+      "detection": {
+        "method": "ray_casting",
+        "confidence": 0.9,
+        "evidence": [
+          "2 of 6 principal directions clear",
+          "obstruction tested by ray casting against the solid"
+        ],
+        "source": "GEOMETRY"
+      }
+    },
+    {
+      "feature_id": "HOLE-003",
+      "feature_type": "hole",
+      "accessibility": {
+        "+X": false,
+        "-X": false,
+        "+Y": false,
+        "-Y": false,
+        "+Z": true,
+        "-Z": true
+      },
+      "accessible_direction_count": 2,
+      "primary_direction": "+Z",
+      "requires_rotation": false,
+      "requires_advanced_axis_analysis": false,
+      "detection": {
+        "method": "ray_casting",
+        "confidence": 0.9,
+        "evidence": [
+          "2 of 6 principal directions clear",
+          "obstruction tested by ray casting against the solid"
+        ],
+        "source": "GEOMETRY"
+      }
+    },
+    {
+      "feature_id": "HOLE-004",
+      "feature_type": "hole",
+      "accessibility": {
+        "+X": false,
+        "-X": false,
+        "+Y": false,
+        "-Y": false,
+        "+Z": true,
+        "-Z": true
+      },
+      "accessible_direction_count": 2,
+      "primary_direction": "+Z",
+      "requires_rotation": false,
+      "requires_advanced_axis_analysis": false,
+      "detection": {
+        "method": "ray_casting",
+        "confidence": 0.9,
+        "evidence": [
+          "2 of 6 principal directions clear",
+          "obstruction tested by ray casting against the solid"
+        ],
+        "source": "GEOMETRY"
+      }
+    },
+    {
+      "feature_id": "HOLE-005",
+      "feature_type": "hole",
+      "accessibility": {
+        "+X": false,
+        "-X": false,
+        "+Y": false,
+        "-Y": false,
+        "+Z": true,
+        "-Z": true
+      },
+      "accessible_direction_count": 2,
+      "primary_direction": "+Z",
+      "requires_rotation": false,
+      "requires_advanced_axis_analysis": false,
+      "detection": {
+        "method": "ray_casting",
+        "confidence": 0.9,
+        "evidence": [
+          "2 of 6 principal directions clear",
+          "obstruction tested by ray casting against the solid"
+        ],
+        "source": "GEOMETRY"
+      }
+    },
+    {
+      "feature_id": "POCKET-001",
+      "feature_type": "pocket",
+      "accessibility": {
+        "+X": false,
+        "-X": false,
+        "+Y": false,
+        "-Y": false,
+        "+Z": true,
+        "-Z": false
+      },
+      "accessible_direction_count": 1,
+      "primary_direction": "+Z",
+      "requires_rotation": false,
+      "requires_advanced_axis_analysis": false,
+      "detection": {
+        "method": "ray_casting",
+        "confidence": 0.9,
+        "evidence": [
+          "1 of 6 principal directions clear",
+          "obstruction tested by ray casting against the solid"
+        ],
+        "source": "GEOMETRY"
+      }
+    },
+    {
+      "feature_id": "POCKET-002",
+      "feature_type": "pocket",
+      "accessibility": {
+        "+X": false,
+        "-X": false,
+        "+Y": false,
+        "-Y": false,
+        "+Z": true,
+        "-Z": false
+      },
+      "accessible_direction_count": 1,
+      "primary_direction": "+Z",
+      "requires_rotation": false,
+      "requires_advanced_axis_analysis": false,
+      "detection": {
+        "method": "ray_casting",
+        "confidence": 0.9,
+        "evidence": [
+          "1 of 6 principal directions clear",
+          "obstruction tested by ray casting against the solid"
+        ],
+        "source": "GEOMETRY"
+      }
+    },
+    {
+      "feature_id": "SLOT-001",
+      "feature_type": "slot",
+      "accessibility": {
+        "+X": false,
+        "-X": false,
+        "+Y": false,
+        "-Y": false,
+        "+Z": true,
+        "-Z": false
+      },
+      "accessible_direction_count": 1,
+      "primary_direction": "+Z",
+      "requires_rotation": false,
+      "requires_advanced_axis_analysis": false,
+      "detection": {
+        "method": "ray_casting",
+        "confidence": 0.9,
+        "evidence": [
+          "1 of 6 principal directions clear",
+          "obstruction tested by ray casting against the solid"
+        ],
+        "source": "GEOMETRY"
+      }
+    }
+  ],
+  "setup_analysis": {
+    "candidate_directions": [
+      {
+        "direction": "+Z",
+        "accessible_feature_count": 8,
+        "feature_ids": [
+          "HOLE-001",
+          "HOLE-002",
+          "HOLE-003",
+          "HOLE-004",
+          "HOLE-005",
+          "POCKET-001",
+          "POCKET-002",
+          "SLOT-001"
+        ]
+      },
+      {
+        "direction": "-Z",
+        "accessible_feature_count": 5,
+        "feature_ids": [
+          "HOLE-001",
+          "HOLE-002",
+          "HOLE-003",
+          "HOLE-004",
+          "HOLE-005"
+        ]
+      },
+      {
+        "direction": "+X",
+        "accessible_feature_count": 0,
+        "feature_ids": []
+      },
+      {
+        "direction": "+Y",
+        "accessible_feature_count": 0,
+        "feature_ids": []
+      },
+      {
+        "direction": "-X",
+        "accessible_feature_count": 0,
+        "feature_ids": []
+      },
+      {
+        "direction": "-Y",
+        "accessible_feature_count": 0,
+        "feature_ids": []
+      }
+    ],
+    "minimum_direction_count_covering_all": 1,
+    "unreachable_feature_ids": [],
+    "requires_rotation": false,
+    "note": "Geometric evidence for a downstream planner. This is not a setup plan."
+  },
+  "stock_analysis": {
+    "method": "bounding_box_plus_allowance",
+    "estimated": true,
+    "allowance_per_side_mm": 2.5,
+    "stock_dimensions_mm": {
+      "length": 125.0,
+      "width": 85.0,
+      "height": 40.0
+    },
+    "stock_volume_mm3": 425000.0,
+    "finished_volume_mm3": 321652.57,
+    "removed_volume_mm3": 103347.44,
+    "material_removal_ratio": 0.2432,
+    "note": "Bounding-box estimate. Not a commercially purchased stock size, and no material, grade, or cost is implied."
+  },
+  "complexity_indicators": {
+    "hole_count": 5,
+    "deep_hole_count": 4,
+    "pocket_count": 2,
+    "slot_count": 1,
+    "bore_count": 0,
+    "thread_count": 0,
+    "fillet_count": 0,
+    "chamfer_count": 0,
+    "boss_count": 0,
+    "freeform_surface_count": 0,
+    "thin_wall_count": 0,
+    "unique_tool_diameter_constraints": 2,
+    "accessible_directions": 2,
+    "distinct_hole_diameter_count": 2,
+    "minimum_internal_radius_mm": 4.0,
+    "maximum_depth_diameter_ratio": 5.8333,
+    "feature_count_total": 8
+  },
+  "pmi": {
+    "available": true,
+    "part_name": "Open CASCADE STEP translator 7.9 1",
+    "part_number": "Open CASCADE STEP translator 7.9 1",
+    "revision": null,
+    "material": null,
+    "surface_finish": null,
+    "gdt": [],
+    "datums": [],
+    "annotations": [],
+    "feature_names": [],
+    "raw": [
+      {
+        "key": "file_name",
+        "value": "Open CASCADE Shape Model",
+        "source": "CAD_METADATA"
+      },
+      {
+        "key": "file_description",
+        "value": "Open CASCADE Model",
+        "source": "CAD_METADATA"
+      },
+      {
+        "key": "product_id",
+        "value": "Open CASCADE STEP translator 7.9 1",
+        "source": "CAD_METADATA"
+      },
+      {
+        "key": "product_name",
+        "value": "Open CASCADE STEP translator 7.9 1",
+        "source": "CAD_METADATA"
+      }
+    ],
+    "source": "CAD_METADATA",
+    "note": "Everything here is declared by the CAD file, not measured from the geometry."
+  },
+  "warnings": [],
+  "errors": [],
+  "debug_geometry": null
+}
