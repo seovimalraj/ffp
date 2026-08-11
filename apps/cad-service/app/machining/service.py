@@ -42,6 +42,7 @@ from .pmi import PMIExtractor, thread_name_candidates
 from .records import MassProperties, ShapeModel
 from .schemas import (
     ANALYSIS_VERSION,
+    AnalysisError,
     AnalysisWarning,
     BoundingBox,
     DebugGeometry,
@@ -120,7 +121,20 @@ class MachiningAnalysisService:
             "topology", timings, warnings, lambda: self.topology_analyzer.build(loaded.shape)
         )
         if model is None:
+            # Topology is the foundation every later stage reads from, so
+            # losing it means there is no analysis to return. Surface that as a
+            # hard failure rather than an empty but nominally successful body.
             response.success = False
+            response.errors.append(
+                AnalysisError(
+                    code="TOPOLOGY_EXTRACTION_FAILED",
+                    message=(
+                        "The B-Rep could not be traversed, so no geometry could "
+                        "be extracted. See warnings for the underlying error."
+                    ),
+                    detail={"stage": "topology"},
+                )
+            )
             return response
 
         response.model = self._model_info(model, loaded)

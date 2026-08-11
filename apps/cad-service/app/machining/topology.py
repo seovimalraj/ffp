@@ -38,8 +38,8 @@ class TopologyAnalyzer:
 
         self._count_topology(shape, model)
         self._fill_bbox(shape, model)
-        face_handles = self._build_faces(shape, model)
-        self._build_edges_and_adjacency(shape, model, face_handles)
+        self._build_faces(shape, model)
+        self._build_edges_and_adjacency(model)
         return model
 
     def _count_topology(self, shape: Any, model: ShapeModel) -> None:
@@ -63,42 +63,22 @@ class TopologyAnalyzer:
         except Exception as exc:
             logger.warning("Model bounding box failed: %s", exc)
 
-    def _face_key(self, face: Any) -> Any:
-        """Orientation-independent identity for a face, valid in both bindings.
-
-        Orientation is deliberately excluded: the ancestors map hands back the
-        same face with whatever orientation it carried inside its parent, and we
-        need those to resolve to the one record we already created.
-        """
-        hash_code = getattr(face, "HashCode", None)
-        if hash_code is not None:
-            try:
-                return int(hash_code(1 << 30))
-            except Exception:
-                pass
-        # OCCT 7.8 / OCP dropped HashCode in favour of __hash__.
-        try:
-            return hash(face)
-        except Exception:
-            return id(face)
-
-    def _solid_index_map(self, shape: Any) -> Dict[Any, int]:
+    def _solid_index_map(self, shape: Any, faces: occ.ShapeIndex) -> Dict[int, int]:
         """Map each face identity to the index of the solid that owns it."""
-        mapping: Dict[Any, int] = {}
+        mapping: Dict[int, int] = {}
         for index, solid in enumerate(occ.iter_unique_shapes(shape, occ.TopAbs_SOLID)):
             for face in occ.iter_unique_shapes(solid, occ.TopAbs_FACE):
-                mapping.setdefault(self._face_key(face), index)
+                mapping.setdefault(faces.identify(face), index)
         return mapping
 
-    def _build_faces(self, shape: Any, model: ShapeModel) -> Dict[Any, int]:
-        """Classify every face; return a face-identity -> face_id lookup."""
-        solid_lookup = self._solid_index_map(shape)
-        handles: Dict[Any, int] = {}
+    def _build_faces(self, shape: Any, model: ShapeModel) -> occ.ShapeIndex:
+        """Classify every face; return the index that identifies them."""
+        faces = occ.ShapeIndex()
+        solid_lookup = self._solid_index_map(shape, faces)
 
         for face_id, raw in enumerate(occ.iter_unique_shapes(shape, occ.TopAbs_FACE), start=1):
             face = occ.to_face(raw)
-            key = self._face_key(face)
-            solid_index = solid_lookup.get(key, 0)
+            solid_index = solid_lookup.get(faces.identify(face), 0)
             try:
                 record = self.face_classifier.classify(face, face_id, solid_index)
             except Exception as exc:
@@ -108,69 +88,58 @@ class TopologyAnalyzer:
                 record = FaceRecord(id=face_id, solid_index=solid_index)
             model.faces[face_id] = record
             model._occ_faces[face_id] = face
-            handles[key] = face_id
-        return handles
+        return faces
 
     # -- edges -------------------------------------------------------------
 
-    def _build_edges_and_adjacency(
-        self, shape: Any, model: ShapeModel, face_handles: Dict[Any, int]
-    ) -> None:
-        try:
-            edge_face_map = occ.map_shapes_and_ancestors(
-                shape, occ.TopAbs_EDGE, occ.TopAbs_FACE
-            )
-        except Exception as exc:
-            logger.warning("Edge/face adjacency map failed: %s", exc)
-            return
+    def _build_edges_and_adjacency(self, model: ShapeModel) -> None:
+        """Index every edge and record which faces meet along it.
 
-        for index in range(1, edge_face_map.Extent() + 1):
-            edge = occ.to_edge(edge_face_map.FindKey(index))
-            record = self._classify_edge(edge, index)
+        Built by walking each face's own edges rather than by asking OCCT for an
+        edge->ancestors map. The map route needs ``TopExp::MapShapesAndAncestors``
+        plus index-based access to ``TopTools_IndexedDataMapOfShapeListOfShape``,
+        and the two bindings disagree about which of ``Extent``/``Size`` that
+        collection exposes. Face traversal needs only ``TopExp_Explorer``, which
+        behaves identically everywhere, and yields the same adjacency.
+        """
+        # Shared edges are reached once per adjoining face, so accumulate by
+        # edge identity and let repeats build the adjacency.
+        edges = occ.ShapeIndex()
+        faces_by_edge: Dict[int, List[int]] = {}
+        edge_handles: Dict[int, Any] = {}
+        edge_order: List[int] = []
 
-            parent_faces = self._faces_of(edge_face_map.FindFromIndex(index), face_handles)
-            record.face_ids = sorted(set(parent_faces))
-            record.is_seam = len(parent_faces) != len(set(parent_faces))
+        for face_id in sorted(model._occ_faces):
+            face = model._occ_faces[face_id]
+            for raw_edge in occ.iter_shapes(face, occ.TopAbs_EDGE):
+                edge = occ.to_edge(raw_edge)
+                key = edges.identify(edge)
+                if key not in faces_by_edge:
+                    faces_by_edge[key] = []
+                    edge_handles[key] = edge
+                    edge_order.append(key)
+                faces_by_edge[key].append(face_id)
+
+        for index, key in enumerate(edge_order, start=1):
+            record = self._classify_edge(edge_handles[key], index)
+
+            parents = faces_by_edge[key]
+            record.face_ids = sorted(set(parents))
+            # A seam edge is reached twice from the *same* face - it is the
+            # closing line of a periodic surface, not a shell boundary.
+            record.is_seam = len(parents) != len(record.face_ids)
 
             model.edges[index] = record
             for face_id in record.face_ids:
                 model.faces[face_id].edge_ids.append(index)
                 model.face_neighbors.setdefault(face_id, set())
 
-            for i, a in enumerate(record.face_ids):
-                for b in record.face_ids[i + 1 :]:
+            for position, a in enumerate(record.face_ids):
+                for b in record.face_ids[position + 1 :]:
                     model.face_neighbors.setdefault(a, set()).add(b)
                     model.face_neighbors.setdefault(b, set()).add(a)
-                    key = (a, b) if a <= b else (b, a)
-                    model.shared_edges.setdefault(key, []).append(index)
-
-    def _iter_shape_list(self, shape_list: Any):
-        """Iterate a ``TopTools_ListOfShape`` across both bindings."""
-        try:
-            yield from iter(shape_list)
-            return
-        except TypeError:
-            pass
-        import importlib
-
-        root = "OCP" if occ.kernel_name() == "OCP" else "OCC.Core"
-        mod = importlib.import_module(f"{root}.TopTools")
-        it_cls = getattr(mod, "TopTools_ListIteratorOfListOfShape", None)
-        if it_cls is None:  # pragma: no cover - binding dependent
-            return
-        it = it_cls(shape_list)
-        while it.More():
-            yield it.Value()
-            it.Next()
-
-    def _faces_of(self, face_list: Any, face_handles: Dict[Any, int]) -> List[int]:
-        """Resolve an edge's parent-face list to our face ids."""
-        found: List[int] = []
-        for raw in self._iter_shape_list(face_list):
-            face_id = face_handles.get(self._face_key(occ.to_face(raw)))
-            if face_id is not None:
-                found.append(face_id)
-        return found
+                    pair = (a, b) if a <= b else (b, a)
+                    model.shared_edges.setdefault(pair, []).append(index)
 
     def _classify_edge(self, edge: Any, edge_id: int) -> EdgeRecord:
         record = EdgeRecord(id=edge_id)

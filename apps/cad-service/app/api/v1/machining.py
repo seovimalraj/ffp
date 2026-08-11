@@ -205,6 +205,18 @@ async def analyze_machining_endpoint(
             _load_and_analyze, parser, temp_path, filename, size, digest, options
         )
 
+        # A payload that reports success=False means the pipeline could not
+        # produce an analysis; returning 200 for that would make a total
+        # failure indistinguishable from a clean result.
+        if not payload.get("success", False):
+            first = (payload.get("errors") or [{}])[0]
+            logger.error(
+                "machining analysis produced no result for %s: %s",
+                filename,
+                first.get("code"),
+            )
+            return JSONResponse(status_code=500, content=payload)
+
         logger.info(
             "machining analysis complete",
             extra={

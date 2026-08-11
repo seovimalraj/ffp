@@ -113,11 +113,6 @@ def _load(module: str, *names: str) -> tuple:
     "TopAbs_REVERSED",
     "TopAbs_FORWARD",
 )
-(TopTools_IndexedDataMapOfShapeListOfShape, TopTools_IndexedMapOfShape) = _load(
-    "TopTools",
-    "TopTools_IndexedDataMapOfShapeListOfShape",
-    "TopTools_IndexedMapOfShape",
-)
 
 # --- geometry adaptors ----------------------------------------------------
 (BRepAdaptor_Surface, BRepAdaptor_Curve) = _load(
@@ -275,24 +270,71 @@ def face_uv_bounds(face: Any) -> tuple:
     raise KernelUnavailable("BRepTools.UVBounds returned no bounds")
 
 
-def map_shapes_and_ancestors(shape: Any, child_type: Any, parent_type: Any):
-    """``TopExp::MapShapesAndAncestors`` across bindings."""
-    fn = _resolve_static((topexp, _topexp_class()), "MapShapesAndAncestors")
-    if fn is None:
-        raise KernelUnavailable("TopExp.MapShapesAndAncestors unavailable")
-    mapping = TopTools_IndexedDataMapOfShapeListOfShape()
-    fn(shape, child_type, parent_type, mapping)
-    return mapping
+class ShapeIndex:
+    """Collision-safe identity for ``TopoDS_Shape`` objects.
 
+    OCCT's own indexed collections would do this, but the two bindings disagree
+    about which of their methods they expose (pythonocc-core omits ``Extent``
+    on ``TopTools_IndexedDataMapOfShapeListOfShape``, for one), so identity is
+    resolved here instead using only methods every binding has.
 
-def _topexp_class():
-    """The ``TopExp`` static class, which OCP exposes alongside the module."""
-    if _root is None:
+    ``HashCode``/``__hash__`` alone is not enough: it is bounded, and at tens of
+    thousands of faces a collision is likely rather than remote - two distinct
+    faces sharing a bucket would silently merge into one record. Hashing is
+    therefore used only to narrow the search, and ``IsSame`` (OCCT's own
+    orientation-independent equality) decides.
+    """
+
+    __slots__ = ("_buckets", "_next_id")
+
+    def __init__(self) -> None:
+        self._buckets: dict = {}
+        self._next_id = 1
+
+    @staticmethod
+    def _hash_of(shape: Any) -> int:
+        hash_code = getattr(shape, "HashCode", None)
+        if hash_code is not None:
+            try:
+                return int(hash_code(1 << 30))
+            except Exception:
+                pass
+        # OCCT 7.8 / OCP dropped HashCode in favour of Python's __hash__.
+        try:
+            return hash(shape)
+        except Exception:
+            return id(shape)
+
+    @staticmethod
+    def _is_same(a: Any, b: Any) -> bool:
+        is_same = getattr(a, "IsSame", None)
+        if is_same is None:
+            return a is b
+        try:
+            return bool(is_same(b))
+        except Exception:
+            return a is b
+
+    def identify(self, shape: Any) -> int:
+        """Return a stable id for ``shape``, assigning one on first sight."""
+        bucket = self._buckets.setdefault(self._hash_of(shape), [])
+        for existing, identity in bucket:
+            if self._is_same(existing, shape):
+                return identity
+        identity = self._next_id
+        self._next_id += 1
+        bucket.append((shape, identity))
+        return identity
+
+    def lookup(self, shape: Any) -> Optional[int]:
+        """Return the id of an already-seen shape, or ``None``."""
+        for existing, identity in self._buckets.get(self._hash_of(shape), ()):
+            if self._is_same(existing, shape):
+                return identity
         return None
-    try:
-        return getattr(importlib.import_module(f"{_root}.TopExp"), "TopExp", None)
-    except Exception:  # pragma: no cover
-        return None
+
+    def __len__(self) -> int:
+        return self._next_id - 1
 
 
 def _downcast(shape: Any, kind: str) -> Any:
@@ -327,9 +369,16 @@ def iter_shapes(shape: Any, shape_type: Any):
 
 
 def iter_unique_shapes(shape: Any, shape_type: Any):
-    """Yield each distinct sub-shape once (``TopExp_Explorer`` repeats shared ones)."""
-    seen = TopTools_IndexedMapOfShape()
+    """Yield each distinct sub-shape once.
+
+    ``TopExp_Explorer`` revisits shapes shared between parents - a face shared
+    by two solids, an edge shared by two faces - so a solid's face count would
+    otherwise be inflated. Deduplication goes through :class:`ShapeIndex` rather
+    than ``TopTools_IndexedMapOfShape`` to keep this binding-independent.
+    """
+    seen = ShapeIndex()
     for sub in iter_shapes(shape, shape_type):
-        if not seen.Contains(sub):
-            seen.Add(sub)
+        before = len(seen)
+        seen.identify(sub)
+        if len(seen) > before:
             yield sub
