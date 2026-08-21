@@ -9,19 +9,15 @@ import re
 import tempfile
 from dataclasses import dataclass, field
 from pathlib import PurePath
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, List, Optional, Tuple
 
-from . import convert, occ
-from .config import MachiningConfig, get_machining_config
+from . import occ
+from .config import MachiningConfig
 from .schemas import AnalysisWarning, WarningCode
 
 logger = logging.getLogger(__name__)
 
 #: Extension -> canonical format label.
-#:
-#: PARASOLID is read through an external converter rather than by the kernel
-#: (see :mod:`convert`), so it is only offered when one is configured. Use
-#: :func:`available_formats` for the list a given deployment can actually take.
 SUPPORTED_FORMATS = {
     ".step": "STEP",
     ".stp": "STEP",
@@ -29,10 +25,6 @@ SUPPORTED_FORMATS = {
     ".igs": "IGES",
     ".brep": "BREP",
     ".brp": "BREP",
-    ".x_t": "PARASOLID",
-    ".x_b": "PARASOLID",
-    ".xmt_txt": "PARASOLID",
-    ".xmt_bin": "PARASOLID",
 }
 
 _SAFE_NAME = re.compile(r"[^A-Za-z0-9._-]+")
@@ -84,26 +76,7 @@ def extension_of(filename: str) -> str:
     return os.path.splitext(filename)[1].lower()
 
 
-def _brep_available() -> bool:
-    return not (occ.breptools is None and occ.BRepTools is None)
-
-
-def available_formats(config: Optional[MachiningConfig] = None) -> Dict[str, str]:
-    """The subset of :data:`SUPPORTED_FORMATS` this deployment can actually read.
-
-    BREP depends on the kernel build and PARASOLID on a configured converter,
-    so advertising the static table would promise more than the service can do.
-    """
-    cfg = config or get_machining_config()
-    formats = dict(SUPPORTED_FORMATS)
-    if not _brep_available():
-        formats = {e: f for e, f in formats.items() if f != "BREP"}
-    if not convert.converter_configured(cfg):
-        formats = {e: f for e, f in formats.items() if f != "PARASOLID"}
-    return formats
-
-
-def validate_extension(filename: str, config: Optional[MachiningConfig] = None) -> str:
+def validate_extension(filename: str) -> str:
     """Return the canonical format label, raising for unsupported extensions."""
     ext = extension_of(filename)
     fmt = SUPPORTED_FORMATS.get(ext)
@@ -112,32 +85,16 @@ def validate_extension(filename: str, config: Optional[MachiningConfig] = None) 
             "UNSUPPORTED_FORMAT",
             (
                 f"Unsupported file extension '{ext or '(none)'}'. Supported: "
-                f"{', '.join(sorted(available_formats(config)))}."
+                f"{', '.join(sorted(SUPPORTED_FORMATS))}."
             ),
             status_code=415,
         )
-    if fmt == "BREP" and not _brep_available():
+    if fmt == "BREP" and occ.breptools is None and occ.BRepTools is None:
         raise CADParseError(
             "UNSUPPORTED_FORMAT",
             "BREP import is not available in the installed CAD kernel build.",
             status_code=415,
         )
-    if fmt == "PARASOLID":
-        cfg = config or get_machining_config()
-        if not convert.converter_configured(cfg):
-            # Refused here, before a byte of the body is read, so the user is
-            # not made to wait on a 100 MB upload that cannot be parsed.
-            raise CADParseError(
-                "PARASOLID_CONVERTER_UNAVAILABLE",
-                (
-                    f"'{ext}' is a Parasolid file. OpenCASCADE cannot read "
-                    "Parasolid, and no external converter is configured on "
-                    "this deployment. Export the part as STEP (AP214/AP242) "
-                    "and upload that, or set "
-                    "MACHINING_PARASOLID_CONVERTER_CMD to enable conversion."
-                ),
-                status_code=415,
-            )
     return fmt
 
 
@@ -194,16 +151,12 @@ class CADParser:
     def load(self, path: str, filename: str, size_bytes: int, sha256: str) -> LoadedModel:
         """Import ``path`` and validate that it holds usable solid geometry."""
         occ.require_kernel()
-        file_format = validate_extension(filename, self.config)
+        file_format = validate_extension(filename)
         warnings: List[AnalysisWarning] = []
 
         self._force_millimetre_units()
 
-        if file_format == "PARASOLID":
-            # The kernel never sees the Parasolid file: it is converted to
-            # STEP first and the STEP is what gets read.
-            shape = self._read_parasolid(path, warnings)
-        elif file_format == "STEP":
+        if file_format == "STEP":
             shape = self._read_step(path)
         elif file_format == "IGES":
             shape = self._read_iges(path)
@@ -266,54 +219,6 @@ class CADParser:
                 "STEP file contains no transferable root entities.",
             )
         return reader.OneShape()
-
-    def _read_parasolid(self, path: str, warnings: List[AnalysisWarning]):
-        """Convert a Parasolid file to STEP, read it, then drop the scratch copy.
-
-        The conversion is recorded as a warning rather than passed over in
-        silence: the geometry that was measured is the converter's STEP, not
-        the file the user uploaded, and any translation loss belongs to the
-        converter.
-        """
-        try:
-            result = convert.to_step(path, self.config)
-        except convert.ConversionError as exc:
-            raise CADParseError(exc.code, exc.message, exc.status_code) from exc
-
-        try:
-            shape = self._read_step(result.path)
-        except CADParseError as exc:
-            # The converter succeeded but produced STEP the kernel rejects -
-            # a converter problem, not a bad upload, so say which stage failed.
-            raise CADParseError(
-                "CONVERSION_FAILED",
-                (
-                    "The Parasolid file was converted, but the resulting STEP "
-                    f"could not be read: {exc.message}"
-                ),
-                status_code=422,
-            ) from exc
-        finally:
-            result.cleanup()
-
-        warnings.append(
-            AnalysisWarning(
-                code=WarningCode.FORMAT_CONVERTED,
-                message=(
-                    "Parasolid has no native kernel reader, so the file was "
-                    "converted to STEP before analysis. Results describe the "
-                    "converted geometry; check anything dimensionally critical "
-                    "against the source model."
-                ),
-                detail={
-                    "source_format": result.source_format,
-                    "converted_to": "STEP",
-                    "converter": os.path.basename(result.command[0]),
-                    "conversion_duration_ms": result.duration_ms,
-                },
-            )
-        )
-        return shape
 
     def _read_iges(self, path: str):
         reader = occ.IGESControl_Reader()

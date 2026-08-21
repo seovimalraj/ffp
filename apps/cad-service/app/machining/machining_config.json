@@ -10,18 +10,6 @@
   "max_upload_bytes": 104857600,
   "max_faces": 50000,
 
-  "_parasolid_comment": [
-    "OpenCASCADE has no Parasolid reader, so .x_t/.x_b/.xmt_txt/.xmt_bin are",
-    "refused with a 415 until an external converter is named below. The",
-    "command must contain the {input} and {output} placeholders and is run",
-    "with shell=False. Examples:",
-    "  cadex_convert -i {input} -o {output}",
-    "  /opt/datakit/x_t2step {input} {output} --units mm",
-    "Leave empty to keep Parasolid disabled."
-  ],
-  "parasolid_converter_cmd": "",
-  "parasolid_converter_timeout_s": 180.0,
-
   "linear_tolerance_mm": 0.0001,
   "angular_tolerance_deg": 1.0,
   "tangency_tolerance_deg": 5.0,

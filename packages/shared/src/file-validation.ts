@@ -35,8 +35,6 @@ export const ALLOWED_EXTENSIONS = [
   "sldprt",
   "x_t",
   "x_b",
-  "xmt_txt",
-  "xmt_bin",
   "jt",
   "3mf",
   "dxf",
