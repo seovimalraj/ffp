@@ -10,6 +10,7 @@ export async function getTemporalClient(): Promise<Client> {
     try {
       const connection = await Connection.connect({
         address: config.temporal.address,
+        tls: config.temporal.tls ? {} : undefined,
       });
 
       client = new Client({

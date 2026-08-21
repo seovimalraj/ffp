@@ -49,6 +49,23 @@ class MachiningConfig(BaseModel):
         description="Refuse models above this face count to bound analysis time.",
     )
 
+    # --- Parasolid conversion ---------------------------------------------
+    parasolid_converter_cmd: str = Field(
+        default="",
+        description=(
+            "External command that converts Parasolid (.x_t/.x_b/.xmt_txt/"
+            ".xmt_bin) to STEP, e.g. 'cadex_convert -i {input} -o {output}'. "
+            "OCCT has no Parasolid reader, so Parasolid uploads are refused "
+            "with a 415 until this is set. Must contain both the {input} and "
+            "{output} placeholders. Run with shell=False; the paths are "
+            "substituted after the command is split into argv."
+        ),
+    )
+    parasolid_converter_timeout_s: float = Field(
+        default=180.0,
+        description="Kill the Parasolid converter if it runs longer than this.",
+    )
+
     # --- shape healing ----------------------------------------------------
     repair_open_shells: bool = Field(
         default=True,
@@ -251,6 +268,9 @@ def _env_overrides() -> Dict[str, Any]:
                 overrides[name] = float(raw)
             elif field.annotation is bool:
                 overrides[name] = raw.strip().lower() in ("1", "true", "yes", "on")
+            elif field.annotation is str:
+                # Taken verbatim - a command template is not JSON.
+                overrides[name] = raw
             else:
                 overrides[name] = json.loads(raw)
         except Exception as exc:

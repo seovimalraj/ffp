@@ -14,13 +14,13 @@ from fastapi import APIRouter, File, Form, Request, UploadFile
 from fastapi.responses import JSONResponse
 from starlette.concurrency import run_in_threadpool
 
-from ...machining import occ
+from ...machining import convert, occ
 from ...machining.config import get_machining_config
 from ...machining.openapi import error_responses, success_responses
 from ...machining.parser import (
-    SUPPORTED_FORMATS,
     CADParseError,
     CADParser,
+    available_formats,
     remove_quietly,
     sanitize_filename,
     validate_extension,
@@ -126,8 +126,13 @@ async def analyze_machining_endpoint(
         ...,
         description=(
             "The CAD file. Accepted extensions: `.step`, `.stp`, `.iges`, "
-            "`.igs`, `.brep`, `.brp`. The extension is validated before the "
-            "body is read, and the upload is size-capped while streaming."
+            "`.igs`, `.brep`, `.brp`, plus Parasolid (`.x_t`, `.x_b`, "
+            "`.xmt_txt`, `.xmt_bin`) where an external converter is "
+            "configured - call `/capabilities` for the list this deployment "
+            "actually accepts. Parasolid is converted to STEP before analysis "
+            "and the response carries a `FORMAT_CONVERTED` warning. The "
+            "extension is validated before the body is read, and the upload "
+            "is size-capped while streaming."
         ),
     ),
     unit_system: UnitSystem = Form(
@@ -186,13 +191,13 @@ async def analyze_machining_endpoint(
     filename = sanitize_filename(file.filename)
     try:
         # Reject the extension before reading a single byte off the wire.
-        validate_extension(filename)
+        validate_extension(filename, config)
     except CADParseError as exc:
         return _error(
             exc.status_code,
             exc.code,
             exc.message,
-            {"filename": filename, "supported": sorted(SUPPORTED_FORMATS)},
+            {"filename": filename, "supported": sorted(available_formats(config))},
         )
 
     parser = CADParser(config)
@@ -288,6 +293,7 @@ def _load_and_analyze(parser, path, filename, size, digest, options):
                         "supported_extensions": [
                             ".brep", ".brp", ".iges", ".igs", ".step", ".stp",
                         ],
+                        "parasolid_conversion_available": False,
                         "max_upload_bytes": 104857600,
                         "max_faces": 50000,
                         "unit_systems": ["metric", "imperial"],
@@ -308,12 +314,16 @@ def _load_and_analyze(parser, path, filename, size, digest, options):
 )
 async def capabilities():
     config = get_machining_config()
+    formats = available_formats(config)
     return {
         "analysis_version": ANALYSIS_VERSION,
         "kernel_available": occ.kernel_available(),
         "kernel": occ.kernel_name(),
-        "supported_input_formats": sorted({v for v in SUPPORTED_FORMATS.values()}),
-        "supported_extensions": sorted(SUPPORTED_FORMATS),
+        # What this deployment can actually read, not the static table: BREP
+        # depends on the kernel build and PARASOLID on a configured converter.
+        "supported_input_formats": sorted({v for v in formats.values()}),
+        "supported_extensions": sorted(formats),
+        "parasolid_conversion_available": convert.converter_configured(config),
         "max_upload_bytes": config.max_upload_bytes,
         "max_faces": config.max_faces,
         "unit_systems": [u.value for u in UnitSystem],

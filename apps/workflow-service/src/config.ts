@@ -36,5 +36,10 @@ export const config = {
   temporal: {
     address: process.env.TEMPORAL_ADDRESS || "localhost:7233",
     namespace: process.env.TEMPORAL_NAMESPACE || "default",
+    // Local/direct Temporal addresses (Docker network "temporal:7233", the bridge
+    // gateway "172.17.0.1:7233", "localhost:7233", ...) talk to Temporal's plaintext
+    // gRPC port and need no TLS. A remote address such as temporal.frigate.ai:443 is
+    // reached through Dokploy/Traefik and must use TLS.
+    tls: !(process.env.TEMPORAL_ADDRESS || "localhost:7233").endsWith(":7233"),
   },
 };

@@ -33,7 +33,12 @@ export class TemporalService implements OnModuleInit {
     );
 
     try {
-      const connection = await Connection.connect({ address });
+      // Local/direct Temporal addresses (Docker network "temporal:7233", the bridge
+      // gateway "172.17.0.1:7233", "localhost:7233", ...) talk to Temporal's plaintext
+      // gRPC port and need no TLS. A remote address such as temporal.frigate.ai:443 is
+      // reached through Dokploy/Traefik and must use TLS.
+      const tls = address.endsWith(':7233') ? undefined : {};
+      const connection = await Connection.connect({ address, tls });
 
       this.client = new Client({ connection, namespace });
       this.isConnected = true;
