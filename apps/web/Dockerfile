@@ -8,7 +8,7 @@ COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 COPY apps/web/package.json ./apps/web/
 
 # Install dependencies
-RUN npm install -g pnpm
+RUN npm install -g pnpm@10.16.1
 RUN pnpm install --frozen-lockfile
 
 # Copy source

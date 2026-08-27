@@ -79,6 +79,7 @@ async function getTemporalConnection() {
   if (!temporalConnection) {
     temporalConnection = await NativeConnection.connect({
       address: config.temporal.address,
+      ...(config.temporal.tls && { tls: {} }),
     });
 
     logger.info("Connected to Temporal server");
