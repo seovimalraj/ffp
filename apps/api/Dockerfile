@@ -2,7 +2,7 @@
 FROM node:20-slim AS base
 
 # Install pnpm
-RUN npm install -g pnpm
+RUN npm install -g pnpm@10.16.1
 
 # Build stage
 FROM base AS builder
