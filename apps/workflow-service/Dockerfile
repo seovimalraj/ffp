@@ -33,8 +33,9 @@ WORKDIR /app
 ENV NODE_ENV=production
 ENV PORT=3004
 
-# Install curl for health checks / debugging
-RUN apt-get update && apt-get install -y --no-install-recommends curl && rm -rf /var/lib/apt/lists/*
+# Install curl for health checks / debugging and CA certificates so the Temporal
+# Rust core can find native root certs when connecting over TLS
+RUN apt-get update && apt-get install -y --no-install-recommends curl ca-certificates && rm -rf /var/lib/apt/lists/*
 
 # Copy entire workspace to preserve pnpm layout (critical)
 COPY --from=builder /app ./
