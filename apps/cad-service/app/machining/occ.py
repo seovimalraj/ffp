@@ -521,35 +521,3 @@ def iter_unique_shapes(shape: Any, shape_type: Any):
         seen.identify(sub)
         if len(seen) > before:
             yield sub
-
-
-def set_static_cval(name: str, value: str) -> bool:
-    """``Interface_Static::SetCVal`` across bindings; True when it took effect.
-
-    OCP exposes this as ``SetCVal_s`` and pythonocc as ``SetCVal``, so the bare
-    attribute lookup silently misses on one of them - and a missed unit setting
-    is invisible, not fatal: the reader keeps the file's own unit and every
-    ``*_mm`` field quietly carries inches. Callers check the return value.
-    """
-    if Interface_Static is None:
-        return False
-    fn = _resolve_static((Interface_Static,), "SetCVal")
-    if fn is None:
-        return False
-    # OCCT returns False when the static is not defined yet - the parameter is
-    # only registered once the relevant controller has been initialised, so
-    # this must be called after the reader exists, not before.
-    return bool(fn(name, value))
-
-
-def brep_read_fn():
-    """``BRepTools::Read`` across bindings, or ``None`` when unavailable."""
-    return _resolve_static((breptools, BRepTools), "Read")
-
-
-def read_brep(shape: Any, path: str, builder: Any) -> Any:
-    """``BRepTools::Read`` -> the reader's return value (``False`` on failure)."""
-    fn = brep_read_fn()
-    if fn is None:
-        raise KernelUnavailable("BRepTools.Read unavailable in this binding")
-    return fn(shape, path, builder)

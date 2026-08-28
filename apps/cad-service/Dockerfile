@@ -13,8 +13,8 @@ WORKDIR /app
 RUN conda create -n cadenv python=3.10 -y
 
 RUN conda install -n cadenv -c conda-forge \
-    pythonocc-core=7.9.3 \
-    occt=7.9.3 \
+    pythonocc-core=7.7.0 \
+    occt=7.7.0 \
     rtree \
     numpy \
     scipy \

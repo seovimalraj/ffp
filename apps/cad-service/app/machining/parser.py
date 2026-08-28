@@ -89,11 +89,7 @@ def validate_extension(filename: str) -> str:
             ),
             status_code=415,
         )
-    # Probing for the callable rather than the holder class: both bindings
-    # expose ``BRepTools``, but only one of them under the name this code can
-    # reach, so a class-only check advertises BREP support that then fails at
-    # read time.
-    if fmt == "BREP" and (occ.BRep_Builder is None or occ.brep_read_fn() is None):
+    if fmt == "BREP" and occ.breptools is None and occ.BRepTools is None:
         raise CADParseError(
             "UNSUPPORTED_FORMAT",
             "BREP import is not available in the installed CAD kernel build.",
@@ -158,6 +154,8 @@ class CADParser:
         file_format = validate_extension(filename)
         warnings: List[AnalysisWarning] = []
 
+        self._force_millimetre_units()
+
         if file_format == "STEP":
             shape = self._read_step(path)
         elif file_format == "IGES":
@@ -195,17 +193,13 @@ class CADParser:
         ``xstep.cascade.unit`` says. Setting it explicitly means an inch-based
         file and a millimetre-based file of the same part both yield identical
         millimetre output.
-
-        Must be called *after* the reader is constructed: OCCT registers the
-        ``xstep.*`` statics when the STEP controller initialises, and a set
-        before that point is discarded without an error.
         """
+        if occ.Interface_Static is None:
+            return
         try:
-            if not occ.set_static_cval("xstep.cascade.unit", "MM"):
-                logger.warning(
-                    "Interface_Static.SetCVal unavailable in this binding; STEP "
-                    "units follow the file and may not be millimetres."
-                )
+            setter = getattr(occ.Interface_Static, "SetCVal", None)
+            if setter is not None:
+                setter("xstep.cascade.unit", "MM")
         except Exception as exc:  # pragma: no cover - binding dependent
             logger.debug("Could not pin STEP units to MM: %s", exc)
 
@@ -239,20 +233,27 @@ class CADParser:
         return reader.OneShape()
 
     def _read_brep(self, path: str):
-        if occ.BRep_Builder is None:
+        shape = occ.TopoDS_Shape()
+        builder_mod = None
+        try:
+            import importlib
+
+            root = "OCP" if occ.kernel_name() == "OCP" else "OCC.Core"
+            builder_mod = importlib.import_module(f"{root}.BRep")
+        except Exception as exc:
             raise CADParseError(
-                "UNSUPPORTED_FORMAT",
-                "BREP import is not available in the installed CAD kernel build.",
+                "CORRUPT_CAD_FILE", f"BREP import unavailable: {exc}", status_code=415
+            )
+        builder = builder_mod.BRep_Builder()
+        holder = occ.breptools or occ.BRepTools
+        read = getattr(holder, "Read", None)
+        if read is None:
+            raise CADParseError(
+                "CORRUPT_CAD_FILE",
+                "BRepTools.Read unavailable in this kernel build.",
                 status_code=415,
             )
-        shape = occ.TopoDS_Shape()
-        builder = occ.BRep_Builder()
-        try:
-            ok = occ.read_brep(shape, path, builder)
-        except occ.KernelUnavailable as exc:
-            raise CADParseError(
-                "UNSUPPORTED_FORMAT", str(exc), status_code=415
-            ) from exc
+        ok = read(shape, path, builder)
         if ok is False:
             raise CADParseError("CORRUPT_CAD_FILE", "BREP import failed.")
         return shape
