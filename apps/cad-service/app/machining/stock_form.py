@@ -11,6 +11,10 @@ the required alloy, whether plate is cheaper than a sawn billet at this
 quantity, whether the shop stocks 20 mm round - none of that is geometry, and
 none of it is decided here.
 
+Flat stock is settled on extent ratios; everything else is checked for being a
+body of revolution before the remaining ratios get a say, because a ring and a
+square block have much the same proportions.
+
 Two things make the classification honest rather than a guess:
 
 * Every cutoff lives in :class:`~app.machining.config.MachiningConfig`, so what
@@ -36,7 +40,7 @@ from .schemas import (
     StockForm,
     StockFormKind,
 )
-from .vectors import Vec, is_parallel, normalize
+from .vectors import Vec, dot, is_parallel, normalize
 
 logger = logging.getLogger(__name__)
 
@@ -59,50 +63,11 @@ def _long_axis(model: ShapeModel, longest: int, method: str) -> Vec:
     return basis[longest]
 
 
-def find_dominant_external_cylinder(
-    model: ShapeModel,
-    long_axis: Vec,
-    expected_radius: float,
-    length: float,
-    config: MachiningConfig,
-) -> Optional[Tuple[FaceRecord, float]]:
-    """The external cylinder that would be the outside of round bar, if any.
-
-    Rod and square bar have identical extents - the cross-section is what tells
-    them apart, so thickness alone cannot answer this.
-
-    A turned part almost never carries its outside diameter as a single face:
-    grooves, shoulders and chamfers split it into several coaxial cylinders of
-    the same radius. So candidates are grouped by axis line and their coverage
-    summed, and the group must span most of the length. Returns the largest
-    face of the winning group and that group's coverage.
-    """
-    if expected_radius <= 0 or length <= 0:
-        return None
-
-    candidates = [
-        face
-        for face in model.faces_of_type(CYLINDER)
-        if not face.is_internal
-        and face.axis is not None
-        and face.radius_mm is not None
-        and is_parallel(face.axis, long_axis, _AXIS_PARALLEL_TOL_DEG)
-        and _near(face.radius_mm, expected_radius, config.stock_form_round_radius_tol)
-    ]
-    if not candidates:
-        return None
-
-    best: Optional[Tuple[FaceRecord, float]] = None
-    for group in group_coaxial(candidates, config):
-        extents = [(_axial_extent(face), face) for face in group]
-        coverage = min(1.0, sum(extent for extent, _ in extents) / length)
-        if coverage < config.stock_form_round_axial_coverage:
-            continue
-        largest = max(extents, key=lambda pair: pair[0])[1]
-        if best is None or coverage > best[1]:
-            best = (largest, coverage)
-
-    return best
+def _box_axes(model: ShapeModel, method: str) -> List[Vec]:
+    """The three envelope directions, oriented or world-aligned."""
+    if method == "obb" and model.obb_axes is not None:
+        return [normalize(axis) for axis in model.obb_axes]
+    return [(1.0, 0.0, 0.0), (0.0, 1.0, 0.0), (0.0, 0.0, 1.0)]
 
 
 def _axial_extent(face: FaceRecord) -> float:
@@ -114,6 +79,125 @@ def _axial_extent(face: FaceRecord) -> float:
     # resolve a parametric extent.
     size = face.bbox_size
     return max(abs(v) for v in size) if size else 0.0
+
+
+def _axial_interval(face: FaceRecord, axis: Vec) -> Tuple[float, float]:
+    """Where a cylindrical face starts and ends along ``axis``.
+
+    A cylinder is symmetric about its centroid along its own axis, so the
+    centroid projection plus half the extent bounds it.
+    """
+    half = _axial_extent(face) / 2.0
+    center = dot(face.centroid, axis)
+    return center - half, center + half
+
+
+def _union_length(intervals: List[Tuple[float, float]]) -> float:
+    """Total length covered by possibly overlapping intervals."""
+    if not intervals:
+        return 0.0
+    total = 0.0
+    current_start, current_end = None, None
+    for start, end in sorted(intervals):
+        if current_end is None:
+            current_start, current_end = start, end
+            continue
+        if start > current_end:
+            total += current_end - current_start
+            current_start, current_end = start, end
+        else:
+            current_end = max(current_end, end)
+    if current_end is not None and current_start is not None:
+        total += current_end - current_start
+    return total
+
+
+def find_round_stock(
+    model: ShapeModel,
+    extents: Vec,
+    bounds_method: str,
+    config: MachiningConfig,
+) -> Optional[Tuple[RoundStockEvidence, int]]:
+    """Detect a part that would be cut from round bar, and say about which axis.
+
+    Two things make this harder than matching one cylinder:
+
+    * **The rotational axis is not always the long one.** A ring, washer,
+      flange or disc turns about its *shortest* extent. Probing only the long
+      axis makes every such part read as a block.
+    * **The outside diameter is rarely one face.** A stepped shaft carries
+      several diameters, and grooves and shoulders split even a plain bar. So
+      coaxial faces are grouped, their axial intervals unioned, and the stock
+      diameter taken as the group's *largest* radius.
+
+    A group qualifies when the two extents across its axis are equal (a round
+    cross-section), the largest diameter fills that cross-section, and the
+    faces together span most of the extent along the axis. Returns the evidence
+    and the index of the envelope axis the part turns about.
+    """
+    candidates = [
+        face
+        for face in model.faces_of_type(CYLINDER)
+        if not face.is_internal
+        and face.axis is not None
+        and face.radius_mm is not None
+        and face.radius_mm > 0
+    ]
+    if not candidates:
+        return None
+
+    axes = _box_axes(model, bounds_method)
+    best: Optional[Tuple[RoundStockEvidence, int, float]] = None
+
+    for group in group_coaxial(candidates, config):
+        direction = normalize(group[0].axis or (0.0, 0.0, 1.0))
+
+        # Measure along the envelope axis this group turns about; without a
+        # match there is no cross-section to compare the diameter against.
+        axis_index = next(
+            (
+                index
+                for index, axis in enumerate(axes)
+                if is_parallel(direction, axis, _AXIS_PARALLEL_TOL_DEG)
+            ),
+            None,
+        )
+        if axis_index is None:
+            continue
+
+        along = extents[axis_index]
+        across = [extents[i] for i in range(3) if i != axis_index]
+        if along <= 0 or min(across) <= 0:
+            continue
+
+        # A round cross-section is as wide as it is tall.
+        if (max(across) - min(across)) / max(across) > config.stock_form_squareness_tol:
+            continue
+
+        radius = max(float(face.radius_mm or 0.0) for face in group)
+        if not _near(
+            radius * 2.0, max(across), config.stock_form_round_radius_tol
+        ):
+            continue
+
+        coverage = min(
+            1.0,
+            _union_length([_axial_interval(f, direction) for f in group]) / along,
+        )
+        if coverage < config.stock_form_round_axial_coverage:
+            continue
+
+        largest = max(group, key=lambda f: float(f.radius_mm or 0.0))
+        evidence = RoundStockEvidence(
+            face_id=largest.id,
+            radius_mm=round(radius, config.length_decimals),
+            axis=[round(v, 6) for v in direction],
+            axial_coverage=round(coverage, 4),
+        )
+        if best is None or coverage > best[2]:
+            best = (evidence, axis_index, coverage)
+
+    return None if best is None else (best[0], best[1])
 
 
 class StockFormClassifier:
@@ -130,10 +214,7 @@ class StockFormClassifier:
             )
             return None
 
-        # Track which original axis each sorted extent came from, so the round
-        # probe knows which direction runs along the bar.
-        order = sorted(range(3), key=lambda i: extents[i], reverse=True)
-        length, width, thickness = (extents[i] for i in order)
+        length, width, thickness = sorted(extents, reverse=True)
 
         cfg = self.config
         flatness = thickness / width
@@ -144,12 +225,13 @@ class StockFormClassifier:
         form: StockFormKind
         candidates: List[StockFormKind] = []
         reason: Optional[str] = None
-        evidence: Optional[RoundStockEvidence] = None
 
         is_flat = flatness <= cfg.stock_form_flat_ratio_max
         is_slender = slenderness <= cfg.stock_form_bar_ratio_max
         is_square_section = cross_section <= cfg.stock_form_squareness_tol
 
+        # Flat stock is decided first: a laser-cut washer comes off sheet
+        # whatever its outline, so a round profile does not override flatness.
         if is_flat:
             thin = (
                 thickness <= cfg.stock_form_sheet_max_thickness_mm
@@ -172,34 +254,42 @@ class StockFormClassifier:
                     f"Thickness/width ratio {flatness:.4f} sits on the "
                     f"plate/block boundary ({cfg.stock_form_flat_ratio_max})."
                 )
-        elif is_slender:
-            if is_square_section:
-                probe = find_dominant_external_cylinder(
-                    model,
-                    _long_axis(model, order[0], bounds_method),
-                    width / 2.0,
-                    length,
-                    cfg,
-                )
-                if probe is not None:
-                    face, coverage = probe
-                    form = StockFormKind.ROUND_BAR
-                    evidence = RoundStockEvidence(
-                        face_id=face.id,
-                        radius_mm=round(
-                            float(face.radius_mm or 0.0), cfg.length_decimals
-                        ),
-                        axis=[
-                            round(v, 6)
-                            for v in normalize(face.axis or (0.0, 0.0, 1.0))
-                        ],
-                        axial_coverage=round(coverage, 4),
-                    )
-                else:
-                    form = StockFormKind.SQUARE_BAR
-            else:
-                form = StockFormKind.RECTANGULAR_BAR
+            return self._build(
+                form,
+                reason,
+                candidates,
+                bounds_method,
+                (length, width, thickness),
+                flatness,
+                slenderness,
+                cross_section,
+                None,
+            )
 
+        # A body of revolution is round stock whichever extent it turns about -
+        # a ring turns about its shortest one - so this is settled on face
+        # evidence before the extent ratios get a say.
+        round_stock = find_round_stock(model, extents, bounds_method, cfg)
+        if round_stock is not None:
+            evidence, _axis_index = round_stock
+            return self._build(
+                StockFormKind.ROUND_BAR,
+                None,
+                [],
+                bounds_method,
+                (length, width, thickness),
+                flatness,
+                slenderness,
+                cross_section,
+                evidence,
+            )
+
+        if is_slender:
+            form = (
+                StockFormKind.SQUARE_BAR
+                if is_square_section
+                else StockFormKind.RECTANGULAR_BAR
+            )
             if _near(slenderness, cfg.stock_form_bar_ratio_max, margin):
                 candidates = [form, StockFormKind.BLOCK]
                 reason = (
@@ -229,6 +319,31 @@ class StockFormClassifier:
                     f"boundary ({cfg.stock_form_bar_ratio_max})."
                 )
 
+        return self._build(
+            form,
+            reason,
+            candidates,
+            bounds_method,
+            (length, width, thickness),
+            flatness,
+            slenderness,
+            cross_section,
+            None,
+        )
+
+    def _build(
+        self,
+        form: StockFormKind,
+        reason: Optional[str],
+        candidates: List[StockFormKind],
+        bounds_method: str,
+        dimensions: Tuple[float, float, float],
+        flatness: float,
+        slenderness: float,
+        cross_section: float,
+        evidence: Optional[RoundStockEvidence],
+    ) -> StockForm:
+        length, width, thickness = dimensions
         status = FeatureStatus.AMBIGUOUS if reason else FeatureStatus.RESOLVED
         return StockForm(
             form=form,

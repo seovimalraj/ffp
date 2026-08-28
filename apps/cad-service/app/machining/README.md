@@ -277,13 +277,27 @@ cost is implied.
 `stock_analysis.stock_form` also names the mill form the envelope resembles:
 `SHEET`, `PLATE`, `ROUND_BAR`, `SQUARE_BAR`, `RECTANGULAR_BAR` or `BLOCK`.
 
-The extents are sorted, and two ratios do most of the work — thickness/width
-separates flat stock from block, width/length separates bar from block. Round
-bar and square bar have *identical extents*, so thickness alone cannot tell
-them apart; an external cylinder running along the part, at half the
-cross-section, is what settles it. Because grooves and shoulders split that
-outer diameter into several faces, coaxial candidates are grouped and their
-coverage summed.
+Flat stock is decided first, on two ratios: thickness/width separates flat from
+solid, and thickness alone separates sheet from plate. A laser-cut washer comes
+off sheet whatever its outline, so a round profile does not override flatness.
+
+Everything else is checked for being a **body of revolution** before the
+remaining ratios get a say, because thickness cannot tell round bar from square
+bar — their extents are identical. External cylindrical faces are grouped by
+axis line, and a group qualifies when the two extents across its axis are equal,
+its largest diameter fills that cross-section, and its faces together span most
+of the extent along the axis. Two details matter:
+
+* **The rotational axis is not always the long one.** A ring, washer or flange
+  turns about its *shortest* extent; probing only the long axis makes every one
+  of them read as a block.
+* **The outside diameter is rarely one face.** A stepped shaft carries several
+  diameters, and grooves and shoulders split even a plain bar, so the axial
+  intervals of coaxial faces are unioned and the stock diameter is the group's
+  largest radius.
+
+What is left falls to width/length: slender is bar (square or rectangular by
+cross-section), anything else is block.
 
 Every cutoff is configuration (`stock_form_*`), and a part sitting within
 `stock_form_ambiguity_margin` of the cutoff that decides it comes back

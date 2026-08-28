@@ -88,9 +88,17 @@ tap drill for M8, but that is a manufacturing decision, not a geometric fact.
 ### Stock form
 
 `stock_analysis.stock_form` classifies the envelope as `SHEET`, `PLATE`,
-`ROUND_BAR`, `SQUARE_BAR`, `RECTANGULAR_BAR` or `BLOCK` from extent ratios,
-with an external-cylinder check separating round bar from square bar. The
-cutoffs are configuration, and a part sitting on a boundary comes back
+`ROUND_BAR`, `SQUARE_BAR`, `RECTANGULAR_BAR` or `BLOCK`.
+
+Flat stock is decided on extent ratios. Everything else is first checked for
+being a body of revolution, since extents alone cannot tell round bar from
+square bar: coaxial external cylinders are grouped, and a group qualifies when
+the cross-section is round, its largest diameter fills that cross-section, and
+its faces span most of the axis. The axis need not be the long one - a ring
+turns about its shortest extent - and the outside diameter need not be a single
+face, so a stepped shaft is read as the union of its coaxial faces.
+
+The cutoffs are configuration, and a part sitting on a boundary comes back
 `status: "ambiguous"` with both candidates rather than a coin flip.
 
 This is a statement about *proportions*, not procurement: it does not claim the
