@@ -63,10 +63,30 @@ def require_kernel() -> None:
             "No OpenCASCADE binding found. Install 'OCP' (preferred) or "
             "'pythonocc-core' (conda-forge) to enable machining analysis."
         )
+    broken = broken_symbols()
+    if broken:
+        raise KernelUnavailable(
+            f"The {kernel_name()} binding imports but is incomplete - missing "
+            f"{', '.join(broken)}. Module import failures: "
+            f"{import_failures or 'none recorded'}. This is an environment "
+            "problem (usually a missing OCCT shared library), not a bad file."
+        )
 
 
 class KernelUnavailable(RuntimeError):
     """Raised when OCCT is needed but not installed."""
+
+
+#: ``{module: reason}`` for every OCC module that failed to import. A binding
+#: that loads ``TopoDS`` but not ``STEPControl`` is a broken install, not an
+#: unsupported feature, and the difference is only visible here.
+import_failures: dict = {}
+
+#: ``module.symbol`` names the loaded modules did not export. Mostly benign -
+#: the shim deliberately probes both spellings of several helpers (``topods``
+#: vs ``TopoDS``) and expects one to miss - so this is kept apart from
+#: :data:`import_failures` and never used to decide that the kernel is broken.
+missing_symbols: set = set()
 
 
 def _load(module: str, *names: str) -> tuple:
@@ -75,15 +95,67 @@ def _load(module: str, *names: str) -> tuple:
     Missing individual symbols are tolerated because the two bindings differ in
     a handful of helper names across OCCT versions; each call site that depends
     on an optional symbol checks for ``None`` first.
+
+    Failures are recorded in :data:`import_failures` rather than only logged.
+    A swallowed ``ImportError`` here surfaces much later as ``'NoneType' object
+    is not callable`` at the call site, which says nothing about the cause -
+    typically a missing OCCT shared library in the deployed environment.
     """
     if _root is None:
         return tuple(None for _ in names)
     try:
         mod = importlib.import_module(f"{_root}.{module}")
-    except Exception as exc:  # pragma: no cover
-        logger.debug("machining: optional OCC module %s unavailable: %s", module, exc)
+    except Exception as exc:  # pragma: no cover - depends on the environment
+        import_failures[module] = f"{type(exc).__name__}: {exc}"
+        logger.warning(
+            "machining: OCC module %s.%s failed to import: %s", _root, module, exc
+        )
         return tuple(None for _ in names)
-    return tuple(getattr(mod, name, None) for name in names)
+    resolved = []
+    for name in names:
+        symbol = getattr(mod, name, None)
+        if symbol is None:
+            missing_symbols.add(f"{module}.{name}")
+        resolved.append(symbol)
+    return tuple(resolved)
+
+
+#: Symbols without which the service cannot do its job at all. Anything else
+#: being ``None`` degrades one detector; these degrade every request.
+_ESSENTIAL = (
+    "TopoDS_Shape",
+    "TopExp_Explorer",
+    "BRepAdaptor_Surface",
+    "GProp_GProps",
+    "STEPControl_Reader",
+)
+
+
+def require_symbol(name: str) -> Any:
+    """Return a loaded OCC symbol, or raise explaining why it is missing."""
+    symbol = globals().get(name)
+    if symbol is not None:
+        return symbol
+    if not kernel_available():
+        require_kernel()
+    reason = next(
+        (
+            f"{module} failed to import - {why}"
+            for module, why in import_failures.items()
+            if name.startswith(module.split("_")[0])
+        ),
+        f"{name} was not exported by the loaded module",
+    )
+    raise KernelUnavailable(
+        f"{name} is unavailable in the installed {kernel_name()} build "
+        f"({reason}). The CAD kernel is present but incomplete - an environment "
+        "problem, usually a missing OCCT shared library, not a bad file."
+    )
+
+
+def broken_symbols() -> list:
+    """Essential symbols the loaded binding did not provide."""
+    return [name for name in _ESSENTIAL if globals().get(name) is None]
 
 
 # --- topology -------------------------------------------------------------
