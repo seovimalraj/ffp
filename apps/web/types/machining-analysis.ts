@@ -324,6 +324,46 @@ export interface SetupAnalysis {
   note: string;
 }
 
+/** Which mill form the part envelope resembles. Geometry, not procurement. */
+export type StockFormKind =
+  | "SHEET"
+  | "PLATE"
+  | "ROUND_BAR"
+  | "SQUARE_BAR"
+  | "RECTANGULAR_BAR"
+  | "BLOCK";
+
+/** The external cylinder that separates round bar from square bar. */
+export interface RoundStockEvidence {
+  face_id: number;
+  radius_mm: number;
+  /** Unit direction - never unit-converted. */
+  axis: number[];
+  axial_coverage: number;
+}
+
+export interface StockForm {
+  method: string;
+  form: StockFormKind | null;
+  status: "resolved" | "ambiguous";
+  /** Why the classification is ambiguous. Null when resolved. */
+  reason: string | null;
+  candidate_forms: StockFormKind[];
+  /**
+   * `obb` when an oriented bounding box was available, `aabb` when the
+   * classification fell back to the axis-aligned box - which misjudges parts
+   * modelled off-axis.
+   */
+  bounds_method: "obb" | "aabb";
+  sorted_dimensions_mm: { length: number; width: number; height: number };
+  thickness_mm: number;
+  flatness_ratio: number;
+  slenderness_ratio: number;
+  cross_section_ratio: number;
+  round_evidence: RoundStockEvidence | null;
+  note: string;
+}
+
 export interface StockAnalysis {
   method: string;
   /** Always true - a bounding-box estimate, never a purchased stock size. */
@@ -334,6 +374,8 @@ export interface StockAnalysis {
   finished_volume_mm3: number;
   removed_volume_mm3: number;
   material_removal_ratio: number;
+  /** Null when the extents are degenerate. */
+  stock_form: StockForm | null;
   note: string;
 }
 
