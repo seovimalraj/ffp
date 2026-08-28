@@ -10,7 +10,7 @@ from __future__ import annotations
 import pytest
 
 from app.machining.config import MachiningConfig
-from app.machining.records import CYLINDER, FaceRecord, ShapeModel
+from app.machining.records import CYLINDER, PLANE, FaceRecord, ShapeModel
 from app.machining.schemas import FeatureStatus, StockFormKind
 from app.machining.stock_form import StockFormClassifier
 
@@ -164,6 +164,82 @@ class TestBarForms:
         model.faces[1] = _outer_cylinder(1, radius=4.0, extent=200.0)
         result = classifier.classify(model)
         assert result.form is StockFormKind.SQUARE_BAR
+
+
+def _wall_pair(
+    first_id: int,
+    normal,
+    gap: float,
+    area: float,
+    span=(100.0, 80.0),
+) -> list:
+    """Two opposed planar faces `gap` apart, overlapping in plan."""
+    axis = normal.index(max(normal, key=abs))
+    faces = []
+    for index, offset in enumerate((0.0, gap)):
+        low = [0.0, 0.0, 0.0]
+        high = [span[0], span[1], span[0]]
+        high[axis] = low[axis] = offset
+        centroid = [span[0] / 2, span[1] / 2, span[0] / 2]
+        centroid[axis] = offset
+        faces.append(
+            FaceRecord(
+                id=first_id + index,
+                surface_type=PLANE,
+                normal=tuple(-v for v in normal) if index else normal,
+                area_mm2=area,
+                bbox_min=tuple(low),
+                bbox_max=tuple(high),
+                centroid=tuple(centroid),
+            )
+        )
+    return faces
+
+
+class TestFormedSheet:
+    """A bent part has the envelope of a block; the wall is the evidence."""
+
+    def _bracket(self, wall_area: float, extra_area: float = 0.0) -> ShapeModel:
+        model = _model(100.0, 80.0, 60.0)
+        for face in _wall_pair(1, (0.0, 0.0, 1.0), 2.0, wall_area):
+            model.faces[face.id] = face
+        if extra_area:
+            model.faces[99] = FaceRecord(
+                id=99, surface_type=CYLINDER, area_mm2=extra_area, radius_mm=5.0
+            )
+        return model
+
+    def test_constant_thin_wall_reads_as_sheet(self, classifier):
+        result = classifier.classify(self._bracket(wall_area=4000.0))
+        assert result.form is StockFormKind.SHEET
+        assert result.sheet_evidence is not None
+        assert result.sheet_evidence.wall_thickness_mm == 2.0
+        assert result.sheet_evidence.formed is True
+
+    def test_wall_over_a_small_share_of_the_area_is_not_sheet(self, classifier):
+        """A block with one thin web must stay a block."""
+        result = classifier.classify(
+            self._bracket(wall_area=100.0, extra_area=50_000.0)
+        )
+        assert result.form is StockFormKind.BLOCK
+        assert result.sheet_evidence is None
+
+    def test_wall_thicker_than_the_sheet_cutoff_is_not_sheet(self, classifier):
+        model = _model(100.0, 80.0, 60.0)
+        for face in _wall_pair(1, (0.0, 0.0, 1.0), 20.0, 4000.0):
+            model.faces[face.id] = face
+        result = classifier.classify(model)
+        assert result.form is StockFormKind.BLOCK
+
+    def test_a_part_no_thicker_than_its_wall_is_not_called_formed(self, classifier):
+        """A flat blank reaches the flat branch first, but if one arrives here
+        it must not claim to have been bent."""
+        model = _model(100.0, 80.0, 4.0)
+        for face in _wall_pair(1, (0.0, 0.0, 1.0), 2.0, 4000.0):
+            model.faces[face.id] = face
+        result = classifier.classify(model)
+        if result.sheet_evidence is not None:
+            assert result.sheet_evidence.formed is False
 
 
 class TestBlock:

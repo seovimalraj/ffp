@@ -271,6 +271,27 @@ def stepped_shaft(tmp_path: Path) -> str:
     return _write_step(shape, tmp_path / "stepped_shaft.step")
 
 
+def bent_sheet_bracket(tmp_path: Path) -> str:
+    """A 2 mm sheet bracket folded into a U - envelope 100 x 80 x 60.
+
+    Folding destroys the flat proportions, so the extent ratios say block. The
+    constant 2 mm wall is what says sheet.
+    """
+    web = _box(0, 0, 0, 100, 80, 2)
+    shape = _fuse(web, _box(0, 0, 2, 2, 80, 58))
+    shape = _fuse(shape, _box(98, 0, 2, 2, 80, 58))
+    return _write_step(shape, tmp_path / "bent_sheet_bracket.step")
+
+
+def formed_sheet_enclosure(tmp_path: Path) -> str:
+    """A 2 mm open-topped box, 120 x 90 x 40 - a drawn enclosure."""
+    shape = _cut(
+        _box(0, 0, 0, 120, 90, 40),
+        _box(2, 2, 2, 116, 86, 40),
+    )
+    return _write_step(shape, tmp_path / "formed_sheet_enclosure.step")
+
+
 ALL_FIXTURES = (
     simple_block_with_through_hole,
     block_with_blind_hole,
@@ -288,4 +309,6 @@ ALL_FIXTURES = (
     thin_sheet_part,
     ring,
     stepped_shaft,
+    bent_sheet_bracket,
+    formed_sheet_enclosure,
 )

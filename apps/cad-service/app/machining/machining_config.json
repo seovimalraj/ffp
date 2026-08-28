@@ -63,6 +63,9 @@
   "stock_form_squareness_tol": 0.05,
   "stock_form_round_radius_tol": 0.05,
   "stock_form_round_axial_coverage": 0.6,
+  "stock_form_wall_cluster_tol_mm": 0.2,
+  "stock_form_sheet_wall_area_fraction": 0.5,
+  "stock_form_formed_envelope_ratio": 3.0,
   "stock_form_ambiguity_margin": 0.10,
 
   "length_decimals": 3,

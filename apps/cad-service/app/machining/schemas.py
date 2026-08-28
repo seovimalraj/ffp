@@ -615,6 +615,29 @@ class RoundStockEvidence(BaseModel):
     )
 
 
+class SheetEvidence(BaseModel):
+    """Wall measurements behind a sheet classification."""
+
+    method: str = "opposed_planar_faces"
+    wall_thickness_mm: float = Field(
+        description="Dominant separation between opposed planar faces."
+    )
+    paired_area_fraction: float = Field(
+        description=(
+            "Fraction of the total surface area sitting on walls of this "
+            "thickness. A solid block with one thin web scores low here, and "
+            "so does a turned part whose end faces happen to sit close."
+        )
+    )
+    formed: bool = Field(
+        description=(
+            "True when the part is bent or drawn, so `sorted_dimensions_mm` is "
+            "the folded envelope and not the flat blank. This endpoint does "
+            "not unfold the part, so the blank size is not reported."
+        )
+    )
+
+
 class StockForm(BaseModel):
     """Which mill form the envelope resembles, from extents and face evidence.
 
@@ -651,6 +674,7 @@ class StockForm(BaseModel):
         description="Relative difference between the two smaller extents."
     )
     round_evidence: Optional[RoundStockEvidence] = None
+    sheet_evidence: Optional[SheetEvidence] = None
     note: str = (
         "Geometric form of the envelope. No material, grade, availability or "
         "cost is implied, and this is not a purchasing recommendation."

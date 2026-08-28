@@ -90,7 +90,11 @@ tap drill for M8, but that is a manufacturing decision, not a geometric fact.
 `stock_analysis.stock_form` classifies the envelope as `SHEET`, `PLATE`,
 `ROUND_BAR`, `SQUARE_BAR`, `RECTANGULAR_BAR` or `BLOCK`.
 
-Flat stock is decided on extent ratios. Everything else is first checked for
+Flat stock is decided on extent ratios. A *formed* part is caught next - a bent
+bracket has the envelope of a block, so its constant wall thickness is the only
+evidence left; `sheet_evidence.formed` then flags that `sorted_dimensions_mm`
+is the folded envelope, not the flat blank, which this endpoint does not
+compute. Everything else is first checked for
 being a body of revolution, since extents alone cannot tell round bar from
 square bar: coaxial external cylinders are grouped, and a group qualifies when
 the cross-section is round, its largest diameter fills that cross-section, and

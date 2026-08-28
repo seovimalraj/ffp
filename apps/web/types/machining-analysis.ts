@@ -342,6 +342,20 @@ export interface RoundStockEvidence {
   axial_coverage: number;
 }
 
+/** Wall measurements behind a sheet classification. */
+export interface SheetEvidence {
+  method: string;
+  wall_thickness_mm: number;
+  /** Share of the total surface area sitting on walls of this thickness. */
+  paired_area_fraction: number;
+  /**
+   * True when the part is bent or drawn, so `sorted_dimensions_mm` is the
+   * folded envelope and not the flat blank. The blank size is not reported -
+   * the service does not unfold the part.
+   */
+  formed: boolean;
+}
+
 export interface StockForm {
   method: string;
   form: StockFormKind | null;
@@ -361,6 +375,7 @@ export interface StockForm {
   slenderness_ratio: number;
   cross_section_ratio: number;
   round_evidence: RoundStockEvidence | null;
+  sheet_evidence: SheetEvidence | null;
   note: string;
 }
 

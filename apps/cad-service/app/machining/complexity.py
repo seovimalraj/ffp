@@ -12,6 +12,7 @@ import logging
 from typing import List, Optional, Sequence, Tuple
 
 from .config import MachiningConfig
+from .detectors.shared import opposed_planar_pairs
 from .records import PLANE, FaceRecord, ShapeModel
 from .schemas import (
     AnalysisWarning,
@@ -57,51 +58,13 @@ class ThinWallAnalyzer:
             )
             return 0
 
-        planar.sort(key=lambda f: f.id)
-        count = 0
-        for i, face_a in enumerate(planar):
-            for face_b in planar[i + 1 :]:
-                if self._is_thin_wall(face_a, face_b):
-                    count += 1
-        return count
-
-    def _is_thin_wall(self, a: FaceRecord, b: FaceRecord) -> bool:
-        """Two faces form a thin wall when they face away from each other,
-        overlap in plan, and are separated by less than the threshold."""
-        normal_a, normal_b = a.normal, b.normal
-        if normal_a is None or normal_b is None:
-            return False
-        # Outward normals of a wall's two sides point in opposite directions.
-        if dot(normalize(normal_a), normalize(normal_b)) > -0.98:
-            return False
-
-        thickness = abs(dot(sub(b.centroid, a.centroid), normalize(normal_a)))
-        if thickness <= self.config.linear_tolerance_mm:
-            return False  # coincident faces, not a wall
-        if thickness >= self.config.thin_wall_thickness_mm:
-            return False
-
-        return self._overlaps_in_plane(a, b, normal_a)
-
-    def _overlaps_in_plane(self, a: FaceRecord, b: FaceRecord, normal: Vec) -> bool:
-        """Axis-aligned overlap test in the plane perpendicular to ``normal``."""
-        u, v = perpendicular_basis(normal)
-        for axis in (u, v):
-            a_lo, a_hi = self._extent(a, axis)
-            b_lo, b_hi = self._extent(b, axis)
-            if a_hi < b_lo or b_hi < a_lo:
-                return False
-        return True
-
-    def _extent(self, face: FaceRecord, axis: Vec) -> Tuple[float, float]:
-        corners = [
-            (x, y, z)
-            for x in (face.bbox_min[0], face.bbox_max[0])
-            for y in (face.bbox_min[1], face.bbox_max[1])
-            for z in (face.bbox_min[2], face.bbox_max[2])
-        ]
-        projections = [dot(c, axis) for c in corners]
-        return min(projections), max(projections)
+        return len(
+            opposed_planar_pairs(
+                planar,
+                min_gap=self.config.linear_tolerance_mm,
+                max_gap=self.config.thin_wall_thickness_mm,
+            )
+        )
 
 
 class ComplexityIndicatorBuilder:

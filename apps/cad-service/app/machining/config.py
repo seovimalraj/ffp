@@ -233,6 +233,27 @@ class MachiningConfig(BaseModel):
             "it counts as evidence of round stock."
         ),
     )
+    stock_form_wall_cluster_tol_mm: float = Field(
+        default=0.2,
+        description="Wall separations within this distance are the same thickness.",
+    )
+    stock_form_sheet_wall_area_fraction: float = Field(
+        default=0.5,
+        description=(
+            "Fraction of the total surface area that must sit on walls of "
+            "the dominant thickness before a formed part reads as sheet. "
+            "Guards against a solid block with one thin web, or a short turned "
+            "part with close end faces, being called sheet."
+        ),
+    )
+    stock_form_formed_envelope_ratio: float = Field(
+        default=3.0,
+        description=(
+            "Envelope thickness divided by wall thickness above which a sheet "
+            "part is reported as formed - the envelope is then the folded "
+            "part, not the flat blank."
+        ),
+    )
     stock_form_ambiguity_margin: float = Field(
         default=0.10,
         description=(
