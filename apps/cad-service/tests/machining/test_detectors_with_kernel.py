@@ -497,6 +497,24 @@ class TestStockAndIndicators:
         assert square_form["form"] == "SQUARE_BAR"
         assert square_form["round_evidence"] is None
 
+    def test_ring_turning_about_its_shortest_extent_is_round(self, analyze, step_dir):
+        """A ring is nearly as tall as it is wide, so the ratios alone say
+        block. The rotational axis is what makes it round stock."""
+        form = analyze(fixtures.ring(step_dir))["stock_analysis"]["stock_form"]
+        assert form["form"] == "ROUND_BAR"
+        assert form["round_evidence"]["radius_mm"] == pytest.approx(19.45, abs=1e-6)
+
+    def test_stepped_shaft_is_round_despite_several_diameters(
+        self, analyze, step_dir
+    ):
+        """No single cylinder spans the part - the OD is a union of faces."""
+        form = analyze(fixtures.stepped_shaft(step_dir))["stock_analysis"][
+            "stock_form"
+        ]
+        assert form["form"] == "ROUND_BAR"
+        # The stock diameter is the largest section, not the first one found.
+        assert form["round_evidence"]["radius_mm"] == pytest.approx(1.76, abs=1e-6)
+
     def test_block_fixture_classifies_as_block(self, analyze, step_dir):
         form = analyze(fixtures.simple_block_with_through_hole(step_dir))[
             "stock_analysis"

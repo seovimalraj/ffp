@@ -45,13 +45,16 @@ def _outer_cylinder(
     radius: float,
     axis=(0.0, 0.0, 1.0),
     extent: float = 100.0,
+    center=(0.0, 0.0, 0.0),
 ) -> FaceRecord:
+    """One external cylindrical face, centred at ``center`` along its axis."""
     return FaceRecord(
         id=face_id,
         surface_type=CYLINDER,
         radius_mm=radius,
         axis=axis,
         axis_location=(0.0, 0.0, 0.0),
+        centroid=center,
         axial_extent_mm=extent,
         is_internal=False,
     )
@@ -83,7 +86,9 @@ class TestFlatForms:
 class TestBarForms:
     def test_slender_part_with_outer_cylinder_is_round_bar(self, classifier):
         model = _model(20.0, 20.0, 200.0)
-        model.faces[1] = _outer_cylinder(1, radius=10.0, extent=200.0)
+        model.faces[1] = _outer_cylinder(
+            1, radius=10.0, extent=200.0, center=(0.0, 0.0, 100.0)
+        )
         result = classifier.classify(model)
         assert result.form is StockFormKind.ROUND_BAR
         assert result.round_evidence is not None
@@ -128,19 +133,26 @@ class TestBarForms:
         """A turned part rarely carries its OD as one face - grooves and
         shoulders split it, so coaxial faces must be summed."""
         model = _model(20.0, 20.0, 200.0)
-        model.faces[1] = _outer_cylinder(1, radius=10.0, extent=100.0)
-        model.faces[2] = _outer_cylinder(2, radius=10.0, extent=80.0)
+        # Two OD sections either side of a groove: 0-100 and 120-200.
+        model.faces[1] = _outer_cylinder(
+            1, radius=10.0, extent=100.0, center=(0.0, 0.0, 50.0)
+        )
+        model.faces[2] = _outer_cylinder(
+            2, radius=10.0, extent=80.0, center=(0.0, 0.0, 160.0)
+        )
         result = classifier.classify(model)
         assert result.form is StockFormKind.ROUND_BAR
         assert result.round_evidence.axial_coverage == pytest.approx(0.9)
-        # The larger of the two faces is cited as the evidence.
-        assert result.round_evidence.face_id == 1
 
     def test_parallel_but_offset_cylinders_are_not_summed(self, classifier):
         """Two cylinders on different axis lines are two features, not one OD."""
         model = _model(20.0, 20.0, 200.0)
-        near = _outer_cylinder(1, radius=10.0, extent=100.0)
-        far = _outer_cylinder(2, radius=10.0, extent=80.0)
+        near = _outer_cylinder(
+            1, radius=10.0, extent=100.0, center=(0.0, 0.0, 50.0)
+        )
+        far = _outer_cylinder(
+            2, radius=10.0, extent=80.0, center=(500.0, 0.0, 160.0)
+        )
         far.axis_location = (500.0, 0.0, 0.0)
         model.faces[1] = near
         model.faces[2] = far

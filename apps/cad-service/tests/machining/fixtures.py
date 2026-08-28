@@ -250,6 +250,27 @@ def thin_sheet_part(tmp_path: Path) -> str:
     return _write_step(shape, tmp_path / "thin_sheet_part.step")
 
 
+def ring(tmp_path: Path) -> str:
+    """38.9 outside diameter, 16.85 tall, bored through - a turned ring.
+
+    Its rotational axis is the *shortest* extent, so probing only the long
+    axis makes it read as a block. It is round stock.
+    """
+    shape = _cut(_cylinder(0, 0, 0, 19.45, 16.85), _cylinder(0, 0, -2, 16.0, 21.0))
+    return _write_step(shape, tmp_path / "ring.step")
+
+
+def stepped_shaft(tmp_path: Path) -> str:
+    """15 long turned pin carrying three different diameters.
+
+    No single cylinder both matches the cross-section and covers the length,
+    so the outside has to be read as the union of coaxial faces.
+    """
+    shape = _fuse(_cylinder(0, 0, 0, 1.25, 5.0), _cylinder(0, 0, 5, 1.6, 6.0))
+    shape = _fuse(shape, _cylinder(0, 0, 11, 1.76, 4.0))
+    return _write_step(shape, tmp_path / "stepped_shaft.step")
+
+
 ALL_FIXTURES = (
     simple_block_with_through_hole,
     block_with_blind_hole,
@@ -265,4 +286,6 @@ ALL_FIXTURES = (
     round_bar_with_face_groove,
     square_bar,
     thin_sheet_part,
+    ring,
+    stepped_shaft,
 )
