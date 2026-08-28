@@ -812,3 +812,37 @@ class TestOptions:
     def test_metric_is_the_default(self, analyze, step_dir):
         result = analyze(fixtures.simple_block_with_through_hole(step_dir))
         assert result["units"] == "mm"
+
+
+# ---------------------------------------------------------------------------
+# Import paths: formats and units
+# ---------------------------------------------------------------------------
+
+
+class TestImportPaths:
+    """Regressions for silent import failures found on the OCP binding.
+
+    Both bugs were invisible: BREP raised a 415 claiming the kernel could not
+    do BREP at all, and the unit pinning simply did nothing, so an inch part
+    was reported as millimetres at 1/25.4 of its size.
+    """
+
+    def test_brep_files_import_and_yield_the_same_geometry_as_step(
+        self, analyze, step_dir
+    ):
+        result = analyze(fixtures.simple_block_brep(step_dir))
+        box = result["geometry"]["bounding_box"]
+        assert result["geometry"]["volume_mm3"] == pytest.approx(40 * 30 * 20, rel=1e-6)
+        assert sorted(
+            (box["length_mm"], box["width_mm"], box["height_mm"])
+        ) == pytest.approx([20.0, 30.0, 40.0], rel=1e-6)
+        assert result["model"]["face_count"] == 6
+
+    def test_a_step_file_declaring_inches_is_reported_in_millimetres(
+        self, analyze, step_dir
+    ):
+        result = analyze(fixtures.block_declared_in_inches(step_dir))
+        box = result["geometry"]["bounding_box"]
+        assert sorted(
+            (box["length_mm"], box["width_mm"], box["height_mm"])
+        ) == pytest.approx([2 * 25.4, 3 * 25.4, 4 * 25.4], rel=1e-4)

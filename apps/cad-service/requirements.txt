@@ -12,16 +12,16 @@ httpx==0.28.1
 # NOT PIP-INSTALLABLE. pythonocc-core is published only on conda-forge (it ships
 # compiled OCCT libraries), so `pip install -r requirements.txt` cannot resolve
 # it and the line below is intentionally commented out. The Dockerfile installs
-# it with conda, pinned to 7.7.0:
+# it with conda, pinned to 7.9.3 (OCCT 7.9.3):
 #
-#     conda install -c conda-forge pythonocc-core=7.7.0 occt=7.7.0
+#     conda install -c conda-forge pythonocc-core=7.9.3 occt=7.9.3
 #
-# pythonocc-core==7.7.0
+# pythonocc-core==7.9.3
 #
 # For local development without conda, install the OCP binding instead - it is
 # on PyPI and app/machining/occ.py supports both bindings transparently:
 #
-#     pip install cadquery-ocp
+#     pip install cadquery-ocp   # 7.9.3.x - same OCCT as the Docker image
 #
 # The machining endpoint returns 503 CAD_KERNEL_UNAVAILABLE when neither is
 # present; STL and DXF analysis are unaffected.
