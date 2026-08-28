@@ -204,7 +204,8 @@ class CADParser:
             logger.debug("Could not pin STEP units to MM: %s", exc)
 
     def _read_step(self, path: str):
-        reader = occ.STEPControl_Reader()
+        reader = occ.require_symbol("STEPControl_Reader")()
+        self._force_millimetre_units()
         status = reader.ReadFile(path)
         if status != occ.IFSelect_RetDone:
             raise CADParseError(
@@ -221,7 +222,7 @@ class CADParser:
         return reader.OneShape()
 
     def _read_iges(self, path: str):
-        reader = occ.IGESControl_Reader()
+        reader = occ.require_symbol("IGESControl_Reader")()
         status = reader.ReadFile(path)
         if status != occ.IFSelect_RetDone:
             raise CADParseError(

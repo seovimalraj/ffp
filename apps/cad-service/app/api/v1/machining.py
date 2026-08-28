@@ -336,8 +336,14 @@ async def capabilities():
     config = get_machining_config()
     return {
         "analysis_version": ANALYSIS_VERSION,
-        "kernel_available": occ.kernel_available(),
+        # A binding can import and still be unusable - a partial OCCT install
+        # loads TopoDS but not STEPControl. Reporting only `kernel_available`
+        # made this endpoint answer 200/True right up to the 500 on upload.
+        "kernel_available": occ.kernel_available() and not occ.broken_symbols(),
         "kernel": occ.kernel_name(),
+        "kernel_binding_importable": occ.kernel_available(),
+        "kernel_missing_symbols": occ.broken_symbols(),
+        "kernel_import_failures": occ.import_failures,
         "supported_input_formats": sorted({v for v in SUPPORTED_FORMATS.values()}),
         "supported_extensions": sorted(SUPPORTED_FORMATS),
         "max_upload_bytes": config.max_upload_bytes,
