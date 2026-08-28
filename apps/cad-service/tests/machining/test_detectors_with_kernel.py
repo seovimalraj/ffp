@@ -515,6 +515,34 @@ class TestStockAndIndicators:
         # The stock diameter is the largest section, not the first one found.
         assert form["round_evidence"]["radius_mm"] == pytest.approx(1.76, abs=1e-6)
 
+    def test_bent_bracket_is_sheet_not_block(self, analyze, step_dir):
+        """Folding gives a sheet part the envelope of a block, so the wall is
+        the only evidence left."""
+        form = analyze(fixtures.bent_sheet_bracket(step_dir))["stock_analysis"][
+            "stock_form"
+        ]
+        assert form["form"] == "SHEET"
+        evidence = form["sheet_evidence"]
+        assert evidence["wall_thickness_mm"] == pytest.approx(2.0, abs=0.05)
+        assert evidence["formed"] is True
+
+    def test_formed_enclosure_is_sheet(self, analyze, step_dir):
+        form = analyze(fixtures.formed_sheet_enclosure(step_dir))["stock_analysis"][
+            "stock_form"
+        ]
+        assert form["form"] == "SHEET"
+        assert form["sheet_evidence"]["wall_thickness_mm"] == pytest.approx(
+            2.0, abs=0.05
+        )
+
+    def test_solid_block_is_not_mistaken_for_sheet(self, analyze, step_dir):
+        """The area guard has to hold, or every part becomes sheet."""
+        form = analyze(fixtures.simple_block_with_through_hole(step_dir))[
+            "stock_analysis"
+        ]["stock_form"]
+        assert form["form"] == "BLOCK"
+        assert form["sheet_evidence"] is None
+
     def test_block_fixture_classifies_as_block(self, analyze, step_dir):
         form = analyze(fixtures.simple_block_with_through_hole(step_dir))[
             "stock_analysis"

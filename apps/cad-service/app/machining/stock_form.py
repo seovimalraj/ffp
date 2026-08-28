@@ -28,24 +28,28 @@ Two things make the classification honest rather than a guess:
 from __future__ import annotations
 
 import logging
-from typing import List, Optional, Tuple
+from typing import Dict, List, Optional, Tuple
 
 from .config import MachiningConfig
-from .detectors.shared import group_coaxial
-from .records import CYLINDER, FaceRecord, ShapeModel
+from .detectors.shared import group_coaxial, opposed_planar_pairs
+from .records import CYLINDER, PLANE, FaceRecord, ShapeModel
 from .schemas import (
     FeatureStatus,
     RoundStockEvidence,
+    SheetEvidence,
     StockDimensions,
     StockForm,
     StockFormKind,
 )
-from .vectors import Vec, dot, is_parallel, normalize
+from .vectors import Vec, cluster_values, dot, is_parallel, normalize
 
 logger = logging.getLogger(__name__)
 
 #: Angular tolerance accepting a cylinder axis as running along the part.
 _AXIS_PARALLEL_TOL_DEG = 10.0
+
+#: The wall scan is O(planar faces squared); mirrors the thin-wall scan cap.
+_MAX_PLANAR_FACES_FOR_SHEET_SCAN = 1500
 
 
 def _near(value: float, threshold: float, margin: float) -> bool:
@@ -110,6 +114,87 @@ def _union_length(intervals: List[Tuple[float, float]]) -> float:
     if current_end is not None and current_start is not None:
         total += current_end - current_start
     return total
+
+
+def find_sheet_stock(
+    model: ShapeModel,
+    envelope_thickness: float,
+    config: MachiningConfig,
+) -> Optional[SheetEvidence]:
+    """Detect a part made from sheet, including one that has been formed.
+
+    A bent bracket or a drawn enclosure has the envelope of a block - folding
+    is exactly what destroys the flat proportions - so extent ratios can never
+    recognise it. What survives forming is the *wall*: a constant, small
+    thickness over most of the part.
+
+    So opposed planar faces are paired, their separations clustered, and the
+    dominant cluster taken as the wall thickness. It only counts as sheet when
+    those walls account for most of the planar area; a solid block with one
+    thin web has a dominant separation too, but almost none of its area sits on
+    it.
+    """
+    planar = [
+        face
+        for face in model.faces.values()
+        if face.surface_type == PLANE and face.normal is not None
+    ]
+    if len(planar) > _MAX_PLANAR_FACES_FOR_SHEET_SCAN:
+        logger.debug(
+            "%s planar faces exceed the sheet-wall scan limit - skipped",
+            len(planar),
+        )
+        return None
+
+    # Measured against the *whole* surface, not just the planar part of it.
+    # On real sheet metal the two skin faces dominate every other surface; on a
+    # turned pin the end faces and shoulders are almost all of the planar area
+    # but a small share of the total, which is what keeps it out of here.
+    total_area = sum(face.area_mm2 for face in model.faces.values())
+    if total_area <= 0:
+        return None
+
+    pairs = opposed_planar_pairs(
+        planar,
+        min_gap=config.linear_tolerance_mm,
+        max_gap=config.stock_form_sheet_max_thickness_mm,
+    )
+    if not pairs:
+        return None
+
+    # One part, one sheet thickness: the dominant cluster is the wall.
+    clusters = cluster_values(
+        (gap for _a, _b, gap in pairs), config.stock_form_wall_cluster_tol_mm
+    )
+    best_faces: Dict[int, FaceRecord] = {}
+    best_thickness = 0.0
+    best_area = 0.0
+    for cluster in clusters:
+        low, high = cluster[0], cluster[-1]
+        faces = {
+            face.id: face
+            for face_a, face_b, gap in pairs
+            if low <= gap <= high
+            for face in (face_a, face_b)
+        }
+        area = sum(face.area_mm2 for face in faces.values())
+        if area > best_area:
+            best_area = area
+            best_faces = faces
+            best_thickness = sum(cluster) / len(cluster)
+
+    fraction = min(1.0, best_area / total_area)
+    if fraction < config.stock_form_sheet_wall_area_fraction:
+        return None
+    if best_thickness <= 0:
+        return None
+
+    return SheetEvidence(
+        wall_thickness_mm=round(best_thickness, config.length_decimals),
+        paired_area_fraction=round(fraction, 4),
+        formed=envelope_thickness
+        >= best_thickness * config.stock_form_formed_envelope_ratio,
+    )
 
 
 def find_round_stock(
@@ -266,6 +351,23 @@ class StockFormClassifier:
                 None,
             )
 
+        # A formed part - a bent bracket, a drawn enclosure - has the envelope
+        # of a block, so its wall is the only thing left that says "sheet".
+        sheet = find_sheet_stock(model, thickness, cfg)
+        if sheet is not None:
+            return self._build(
+                StockFormKind.SHEET,
+                None,
+                [],
+                bounds_method,
+                (length, width, thickness),
+                flatness,
+                slenderness,
+                cross_section,
+                None,
+                sheet,
+            )
+
         # A body of revolution is round stock whichever extent it turns about -
         # a ring turns about its shortest one - so this is settled on face
         # evidence before the extent ratios get a say.
@@ -342,6 +444,7 @@ class StockFormClassifier:
         slenderness: float,
         cross_section: float,
         evidence: Optional[RoundStockEvidence],
+        sheet: Optional[SheetEvidence] = None,
     ) -> StockForm:
         length, width, thickness = dimensions
         status = FeatureStatus.AMBIGUOUS if reason else FeatureStatus.RESOLVED
@@ -361,6 +464,7 @@ class StockFormClassifier:
             slenderness_ratio=round(slenderness, 4),
             cross_section_ratio=round(cross_section, 4),
             round_evidence=evidence,
+            sheet_evidence=sheet,
         )
 
     def _r(self, value: float) -> float:

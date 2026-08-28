@@ -297,6 +297,7 @@ SUCCESS_EXAMPLE: Dict[str, Any] = {
             "slenderness_ratio": 0.6667,
             "cross_section_ratio": 0.5625,
             "round_evidence": None,
+            "sheet_evidence": None,
             "note": (
                 "Geometric form of the envelope. No material, grade, availability "
                 "or cost is implied, and this is not a purchasing recommendation."

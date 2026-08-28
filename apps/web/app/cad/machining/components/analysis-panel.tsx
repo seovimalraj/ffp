@@ -761,6 +761,7 @@ function StockFormSection({
 }) {
   const ambiguous = form.status === "ambiguous";
   const dims = form.sorted_dimensions_mm;
+  const sheet = form.sheet_evidence;
 
   return (
     <Section title="Stock form" icon={<Box className="h-3.5 w-3.5" />}>
@@ -771,6 +772,11 @@ function StockFormSection({
         {ambiguous && (
           <span className="rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-medium text-amber-800">
             ambiguous
+          </span>
+        )}
+        {sheet?.formed && (
+          <span className="rounded bg-sky-100 px-1.5 py-0.5 text-[10px] font-medium text-sky-800">
+            formed
           </span>
         )}
         {form.bounds_method === "aabb" && (
@@ -801,6 +807,12 @@ function StockFormSection({
                 dims.width,
               )} × ${formatNumber(dims.height)} ${unit}`,
             ],
+            ...(sheet
+              ? ([
+                  ["Wall thickness", formatLength(sheet.wall_thickness_mm, unit)],
+                  ["Wall area", formatPercent(sheet.paired_area_fraction)],
+                ] as Array<[string, string]>)
+              : []),
             ["Thickness", formatLength(form.thickness_mm, unit)],
             ["Thickness / width", formatNumber(form.flatness_ratio, 3)],
             ["Width / length", formatNumber(form.slenderness_ratio, 3)],
@@ -820,6 +832,12 @@ function StockFormSection({
         />
       </div>
 
+      {sheet?.formed && (
+        <Note>
+          The part is bent or drawn, so the envelope above is the folded part —
+          not the flat blank. This analysis does not unfold it.
+        </Note>
+      )}
       {form.bounds_method === "aabb" && (
         <Note>
           Measured from the axis-aligned bounding box - no oriented box was

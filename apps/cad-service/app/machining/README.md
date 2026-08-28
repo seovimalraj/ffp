@@ -281,6 +281,18 @@ Flat stock is decided first, on two ratios: thickness/width separates flat from
 solid, and thickness alone separates sheet from plate. A laser-cut washer comes
 off sheet whatever its outline, so a round profile does not override flatness.
 
+A part that has been **formed** is checked next, because folding is exactly
+what destroys flat proportions: a bent bracket or a drawn enclosure has the
+envelope of a block. What survives forming is the wall, so opposed planar faces
+are paired, their separations clustered, and the dominant cluster taken as the
+wall thickness. It only counts as sheet when those walls carry at least
+`stock_form_sheet_wall_area_fraction` of the *total* surface area — measured
+against the whole surface rather than just the planar part of it, which is what
+keeps a solid block with one thin web, and a short turned pin whose end faces
+sit close, out of this branch. `sheet_evidence.formed` then flags that
+`sorted_dimensions_mm` is the folded envelope and **not** the flat blank; this
+endpoint does not unfold the part, so the blank size is not reported.
+
 Everything else is checked for being a **body of revolution** before the
 remaining ratios get a say, because thickness cannot tell round bar from square
 bar — their extents are identical. External cylindrical faces are grouped by

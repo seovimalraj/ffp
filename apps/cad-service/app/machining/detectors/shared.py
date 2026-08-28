@@ -203,6 +203,58 @@ def min_corner_radius(walls: Iterable[FaceRecord]) -> Optional[float]:
     return min(radii) if radii else None
 
 
+def opposed_planar_pairs(
+    faces: Sequence[FaceRecord],
+    min_gap: float,
+    max_gap: float,
+) -> List[Tuple[FaceRecord, FaceRecord, float]]:
+    """Pairs of planar faces that form the two sides of a wall.
+
+    A wall's two sides face away from each other, overlap when viewed along the
+    wall normal, and sit a small distance apart. Returns each pair with its
+    separation, ascending by face id so the result is deterministic.
+
+    The gap bounds are a parameter rather than a fixed threshold because the
+    callers ask different questions: the complexity indicators count walls
+    thinner than a machining limit, while stock-form classification measures
+    the dominant wall thickness of a formed part.
+    """
+    planar = sorted(
+        (f for f in faces if f.surface_type == PLANE and f.normal is not None),
+        key=lambda f: f.id,
+    )
+    pairs: List[Tuple[FaceRecord, FaceRecord, float]] = []
+    for index, face_a in enumerate(planar):
+        normal_a = normalize(face_a.normal)  # type: ignore[arg-type]
+        for face_b in planar[index + 1 :]:
+            # Outward normals of a wall's two sides point in opposite directions.
+            if dot(normal_a, normalize(face_b.normal)) > -0.98:  # type: ignore[arg-type]
+                continue
+            gap = abs(dot(sub(face_b.centroid, face_a.centroid), normal_a))
+            if gap <= min_gap or gap >= max_gap:
+                continue
+            if not faces_overlap_in_plane(face_a, face_b, normal_a):
+                continue
+            pairs.append((face_a, face_b, gap))
+    return pairs
+
+
+def faces_overlap_in_plane(a: FaceRecord, b: FaceRecord, normal: Vec) -> bool:
+    """Axis-aligned overlap test in the plane perpendicular to ``normal``."""
+    u, v = perpendicular_basis(normal)
+    for axis in (u, v):
+        a_lo, a_hi = _projected_extent(a, axis)
+        b_lo, b_hi = _projected_extent(b, axis)
+        if a_hi < b_lo or b_hi < a_lo:
+            return False
+    return True
+
+
+def _projected_extent(face: FaceRecord, axis: Vec) -> Tuple[float, float]:
+    projections = [dot(corner, axis) for corner in bbox_corners(face)]
+    return min(projections), max(projections)
+
+
 def round_vec(vec: Vec, decimals: int = 6) -> Vec:
     return (round(vec[0], decimals), round(vec[1], decimals), round(vec[2], decimals))
 
