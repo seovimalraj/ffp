@@ -591,6 +591,72 @@ class StockDimensions(BaseModel):
     height: float
 
 
+class StockFormKind(str, Enum):
+    """Geometric stock form. Not a purchasing recommendation."""
+
+    SHEET = "SHEET"
+    PLATE = "PLATE"
+    ROUND_BAR = "ROUND_BAR"
+    SQUARE_BAR = "SQUARE_BAR"
+    RECTANGULAR_BAR = "RECTANGULAR_BAR"
+    BLOCK = "BLOCK"
+
+
+class RoundStockEvidence(BaseModel):
+    """The external cylinder that separates round bar from square bar."""
+
+    face_id: int
+    radius_mm: float
+    axis: List[float] = Field(
+        description="Unit direction of the cylinder axis. Never unit-converted."
+    )
+    axial_coverage: float = Field(
+        description="Fraction of the long extent this cylinder spans."
+    )
+
+
+class StockForm(BaseModel):
+    """Which mill form the envelope resembles, from extents and face evidence.
+
+    Purely geometric. It says a part *could* be cut from bar, plate or sheet of
+    these proportions; it does not say that stock is available, appropriate for
+    the material, or cheapest - those need context this endpoint does not have.
+    """
+
+    method: str = "extent_ratios_and_surface_evidence"
+    form: Optional[StockFormKind] = None
+    status: FeatureStatus = FeatureStatus.RESOLVED
+    reason: Optional[str] = Field(
+        default=None,
+        description="Why the classification is ambiguous. Null when resolved.",
+    )
+    candidate_forms: List[StockFormKind] = Field(
+        default_factory=list,
+        description="Forms in contention when status is ambiguous.",
+    )
+    bounds_method: str = Field(
+        description=(
+            "`obb` when an oriented bounding box was available, `aabb` when the "
+            "classification fell back to the axis-aligned box - which "
+            "misjudges parts modelled off-axis."
+        )
+    )
+    sorted_dimensions_mm: StockDimensions = Field(
+        description="Extents sorted descending: length >= width >= height."
+    )
+    thickness_mm: float = Field(description="Smallest extent.")
+    flatness_ratio: float = Field(description="thickness / width.")
+    slenderness_ratio: float = Field(description="width / length.")
+    cross_section_ratio: float = Field(
+        description="Relative difference between the two smaller extents."
+    )
+    round_evidence: Optional[RoundStockEvidence] = None
+    note: str = (
+        "Geometric form of the envelope. No material, grade, availability or "
+        "cost is implied, and this is not a purchasing recommendation."
+    )
+
+
 class StockAnalysis(BaseModel):
     """Bounding box plus a configurable allowance. Always an estimate."""
 
@@ -605,6 +671,13 @@ class StockAnalysis(BaseModel):
     finished_volume_mm3: float
     removed_volume_mm3: float
     material_removal_ratio: float
+    stock_form: Optional[StockForm] = Field(
+        default=None,
+        description=(
+            "Which mill form the envelope resembles - sheet, plate, or bar. "
+            "Null when the extents are degenerate."
+        ),
+    )
     note: str = (
         "Bounding-box estimate. Not a commercially purchased stock size, and no "
         "material, grade, or cost is implied."

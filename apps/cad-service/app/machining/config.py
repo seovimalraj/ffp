@@ -192,6 +192,55 @@ class MachiningConfig(BaseModel):
         description="Round each stock dimension up to a multiple of this (0 disables).",
     )
 
+    # --- stock form classification ----------------------------------------
+    # These cutoffs are the only judgement in the classification: the extents
+    # and face evidence are measured facts, and where the boundaries between
+    # sheet, plate and bar sit is a shop convention, so it is declared here.
+    stock_form_sheet_max_thickness_mm: float = Field(
+        default=6.0,
+        description="At or below this thickness a flat part reads as sheet rather than plate.",
+    )
+    stock_form_sheet_ratio_max: float = Field(
+        default=0.10,
+        description="Thickness/width ratio at or below which a flat part reads as sheet.",
+    )
+    stock_form_flat_ratio_max: float = Field(
+        default=0.25,
+        description="Thickness/width ratio at or below which a part reads as plate.",
+    )
+    stock_form_bar_ratio_max: float = Field(
+        default=0.25,
+        description="Width/length ratio at or below which a part reads as bar stock.",
+    )
+    stock_form_squareness_tol: float = Field(
+        default=0.05,
+        description=(
+            "Relative difference between the two smaller extents below which a "
+            "bar cross-section counts as square (or round)."
+        ),
+    )
+    stock_form_round_radius_tol: float = Field(
+        default=0.05,
+        description=(
+            "Relative tolerance matching an external cylinder radius against "
+            "half the cross-section, used to separate round bar from square bar."
+        ),
+    )
+    stock_form_round_axial_coverage: float = Field(
+        default=0.6,
+        description=(
+            "Fraction of the long extent an external cylinder must span before "
+            "it counts as evidence of round stock."
+        ),
+    )
+    stock_form_ambiguity_margin: float = Field(
+        default=0.10,
+        description=(
+            "Relative distance from a threshold within which the classification "
+            "is reported as ambiguous instead of committing to a form."
+        ),
+    )
+
     # --- topology entities ------------------------------------------------
     max_topology_entities: int = Field(
         default=4000,

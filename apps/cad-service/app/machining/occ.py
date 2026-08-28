@@ -156,7 +156,7 @@ def _load(module: str, *names: str) -> tuple:
 # --- properties -----------------------------------------------------------
 (GProp_GProps,) = _load("GProp", "GProp_GProps")
 (brepgprop, BRepGProp) = _load("BRepGProp", "brepgprop", "BRepGProp")
-(Bnd_Box,) = _load("Bnd", "Bnd_Box")
+(Bnd_Box, Bnd_OBB) = _load("Bnd", "Bnd_Box", "Bnd_OBB")
 (brepbndlib, BRepBndLib) = _load("BRepBndLib", "brepbndlib", "BRepBndLib")
 
 # --- shape healing --------------------------------------------------------
@@ -269,6 +269,43 @@ def add_to_bbox(shape: Any, box: Any, use_triangulation: bool = False) -> None:
     if fn is None:
         raise KernelUnavailable("BRepBndLib.Add unavailable in this binding")
     fn(shape, box, use_triangulation)
+
+
+def oriented_bbox(shape: Any) -> Optional[tuple]:
+    """``BRepBndLib::AddOBB`` -> ``(half_sizes, axes, center)``, or ``None``.
+
+    The oriented box is what makes stock-form classification survive a part
+    modelled off-axis: the axis-aligned box of a rotated plate has three
+    comparable dimensions and reads as a block. ``Bnd_OBB`` arrived in OCCT 7.x
+    and the accessor names differ between bindings, so every step is optional
+    and the caller falls back to the axis-aligned box when this returns
+    ``None``.
+    """
+    if Bnd_OBB is None:
+        return None
+    fn = _resolve_static((brepbndlib, BRepBndLib), "AddOBB", "brepbndlib_AddOBB")
+    if fn is None:
+        return None
+    try:
+        obb = Bnd_OBB()
+        fn(shape, obb, True, True, True)
+        if obb.IsVoid():
+            return None
+        half = (
+            float(obb.XHSize()),
+            float(obb.YHSize()),
+            float(obb.ZHSize()),
+        )
+        axes = tuple(
+            (float(d.X()), float(d.Y()), float(d.Z()))
+            for d in (obb.XDirection(), obb.YDirection(), obb.ZDirection())
+        )
+        pos = obb.Center()
+        center = (float(pos.X()), float(pos.Y()), float(pos.Z()))
+    except Exception as exc:
+        logger.debug("machining: oriented bounding box unavailable: %s", exc)
+        return None
+    return half, axes, center
 
 
 def face_uv_bounds(face: Any) -> tuple:

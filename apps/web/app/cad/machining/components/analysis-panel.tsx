@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 import {
   AlertTriangle,
+  Box,
   ChevronRight,
   CircleDot,
   Info,
@@ -13,6 +14,7 @@ import {
 import type {
   AnyMachiningFeature,
   MachiningAnalysisResponse,
+  StockForm,
 } from "@/types/machining-analysis";
 
 import {
@@ -237,6 +239,10 @@ function OverviewTab({
           />
           <Note>{stock.note}</Note>
         </Section>
+      )}
+
+      {stock?.stock_form && (
+        <StockFormSection form={stock.stock_form} unit={unit} />
       )}
 
       {result.pmi.available && (
@@ -736,6 +742,92 @@ function Section({
       <SectionTitle icon={icon}>{title}</SectionTitle>
       <div className="mt-2">{children}</div>
     </section>
+  );
+}
+
+/**
+ * Which mill form the envelope resembles - sheet, plate or bar.
+ *
+ * Deliberately framed as a geometric observation. The service does not know
+ * the alloy, what the shop stocks, or what anything costs, so the wording here
+ * must not read as "buy this".
+ */
+function StockFormSection({
+  form,
+  unit,
+}: {
+  form: StockForm;
+  unit: string;
+}) {
+  const ambiguous = form.status === "ambiguous";
+  const dims = form.sorted_dimensions_mm;
+
+  return (
+    <Section title="Stock form" icon={<Box className="h-3.5 w-3.5" />}>
+      <div className="flex flex-wrap items-center gap-1.5">
+        <span className="rounded bg-slate-800 px-2 py-0.5 text-[11px] font-semibold text-white">
+          {humanize(form.form)}
+        </span>
+        {ambiguous && (
+          <span className="rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-medium text-amber-800">
+            ambiguous
+          </span>
+        )}
+        {form.bounds_method === "aabb" && (
+          <span className="rounded bg-slate-100 px-1.5 py-0.5 text-[10px] font-medium text-slate-600">
+            axis-aligned bounds
+          </span>
+        )}
+      </div>
+
+      {ambiguous && form.reason && (
+        <p className="mt-2 rounded-md bg-amber-50 p-2 text-[11px] leading-relaxed text-amber-900">
+          {form.reason}
+          {form.candidate_forms.length > 0 && (
+            <>
+              {" "}
+              Candidates: {form.candidate_forms.map(humanize).join(", ")}.
+            </>
+          )}
+        </p>
+      )}
+
+      <div className="mt-2">
+        <DataGrid
+          rows={[
+            [
+              "Envelope",
+              `${formatNumber(dims.length)} × ${formatNumber(
+                dims.width,
+              )} × ${formatNumber(dims.height)} ${unit}`,
+            ],
+            ["Thickness", formatLength(form.thickness_mm, unit)],
+            ["Thickness / width", formatNumber(form.flatness_ratio, 3)],
+            ["Width / length", formatNumber(form.slenderness_ratio, 3)],
+            ...(form.round_evidence
+              ? ([
+                  [
+                    "Outside radius",
+                    formatLength(form.round_evidence.radius_mm, unit),
+                  ],
+                  [
+                    "Cylinder covers",
+                    formatPercent(form.round_evidence.axial_coverage),
+                  ],
+                ] as Array<[string, string]>)
+              : []),
+          ]}
+        />
+      </div>
+
+      {form.bounds_method === "aabb" && (
+        <Note>
+          Measured from the axis-aligned bounding box - no oriented box was
+          available. A part modelled off-axis can be misjudged.
+        </Note>
+      )}
+      <Note>{form.note}</Note>
+    </Section>
   );
 }
 

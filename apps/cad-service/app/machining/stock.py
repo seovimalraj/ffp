@@ -15,6 +15,7 @@ from typing import Optional
 from .config import MachiningConfig
 from .records import MassProperties, ShapeModel
 from .schemas import StockAnalysis, StockDimensions
+from .stock_form import StockFormClassifier
 
 logger = logging.getLogger(__name__)
 
@@ -24,6 +25,7 @@ class StockAnalyzer:
 
     def __init__(self, config: MachiningConfig):
         self.config = config
+        self.form_classifier = StockFormClassifier(config)
 
     def analyze(
         self, model: ShapeModel, mass: MassProperties
@@ -51,6 +53,7 @@ class StockAnalyzer:
             finished_volume_mm3=round(finished, self.config.volume_decimals),
             removed_volume_mm3=round(removed, self.config.volume_decimals),
             material_removal_ratio=round(ratio, 4),
+            stock_form=self.form_classifier.classify(model),
         )
 
     def _round_up(self, value: float) -> float:

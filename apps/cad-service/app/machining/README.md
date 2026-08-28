@@ -157,7 +157,7 @@ are never scaled.
   "machining_constraints": [],   // geometric max tool diameter per feature
   "accessibility": [],           // per feature, per principal direction
   "setup_analysis": {},          // features grouped by direction
-  "stock_analysis": {},          // bounding-box estimate, clearly marked
+  "stock_analysis": {},          // bounding-box estimate + stock form, clearly marked
   "complexity_indicators": {},   // deterministic counts, no score
   "pmi": {},                     // declared CAD metadata, source-tagged
   "warnings": [],
@@ -272,6 +272,32 @@ flagged `"estimated": true`. This is **not** a purchased stock size: real stock
 comes in discrete sizes and may be a casting or extrusion. No material, grade or
 cost is implied.
 
+### Stock form
+
+`stock_analysis.stock_form` also names the mill form the envelope resembles:
+`SHEET`, `PLATE`, `ROUND_BAR`, `SQUARE_BAR`, `RECTANGULAR_BAR` or `BLOCK`.
+
+The extents are sorted, and two ratios do most of the work — thickness/width
+separates flat stock from block, width/length separates bar from block. Round
+bar and square bar have *identical extents*, so thickness alone cannot tell
+them apart; an external cylinder running along the part, at half the
+cross-section, is what settles it. Because grooves and shoulders split that
+outer diameter into several faces, coaxial candidates are grouped and their
+coverage summed.
+
+Every cutoff is configuration (`stock_form_*`), and a part sitting within
+`stock_form_ambiguity_margin` of the cutoff that decides it comes back
+`"status": "ambiguous"` with both candidates rather than a coin flip.
+
+`bounds_method` reports which envelope was used: `obb` when OCCT gave an
+oriented bounding box, `aabb` when it did not. This matters — the axis-aligned
+box of a plate modelled at 30° has three comparable dimensions and reads as a
+block.
+
+Like the estimate above, this is a statement about proportions, **not** a
+purchasing recommendation: it does not claim the stock exists in the required
+alloy, is available in that size, or is the cheapest route.
+
 ## Configuration
 
 Every threshold lives in [`machining_config.json`](machining_config.json) and is
@@ -368,6 +394,7 @@ app/machining/
   patterns.py                  PatternDetector
   accessibility.py             AccessibilityAnalyzer, SetupAnalyzer
   stock.py                     StockAnalyzer
+  stock_form.py                StockFormClassifier
   constraints.py               MachiningComplexityAnalyzer (flags, tooling)
   complexity.py                ThinWallAnalyzer, ComplexityIndicatorBuilder
   pmi.py                       PMIExtractor

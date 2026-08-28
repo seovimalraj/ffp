@@ -138,6 +138,14 @@ class ShapeModel:
     bbox_min: Vec = (0.0, 0.0, 0.0)
     bbox_max: Vec = (0.0, 0.0, 0.0)
 
+    #: Oriented bounding box, when the kernel could compute one. Full extents
+    #: (not half sizes) along ``obb_axes``, which are the matching unit
+    #: directions. Left ``None`` on older OCCT builds; consumers fall back to
+    #: the axis-aligned box and say which they used.
+    obb_size: Optional[Vec] = None
+    obb_axes: Optional[Tuple[Vec, Vec, Vec]] = None
+    obb_center: Optional[Vec] = None
+
     #: face id -> ids of faces sharing at least one edge
     face_neighbors: Dict[int, Set[int]] = field(default_factory=dict)
     #: (face_a, face_b) -> shared edge ids
@@ -169,6 +177,18 @@ class ShapeModel:
             self.bbox_max[1] - self.bbox_min[1],
             self.bbox_max[2] - self.bbox_min[2],
         )
+
+    @property
+    def extents(self) -> Tuple[Vec, str]:
+        """Best available overall extents plus the method that produced them.
+
+        Returns the oriented box when one exists, otherwise the axis-aligned
+        box, tagged ``"obb"`` or ``"aabb"`` so the response can state which
+        was used rather than leaving the client to guess.
+        """
+        if self.obb_size is not None and min(self.obb_size) > 0:
+            return self.obb_size, "obb"
+        return self.bbox_size, "aabb"
 
     @property
     def bbox_diagonal(self) -> float:

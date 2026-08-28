@@ -21,7 +21,7 @@ import type {
 import { isMachiningError } from "@/types/machining-analysis";
 
 import { AnalysisPanel } from "./components/analysis-panel";
-import { formatBytes, formatDuration } from "./lib/format";
+import { formatBytes, formatDuration, humanize } from "./lib/format";
 
 /**
  * CAD machining analysis workbench.
@@ -31,7 +31,8 @@ import { formatBytes, formatDuration } from "./lib/format";
  * geometry alongside it.
  *
  * Everything displayed here is measured geometry. Nothing on this page is a
- * cost, a machine choice or a price.
+ * cost, a machine choice or a price - including the stock form, which describes
+ * the proportions of the envelope and not what to buy.
  */
 
 /** The CAD service only accepts B-Rep formats; mesh formats have no topology. */
@@ -272,6 +273,12 @@ export default function MachiningAnalysisPage() {
                   {status.result.model.face_count} faces ·{" "}
                   {status.result.complexity_indicators.feature_count_total}{" "}
                   features · {formatDuration(status.result.analysis_duration_ms)}
+                  {status.result.stock_analysis?.stock_form?.form && (
+                    <>
+                      {" · "}
+                      {humanize(status.result.stock_analysis.stock_form.form)}
+                    </>
+                  )}
                 </div>
               )}
             </section>
@@ -341,8 +348,8 @@ export default function MachiningAnalysisPage() {
                 </h2>
                 <p className="mt-1.5 text-sm leading-relaxed text-slate-500">
                   Extracts holes, pockets, slots, bosses, fillets, chamfers,
-                  threads, repeated patterns, tool constraints and setup
-                  candidates — deterministically, from the B-Rep.
+                  threads, repeated patterns, tool constraints, setup candidates
+                  and stock form — deterministically, from the B-Rep.
                 </p>
               </div>
               <button
