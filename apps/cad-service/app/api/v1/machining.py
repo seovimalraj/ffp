@@ -71,7 +71,7 @@ produces the same JSON.
 | `machining_flags` | `DEEP_HOLE`, `NARROW_SLOT`, ... against configurable thresholds |
 | `machining_constraints` | Geometric maximum tool diameter per feature |
 | `accessibility`, `setup_analysis` | Ray-cast reachability from the six principal directions |
-| `stock_analysis` | Bounding-box estimate, always marked `estimated` |
+| `stock_analysis` | Bounding-box estimate, always marked `estimated`, plus `stock_form` |
 | `complexity_indicators` | Deterministic counts - no score, no difficulty rating |
 | `pmi` | Metadata the file declares, tagged `CAD_METADATA` |
 
@@ -84,6 +84,20 @@ classification, the feature is returned with `status: "ambiguous"` and a
 
 A thread designation is **never** inferred from diameter: a 6.8 mm hole is the
 tap drill for M8, but that is a manufacturing decision, not a geometric fact.
+
+### Stock form
+
+`stock_analysis.stock_form` classifies the envelope as `SHEET`, `PLATE`,
+`ROUND_BAR`, `SQUARE_BAR`, `RECTANGULAR_BAR` or `BLOCK` from extent ratios,
+with an external-cylinder check separating round bar from square bar. The
+cutoffs are configuration, and a part sitting on a boundary comes back
+`status: "ambiguous"` with both candidates rather than a coin flip.
+
+This is a statement about *proportions*, not procurement: it does not claim the
+stock exists in the required alloy, is available in that size, or is the
+cheapest route. `bounds_method` reports `obb` when an oriented bounding box was
+available and `aabb` when it was not - the axis-aligned fallback misjudges
+parts modelled off-axis.
 
 ### Units
 

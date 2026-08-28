@@ -226,6 +226,30 @@ def deep_hole_block(tmp_path: Path) -> str:
     return _write_step(shape, tmp_path / "deep_hole_block.step")
 
 
+def round_bar_with_face_groove(tmp_path: Path) -> str:
+    """200 mm long, 20 mm diameter round bar with a shallow turned groove.
+
+    The dominant external cylinder spans the full length, so this must classify
+    as ROUND_BAR rather than SQUARE_BAR.
+    """
+    shape = _cut(
+        _cylinder(0, 0, 0, 10.0, 200.0),
+        _cut(_cylinder(0, 0, 80, 10.5, 20.0), _cylinder(0, 0, 75, 8.0, 30.0)),
+    )
+    return _write_step(shape, tmp_path / "round_bar_with_face_groove.step")
+
+
+def square_bar(tmp_path: Path) -> str:
+    """200 x 20 x 20 square bar - same extents as the round bar, no cylinder."""
+    return _write_step(_box(0, 0, 0, 20, 20, 200), tmp_path / "square_bar.step")
+
+
+def thin_sheet_part(tmp_path: Path) -> str:
+    """300 x 200 x 2 sheet with a through hole - flat enough to be SHEET."""
+    shape = _cut(_box(0, 0, 0, 300, 200, 2), _cylinder(150, 100, -1, 10.0, 5.0))
+    return _write_step(shape, tmp_path / "thin_sheet_part.step")
+
+
 ALL_FIXTURES = (
     simple_block_with_through_hole,
     block_with_blind_hole,
@@ -238,4 +262,7 @@ ALL_FIXTURES = (
     block_with_hole_split_into_arcs,
     two_body_assembly,
     deep_hole_block,
+    round_bar_with_face_groove,
+    square_bar,
+    thin_sheet_part,
 )

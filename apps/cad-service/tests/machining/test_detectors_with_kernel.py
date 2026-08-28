@@ -473,6 +473,47 @@ class TestStockAndIndicators:
         assert "VERY_DEEP_HOLE" in flags
         assert result["complexity_indicators"]["deep_hole_count"] == 1
 
+    def test_flat_part_classifies_as_sheet(self, analyze, step_dir):
+        form = analyze(fixtures.thin_sheet_part(step_dir))["stock_analysis"][
+            "stock_form"
+        ]
+        assert form["form"] == "SHEET"
+        assert form["thickness_mm"] == pytest.approx(2.0, abs=1e-6)
+        assert form["round_evidence"] is None
+
+    def test_round_bar_is_separated_from_square_bar(self, analyze, step_dir):
+        """Identical extents - only the external cylinder tells them apart."""
+        round_form = analyze(fixtures.round_bar_with_face_groove(step_dir))[
+            "stock_analysis"
+        ]["stock_form"]
+        square_form = analyze(fixtures.square_bar(step_dir))["stock_analysis"][
+            "stock_form"
+        ]
+
+        assert round_form["form"] == "ROUND_BAR"
+        assert round_form["round_evidence"]["radius_mm"] == pytest.approx(
+            10.0, abs=1e-6
+        )
+        assert square_form["form"] == "SQUARE_BAR"
+        assert square_form["round_evidence"] is None
+
+    def test_block_fixture_classifies_as_block(self, analyze, step_dir):
+        form = analyze(fixtures.simple_block_with_through_hole(step_dir))[
+            "stock_analysis"
+        ]["stock_form"]
+        assert form["form"] == "BLOCK"
+
+    def test_stock_form_carries_no_material_or_cost(self, analyze, step_dir):
+        form = analyze(fixtures.square_bar(step_dir))["stock_analysis"]["stock_form"]
+        assert not [
+            key
+            for key in form
+            if any(
+                word in key
+                for word in ("cost", "price", "material", "grade", "supplier")
+            )
+        ]
+
     def test_indicators_contain_no_score_or_price(self, analyze, step_dir):
         indicators = analyze(fixtures.block_with_pocket(step_dir))["complexity_indicators"]
         assert not [

@@ -284,6 +284,24 @@ SUCCESS_EXAMPLE: Dict[str, Any] = {
         "finished_volume_mm3": 321652.57,
         "removed_volume_mm3": 103347.43,
         "material_removal_ratio": 0.2432,
+        "stock_form": {
+            "method": "extent_ratios_and_surface_evidence",
+            "form": "BLOCK",
+            "status": "resolved",
+            "reason": None,
+            "candidate_forms": [],
+            "bounds_method": "obb",
+            "sorted_dimensions_mm": {"length": 120.0, "width": 80.0, "height": 35.0},
+            "thickness_mm": 35.0,
+            "flatness_ratio": 0.4375,
+            "slenderness_ratio": 0.6667,
+            "cross_section_ratio": 0.5625,
+            "round_evidence": None,
+            "note": (
+                "Geometric form of the envelope. No material, grade, availability "
+                "or cost is implied, and this is not a purchasing recommendation."
+            ),
+        },
         "note": (
             "Bounding-box estimate. Not a commercially purchased stock size, and "
             "no material, grade, or cost is implied."

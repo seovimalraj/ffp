@@ -536,6 +536,41 @@ class TestUnitConversion:
         assert converted["stock_dimensions_mm"]["length"] == pytest.approx(1.0)
         assert converted["stock_dimensions_mm"]["height"] == pytest.approx(3.0)
 
+    def test_stock_form_converts_lengths_but_not_ratios(self):
+        converted = to_imperial(
+            {
+                "stock_form": {
+                    "form": "PLATE",
+                    "bounds_method": "obb",
+                    "sorted_dimensions_mm": {
+                        "length": 25.4,
+                        "width": 50.8,
+                        "height": 76.2,
+                    },
+                    "thickness_mm": 25.4,
+                    "flatness_ratio": 0.25,
+                    "slenderness_ratio": 0.5,
+                    "cross_section_ratio": 0.75,
+                    "round_evidence": {
+                        "face_id": 7,
+                        "radius_mm": 25.4,
+                        "axis": [0.0, 0.0, 1.0],
+                        "axial_coverage": 0.95,
+                    },
+                }
+            }
+        )["stock_form"]
+        assert converted["thickness_mm"] == pytest.approx(1.0)
+        assert converted["sorted_dimensions_mm"]["width"] == pytest.approx(2.0)
+        assert converted["round_evidence"]["radius_mm"] == pytest.approx(1.0)
+        # Ratios and the axis direction are dimensionless.
+        assert converted["flatness_ratio"] == 0.25
+        assert converted["cross_section_ratio"] == 0.75
+        assert converted["round_evidence"]["axis"] == [0.0, 0.0, 1.0]
+        assert converted["round_evidence"]["axial_coverage"] == 0.95
+        assert converted["form"] == "PLATE"
+        assert converted["bounds_method"] == "obb"
+
     def test_nested_feature_lists_are_converted(self):
         converted = to_imperial({"features": {"holes": [{"diameter_mm": 25.4}]}})
         assert converted["features"]["holes"][0]["diameter_mm"] == pytest.approx(1.0)

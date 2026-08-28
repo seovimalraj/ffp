@@ -64,6 +64,20 @@ class TopologyAnalyzer:
         except Exception as exc:
             logger.warning("Model bounding box failed: %s", exc)
 
+        # The oriented box is optional: it is absent on older OCCT builds and
+        # every consumer falls back to the axis-aligned box, so a failure here
+        # degrades accuracy rather than the analysis.
+        try:
+            oriented = occ.oriented_bbox(shape)
+        except Exception as exc:
+            logger.debug("Oriented bounding box failed: %s", exc)
+            oriented = None
+        if oriented is not None:
+            half, axes, center = oriented
+            model.obb_size = (half[0] * 2.0, half[1] * 2.0, half[2] * 2.0)
+            model.obb_axes = tuple(normalize(a) for a in axes)
+            model.obb_center = center
+
     def _solid_index_map(self, shape: Any, faces: occ.ShapeIndex) -> Dict[int, int]:
         """Map each face identity to the index of the solid that owns it."""
         mapping: Dict[int, int] = {}

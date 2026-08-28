@@ -56,6 +56,15 @@
   "stock_allowance_mm": 2.5,
   "stock_round_up_to_mm": 0.0,
 
+  "stock_form_sheet_max_thickness_mm": 6.0,
+  "stock_form_sheet_ratio_max": 0.10,
+  "stock_form_flat_ratio_max": 0.25,
+  "stock_form_bar_ratio_max": 0.25,
+  "stock_form_squareness_tol": 0.05,
+  "stock_form_round_radius_tol": 0.05,
+  "stock_form_round_axial_coverage": 0.6,
+  "stock_form_ambiguity_margin": 0.10,
+
   "length_decimals": 3,
   "area_decimals": 2,
   "volume_decimals": 2
