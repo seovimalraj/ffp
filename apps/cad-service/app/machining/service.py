@@ -39,7 +39,7 @@ from .faces import summarize_surfaces, to_surface_type_enum
 from .parser import CADParser, LoadedModel
 from .patterns import PatternDetector
 from .pmi import PMIExtractor, thread_name_candidates
-from .records import MassProperties, ShapeModel
+from .records import PLANE, MassProperties, ShapeModel
 from .schemas import (
     ANALYSIS_VERSION,
     AnalysisError,
@@ -423,11 +423,39 @@ class MachiningAnalysisService:
 
     def _face_details(self, model: ShapeModel) -> List[FaceDetail]:
         return [
-            self._face_detail(face)
+            self._face_detail(face, model)
             for face in sorted(model.faces.values(), key=lambda f: f.id)
         ]
 
-    def _face_detail(self, face) -> FaceDetail:
+    def _is_planar_extreme(self, face, model: ShapeModel) -> bool:
+        """True when a planar face lies on the model's outer silhouette.
+
+        A face qualifies when it is flat against one of the six sides of the
+        model bounding box and its outward normal points away from the solid
+        along that axis - the top and bottom of a plate, the sides of a block.
+        Both tests matter: flatness alone would also catch a wall that merely
+        reaches the extreme, and the normal alone would catch every up-facing
+        pocket floor.
+        """
+        if face.surface_type != PLANE or face.normal is None:
+            return False
+        tolerance = self.config.linear_tolerance_mm * 10
+        for axis in range(3):
+            if face.bbox_max[axis] - face.bbox_min[axis] > tolerance:
+                continue  # not flat along this axis, so not lying in that plane
+            if (
+                abs(face.bbox_max[axis] - model.bbox_max[axis]) <= tolerance
+                and face.normal[axis] > 0
+            ):
+                return True
+            if (
+                abs(face.bbox_min[axis] - model.bbox_min[axis]) <= tolerance
+                and face.normal[axis] < 0
+            ):
+                return True
+        return False
+
+    def _face_detail(self, face, model: ShapeModel) -> FaceDetail:
         return FaceDetail(
             face_id=face.id,
             surface_type=to_surface_type_enum(face.surface_type),
@@ -446,6 +474,7 @@ class MachiningAnalysisService:
             cone_half_angle_deg=face.cone_half_angle_deg,
             angular_span_deg=face.angular_span_deg,
             is_internal=face.is_internal,
+            is_planar_extreme=self._is_planar_extreme(face, model),
             edge_count=len(face.edge_ids),
         )
 
@@ -486,7 +515,7 @@ class MachiningAnalysisService:
             )
 
         return TopologyEntities(
-            faces=[self._face_detail(model.faces[i]) for i in face_ids[:limit]],
+            faces=[self._face_detail(model.faces[i], model) for i in face_ids[:limit]],
             edges=[self._edge_entity(model.edges[i]) for i in edge_ids[:limit]],
             vertices=[
                 VertexEntity(

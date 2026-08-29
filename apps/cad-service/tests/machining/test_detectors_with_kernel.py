@@ -7,6 +7,7 @@ kernel is installed.
 
 from __future__ import annotations
 
+import math
 import pytest
 
 from . import fixtures
@@ -812,3 +813,172 @@ class TestOptions:
     def test_metric_is_the_default(self, analyze, step_dir):
         result = analyze(fixtures.simple_block_with_through_hole(step_dir))
         assert result["units"] == "mm"
+
+
+# ---------------------------------------------------------------------------
+# Import paths: formats and units
+# ---------------------------------------------------------------------------
+
+
+class TestImportPaths:
+    """Regressions for silent import failures found on the OCP binding.
+
+    Both bugs were invisible: BREP raised a 415 claiming the kernel could not
+    do BREP at all, and the unit pinning simply did nothing, so an inch part
+    was reported as millimetres at 1/25.4 of its size.
+    """
+
+    def test_brep_files_import_and_yield_the_same_geometry_as_step(
+        self, analyze, step_dir
+    ):
+        result = analyze(fixtures.simple_block_brep(step_dir))
+        box = result["geometry"]["bounding_box"]
+        assert result["geometry"]["volume_mm3"] == pytest.approx(40 * 30 * 20, rel=1e-6)
+        assert sorted(
+            (box["length_mm"], box["width_mm"], box["height_mm"])
+        ) == pytest.approx([20.0, 30.0, 40.0], rel=1e-6)
+        assert result["model"]["face_count"] == 6
+
+    def test_a_step_file_declaring_inches_is_reported_in_millimetres(
+        self, analyze, step_dir
+    ):
+        result = analyze(fixtures.block_declared_in_inches(step_dir))
+        box = result["geometry"]["bounding_box"]
+        assert sorted(
+            (box["length_mm"], box["width_mm"], box["height_mm"])
+        ) == pytest.approx([2 * 25.4, 3 * 25.4, 4 * 25.4], rel=1e-4)
+
+
+class TestInterruptedBores:
+    """A bore whose wall is broken by ribs is still a bore.
+
+    Found on a real part: a Ø28.58 back-face counterbore, coaxial with the main
+    bore, survived as four 37.2 deg arcs. Summed to 148.8 deg it fell under the
+    180 deg wrap threshold and was dropped silently - it appeared in neither
+    the features nor the warnings.
+    """
+
+    def test_a_bore_interrupted_by_ribs_is_detected(self, analyze, step_dir):
+        result = analyze(fixtures.block_with_rib_interrupted_bore(step_dir))
+        found = (
+            result["features"]["holes"]
+            + result["features"]["bores"]
+            + result["features"]["internal_cylindrical_features"]
+        )
+        assert len(found) == 1, "the rib-interrupted bore was not reported"
+        assert found[0]["diameter_mm"] == pytest.approx(20.0, rel=1e-3)
+
+    def test_the_evidence_says_the_wall_was_interrupted(self, analyze, step_dir):
+        result = analyze(fixtures.block_with_rib_interrupted_bore(step_dir))
+        evidence = " ".join(result["features"]["holes"][0]["detection"]["evidence"])
+        assert "wall interrupted" in evidence
+        # The wrap is genuinely below the threshold - this is not a bore that
+        # would have passed the ordinary test anyway.
+        assert "120.0 deg" in evidence
+
+    def test_a_continuous_bore_still_reports_no_interruption(self, analyze, step_dir):
+        result = analyze(fixtures.simple_block_with_through_hole(step_dir))
+        evidence = " ".join(result["features"]["holes"][0]["detection"]["evidence"])
+        assert "wall interrupted" not in evidence
+
+    def test_irregularly_spaced_arcs_are_still_rejected(self, config):
+        """Regular spacing is the discriminator, so uneven arcs must not pass.
+
+        Without this the rule would degrade into "any three concave slivers",
+        readmitting exactly the blends and partial walls the wrap threshold
+        exists to reject.
+        """
+        from app.machining.detectors.holes import HoleDetector
+        from app.machining.records import CYLINDER, FaceRecord
+
+        axis, origin = (0.0, 0.0, 1.0), (0.0, 0.0, 0.0)
+        detector = HoleDetector(config)
+
+        def arc(face_id, bearing_deg, span=40.0):
+            angle = math.radians(bearing_deg)
+            return FaceRecord(
+                id=face_id,
+                surface_type=CYLINDER,
+                centroid=(10.0 * math.cos(angle), 10.0 * math.sin(angle), 2.5),
+                bbox_min=(-10.0, -10.0, 0.0),
+                bbox_max=(10.0, 10.0, 5.0),
+                axis=axis,
+                axis_location=origin,
+                radius_mm=10.0,
+                angular_span_deg=span,
+                is_internal=True,
+            )
+
+        even = [arc(i, b) for i, b in enumerate((0, 90, 180, 270), start=1)]
+        uneven = [arc(i, b) for i, b in enumerate((0, 20, 40, 200), start=1)]
+
+        assert detector._is_interrupted_bore(even, 160.0, axis, origin) is True
+        assert detector._is_interrupted_bore(uneven, 160.0, axis, origin) is False
+
+    def test_too_few_arcs_are_rejected(self, config):
+        """Two arcs cannot establish a pattern - any two are 'evenly' spaced."""
+        from app.machining.detectors.holes import HoleDetector
+        from app.machining.records import CYLINDER, FaceRecord
+
+        axis, origin = (0.0, 0.0, 1.0), (0.0, 0.0, 0.0)
+        pair = [
+            FaceRecord(
+                id=i,
+                surface_type=CYLINDER,
+                centroid=(10.0 * s, 0.0, 2.5),
+                bbox_min=(-10.0, -10.0, 0.0),
+                bbox_max=(10.0, 10.0, 5.0),
+                axis=axis,
+                axis_location=origin,
+                radius_mm=10.0,
+                angular_span_deg=60.0,
+                is_internal=True,
+            )
+            for i, s in ((1, 1.0), (2, -1.0))
+        ]
+        assert HoleDetector(config)._is_interrupted_bore(pair, 120.0, axis, origin) is False
+
+
+class TestPlanarExtremeFaces:
+    """`is_planar_extreme` was declared, documented and never populated.
+
+    Every response reported false for every face, including the top and bottom
+    of a plate - a field that always carries the same value is worse than an
+    absent one, because callers trust it.
+    """
+
+    def test_every_side_of_a_block_is_an_extreme(self, analyze, step_dir):
+        result = analyze(
+            fixtures.simple_block_with_through_hole(step_dir),
+            include_face_details=True,
+        )
+        planes = [f for f in result["face_details"] if f["surface_type"] == "PLANE"]
+        assert len(planes) == 6
+        assert all(f["is_planar_extreme"] for f in planes)
+
+    def test_the_bore_wall_is_not_an_extreme(self, analyze, step_dir):
+        result = analyze(
+            fixtures.simple_block_with_through_hole(step_dir),
+            include_face_details=True,
+        )
+        cylinders = [
+            f for f in result["face_details"] if f["surface_type"] == "CYLINDER"
+        ]
+        assert cylinders and not any(f["is_planar_extreme"] for f in cylinders)
+
+    def test_a_recessed_floor_is_not_an_extreme(self, analyze, step_dir):
+        """The floor of a blind hole faces the same way as the top, but is sunk."""
+        result = analyze(
+            fixtures.block_with_blind_hole(step_dir), include_face_details=True
+        )
+        extremes = [f for f in result["face_details"] if f["is_planar_extreme"]]
+        z_top = result["geometry"]["bounding_box"]["max"]["z"]
+        sunk_upward_faces = [
+            f
+            for f in result["face_details"]
+            if f["surface_type"] == "PLANE"
+            and (f["normal"] or {}).get("z", 0) > 0.5
+            and f["bounding_box"]["max"]["z"] < z_top - 1e-6
+        ]
+        assert sunk_upward_faces, "fixture should have a sunk upward-facing floor"
+        assert not any(f in extremes for f in sunk_upward_faces)

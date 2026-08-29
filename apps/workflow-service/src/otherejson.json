@@ -1,0 +1,6093 @@
+{
+  "success": true,
+  "analysis_version": "1.0",
+  "kernel": "pythonocc-core",
+  "units": "mm",
+  "options": {
+    "unit_system": "metric",
+    "include_face_details": true,
+    "include_feature_details": true,
+    "include_debug_geometry": false,
+    "include_topology_entities": false
+  },
+  "analysis_duration_ms": 213.124,
+  "file": {
+    "filename": "LBB_Adapter_-_Size_19.STEP",
+    "format": "STEP",
+    "file_size_bytes": 234026,
+    "sha256": "3f265b95fedb97feaed49cea599b239ac3864ecbca27322bba73b2df7ac5270e"
+  },
+  "model": {
+    "solid_count": 1,
+    "shell_count": 1,
+    "face_count": 102,
+    "edge_count": 260,
+    "vertex_count": 171,
+    "wire_count": 123,
+    "compound_count": 0,
+    "is_valid": true,
+    "has_open_shells": false,
+    "is_multi_body": false
+  },
+  "geometry": {
+    "bounding_box": {
+      "min": {
+        "x": -18.25,
+        "y": -18.25,
+        "z": -15.05
+      },
+      "max": {
+        "x": 18.25,
+        "y": 18.25,
+        "z": 2
+      },
+      "length_mm": 36.5,
+      "width_mm": 36.5,
+      "height_mm": 17.05,
+      "diagonal_mm": 54.362
+    },
+    "volume_mm3": 4145.2,
+    "surface_area_mm2": 5424.83,
+    "center_of_mass": {
+      "x": 0,
+      "y": 0,
+      "z": -6.704
+    },
+    "moments_of_inertia": {
+      "ixx": 685652.8299093274,
+      "iyy": 685652.8299093265,
+      "izz": 1165738.0727685494,
+      "ixy": 9.658833732828496e-10,
+      "ixz": -4.4355430779703807e-10,
+      "iyz": 2.622775804263566e-10,
+      "principal": [
+        1165738.0727685494,
+        685652.829909328,
+        685652.8299093259
+      ]
+    },
+    "is_closed_volume": true,
+    "source": "GEOMETRY"
+  },
+  "topology": {
+    "faces_per_solid": [
+      102
+    ],
+    "closed_shell_count": 1,
+    "open_shell_count": 0,
+    "free_edge_count": 0,
+    "seam_edge_count": 0,
+    "max_faces_per_edge": 2,
+    "euler_characteristic": 13
+  },
+  "surface_summary": {
+    "planar_faces": 45,
+    "cylindrical_faces": 57,
+    "conical_faces": 0,
+    "spherical_faces": 0,
+    "toroidal_faces": 0,
+    "freeform_faces": 0,
+    "other_faces": 0,
+    "total_faces": 102,
+    "internal_cylindrical_faces": 39,
+    "external_cylindrical_faces": 18
+  },
+  "face_details": [
+    {
+      "face_id": 1,
+      "surface_type": "CYLINDER",
+      "area_mm2": 7.66,
+      "bounding_box": {
+        "min": {
+          "x": -14.662,
+          "y": 11.888,
+          "z": 0
+        },
+        "max": {
+          "x": -11.888,
+          "y": 13.513,
+          "z": 2
+        },
+        "length_mm": 2.774,
+        "width_mm": 1.625,
+        "height_mm": 2,
+        "diagonal_mm": 3.786
+      },
+      "centroid": {
+        "x": -13.02560247312468,
+        "y": 12.33593105305814,
+        "z": 0.9999999999999999
+      },
+      "normal": null,
+      "axis": {
+        "x": 0,
+        "y": 0,
+        "z": 1
+      },
+      "axis_location": {
+        "x": -13.513273811042895,
+        "y": 13.513273811041449,
+        "z": -6.387615433949351
+      },
+      "radius_mm": 1.6250000000000013,
+      "minor_radius_mm": null,
+      "cone_half_angle_deg": null,
+      "angular_span_deg": 135.00000000001793,
+      "is_internal": false,
+      "is_planar_extreme": false,
+      "edge_count": 4
+    },
+    {
+      "face_id": 2,
+      "surface_type": "CYLINDER",
+      "area_mm2": 7.66,
+      "bounding_box": {
+        "min": {
+          "x": 13.531,
+          "y": -16.305,
+          "z": 0
+        },
+        "max": {
+          "x": 16.305,
+          "y": -14.68,
+          "z": 2
+        },
+        "length_mm": 2.774,
+        "width_mm": 1.625,
+        "height_mm": 2,
+        "diagonal_mm": 3.786
+      },
+      "centroid": {
+        "x": 15.167671337918982,
+        "y": -15.85734275798329,
+        "z": 0.9999999999999999
+      },
+      "normal": null,
+      "axis": {
+        "x": 0,
+        "y": 0,
+        "z": 1
+      },
+      "axis_location": {
+        "x": 14.680000000000755,
+        "y": -14.679999999999994,
+        "z": -6.387615433949351
+      },
+      "radius_mm": 1.6249999999999807,
+      "minor_radius_mm": null,
+      "cone_half_angle_deg": null,
+      "angular_span_deg": 135.00000000001648,
+      "is_internal": false,
+      "is_planar_extreme": false,
+      "edge_count": 4
+    },
+    {
+      "face_id": 3,
+      "surface_type": "CYLINDER",
+      "area_mm2": 2.55,
+      "bounding_box": {
+        "min": {
+          "x": -12.364,
+          "y": -14.662,
+          "z": 0
+        },
+        "max": {
+          "x": -11.888,
+          "y": -13.513,
+          "z": 2
+        },
+        "length_mm": 0.476,
+        "width_mm": 1.149,
+        "height_mm": 2,
+        "diagonal_mm": 2.355
+      },
+      "centroid": {
+        "x": -12.050259797286268,
+        "y": -14.11927405748321,
+        "z": 0.9999999999999998
+      },
+      "normal": null,
+      "axis": {
+        "x": 0,
+        "y": 0,
+        "z": 1
+      },
+      "axis_location": {
+        "x": -13.513273811041442,
+        "y": -13.513273811043652,
+        "z": -6.387615433949351
+      },
+      "radius_mm": 1.6250000000000013,
+      "minor_radius_mm": null,
+      "cone_half_angle_deg": null,
+      "angular_span_deg": 45.00000000001796,
+      "is_internal": false,
+      "is_planar_extreme": false,
+      "edge_count": 4
+    },
+    {
+      "face_id": 4,
+      "surface_type": "CYLINDER",
+      "area_mm2": 2.55,
+      "bounding_box": {
+        "min": {
+          "x": 15.829,
+          "y": 13.531,
+          "z": 0
+        },
+        "max": {
+          "x": 16.305,
+          "y": 14.68,
+          "z": 2
+        },
+        "length_mm": 0.476,
+        "width_mm": 1.149,
+        "height_mm": 2,
+        "diagonal_mm": 2.355
+      },
+      "centroid": {
+        "x": 16.143014013755288,
+        "y": 14.073999753560667,
+        "z": 0.9999999999999998
+      },
+      "normal": null,
+      "axis": {
+        "x": 0,
+        "y": 0,
+        "z": 1
+      },
+      "axis_location": {
+        "x": 14.68,
+        "y": 14.68,
+        "z": -6.387615433949351
+      },
+      "radius_mm": 1.6249999999999858,
+      "minor_radius_mm": null,
+      "cone_half_angle_deg": null,
+      "angular_span_deg": 44.999999999999744,
+      "is_internal": false,
+      "is_planar_extreme": false,
+      "edge_count": 4
+    },
+    {
+      "face_id": 5,
+      "surface_type": "CYLINDER",
+      "area_mm2": 208.48,
+      "bounding_box": {
+        "min": {
+          "x": -13.825,
+          "y": -13.825,
+          "z": -9.5
+        },
+        "max": {
+          "x": 13.825,
+          "y": 0,
+          "z": -4.7
+        },
+        "length_mm": 27.65,
+        "width_mm": 13.825,
+        "height_mm": 4.8,
+        "diagonal_mm": 31.284
+      },
+      "centroid": {
+        "x": -1.14535666464494e-15,
+        "y": -8.801268352981811,
+        "z": -7.1
+      },
+      "normal": null,
+      "axis": {
+        "x": 0,
+        "y": 0,
+        "z": 1
+      },
+      "axis_location": {
+        "x": 0,
+        "y": 0,
+        "z": -9.5
+      },
+      "radius_mm": 13.825000000000001,
+      "minor_radius_mm": null,
+      "cone_half_angle_deg": null,
+      "angular_span_deg": 180,
+      "is_internal": true,
+      "is_planar_extreme": false,
+      "edge_count": 4
+    },
+    {
+      "face_id": 6,
+      "surface_type": "CYLINDER",
+      "area_mm2": 204.5,
+      "bounding_box": {
+        "min": {
+          "x": -13.85,
+          "y": -13.85,
+          "z": -4.7
+        },
+        "max": {
+          "x": 13.85,
+          "y": 0,
+          "z": 0
+        },
+        "length_mm": 27.7,
+        "width_mm": 13.85,
+        "height_mm": 4.7,
+        "diagonal_mm": 31.324
+      },
+      "centroid": {
+        "x": -9.96996308214829e-16,
+        "y": -8.817183847290996,
+        "z": -2.3500000000000014
+      },
+      "normal": null,
+      "axis": {
+        "x": 0,
+        "y": 0,
+        "z": 1
+      },
+      "axis_location": {
+        "x": 0,
+        "y": 0,
+        "z": -45.71219330881976
+      },
+      "radius_mm": 13.85,
+      "minor_radius_mm": null,
+      "cone_half_angle_deg": null,
+      "angular_span_deg": 180,
+      "is_internal": true,
+      "is_planar_extreme": false,
+      "edge_count": 4
+    },
+    {
+      "face_id": 7,
+      "surface_type": "CYLINDER",
+      "area_mm2": 43.07,
+      "bounding_box": {
+        "min": {
+          "x": -11.425,
+          "y": -11.425,
+          "z": -10.7
+        },
+        "max": {
+          "x": 11.425,
+          "y": 0,
+          "z": -9.5
+        },
+        "length_mm": 22.85,
+        "width_mm": 11.425,
+        "height_mm": 1.2,
+        "diagonal_mm": 25.575
+      },
+      "centroid": {
+        "x": -6.029701416016716e-16,
+        "y": -7.273380899299617,
+        "z": -10.1
+      },
+      "normal": null,
+      "axis": {
+        "x": 0,
+        "y": 0,
+        "z": 1
+      },
+      "axis_location": {
+        "x": 0,
+        "y": 6.99579484012926e-16,
+        "z": -10.702
+      },
+      "radius_mm": 11.424999999999999,
+      "minor_radius_mm": null,
+      "cone_half_angle_deg": null,
+      "angular_span_deg": 180,
+      "is_internal": true,
+      "is_planar_extreme": false,
+      "edge_count": 4
+    },
+    {
+      "face_id": 8,
+      "surface_type": "PLANE",
+      "area_mm2": 8.75,
+      "bounding_box": {
+        "min": {
+          "x": -16.305,
+          "y": 11.888,
+          "z": 2
+        },
+        "max": {
+          "x": -11.888,
+          "y": 16.305,
+          "z": 2
+        },
+        "length_mm": 4.417,
+        "width_mm": 4.417,
+        "height_mm": 0,
+        "diagonal_mm": 6.246
+      },
+      "centroid": {
+        "x": -13.76935337928552,
+        "y": 13.769353379283805,
+        "z": 2
+      },
+      "normal": {
+        "x": 0,
+        "y": 0,
+        "z": 1
+      },
+      "axis": null,
+      "axis_location": {
+        "x": -6.694164050850979,
+        "y": -3.46944695195361e-15,
+        "z": 2
+      },
+      "radius_mm": null,
+      "minor_radius_mm": null,
+      "cone_half_angle_deg": null,
+      "angular_span_deg": null,
+      "is_internal": null,
+      "is_planar_extreme": false,
+      "edge_count": 7
+    },
+    {
+      "face_id": 9,
+      "surface_type": "PLANE",
+      "area_mm2": 8.75,
+      "bounding_box": {
+        "min": {
+          "x": 11.888,
+          "y": -16.305,
+          "z": 2
+        },
+        "max": {
+          "x": 16.305,
+          "y": -11.888,
+          "z": 2
+        },
+        "length_mm": 4.417,
+        "width_mm": 4.417,
+        "height_mm": 0,
+        "diagonal_mm": 6.246
+      },
+      "centroid": {
+        "x": 13.769353379286699,
+        "y": -13.769353379284968,
+        "z": 2
+      },
+      "normal": {
+        "x": 0,
+        "y": 0,
+        "z": 1
+      },
+      "axis": null,
+      "axis_location": {
+        "x": -6.694164050850979,
+        "y": -3.46944695195361e-15,
+        "z": 2
+      },
+      "radius_mm": null,
+      "minor_radius_mm": null,
+      "cone_half_angle_deg": null,
+      "angular_span_deg": null,
+      "is_internal": null,
+      "is_planar_extreme": false,
+      "edge_count": 7
+    },
+    {
+      "face_id": 10,
+      "surface_type": "PLANE",
+      "area_mm2": 8.75,
+      "bounding_box": {
+        "min": {
+          "x": -16.305,
+          "y": -16.305,
+          "z": 2
+        },
+        "max": {
+          "x": -11.888,
+          "y": -11.888,
+          "z": 2
+        },
+        "length_mm": 4.417,
+        "width_mm": 4.417,
+        "height_mm": 0,
+        "diagonal_mm": 6.246
+      },
+      "centroid": {
+        "x": -13.769353379283798,
+        "y": -13.769353379286699,
+        "z": 2
+      },
+      "normal": {
+        "x": 0,
+        "y": 0,
+        "z": 1
+      },
+      "axis": null,
+      "axis_location": {
+        "x": -6.694164050850979,
+        "y": -3.46944695195361e-15,
+        "z": 2
+      },
+      "radius_mm": null,
+      "minor_radius_mm": null,
+      "cone_half_angle_deg": null,
+      "angular_span_deg": null,
+      "is_internal": null,
+      "is_planar_extreme": false,
+      "edge_count": 7
+    },
+    {
+      "face_id": 11,
+      "surface_type": "PLANE",
+      "area_mm2": 8.75,
+      "bounding_box": {
+        "min": {
+          "x": 11.888,
+          "y": 11.888,
+          "z": 2
+        },
+        "max": {
+          "x": 16.305,
+          "y": 16.305,
+          "z": 2
+        },
+        "length_mm": 4.417,
+        "width_mm": 4.417,
+        "height_mm": 0,
+        "diagonal_mm": 6.246
+      },
+      "centroid": {
+        "x": 13.769353379284983,
+        "y": 13.769353379285528,
+        "z": 2
+      },
+      "normal": {
+        "x": 0,
+        "y": 0,
+        "z": 1
+      },
+      "axis": null,
+      "axis_location": {
+        "x": -6.694164050850979,
+        "y": -3.46944695195361e-15,
+        "z": 2
+      },
+      "radius_mm": null,
+      "minor_radius_mm": null,
+      "cone_half_angle_deg": null,
+      "angular_span_deg": null,
+      "is_internal": null,
+      "is_planar_extreme": false,
+      "edge_count": 7
+    },
+    {
+      "face_id": 12,
+      "surface_type": "CYLINDER",
+      "area_mm2": 43.07,
+      "bounding_box": {
+        "min": {
+          "x": -11.425,
+          "y": 0,
+          "z": -10.7
+        },
+        "max": {
+          "x": 11.425,
+          "y": 11.425,
+          "z": -9.5
+        },
+        "length_mm": 22.85,
+        "width_mm": 11.425,
+        "height_mm": 1.2,
+        "diagonal_mm": 25.575
+      },
+      "centroid": {
+        "x": 3.6015440569076466e-16,
+        "y": 7.273380899299619,
+        "z": -10.1
+      },
+      "normal": null,
+      "axis": {
+        "x": 0,
+        "y": 0,
+        "z": 1
+      },
+      "axis_location": {
+        "x": 0,
+        "y": 6.99579484012926e-16,
+        "z": -10.702
+      },
+      "radius_mm": 11.424999999999999,
+      "minor_radius_mm": null,
+      "cone_half_angle_deg": null,
+      "angular_span_deg": 180,
+      "is_internal": true,
+      "is_planar_extreme": false,
+      "edge_count": 4
+    },
+    {
+      "face_id": 13,
+      "surface_type": "PLANE",
+      "area_mm2": 2.17,
+      "bounding_box": {
+        "min": {
+          "x": -13.85,
+          "y": -13.85,
+          "z": -4.7
+        },
+        "max": {
+          "x": 13.85,
+          "y": 13.85,
+          "z": -4.7
+        },
+        "length_mm": 27.7,
+        "width_mm": 27.7,
+        "height_mm": 0,
+        "diagonal_mm": 39.174
+      },
+      "centroid": {
+        "x": -1.591821124376822e-13,
+        "y": -3.1297508774637314e-13,
+        "z": -4.7
+      },
+      "normal": {
+        "x": 0,
+        "y": 0,
+        "z": 1
+      },
+      "axis": null,
+      "axis_location": {
+        "x": -6.694164050850979,
+        "y": -3.46944695195361e-15,
+        "z": -4.7
+      },
+      "radius_mm": null,
+      "minor_radius_mm": null,
+      "cone_half_angle_deg": null,
+      "angular_span_deg": null,
+      "is_internal": null,
+      "is_planar_extreme": false,
+      "edge_count": 4
+    },
+    {
+      "face_id": 14,
+      "surface_type": "CYLINDER",
+      "area_mm2": 40.4,
+      "bounding_box": {
+        "min": {
+          "x": 6.35,
+          "y": -12.802,
+          "z": -15.05
+        },
+        "max": {
+          "x": 12.802,
+          "y": -6.35,
+          "z": -10.7
+        },
+        "length_mm": 6.452,
+        "width_mm": 6.452,
+        "height_mm": 4.35,
+        "diagonal_mm": 10.108
+      },
+      "centroid": {
+        "x": 9.927685462161362,
+        "y": -9.927685462161381,
+        "z": -12.875
+      },
+      "normal": null,
+      "axis": {
+        "x": 0,
+        "y": 0,
+        "z": 1
+      },
+      "axis_location": {
+        "x": -1.60461921527854e-14,
+        "y": -1.69135538907739e-14,
+        "z": -15.049999999999999
+      },
+      "radius_mm": 14.290000000000001,
+      "minor_radius_mm": null,
+      "cone_half_angle_deg": null,
+      "angular_span_deg": 37.2343462129931,
+      "is_internal": true,
+      "is_planar_extreme": false,
+      "edge_count": 4
+    },
+    {
+      "face_id": 15,
+      "surface_type": "CYLINDER",
+      "area_mm2": 40.4,
+      "bounding_box": {
+        "min": {
+          "x": -12.802,
+          "y": -12.802,
+          "z": -15.05
+        },
+        "max": {
+          "x": -6.35,
+          "y": -6.35,
+          "z": -10.7
+        },
+        "length_mm": 6.452,
+        "width_mm": 6.452,
+        "height_mm": 4.35,
+        "diagonal_mm": 10.108
+      },
+      "centroid": {
+        "x": -9.927685462161387,
+        "y": -9.927685462161387,
+        "z": -12.874999999999998
+      },
+      "normal": null,
+      "axis": {
+        "x": 0,
+        "y": 0,
+        "z": 1
+      },
+      "axis_location": {
+        "x": -1.60461921527854e-14,
+        "y": -1.69135538907739e-14,
+        "z": -15.049999999999999
+      },
+      "radius_mm": 14.290000000000001,
+      "minor_radius_mm": null,
+      "cone_half_angle_deg": null,
+      "angular_span_deg": 37.23434621299315,
+      "is_internal": true,
+      "is_planar_extreme": false,
+      "edge_count": 4
+    },
+    {
+      "face_id": 16,
+      "surface_type": "CYLINDER",
+      "area_mm2": 40.4,
+      "bounding_box": {
+        "min": {
+          "x": -12.802,
+          "y": 6.35,
+          "z": -15.05
+        },
+        "max": {
+          "x": -6.35,
+          "y": 12.802,
+          "z": -10.7
+        },
+        "length_mm": 6.452,
+        "width_mm": 6.452,
+        "height_mm": 4.35,
+        "diagonal_mm": 10.108
+      },
+      "centroid": {
+        "x": -9.927685462161367,
+        "y": 9.927685462161373,
+        "z": -12.875
+      },
+      "normal": null,
+      "axis": {
+        "x": 0,
+        "y": 0,
+        "z": 1
+      },
+      "axis_location": {
+        "x": -1.60461921527854e-14,
+        "y": -1.69135538907739e-14,
+        "z": -15.049999999999999
+      },
+      "radius_mm": 14.290000000000001,
+      "minor_radius_mm": null,
+      "cone_half_angle_deg": null,
+      "angular_span_deg": 37.23434621299308,
+      "is_internal": true,
+      "is_planar_extreme": false,
+      "edge_count": 4
+    },
+    {
+      "face_id": 17,
+      "surface_type": "CYLINDER",
+      "area_mm2": 40.4,
+      "bounding_box": {
+        "min": {
+          "x": 6.35,
+          "y": 6.35,
+          "z": -15.05
+        },
+        "max": {
+          "x": 12.802,
+          "y": 12.802,
+          "z": -10.7
+        },
+        "length_mm": 6.452,
+        "width_mm": 6.452,
+        "height_mm": 4.35,
+        "diagonal_mm": 10.108
+      },
+      "centroid": {
+        "x": 9.927685462161355,
+        "y": 9.927685462161355,
+        "z": -12.874999999999998
+      },
+      "normal": null,
+      "axis": {
+        "x": 0,
+        "y": 0,
+        "z": 1
+      },
+      "axis_location": {
+        "x": -1.60461921527854e-14,
+        "y": -1.69135538907739e-14,
+        "z": -15.049999999999999
+      },
+      "radius_mm": 14.290000000000001,
+      "minor_radius_mm": null,
+      "cone_half_angle_deg": null,
+      "angular_span_deg": 37.23434621299305,
+      "is_internal": true,
+      "is_planar_extreme": false,
+      "edge_count": 4
+    },
+    {
+      "face_id": 18,
+      "surface_type": "CYLINDER",
+      "area_mm2": 53.81,
+      "bounding_box": {
+        "min": {
+          "x": 10.53,
+          "y": 10.53,
+          "z": -15.05
+        },
+        "max": {
+          "x": 17.752,
+          "y": 17.752,
+          "z": -8.7
+        },
+        "length_mm": 7.222,
+        "width_mm": 7.222,
+        "height_mm": 6.35,
+        "diagonal_mm": 12.026
+      },
+      "centroid": {
+        "x": 14.485471334001844,
+        "y": 14.485471334001844,
+        "z": -11.657096571328797
+      },
+      "normal": null,
+      "axis": {
+        "x": 0,
+        "y": 0,
+        "z": 1
+      },
+      "axis_location": {
+        "x": -5.898059818321139e-14,
+        "y": -5.637851296924619e-14,
+        "z": -15.049999999999999
+      },
+      "radius_mm": 20.639999999999997,
+      "minor_radius_mm": null,
+      "cone_half_angle_deg": null,
+      "angular_span_deg": 28.64946706571418,
+      "is_internal": false,
+      "is_planar_extreme": false,
+      "edge_count": 8
+    },
+    {
+      "face_id": 19,
+      "surface_type": "CYLINDER",
+      "area_mm2": 53.81,
+      "bounding_box": {
+        "min": {
+          "x": -17.752,
+          "y": 10.53,
+          "z": -15.05
+        },
+        "max": {
+          "x": -10.53,
+          "y": 17.752,
+          "z": -8.7
+        },
+        "length_mm": 7.222,
+        "width_mm": 7.222,
+        "height_mm": 6.35,
+        "diagonal_mm": 12.026
+      },
+      "centroid": {
+        "x": -14.485471334001897,
+        "y": 14.485471334001897,
+        "z": -11.657096571328797
+      },
+      "normal": null,
+      "axis": {
+        "x": 0,
+        "y": 0,
+        "z": 1
+      },
+      "axis_location": {
+        "x": 4.33680868994202e-15,
+        "y": -4.33680868994202e-15,
+        "z": -15.049999999999999
+      },
+      "radius_mm": 20.639999999999997,
+      "minor_radius_mm": null,
+      "cone_half_angle_deg": null,
+      "angular_span_deg": 28.649467065714386,
+      "is_internal": false,
+      "is_planar_extreme": false,
+      "edge_count": 8
+    },
+    {
+      "face_id": 20,
+      "surface_type": "CYLINDER",
+      "area_mm2": 53.81,
+      "bounding_box": {
+        "min": {
+          "x": -17.752,
+          "y": -17.752,
+          "z": -15.05
+        },
+        "max": {
+          "x": -10.53,
+          "y": -10.53,
+          "z": -8.7
+        },
+        "length_mm": 7.222,
+        "width_mm": 7.222,
+        "height_mm": 6.35,
+        "diagonal_mm": 12.026
+      },
+      "centroid": {
+        "x": -14.485471334001874,
+        "y": -14.485471334001867,
+        "z": -11.657096571328797
+      },
+      "normal": null,
+      "axis": {
+        "x": 0,
+        "y": 0,
+        "z": 1
+      },
+      "axis_location": {
+        "x": 3.2092384305570893e-14,
+        "y": 2.7755575615628898e-14,
+        "z": -15.049999999999999
+      },
+      "radius_mm": 20.639999999999997,
+      "minor_radius_mm": null,
+      "cone_half_angle_deg": null,
+      "angular_span_deg": 28.64946706571413,
+      "is_internal": false,
+      "is_planar_extreme": false,
+      "edge_count": 8
+    },
+    {
+      "face_id": 21,
+      "surface_type": "CYLINDER",
+      "area_mm2": 53.81,
+      "bounding_box": {
+        "min": {
+          "x": 10.53,
+          "y": -17.752,
+          "z": -15.05
+        },
+        "max": {
+          "x": 17.752,
+          "y": -10.53,
+          "z": -8.7
+        },
+        "length_mm": 7.222,
+        "width_mm": 7.222,
+        "height_mm": 6.35,
+        "diagonal_mm": 12.026
+      },
+      "centroid": {
+        "x": 14.485471334001884,
+        "y": -14.48547133400191,
+        "z": -11.657096571328795
+      },
+      "normal": null,
+      "axis": {
+        "x": 0,
+        "y": 0,
+        "z": 1
+      },
+      "axis_location": {
+        "x": -8.673617379884039e-16,
+        "y": 7.806255641895629e-15,
+        "z": -15.049999999999999
+      },
+      "radius_mm": 20.639999999999997,
+      "minor_radius_mm": null,
+      "cone_half_angle_deg": null,
+      "angular_span_deg": 28.649467065714234,
+      "is_internal": false,
+      "is_planar_extreme": false,
+      "edge_count": 8
+    },
+    {
+      "face_id": 22,
+      "surface_type": "PLANE",
+      "area_mm2": 656.99,
+      "bounding_box": {
+        "min": {
+          "x": -18.25,
+          "y": -18.25,
+          "z": 0
+        },
+        "max": {
+          "x": 18.25,
+          "y": 18.25,
+          "z": 0
+        },
+        "length_mm": 36.5,
+        "width_mm": 36.5,
+        "height_mm": 0,
+        "diagonal_mm": 51.619
+      },
+      "centroid": {
+        "x": -3.36952687973735e-14,
+        "y": 1.5449428607619672e-14,
+        "z": 0
+      },
+      "normal": {
+        "x": 0,
+        "y": 0,
+        "z": 1
+      },
+      "axis": null,
+      "axis_location": {
+        "x": -6.694164050850979,
+        "y": -3.46944695195361e-15,
+        "z": 0
+      },
+      "radius_mm": null,
+      "minor_radius_mm": null,
+      "cone_half_angle_deg": null,
+      "angular_span_deg": null,
+      "is_internal": null,
+      "is_planar_extreme": false,
+      "edge_count": 30
+    },
+    {
+      "face_id": 23,
+      "surface_type": "CYLINDER",
+      "area_mm2": 314.15,
+      "bounding_box": {
+        "min": {
+          "x": -14.925,
+          "y": -14.925,
+          "z": -8.7
+        },
+        "max": {
+          "x": 14.925,
+          "y": 0,
+          "z": -2
+        },
+        "length_mm": 29.85,
+        "width_mm": 14.925,
+        "height_mm": 6.7,
+        "diagonal_mm": 34.039
+      },
+      "centroid": {
+        "x": -1.1580537385168785e-15,
+        "y": -9.50155010258615,
+        "z": -5.35
+      },
+      "normal": null,
+      "axis": {
+        "x": 0,
+        "y": 0,
+        "z": 1
+      },
+      "axis_location": {
+        "x": 0,
+        "y": 9.138926738637118e-16,
+        "z": -8.7
+      },
+      "radius_mm": 14.925,
+      "minor_radius_mm": null,
+      "cone_half_angle_deg": null,
+      "angular_span_deg": 180,
+      "is_internal": false,
+      "is_planar_extreme": false,
+      "edge_count": 5
+    },
+    {
+      "face_id": 24,
+      "surface_type": "PLANE",
+      "area_mm2": 8.49,
+      "bounding_box": {
+        "min": {
+          "x": 15.25,
+          "y": 15.25,
+          "z": -2
+        },
+        "max": {
+          "x": 18.25,
+          "y": 18.25,
+          "z": 0
+        },
+        "length_mm": 3,
+        "width_mm": 3,
+        "height_mm": 2,
+        "diagonal_mm": 4.69
+      },
+      "centroid": {
+        "x": 16.75,
+        "y": 16.75,
+        "z": -1
+      },
+      "normal": {
+        "x": 0.7071067811865476,
+        "y": 0.7071067811865476,
+        "z": 0
+      },
+      "axis": null,
+      "axis_location": {
+        "x": 16.75,
+        "y": 16.75,
+        "z": -2
+      },
+      "radius_mm": null,
+      "minor_radius_mm": null,
+      "cone_half_angle_deg": null,
+      "angular_span_deg": null,
+      "is_internal": null,
+      "is_planar_extreme": false,
+      "edge_count": 4
+    },
+    {
+      "face_id": 25,
+      "surface_type": "PLANE",
+      "area_mm2": 61,
+      "bounding_box": {
+        "min": {
+          "x": -15.25,
+          "y": 18.25,
+          "z": -2
+        },
+        "max": {
+          "x": 15.25,
+          "y": 18.25,
+          "z": 0
+        },
+        "length_mm": 30.5,
+        "width_mm": 0,
+        "height_mm": 2,
+        "diagonal_mm": 30.566
+      },
+      "centroid": {
+        "x": 1.1102230246251565e-16,
+        "y": 18.25,
+        "z": -1
+      },
+      "normal": {
+        "x": 0,
+        "y": 1,
+        "z": 0
+      },
+      "axis": null,
+      "axis_location": {
+        "x": 0,
+        "y": 18.25,
+        "z": -2
+      },
+      "radius_mm": null,
+      "minor_radius_mm": null,
+      "cone_half_angle_deg": null,
+      "angular_span_deg": null,
+      "is_internal": null,
+      "is_planar_extreme": false,
+      "edge_count": 4
+    },
+    {
+      "face_id": 26,
+      "surface_type": "PLANE",
+      "area_mm2": 8.49,
+      "bounding_box": {
+        "min": {
+          "x": -18.25,
+          "y": 15.25,
+          "z": -2
+        },
+        "max": {
+          "x": -15.25,
+          "y": 18.25,
+          "z": 0
+        },
+        "length_mm": 3,
+        "width_mm": 3,
+        "height_mm": 2,
+        "diagonal_mm": 4.69
+      },
+      "centroid": {
+        "x": -16.75,
+        "y": 16.75,
+        "z": -1
+      },
+      "normal": {
+        "x": -0.7071067811865476,
+        "y": 0.7071067811865476,
+        "z": 0
+      },
+      "axis": null,
+      "axis_location": {
+        "x": -16.75,
+        "y": 16.75,
+        "z": -2
+      },
+      "radius_mm": null,
+      "minor_radius_mm": null,
+      "cone_half_angle_deg": null,
+      "angular_span_deg": null,
+      "is_internal": null,
+      "is_planar_extreme": false,
+      "edge_count": 4
+    },
+    {
+      "face_id": 27,
+      "surface_type": "PLANE",
+      "area_mm2": 61,
+      "bounding_box": {
+        "min": {
+          "x": -18.25,
+          "y": -15.25,
+          "z": -2
+        },
+        "max": {
+          "x": -18.25,
+          "y": 15.25,
+          "z": 0
+        },
+        "length_mm": 0,
+        "width_mm": 30.5,
+        "height_mm": 2,
+        "diagonal_mm": 30.566
+      },
+      "centroid": {
+        "x": -18.25,
+        "y": -4.440892098500626e-16,
+        "z": -1
+      },
+      "normal": {
+        "x": -1,
+        "y": 0,
+        "z": 0
+      },
+      "axis": null,
+      "axis_location": {
+        "x": -18.25,
+        "y": -8.673617379884039e-16,
+        "z": -2
+      },
+      "radius_mm": null,
+      "minor_radius_mm": null,
+      "cone_half_angle_deg": null,
+      "angular_span_deg": null,
+      "is_internal": null,
+      "is_planar_extreme": false,
+      "edge_count": 4
+    },
+    {
+      "face_id": 28,
+      "surface_type": "PLANE",
+      "area_mm2": 8.49,
+      "bounding_box": {
+        "min": {
+          "x": -18.25,
+          "y": -18.25,
+          "z": -2
+        },
+        "max": {
+          "x": -15.25,
+          "y": -15.25,
+          "z": 0
+        },
+        "length_mm": 3,
+        "width_mm": 3,
+        "height_mm": 2,
+        "diagonal_mm": 4.69
+      },
+      "centroid": {
+        "x": -16.75,
+        "y": -16.75,
+        "z": -1
+      },
+      "normal": {
+        "x": -0.707106781186548,
+        "y": -0.707106781186547,
+        "z": 0
+      },
+      "axis": null,
+      "axis_location": {
+        "x": -16.75,
+        "y": -16.75,
+        "z": -2
+      },
+      "radius_mm": null,
+      "minor_radius_mm": null,
+      "cone_half_angle_deg": null,
+      "angular_span_deg": null,
+      "is_internal": null,
+      "is_planar_extreme": false,
+      "edge_count": 4
+    },
+    {
+      "face_id": 29,
+      "surface_type": "PLANE",
+      "area_mm2": 61,
+      "bounding_box": {
+        "min": {
+          "x": -15.25,
+          "y": -18.25,
+          "z": -2
+        },
+        "max": {
+          "x": 15.25,
+          "y": -18.25,
+          "z": 0
+        },
+        "length_mm": 30.5,
+        "width_mm": 0,
+        "height_mm": 2,
+        "diagonal_mm": 30.566
+      },
+      "centroid": {
+        "x": 1.1102230246251565e-16,
+        "y": -18.25,
+        "z": -1
+      },
+      "normal": {
+        "x": 0,
+        "y": -1,
+        "z": 0
+      },
+      "axis": null,
+      "axis_location": {
+        "x": 1.7347234759768e-15,
+        "y": -18.25,
+        "z": -2
+      },
+      "radius_mm": null,
+      "minor_radius_mm": null,
+      "cone_half_angle_deg": null,
+      "angular_span_deg": null,
+      "is_internal": null,
+      "is_planar_extreme": false,
+      "edge_count": 4
+    },
+    {
+      "face_id": 30,
+      "surface_type": "PLANE",
+      "area_mm2": 8.49,
+      "bounding_box": {
+        "min": {
+          "x": 15.25,
+          "y": -18.25,
+          "z": -2
+        },
+        "max": {
+          "x": 18.25,
+          "y": -15.25,
+          "z": 0
+        },
+        "length_mm": 3,
+        "width_mm": 3,
+        "height_mm": 2,
+        "diagonal_mm": 4.69
+      },
+      "centroid": {
+        "x": 16.75,
+        "y": -16.75,
+        "z": -1
+      },
+      "normal": {
+        "x": 0.707106781186548,
+        "y": -0.707106781186547,
+        "z": 0
+      },
+      "axis": null,
+      "axis_location": {
+        "x": 16.75,
+        "y": -16.75,
+        "z": -2
+      },
+      "radius_mm": null,
+      "minor_radius_mm": null,
+      "cone_half_angle_deg": null,
+      "angular_span_deg": null,
+      "is_internal": null,
+      "is_planar_extreme": false,
+      "edge_count": 4
+    },
+    {
+      "face_id": 31,
+      "surface_type": "PLANE",
+      "area_mm2": 61,
+      "bounding_box": {
+        "min": {
+          "x": 18.25,
+          "y": -15.25,
+          "z": -2
+        },
+        "max": {
+          "x": 18.25,
+          "y": 15.25,
+          "z": 0
+        },
+        "length_mm": 0,
+        "width_mm": 30.5,
+        "height_mm": 2,
+        "diagonal_mm": 30.566
+      },
+      "centroid": {
+        "x": 18.25,
+        "y": 1.1102230246251565e-16,
+        "z": -1
+      },
+      "normal": {
+        "x": 1,
+        "y": 0,
+        "z": 0
+      },
+      "axis": null,
+      "axis_location": {
+        "x": 18.25,
+        "y": 0,
+        "z": -2
+      },
+      "radius_mm": null,
+      "minor_radius_mm": null,
+      "cone_half_angle_deg": null,
+      "angular_span_deg": null,
+      "is_internal": null,
+      "is_planar_extreme": false,
+      "edge_count": 4
+    },
+    {
+      "face_id": 32,
+      "surface_type": "PLANE",
+      "area_mm2": 594.81,
+      "bounding_box": {
+        "min": {
+          "x": -18.25,
+          "y": -18.25,
+          "z": -2
+        },
+        "max": {
+          "x": 18.25,
+          "y": 18.25,
+          "z": -2
+        },
+        "length_mm": 36.5,
+        "width_mm": 36.5,
+        "height_mm": 0,
+        "diagonal_mm": 51.619
+      },
+      "centroid": {
+        "x": -6.689624086083114e-16,
+        "y": -4.109340510022484e-15,
+        "z": -2
+      },
+      "normal": {
+        "x": 0,
+        "y": 0,
+        "z": -1
+      },
+      "axis": null,
+      "axis_location": {
+        "x": -6.694164050850979,
+        "y": -3.46944695195361e-15,
+        "z": -2
+      },
+      "radius_mm": null,
+      "minor_radius_mm": null,
+      "cone_half_angle_deg": null,
+      "angular_span_deg": null,
+      "is_internal": null,
+      "is_planar_extreme": false,
+      "edge_count": 18
+    },
+    {
+      "face_id": 33,
+      "surface_type": "PLANE",
+      "area_mm2": 78.23,
+      "bounding_box": {
+        "min": {
+          "x": 0,
+          "y": 0,
+          "z": -8.7
+        },
+        "max": {
+          "x": 17.752,
+          "y": 17.752,
+          "z": -8.7
+        },
+        "length_mm": 17.752,
+        "width_mm": 17.752,
+        "height_mm": 0,
+        "diagonal_mm": 25.105
+      },
+      "centroid": {
+        "x": 11.975767203926953,
+        "y": 11.975767203926956,
+        "z": -8.7
+      },
+      "normal": {
+        "x": 0,
+        "y": 0,
+        "z": 1
+      },
+      "axis": null,
+      "axis_location": {
+        "x": 0,
+        "y": 0,
+        "z": -8.7
+      },
+      "radius_mm": null,
+      "minor_radius_mm": null,
+      "cone_half_angle_deg": null,
+      "angular_span_deg": null,
+      "is_internal": null,
+      "is_planar_extreme": false,
+      "edge_count": 4
+    },
+    {
+      "face_id": 34,
+      "surface_type": "PLANE",
+      "area_mm2": 78.23,
+      "bounding_box": {
+        "min": {
+          "x": -17.752,
+          "y": 0,
+          "z": -8.7
+        },
+        "max": {
+          "x": 0,
+          "y": 17.752,
+          "z": -8.7
+        },
+        "length_mm": 17.752,
+        "width_mm": 17.752,
+        "height_mm": 0,
+        "diagonal_mm": 25.105
+      },
+      "centroid": {
+        "x": -11.975767203926953,
+        "y": 11.975767203926935,
+        "z": -8.7
+      },
+      "normal": {
+        "x": 0,
+        "y": 0,
+        "z": 1
+      },
+      "axis": null,
+      "axis_location": {
+        "x": 0,
+        "y": 0,
+        "z": -8.7
+      },
+      "radius_mm": null,
+      "minor_radius_mm": null,
+      "cone_half_angle_deg": null,
+      "angular_span_deg": null,
+      "is_internal": null,
+      "is_planar_extreme": false,
+      "edge_count": 4
+    },
+    {
+      "face_id": 35,
+      "surface_type": "PLANE",
+      "area_mm2": 78.23,
+      "bounding_box": {
+        "min": {
+          "x": -17.752,
+          "y": -17.752,
+          "z": -8.7
+        },
+        "max": {
+          "x": 0,
+          "y": 0,
+          "z": -8.7
+        },
+        "length_mm": 17.752,
+        "width_mm": 17.752,
+        "height_mm": 0,
+        "diagonal_mm": 25.105
+      },
+      "centroid": {
+        "x": -11.97576720392694,
+        "y": -11.97576720392695,
+        "z": -8.7
+      },
+      "normal": {
+        "x": 0,
+        "y": 0,
+        "z": 1
+      },
+      "axis": null,
+      "axis_location": {
+        "x": 0,
+        "y": 0,
+        "z": -8.7
+      },
+      "radius_mm": null,
+      "minor_radius_mm": null,
+      "cone_half_angle_deg": null,
+      "angular_span_deg": null,
+      "is_internal": null,
+      "is_planar_extreme": false,
+      "edge_count": 4
+    },
+    {
+      "face_id": 36,
+      "surface_type": "CYLINDER",
+      "area_mm2": 25.41,
+      "bounding_box": {
+        "min": {
+          "x": 14.646,
+          "y": 6.35,
+          "z": -15.05
+        },
+        "max": {
+          "x": 17.027,
+          "y": 11.666,
+          "z": -10.7
+        },
+        "length_mm": 2.381,
+        "width_mm": 5.316,
+        "height_mm": 4.35,
+        "diagonal_mm": 7.27
+      },
+      "centroid": {
+        "x": 15.720064631955069,
+        "y": 9.060113382053238,
+        "z": -12.875
+      },
+      "normal": null,
+      "axis": {
+        "x": 0,
+        "y": 0,
+        "z": 1
+      },
+      "axis_location": {
+        "x": 35.95,
+        "y": -2.4719809532669498e-14,
+        "z": -15.049999999999999
+      },
+      "radius_mm": 22.23,
+      "minor_radius_mm": null,
+      "cone_half_angle_deg": null,
+      "angular_span_deg": 15.0556734821544,
+      "is_internal": true,
+      "is_planar_extreme": false,
+      "edge_count": 4
+    },
+    {
+      "face_id": 37,
+      "surface_type": "CYLINDER",
+      "area_mm2": 25.41,
+      "bounding_box": {
+        "min": {
+          "x": 6.35,
+          "y": 14.646,
+          "z": -15.05
+        },
+        "max": {
+          "x": 11.666,
+          "y": 17.027,
+          "z": -10.7
+        },
+        "length_mm": 5.316,
+        "width_mm": 2.381,
+        "height_mm": 4.35,
+        "diagonal_mm": 7.27
+      },
+      "centroid": {
+        "x": 9.060113382053252,
+        "y": 15.720064631955072,
+        "z": -12.875
+      },
+      "normal": null,
+      "axis": {
+        "x": 0,
+        "y": 0,
+        "z": 1
+      },
+      "axis_location": {
+        "x": -2.2551405187698495e-14,
+        "y": 35.95,
+        "z": -15.049999999999999
+      },
+      "radius_mm": 22.23,
+      "minor_radius_mm": null,
+      "cone_half_angle_deg": null,
+      "angular_span_deg": 15.055673482154376,
+      "is_internal": true,
+      "is_planar_extreme": false,
+      "edge_count": 4
+    },
+    {
+      "face_id": 38,
+      "surface_type": "PLANE",
+      "area_mm2": 56.97,
+      "bounding_box": {
+        "min": {
+          "x": 6.35,
+          "y": 6.35,
+          "z": -15.05
+        },
+        "max": {
+          "x": 17.027,
+          "y": 17.027,
+          "z": -15.05
+        },
+        "length_mm": 10.677,
+        "width_mm": 10.677,
+        "height_mm": 0,
+        "diagonal_mm": 15.1
+      },
+      "centroid": {
+        "x": 12.009976497586834,
+        "y": 12.006974852920123,
+        "z": -15.05
+      },
+      "normal": {
+        "x": 0,
+        "y": 0,
+        "z": -1
+      },
+      "axis": null,
+      "axis_location": {
+        "x": 0,
+        "y": 0,
+        "z": -15.049999999999999
+      },
+      "radius_mm": null,
+      "minor_radius_mm": null,
+      "cone_half_angle_deg": null,
+      "angular_span_deg": null,
+      "is_internal": null,
+      "is_planar_extreme": false,
+      "edge_count": 8
+    },
+    {
+      "face_id": 39,
+      "surface_type": "PLANE",
+      "area_mm2": 78.23,
+      "bounding_box": {
+        "min": {
+          "x": 0,
+          "y": -17.752,
+          "z": -8.7
+        },
+        "max": {
+          "x": 17.752,
+          "y": 0,
+          "z": -8.7
+        },
+        "length_mm": 17.752,
+        "width_mm": 17.752,
+        "height_mm": 0,
+        "diagonal_mm": 25.105
+      },
+      "centroid": {
+        "x": 11.975767203926907,
+        "y": -11.975767203926925,
+        "z": -8.7
+      },
+      "normal": {
+        "x": 0,
+        "y": 0,
+        "z": 1
+      },
+      "axis": null,
+      "axis_location": {
+        "x": 0,
+        "y": 0,
+        "z": -8.7
+      },
+      "radius_mm": null,
+      "minor_radius_mm": null,
+      "cone_half_angle_deg": null,
+      "angular_span_deg": null,
+      "is_internal": null,
+      "is_planar_extreme": false,
+      "edge_count": 4
+    },
+    {
+      "face_id": 40,
+      "surface_type": "PLANE",
+      "area_mm2": 8.02,
+      "bounding_box": {
+        "min": {
+          "x": 12.802,
+          "y": 6.35,
+          "z": -15.05
+        },
+        "max": {
+          "x": 14.646,
+          "y": 6.35,
+          "z": -10.7
+        },
+        "length_mm": 1.845,
+        "width_mm": 0,
+        "height_mm": 4.35,
+        "diagonal_mm": 4.725
+      },
+      "centroid": {
+        "x": 13.72392998569315,
+        "y": 6.35,
+        "z": -12.875
+      },
+      "normal": {
+        "x": 0,
+        "y": -1,
+        "z": 0
+      },
+      "axis": null,
+      "axis_location": {
+        "x": 13.7239299856931,
+        "y": 6.35,
+        "z": -11.05
+      },
+      "radius_mm": null,
+      "minor_radius_mm": null,
+      "cone_half_angle_deg": null,
+      "angular_span_deg": null,
+      "is_internal": null,
+      "is_planar_extreme": false,
+      "edge_count": 4
+    },
+    {
+      "face_id": 41,
+      "surface_type": "PLANE",
+      "area_mm2": 8.02,
+      "bounding_box": {
+        "min": {
+          "x": 6.35,
+          "y": 12.802,
+          "z": -15.05
+        },
+        "max": {
+          "x": 6.35,
+          "y": 14.646,
+          "z": -10.7
+        },
+        "length_mm": 0,
+        "width_mm": 1.845,
+        "height_mm": 4.35,
+        "diagonal_mm": 4.725
+      },
+      "centroid": {
+        "x": 6.35,
+        "y": 13.72392998569315,
+        "z": -12.875
+      },
+      "normal": {
+        "x": -1,
+        "y": 0,
+        "z": 0
+      },
+      "axis": null,
+      "axis_location": {
+        "x": 6.35,
+        "y": 13.7239299856931,
+        "z": -11.05
+      },
+      "radius_mm": null,
+      "minor_radius_mm": null,
+      "cone_half_angle_deg": null,
+      "angular_span_deg": null,
+      "is_internal": null,
+      "is_planar_extreme": false,
+      "edge_count": 4
+    },
+    {
+      "face_id": 42,
+      "surface_type": "PLANE",
+      "area_mm2": 4.91,
+      "bounding_box": {
+        "min": {
+          "x": 11.118,
+          "y": 11.152,
+          "z": -10.05
+        },
+        "max": {
+          "x": 13.618,
+          "y": 13.652,
+          "z": -10.05
+        },
+        "length_mm": 2.5,
+        "width_mm": 2.5,
+        "height_mm": 0,
+        "diagonal_mm": 3.536
+      },
+      "centroid": {
+        "x": 12.3675457626796,
+        "y": 12.4023802879942,
+        "z": -10.05
+      },
+      "normal": {
+        "x": 0,
+        "y": 0,
+        "z": -1
+      },
+      "axis": null,
+      "axis_location": {
+        "x": 13.6175457626796,
+        "y": 12.4023802879942,
+        "z": -10.05
+      },
+      "radius_mm": null,
+      "minor_radius_mm": null,
+      "cone_half_angle_deg": null,
+      "angular_span_deg": null,
+      "is_internal": null,
+      "is_planar_extreme": false,
+      "edge_count": 2
+    },
+    {
+      "face_id": 43,
+      "surface_type": "CYLINDER",
+      "area_mm2": 19.63,
+      "bounding_box": {
+        "min": {
+          "x": 11.118,
+          "y": 12.402,
+          "z": -15.05
+        },
+        "max": {
+          "x": 13.618,
+          "y": 13.652,
+          "z": -10.05
+        },
+        "length_mm": 2.5,
+        "width_mm": 1.25,
+        "height_mm": 5,
+        "diagonal_mm": 5.728
+      },
+      "centroid": {
+        "x": 12.3675457626796,
+        "y": 13.198155003453678,
+        "z": -12.55
+      },
+      "normal": null,
+      "axis": {
+        "x": 0,
+        "y": 0,
+        "z": 1
+      },
+      "axis_location": {
+        "x": 12.3675457626796,
+        "y": 12.4023802879942,
+        "z": -15.049999999999999
+      },
+      "radius_mm": 1.2499999999999993,
+      "minor_radius_mm": null,
+      "cone_half_angle_deg": null,
+      "angular_span_deg": 180,
+      "is_internal": true,
+      "is_planar_extreme": false,
+      "edge_count": 4
+    },
+    {
+      "face_id": 44,
+      "surface_type": "CYLINDER",
+      "area_mm2": 25.41,
+      "bounding_box": {
+        "min": {
+          "x": -11.666,
+          "y": 14.646,
+          "z": -15.05
+        },
+        "max": {
+          "x": -6.35,
+          "y": 17.027,
+          "z": -10.7
+        },
+        "length_mm": 5.316,
+        "width_mm": 2.381,
+        "height_mm": 4.35,
+        "diagonal_mm": 7.27
+      },
+      "centroid": {
+        "x": -9.060113382053261,
+        "y": 15.72006463195505,
+        "z": -12.875
+      },
+      "normal": null,
+      "axis": {
+        "x": 0,
+        "y": 0,
+        "z": 1
+      },
+      "axis_location": {
+        "x": -3.16587034365767e-14,
+        "y": 35.95,
+        "z": -15.049999999999999
+      },
+      "radius_mm": 22.23,
+      "minor_radius_mm": null,
+      "cone_half_angle_deg": null,
+      "angular_span_deg": 15.055673482154425,
+      "is_internal": true,
+      "is_planar_extreme": false,
+      "edge_count": 4
+    },
+    {
+      "face_id": 45,
+      "surface_type": "CYLINDER",
+      "area_mm2": 25.41,
+      "bounding_box": {
+        "min": {
+          "x": -17.027,
+          "y": 6.35,
+          "z": -15.05
+        },
+        "max": {
+          "x": -14.646,
+          "y": 11.666,
+          "z": -10.7
+        },
+        "length_mm": 2.381,
+        "width_mm": 5.316,
+        "height_mm": 4.35,
+        "diagonal_mm": 7.27
+      },
+      "centroid": {
+        "x": -15.720064631955063,
+        "y": 9.060113382053245,
+        "z": -12.875
+      },
+      "normal": null,
+      "axis": {
+        "x": 0,
+        "y": 0,
+        "z": 1
+      },
+      "axis_location": {
+        "x": -35.95,
+        "y": -1.21430643318376e-14,
+        "z": -15.049999999999999
+      },
+      "radius_mm": 22.23,
+      "minor_radius_mm": null,
+      "cone_half_angle_deg": null,
+      "angular_span_deg": 15.055673482154376,
+      "is_internal": true,
+      "is_planar_extreme": false,
+      "edge_count": 4
+    },
+    {
+      "face_id": 46,
+      "surface_type": "PLANE",
+      "area_mm2": 56.97,
+      "bounding_box": {
+        "min": {
+          "x": -17.027,
+          "y": 6.35,
+          "z": -15.05
+        },
+        "max": {
+          "x": -6.35,
+          "y": 17.027,
+          "z": -15.05
+        },
+        "length_mm": 10.677,
+        "width_mm": 10.677,
+        "height_mm": 0,
+        "diagonal_mm": 15.1
+      },
+      "centroid": {
+        "x": -12.006974852920198,
+        "y": 12.00997649758681,
+        "z": -15.049999999999999
+      },
+      "normal": {
+        "x": 0,
+        "y": 0,
+        "z": -1
+      },
+      "axis": null,
+      "axis_location": {
+        "x": 0,
+        "y": 0,
+        "z": -15.049999999999999
+      },
+      "radius_mm": null,
+      "minor_radius_mm": null,
+      "cone_half_angle_deg": null,
+      "angular_span_deg": null,
+      "is_internal": null,
+      "is_planar_extreme": false,
+      "edge_count": 8
+    },
+    {
+      "face_id": 47,
+      "surface_type": "PLANE",
+      "area_mm2": 8.02,
+      "bounding_box": {
+        "min": {
+          "x": -14.646,
+          "y": 6.35,
+          "z": -15.05
+        },
+        "max": {
+          "x": -12.802,
+          "y": 6.35,
+          "z": -10.7
+        },
+        "length_mm": 1.845,
+        "width_mm": 0,
+        "height_mm": 4.35,
+        "diagonal_mm": 4.725
+      },
+      "centroid": {
+        "x": -13.723929985693148,
+        "y": 6.35,
+        "z": -12.875
+      },
+      "normal": {
+        "x": 0,
+        "y": -1,
+        "z": 0
+      },
+      "axis": null,
+      "axis_location": {
+        "x": -13.7239299856932,
+        "y": 6.35,
+        "z": -11.05
+      },
+      "radius_mm": null,
+      "minor_radius_mm": null,
+      "cone_half_angle_deg": null,
+      "angular_span_deg": null,
+      "is_internal": null,
+      "is_planar_extreme": false,
+      "edge_count": 4
+    },
+    {
+      "face_id": 48,
+      "surface_type": "PLANE",
+      "area_mm2": 8.02,
+      "bounding_box": {
+        "min": {
+          "x": -6.35,
+          "y": 12.802,
+          "z": -15.05
+        },
+        "max": {
+          "x": -6.35,
+          "y": 14.646,
+          "z": -10.7
+        },
+        "length_mm": 0,
+        "width_mm": 1.845,
+        "height_mm": 4.35,
+        "diagonal_mm": 4.725
+      },
+      "centroid": {
+        "x": -6.35,
+        "y": 13.72392998569315,
+        "z": -12.875
+      },
+      "normal": {
+        "x": 1,
+        "y": 0,
+        "z": 0
+      },
+      "axis": null,
+      "axis_location": {
+        "x": -6.35,
+        "y": 13.7239299856931,
+        "z": -11.05
+      },
+      "radius_mm": null,
+      "minor_radius_mm": null,
+      "cone_half_angle_deg": null,
+      "angular_span_deg": null,
+      "is_internal": null,
+      "is_planar_extreme": false,
+      "edge_count": 4
+    },
+    {
+      "face_id": 49,
+      "surface_type": "PLANE",
+      "area_mm2": 4.91,
+      "bounding_box": {
+        "min": {
+          "x": -13.652,
+          "y": 11.118,
+          "z": -10.05
+        },
+        "max": {
+          "x": -11.152,
+          "y": 13.618,
+          "z": -10.05
+        },
+        "length_mm": 2.5,
+        "width_mm": 2.5,
+        "height_mm": 0,
+        "diagonal_mm": 3.536
+      },
+      "centroid": {
+        "x": -12.4023802879942,
+        "y": 12.3675457626796,
+        "z": -10.05
+      },
+      "normal": {
+        "x": 0,
+        "y": 0,
+        "z": -1
+      },
+      "axis": null,
+      "axis_location": {
+        "x": -11.152380287994202,
+        "y": 12.3675457626796,
+        "z": -10.05
+      },
+      "radius_mm": null,
+      "minor_radius_mm": null,
+      "cone_half_angle_deg": null,
+      "angular_span_deg": null,
+      "is_internal": null,
+      "is_planar_extreme": false,
+      "edge_count": 2
+    },
+    {
+      "face_id": 50,
+      "surface_type": "CYLINDER",
+      "area_mm2": 19.63,
+      "bounding_box": {
+        "min": {
+          "x": -13.652,
+          "y": 12.368,
+          "z": -15.05
+        },
+        "max": {
+          "x": -11.152,
+          "y": 13.618,
+          "z": -10.05
+        },
+        "length_mm": 2.5,
+        "width_mm": 1.25,
+        "height_mm": 5,
+        "diagonal_mm": 5.728
+      },
+      "centroid": {
+        "x": -12.4023802879942,
+        "y": 13.163320478139076,
+        "z": -12.55
+      },
+      "normal": null,
+      "axis": {
+        "x": 0,
+        "y": 0,
+        "z": 1
+      },
+      "axis_location": {
+        "x": -12.4023802879942,
+        "y": 12.3675457626796,
+        "z": -15.049999999999999
+      },
+      "radius_mm": 1.2499999999999993,
+      "minor_radius_mm": null,
+      "cone_half_angle_deg": null,
+      "angular_span_deg": 180,
+      "is_internal": true,
+      "is_planar_extreme": false,
+      "edge_count": 4
+    },
+    {
+      "face_id": 51,
+      "surface_type": "CYLINDER",
+      "area_mm2": 25.41,
+      "bounding_box": {
+        "min": {
+          "x": -17.027,
+          "y": -11.666,
+          "z": -15.05
+        },
+        "max": {
+          "x": -14.646,
+          "y": -6.35,
+          "z": -10.7
+        },
+        "length_mm": 2.381,
+        "width_mm": 5.316,
+        "height_mm": 4.35,
+        "diagonal_mm": 7.27
+      },
+      "centroid": {
+        "x": -15.720064631955058,
+        "y": -9.060113382053265,
+        "z": -12.875
+      },
+      "normal": null,
+      "axis": {
+        "x": 0,
+        "y": 0,
+        "z": 1
+      },
+      "axis_location": {
+        "x": -35.95,
+        "y": -1.5612511283791198e-14,
+        "z": -15.049999999999999
+      },
+      "radius_mm": 22.23,
+      "minor_radius_mm": null,
+      "cone_half_angle_deg": null,
+      "angular_span_deg": 15.055673482154376,
+      "is_internal": true,
+      "is_planar_extreme": false,
+      "edge_count": 4
+    },
+    {
+      "face_id": 52,
+      "surface_type": "CYLINDER",
+      "area_mm2": 25.41,
+      "bounding_box": {
+        "min": {
+          "x": -11.666,
+          "y": -17.027,
+          "z": -15.05
+        },
+        "max": {
+          "x": -6.35,
+          "y": -14.646,
+          "z": -10.7
+        },
+        "length_mm": 5.316,
+        "width_mm": 2.381,
+        "height_mm": 4.35,
+        "diagonal_mm": 7.27
+      },
+      "centroid": {
+        "x": -9.06011338205325,
+        "y": -15.720064631955061,
+        "z": -12.875
+      },
+      "normal": null,
+      "axis": {
+        "x": 0,
+        "y": 0,
+        "z": 1
+      },
+      "axis_location": {
+        "x": 3.46944695195361e-15,
+        "y": -35.95,
+        "z": -15.049999999999999
+      },
+      "radius_mm": 22.23,
+      "minor_radius_mm": null,
+      "cone_half_angle_deg": null,
+      "angular_span_deg": 15.055673482154388,
+      "is_internal": true,
+      "is_planar_extreme": false,
+      "edge_count": 4
+    },
+    {
+      "face_id": 53,
+      "surface_type": "PLANE",
+      "area_mm2": 56.97,
+      "bounding_box": {
+        "min": {
+          "x": -17.027,
+          "y": -17.027,
+          "z": -15.05
+        },
+        "max": {
+          "x": -6.35,
+          "y": -6.35,
+          "z": -15.05
+        },
+        "length_mm": 10.677,
+        "width_mm": 10.677,
+        "height_mm": 0,
+        "diagonal_mm": 15.1
+      },
+      "centroid": {
+        "x": -12.00997649758683,
+        "y": -12.006974852920173,
+        "z": -15.049999999999999
+      },
+      "normal": {
+        "x": 0,
+        "y": 0,
+        "z": -1
+      },
+      "axis": null,
+      "axis_location": {
+        "x": 0,
+        "y": 0,
+        "z": -15.049999999999999
+      },
+      "radius_mm": null,
+      "minor_radius_mm": null,
+      "cone_half_angle_deg": null,
+      "angular_span_deg": null,
+      "is_internal": null,
+      "is_planar_extreme": false,
+      "edge_count": 8
+    },
+    {
+      "face_id": 54,
+      "surface_type": "PLANE",
+      "area_mm2": 8.02,
+      "bounding_box": {
+        "min": {
+          "x": -6.35,
+          "y": -14.646,
+          "z": -15.05
+        },
+        "max": {
+          "x": -6.35,
+          "y": -12.802,
+          "z": -10.7
+        },
+        "length_mm": 0,
+        "width_mm": 1.845,
+        "height_mm": 4.35,
+        "diagonal_mm": 4.725
+      },
+      "centroid": {
+        "x": -6.35,
+        "y": -13.723929985693148,
+        "z": -12.875
+      },
+      "normal": {
+        "x": 1,
+        "y": 0,
+        "z": 0
+      },
+      "axis": null,
+      "axis_location": {
+        "x": -6.35,
+        "y": -13.7239299856932,
+        "z": -11.05
+      },
+      "radius_mm": null,
+      "minor_radius_mm": null,
+      "cone_half_angle_deg": null,
+      "angular_span_deg": null,
+      "is_internal": null,
+      "is_planar_extreme": false,
+      "edge_count": 4
+    },
+    {
+      "face_id": 55,
+      "surface_type": "PLANE",
+      "area_mm2": 8.02,
+      "bounding_box": {
+        "min": {
+          "x": -14.646,
+          "y": -6.35,
+          "z": -15.05
+        },
+        "max": {
+          "x": -12.802,
+          "y": -6.35,
+          "z": -10.7
+        },
+        "length_mm": 1.845,
+        "width_mm": 0,
+        "height_mm": 4.35,
+        "diagonal_mm": 4.725
+      },
+      "centroid": {
+        "x": -13.723929985693148,
+        "y": -6.35,
+        "z": -12.875
+      },
+      "normal": {
+        "x": 0,
+        "y": 1,
+        "z": 0
+      },
+      "axis": null,
+      "axis_location": {
+        "x": -13.7239299856931,
+        "y": -6.35,
+        "z": -11.05
+      },
+      "radius_mm": null,
+      "minor_radius_mm": null,
+      "cone_half_angle_deg": null,
+      "angular_span_deg": null,
+      "is_internal": null,
+      "is_planar_extreme": false,
+      "edge_count": 4
+    },
+    {
+      "face_id": 56,
+      "surface_type": "PLANE",
+      "area_mm2": 4.91,
+      "bounding_box": {
+        "min": {
+          "x": -13.618,
+          "y": -13.652,
+          "z": -10.05
+        },
+        "max": {
+          "x": -11.118,
+          "y": -11.152,
+          "z": -10.05
+        },
+        "length_mm": 2.5,
+        "width_mm": 2.5,
+        "height_mm": 0,
+        "diagonal_mm": 3.536
+      },
+      "centroid": {
+        "x": -12.3675457626796,
+        "y": -12.4023802879942,
+        "z": -10.05
+      },
+      "normal": {
+        "x": 0,
+        "y": 0,
+        "z": -1
+      },
+      "axis": null,
+      "axis_location": {
+        "x": -11.1175457626796,
+        "y": -12.4023802879942,
+        "z": -10.05
+      },
+      "radius_mm": null,
+      "minor_radius_mm": null,
+      "cone_half_angle_deg": null,
+      "angular_span_deg": null,
+      "is_internal": null,
+      "is_planar_extreme": false,
+      "edge_count": 2
+    },
+    {
+      "face_id": 57,
+      "surface_type": "CYLINDER",
+      "area_mm2": 19.63,
+      "bounding_box": {
+        "min": {
+          "x": -13.618,
+          "y": -12.402,
+          "z": -15.05
+        },
+        "max": {
+          "x": -11.118,
+          "y": -11.152,
+          "z": -10.05
+        },
+        "length_mm": 2.5,
+        "width_mm": 1.25,
+        "height_mm": 5,
+        "diagonal_mm": 5.728
+      },
+      "centroid": {
+        "x": -12.3675457626796,
+        "y": -11.606605572534724,
+        "z": -12.55
+      },
+      "normal": null,
+      "axis": {
+        "x": 0,
+        "y": 0,
+        "z": 1
+      },
+      "axis_location": {
+        "x": -12.3675457626796,
+        "y": -12.4023802879942,
+        "z": -15.049999999999999
+      },
+      "radius_mm": 1.2499999999999993,
+      "minor_radius_mm": null,
+      "cone_half_angle_deg": null,
+      "angular_span_deg": 180,
+      "is_internal": true,
+      "is_planar_extreme": false,
+      "edge_count": 4
+    },
+    {
+      "face_id": 58,
+      "surface_type": "CYLINDER",
+      "area_mm2": 25.41,
+      "bounding_box": {
+        "min": {
+          "x": 6.35,
+          "y": -17.027,
+          "z": -15.05
+        },
+        "max": {
+          "x": 11.666,
+          "y": -14.646,
+          "z": -10.7
+        },
+        "length_mm": 5.316,
+        "width_mm": 2.381,
+        "height_mm": 4.35,
+        "diagonal_mm": 7.27
+      },
+      "centroid": {
+        "x": 9.060113382053245,
+        "y": -15.720064631955061,
+        "z": -12.875
+      },
+      "normal": null,
+      "axis": {
+        "x": 0,
+        "y": 0,
+        "z": 1
+      },
+      "axis_location": {
+        "x": -8.67361737988404e-15,
+        "y": -35.95,
+        "z": -15.049999999999999
+      },
+      "radius_mm": 22.23,
+      "minor_radius_mm": null,
+      "cone_half_angle_deg": null,
+      "angular_span_deg": 15.055673482154376,
+      "is_internal": true,
+      "is_planar_extreme": false,
+      "edge_count": 4
+    },
+    {
+      "face_id": 59,
+      "surface_type": "CYLINDER",
+      "area_mm2": 25.41,
+      "bounding_box": {
+        "min": {
+          "x": 14.646,
+          "y": -11.666,
+          "z": -15.05
+        },
+        "max": {
+          "x": 17.027,
+          "y": -6.35,
+          "z": -10.7
+        },
+        "length_mm": 2.381,
+        "width_mm": 5.316,
+        "height_mm": 4.35,
+        "diagonal_mm": 7.27
+      },
+      "centroid": {
+        "x": 15.720064631955058,
+        "y": -9.060113382053236,
+        "z": -12.875
+      },
+      "normal": null,
+      "axis": {
+        "x": 0,
+        "y": 0,
+        "z": 1
+      },
+      "axis_location": {
+        "x": 35.95,
+        "y": 1.38777878078145e-14,
+        "z": -15.049999999999999
+      },
+      "radius_mm": 22.23,
+      "minor_radius_mm": null,
+      "cone_half_angle_deg": null,
+      "angular_span_deg": 15.0556734821544,
+      "is_internal": true,
+      "is_planar_extreme": false,
+      "edge_count": 4
+    },
+    {
+      "face_id": 60,
+      "surface_type": "PLANE",
+      "area_mm2": 56.97,
+      "bounding_box": {
+        "min": {
+          "x": 6.35,
+          "y": -17.027,
+          "z": -15.05
+        },
+        "max": {
+          "x": 17.027,
+          "y": -6.35,
+          "z": -15.05
+        },
+        "length_mm": 10.677,
+        "width_mm": 10.677,
+        "height_mm": 0,
+        "diagonal_mm": 15.1
+      },
+      "centroid": {
+        "x": 12.006974852920202,
+        "y": -12.00997649758685,
+        "z": -15.049999999999999
+      },
+      "normal": {
+        "x": 0,
+        "y": 0,
+        "z": -1
+      },
+      "axis": null,
+      "axis_location": {
+        "x": 0,
+        "y": 0,
+        "z": -15.049999999999999
+      },
+      "radius_mm": null,
+      "minor_radius_mm": null,
+      "cone_half_angle_deg": null,
+      "angular_span_deg": null,
+      "is_internal": null,
+      "is_planar_extreme": false,
+      "edge_count": 8
+    },
+    {
+      "face_id": 61,
+      "surface_type": "PLANE",
+      "area_mm2": 8.02,
+      "bounding_box": {
+        "min": {
+          "x": 12.802,
+          "y": -6.35,
+          "z": -15.05
+        },
+        "max": {
+          "x": 14.646,
+          "y": -6.35,
+          "z": -10.7
+        },
+        "length_mm": 1.845,
+        "width_mm": 0,
+        "height_mm": 4.35,
+        "diagonal_mm": 4.725
+      },
+      "centroid": {
+        "x": 13.72392998569315,
+        "y": -6.35,
+        "z": -12.875
+      },
+      "normal": {
+        "x": 0,
+        "y": 1,
+        "z": 0
+      },
+      "axis": null,
+      "axis_location": {
+        "x": 13.7239299856932,
+        "y": -6.35,
+        "z": -11.05
+      },
+      "radius_mm": null,
+      "minor_radius_mm": null,
+      "cone_half_angle_deg": null,
+      "angular_span_deg": null,
+      "is_internal": null,
+      "is_planar_extreme": false,
+      "edge_count": 4
+    },
+    {
+      "face_id": 62,
+      "surface_type": "PLANE",
+      "area_mm2": 8.02,
+      "bounding_box": {
+        "min": {
+          "x": 6.35,
+          "y": -14.646,
+          "z": -15.05
+        },
+        "max": {
+          "x": 6.35,
+          "y": -12.802,
+          "z": -10.7
+        },
+        "length_mm": 0,
+        "width_mm": 1.845,
+        "height_mm": 4.35,
+        "diagonal_mm": 4.725
+      },
+      "centroid": {
+        "x": 6.35,
+        "y": -13.723929985693148,
+        "z": -12.875
+      },
+      "normal": {
+        "x": -1,
+        "y": 0,
+        "z": 0
+      },
+      "axis": null,
+      "axis_location": {
+        "x": 6.35,
+        "y": -13.7239299856931,
+        "z": -11.05
+      },
+      "radius_mm": null,
+      "minor_radius_mm": null,
+      "cone_half_angle_deg": null,
+      "angular_span_deg": null,
+      "is_internal": null,
+      "is_planar_extreme": false,
+      "edge_count": 4
+    },
+    {
+      "face_id": 63,
+      "surface_type": "PLANE",
+      "area_mm2": 4.91,
+      "bounding_box": {
+        "min": {
+          "x": 11.152,
+          "y": -13.618,
+          "z": -10.05
+        },
+        "max": {
+          "x": 13.652,
+          "y": -11.118,
+          "z": -10.05
+        },
+        "length_mm": 2.5,
+        "width_mm": 2.5,
+        "height_mm": 0,
+        "diagonal_mm": 3.536
+      },
+      "centroid": {
+        "x": 12.4023802879942,
+        "y": -12.3675457626796,
+        "z": -10.05
+      },
+      "normal": {
+        "x": 0,
+        "y": 0,
+        "z": -1
+      },
+      "axis": null,
+      "axis_location": {
+        "x": 13.6523802879942,
+        "y": -12.3675457626796,
+        "z": -10.05
+      },
+      "radius_mm": null,
+      "minor_radius_mm": null,
+      "cone_half_angle_deg": null,
+      "angular_span_deg": null,
+      "is_internal": null,
+      "is_planar_extreme": false,
+      "edge_count": 2
+    },
+    {
+      "face_id": 64,
+      "surface_type": "CYLINDER",
+      "area_mm2": 19.63,
+      "bounding_box": {
+        "min": {
+          "x": 11.152,
+          "y": -12.368,
+          "z": -15.05
+        },
+        "max": {
+          "x": 13.652,
+          "y": -11.118,
+          "z": -10.05
+        },
+        "length_mm": 2.5,
+        "width_mm": 1.25,
+        "height_mm": 5,
+        "diagonal_mm": 5.728
+      },
+      "centroid": {
+        "x": 12.4023802879942,
+        "y": -11.571771047220123,
+        "z": -12.55
+      },
+      "normal": null,
+      "axis": {
+        "x": 0,
+        "y": 0,
+        "z": 1
+      },
+      "axis_location": {
+        "x": 12.4023802879942,
+        "y": -12.3675457626796,
+        "z": -15.049999999999999
+      },
+      "radius_mm": 1.2499999999999993,
+      "minor_radius_mm": null,
+      "cone_half_angle_deg": null,
+      "angular_span_deg": 180,
+      "is_internal": true,
+      "is_planar_extreme": false,
+      "edge_count": 4
+    },
+    {
+      "face_id": 65,
+      "surface_type": "CYLINDER",
+      "area_mm2": 44.12,
+      "bounding_box": {
+        "min": {
+          "x": 14.925,
+          "y": -10.53,
+          "z": -10.7
+        },
+        "max": {
+          "x": 17.752,
+          "y": 10.53,
+          "z": -8.7
+        },
+        "length_mm": 2.827,
+        "width_mm": 21.06,
+        "height_mm": 2,
+        "diagonal_mm": 21.343
+      },
+      "centroid": {
+        "x": 15.876027866781422,
+        "y": 1.607837921462677e-14,
+        "z": -9.7
+      },
+      "normal": null,
+      "axis": {
+        "x": 0,
+        "y": 0,
+        "z": 1
+      },
+      "axis_location": {
+        "x": 35.95,
+        "y": 3.16587034365767e-14,
+        "z": -11.052
+      },
+      "radius_mm": 21.024999999999995,
+      "minor_radius_mm": null,
+      "cone_half_angle_deg": null,
+      "angular_span_deg": 60.10981036072593,
+      "is_internal": true,
+      "is_planar_extreme": false,
+      "edge_count": 5
+    },
+    {
+      "face_id": 66,
+      "surface_type": "CYLINDER",
+      "area_mm2": 44.12,
+      "bounding_box": {
+        "min": {
+          "x": -10.53,
+          "y": -17.752,
+          "z": -10.7
+        },
+        "max": {
+          "x": 10.53,
+          "y": -14.925,
+          "z": -8.7
+        },
+        "length_mm": 21.06,
+        "width_mm": 2.827,
+        "height_mm": 2,
+        "diagonal_mm": 21.343
+      },
+      "centroid": {
+        "x": 5.099422007661165e-15,
+        "y": -15.876027866781417,
+        "z": -9.7
+      },
+      "normal": null,
+      "axis": {
+        "x": 0,
+        "y": 0,
+        "z": 1
+      },
+      "axis_location": {
+        "x": 3.0791341698588294e-14,
+        "y": -35.95,
+        "z": -11.052
+      },
+      "radius_mm": 21.025,
+      "minor_radius_mm": null,
+      "cone_half_angle_deg": null,
+      "angular_span_deg": 60.10981036072593,
+      "is_internal": true,
+      "is_planar_extreme": false,
+      "edge_count": 5
+    },
+    {
+      "face_id": 67,
+      "surface_type": "CYLINDER",
+      "area_mm2": 22.06,
+      "bounding_box": {
+        "min": {
+          "x": -17.752,
+          "y": -10.53,
+          "z": -10.7
+        },
+        "max": {
+          "x": -14.925,
+          "y": 0,
+          "z": -8.7
+        },
+        "length_mm": 2.827,
+        "width_mm": 10.53,
+        "height_mm": 2,
+        "diagonal_mm": 11.085
+      },
+      "centroid": {
+        "x": -15.876027866781417,
+        "y": -5.389114707051406,
+        "z": -9.7
+      },
+      "normal": null,
+      "axis": {
+        "x": 0,
+        "y": 0,
+        "z": 1
+      },
+      "axis_location": {
+        "x": -35.95,
+        "y": -8.67361737988404e-15,
+        "z": -11.052
+      },
+      "radius_mm": 21.025,
+      "minor_radius_mm": null,
+      "cone_half_angle_deg": null,
+      "angular_span_deg": 30.05490518036294,
+      "is_internal": true,
+      "is_planar_extreme": false,
+      "edge_count": 4
+    },
+    {
+      "face_id": 68,
+      "surface_type": "CYLINDER",
+      "area_mm2": 44.12,
+      "bounding_box": {
+        "min": {
+          "x": -10.53,
+          "y": 14.925,
+          "z": -10.7
+        },
+        "max": {
+          "x": 10.53,
+          "y": 17.752,
+          "z": -8.7
+        },
+        "length_mm": 21.06,
+        "width_mm": 2.827,
+        "height_mm": 2,
+        "diagonal_mm": 21.343
+      },
+      "centroid": {
+        "x": 7.388870860118561e-15,
+        "y": 15.876027866781417,
+        "z": -9.7
+      },
+      "normal": null,
+      "axis": {
+        "x": 0,
+        "y": 0,
+        "z": 1
+      },
+      "axis_location": {
+        "x": 1.12757025938492e-14,
+        "y": 35.95,
+        "z": -11.052
+      },
+      "radius_mm": 21.025,
+      "minor_radius_mm": null,
+      "cone_half_angle_deg": null,
+      "angular_span_deg": 60.10981036072593,
+      "is_internal": true,
+      "is_planar_extreme": false,
+      "edge_count": 5
+    },
+    {
+      "face_id": 69,
+      "surface_type": "CYLINDER",
+      "area_mm2": 15.71,
+      "bounding_box": {
+        "min": {
+          "x": 13.43,
+          "y": 14.68,
+          "z": -2
+        },
+        "max": {
+          "x": 15.93,
+          "y": 15.93,
+          "z": 2
+        },
+        "length_mm": 2.5,
+        "width_mm": 1.25,
+        "height_mm": 4,
+        "diagonal_mm": 4.88
+      },
+      "centroid": {
+        "x": 14.68,
+        "y": 15.475774715459476,
+        "z": -7.774689221355266e-17
+      },
+      "normal": null,
+      "axis": {
+        "x": 0,
+        "y": 0,
+        "z": -1
+      },
+      "axis_location": {
+        "x": 14.68,
+        "y": 14.68,
+        "z": 2
+      },
+      "radius_mm": 1.2499999999999993,
+      "minor_radius_mm": null,
+      "cone_half_angle_deg": null,
+      "angular_span_deg": 180,
+      "is_internal": true,
+      "is_planar_extreme": false,
+      "edge_count": 4
+    },
+    {
+      "face_id": 70,
+      "surface_type": "CYLINDER",
+      "area_mm2": 15.71,
+      "bounding_box": {
+        "min": {
+          "x": -15.93,
+          "y": -14.68,
+          "z": -2
+        },
+        "max": {
+          "x": -13.43,
+          "y": -13.43,
+          "z": 2
+        },
+        "length_mm": 2.5,
+        "width_mm": 1.25,
+        "height_mm": 4,
+        "diagonal_mm": 4.88
+      },
+      "centroid": {
+        "x": -14.68,
+        "y": -13.884225284540523,
+        "z": -7.774689221355266e-17
+      },
+      "normal": null,
+      "axis": {
+        "x": 0,
+        "y": 0,
+        "z": -1
+      },
+      "axis_location": {
+        "x": -14.68,
+        "y": -14.68,
+        "z": 2
+      },
+      "radius_mm": 1.2499999999999993,
+      "minor_radius_mm": null,
+      "cone_half_angle_deg": null,
+      "angular_span_deg": 180,
+      "is_internal": true,
+      "is_planar_extreme": false,
+      "edge_count": 4
+    },
+    {
+      "face_id": 71,
+      "surface_type": "CYLINDER",
+      "area_mm2": 15.71,
+      "bounding_box": {
+        "min": {
+          "x": 13.43,
+          "y": -14.68,
+          "z": -2
+        },
+        "max": {
+          "x": 15.93,
+          "y": -13.43,
+          "z": 2
+        },
+        "length_mm": 2.5,
+        "width_mm": 1.25,
+        "height_mm": 4,
+        "diagonal_mm": 4.88
+      },
+      "centroid": {
+        "x": 14.68,
+        "y": -13.884225284540523,
+        "z": -7.774689221355266e-17
+      },
+      "normal": null,
+      "axis": {
+        "x": 0,
+        "y": 0,
+        "z": -1
+      },
+      "axis_location": {
+        "x": 14.68,
+        "y": -14.68,
+        "z": 2
+      },
+      "radius_mm": 1.2499999999999993,
+      "minor_radius_mm": null,
+      "cone_half_angle_deg": null,
+      "angular_span_deg": 180,
+      "is_internal": true,
+      "is_planar_extreme": false,
+      "edge_count": 4
+    },
+    {
+      "face_id": 72,
+      "surface_type": "CYLINDER",
+      "area_mm2": 15.71,
+      "bounding_box": {
+        "min": {
+          "x": -15.93,
+          "y": 14.68,
+          "z": -2
+        },
+        "max": {
+          "x": -13.43,
+          "y": 15.93,
+          "z": 2
+        },
+        "length_mm": 2.5,
+        "width_mm": 1.25,
+        "height_mm": 4,
+        "diagonal_mm": 4.88
+      },
+      "centroid": {
+        "x": -14.68,
+        "y": 15.475774715459476,
+        "z": -7.774689221355266e-17
+      },
+      "normal": null,
+      "axis": {
+        "x": 0,
+        "y": 0,
+        "z": -1
+      },
+      "axis_location": {
+        "x": -14.68,
+        "y": 14.68,
+        "z": 2
+      },
+      "radius_mm": 1.2499999999999993,
+      "minor_radius_mm": null,
+      "cone_half_angle_deg": null,
+      "angular_span_deg": 180,
+      "is_internal": true,
+      "is_planar_extreme": false,
+      "edge_count": 4
+    },
+    {
+      "face_id": 73,
+      "surface_type": "PLANE",
+      "area_mm2": 355.14,
+      "bounding_box": {
+        "min": {
+          "x": -17.752,
+          "y": -17.752,
+          "z": -10.7
+        },
+        "max": {
+          "x": 17.752,
+          "y": 17.752,
+          "z": -10.7
+        },
+        "length_mm": 35.504,
+        "width_mm": 35.504,
+        "height_mm": 0,
+        "diagonal_mm": 50.21
+      },
+      "centroid": {
+        "x": -2.0039525594484076e-14,
+        "y": -5.281565798807294e-14,
+        "z": -10.7
+      },
+      "normal": {
+        "x": 0,
+        "y": 0,
+        "z": -1
+      },
+      "axis": null,
+      "axis_location": {
+        "x": 0,
+        "y": 0,
+        "z": -10.7
+      },
+      "radius_mm": null,
+      "minor_radius_mm": null,
+      "cone_half_angle_deg": null,
+      "angular_span_deg": null,
+      "is_internal": null,
+      "is_planar_extreme": false,
+      "edge_count": 35
+    },
+    {
+      "face_id": 74,
+      "surface_type": "CYLINDER",
+      "area_mm2": 15.71,
+      "bounding_box": {
+        "min": {
+          "x": -15.93,
+          "y": 13.43,
+          "z": -2
+        },
+        "max": {
+          "x": -13.43,
+          "y": 14.68,
+          "z": 2
+        },
+        "length_mm": 2.5,
+        "width_mm": 1.25,
+        "height_mm": 4,
+        "diagonal_mm": 4.88
+      },
+      "centroid": {
+        "x": -14.68,
+        "y": 13.884225284540523,
+        "z": -5.124226986802335e-17
+      },
+      "normal": null,
+      "axis": {
+        "x": 0,
+        "y": 0,
+        "z": -1
+      },
+      "axis_location": {
+        "x": -14.68,
+        "y": 14.68,
+        "z": 2
+      },
+      "radius_mm": 1.2499999999999993,
+      "minor_radius_mm": null,
+      "cone_half_angle_deg": null,
+      "angular_span_deg": 180,
+      "is_internal": true,
+      "is_planar_extreme": false,
+      "edge_count": 4
+    },
+    {
+      "face_id": 75,
+      "surface_type": "CYLINDER",
+      "area_mm2": 15.71,
+      "bounding_box": {
+        "min": {
+          "x": 13.43,
+          "y": -15.93,
+          "z": -2
+        },
+        "max": {
+          "x": 15.93,
+          "y": -14.68,
+          "z": 2
+        },
+        "length_mm": 2.5,
+        "width_mm": 1.25,
+        "height_mm": 4,
+        "diagonal_mm": 4.88
+      },
+      "centroid": {
+        "x": 14.68,
+        "y": -15.475774715459476,
+        "z": -5.124226986802335e-17
+      },
+      "normal": null,
+      "axis": {
+        "x": 0,
+        "y": 0,
+        "z": -1
+      },
+      "axis_location": {
+        "x": 14.68,
+        "y": -14.68,
+        "z": 2
+      },
+      "radius_mm": 1.2499999999999993,
+      "minor_radius_mm": null,
+      "cone_half_angle_deg": null,
+      "angular_span_deg": 180,
+      "is_internal": true,
+      "is_planar_extreme": false,
+      "edge_count": 4
+    },
+    {
+      "face_id": 76,
+      "surface_type": "CYLINDER",
+      "area_mm2": 15.71,
+      "bounding_box": {
+        "min": {
+          "x": -15.93,
+          "y": -15.93,
+          "z": -2
+        },
+        "max": {
+          "x": -13.43,
+          "y": -14.68,
+          "z": 2
+        },
+        "length_mm": 2.5,
+        "width_mm": 1.25,
+        "height_mm": 4,
+        "diagonal_mm": 4.88
+      },
+      "centroid": {
+        "x": -14.68,
+        "y": -15.475774715459476,
+        "z": -5.124226986802335e-17
+      },
+      "normal": null,
+      "axis": {
+        "x": 0,
+        "y": 0,
+        "z": -1
+      },
+      "axis_location": {
+        "x": -14.68,
+        "y": -14.68,
+        "z": 2
+      },
+      "radius_mm": 1.2499999999999993,
+      "minor_radius_mm": null,
+      "cone_half_angle_deg": null,
+      "angular_span_deg": 180,
+      "is_internal": true,
+      "is_planar_extreme": false,
+      "edge_count": 4
+    },
+    {
+      "face_id": 77,
+      "surface_type": "CYLINDER",
+      "area_mm2": 15.71,
+      "bounding_box": {
+        "min": {
+          "x": 13.43,
+          "y": 13.43,
+          "z": -2
+        },
+        "max": {
+          "x": 15.93,
+          "y": 14.68,
+          "z": 2
+        },
+        "length_mm": 2.5,
+        "width_mm": 1.25,
+        "height_mm": 4,
+        "diagonal_mm": 4.88
+      },
+      "centroid": {
+        "x": 14.68,
+        "y": 13.884225284540523,
+        "z": -5.124226986802335e-17
+      },
+      "normal": null,
+      "axis": {
+        "x": 0,
+        "y": 0,
+        "z": -1
+      },
+      "axis_location": {
+        "x": 14.68,
+        "y": 14.68,
+        "z": 2
+      },
+      "radius_mm": 1.2499999999999993,
+      "minor_radius_mm": null,
+      "cone_half_angle_deg": null,
+      "angular_span_deg": 180,
+      "is_internal": true,
+      "is_planar_extreme": false,
+      "edge_count": 4
+    },
+    {
+      "face_id": 78,
+      "surface_type": "CYLINDER",
+      "area_mm2": 22.06,
+      "bounding_box": {
+        "min": {
+          "x": -17.752,
+          "y": 0,
+          "z": -10.7
+        },
+        "max": {
+          "x": -14.925,
+          "y": 10.53,
+          "z": -8.7
+        },
+        "length_mm": 2.827,
+        "width_mm": 10.53,
+        "height_mm": 2,
+        "diagonal_mm": 11.085
+      },
+      "centroid": {
+        "x": -15.87602786678142,
+        "y": 5.38911470705139,
+        "z": -9.7
+      },
+      "normal": null,
+      "axis": {
+        "x": 0,
+        "y": 0,
+        "z": 1
+      },
+      "axis_location": {
+        "x": -35.95,
+        "y": -8.67361737988404e-15,
+        "z": -11.052
+      },
+      "radius_mm": 21.025,
+      "minor_radius_mm": null,
+      "cone_half_angle_deg": null,
+      "angular_span_deg": 30.05490518036299,
+      "is_internal": true,
+      "is_planar_extreme": false,
+      "edge_count": 4
+    },
+    {
+      "face_id": 79,
+      "surface_type": "CYLINDER",
+      "area_mm2": 19.63,
+      "bounding_box": {
+        "min": {
+          "x": 11.152,
+          "y": -13.618,
+          "z": -15.05
+        },
+        "max": {
+          "x": 13.652,
+          "y": -12.368,
+          "z": -10.05
+        },
+        "length_mm": 2.5,
+        "width_mm": 1.25,
+        "height_mm": 5,
+        "diagonal_mm": 5.728
+      },
+      "centroid": {
+        "x": 12.4023802879942,
+        "y": -13.163320478139076,
+        "z": -12.55
+      },
+      "normal": null,
+      "axis": {
+        "x": 0,
+        "y": 0,
+        "z": 1
+      },
+      "axis_location": {
+        "x": 12.4023802879942,
+        "y": -12.3675457626796,
+        "z": -15.049999999999999
+      },
+      "radius_mm": 1.2499999999999993,
+      "minor_radius_mm": null,
+      "cone_half_angle_deg": null,
+      "angular_span_deg": 180,
+      "is_internal": true,
+      "is_planar_extreme": false,
+      "edge_count": 4
+    },
+    {
+      "face_id": 80,
+      "surface_type": "CYLINDER",
+      "area_mm2": 19.63,
+      "bounding_box": {
+        "min": {
+          "x": -13.618,
+          "y": -13.652,
+          "z": -15.05
+        },
+        "max": {
+          "x": -11.118,
+          "y": -12.402,
+          "z": -10.05
+        },
+        "length_mm": 2.5,
+        "width_mm": 1.25,
+        "height_mm": 5,
+        "diagonal_mm": 5.728
+      },
+      "centroid": {
+        "x": -12.3675457626796,
+        "y": -13.198155003453678,
+        "z": -12.55
+      },
+      "normal": null,
+      "axis": {
+        "x": 0,
+        "y": 0,
+        "z": 1
+      },
+      "axis_location": {
+        "x": -12.3675457626796,
+        "y": -12.4023802879942,
+        "z": -15.049999999999999
+      },
+      "radius_mm": 1.2499999999999993,
+      "minor_radius_mm": null,
+      "cone_half_angle_deg": null,
+      "angular_span_deg": 180,
+      "is_internal": true,
+      "is_planar_extreme": false,
+      "edge_count": 4
+    },
+    {
+      "face_id": 81,
+      "surface_type": "CYLINDER",
+      "area_mm2": 19.63,
+      "bounding_box": {
+        "min": {
+          "x": -13.652,
+          "y": 11.118,
+          "z": -15.05
+        },
+        "max": {
+          "x": -11.152,
+          "y": 12.368,
+          "z": -10.05
+        },
+        "length_mm": 2.5,
+        "width_mm": 1.25,
+        "height_mm": 5,
+        "diagonal_mm": 5.728
+      },
+      "centroid": {
+        "x": -12.4023802879942,
+        "y": 11.571771047220123,
+        "z": -12.55
+      },
+      "normal": null,
+      "axis": {
+        "x": 0,
+        "y": 0,
+        "z": 1
+      },
+      "axis_location": {
+        "x": -12.4023802879942,
+        "y": 12.3675457626796,
+        "z": -15.049999999999999
+      },
+      "radius_mm": 1.2499999999999993,
+      "minor_radius_mm": null,
+      "cone_half_angle_deg": null,
+      "angular_span_deg": 180,
+      "is_internal": true,
+      "is_planar_extreme": false,
+      "edge_count": 4
+    },
+    {
+      "face_id": 82,
+      "surface_type": "CYLINDER",
+      "area_mm2": 19.63,
+      "bounding_box": {
+        "min": {
+          "x": 11.118,
+          "y": 11.152,
+          "z": -15.05
+        },
+        "max": {
+          "x": 13.618,
+          "y": 12.402,
+          "z": -10.05
+        },
+        "length_mm": 2.5,
+        "width_mm": 1.25,
+        "height_mm": 5,
+        "diagonal_mm": 5.728
+      },
+      "centroid": {
+        "x": 12.3675457626796,
+        "y": 11.606605572534724,
+        "z": -12.55
+      },
+      "normal": null,
+      "axis": {
+        "x": 0,
+        "y": 0,
+        "z": 1
+      },
+      "axis_location": {
+        "x": 12.3675457626796,
+        "y": 12.4023802879942,
+        "z": -15.049999999999999
+      },
+      "radius_mm": 1.2499999999999993,
+      "minor_radius_mm": null,
+      "cone_half_angle_deg": null,
+      "angular_span_deg": 180,
+      "is_internal": true,
+      "is_planar_extreme": false,
+      "edge_count": 4
+    },
+    {
+      "face_id": 83,
+      "surface_type": "CYLINDER",
+      "area_mm2": 314.15,
+      "bounding_box": {
+        "min": {
+          "x": -14.925,
+          "y": 0,
+          "z": -8.7
+        },
+        "max": {
+          "x": 14.925,
+          "y": 14.925,
+          "z": -2
+        },
+        "length_mm": 29.85,
+        "width_mm": 14.925,
+        "height_mm": 6.7,
+        "diagonal_mm": 34.039
+      },
+      "centroid": {
+        "x": -1.4704131001843753e-17,
+        "y": 9.501550102586153,
+        "z": -5.35
+      },
+      "normal": null,
+      "axis": {
+        "x": 0,
+        "y": 0,
+        "z": 1
+      },
+      "axis_location": {
+        "x": 0,
+        "y": 9.138926738637118e-16,
+        "z": -8.7
+      },
+      "radius_mm": 14.925,
+      "minor_radius_mm": null,
+      "cone_half_angle_deg": null,
+      "angular_span_deg": 180,
+      "is_internal": false,
+      "is_planar_extreme": false,
+      "edge_count": 5
+    },
+    {
+      "face_id": 84,
+      "surface_type": "CYLINDER",
+      "area_mm2": 204.5,
+      "bounding_box": {
+        "min": {
+          "x": -13.85,
+          "y": 0,
+          "z": -4.7
+        },
+        "max": {
+          "x": 13.85,
+          "y": 13.85,
+          "z": 0
+        },
+        "length_mm": 27.7,
+        "width_mm": 13.85,
+        "height_mm": 4.7,
+        "diagonal_mm": 31.324
+      },
+      "centroid": {
+        "x": 3.3517112070136704e-16,
+        "y": 8.817183847290996,
+        "z": -2.3500000000000014
+      },
+      "normal": null,
+      "axis": {
+        "x": 0,
+        "y": 0,
+        "z": 1
+      },
+      "axis_location": {
+        "x": 0,
+        "y": 0,
+        "z": -45.71219330881976
+      },
+      "radius_mm": 13.85,
+      "minor_radius_mm": null,
+      "cone_half_angle_deg": null,
+      "angular_span_deg": 180,
+      "is_internal": true,
+      "is_planar_extreme": false,
+      "edge_count": 4
+    },
+    {
+      "face_id": 85,
+      "surface_type": "PLANE",
+      "area_mm2": 190.38,
+      "bounding_box": {
+        "min": {
+          "x": -13.825,
+          "y": -13.825,
+          "z": -9.5
+        },
+        "max": {
+          "x": 13.825,
+          "y": 13.825,
+          "z": -9.5
+        },
+        "length_mm": 27.65,
+        "width_mm": 27.65,
+        "height_mm": 0,
+        "diagonal_mm": 39.103
+      },
+      "centroid": {
+        "x": -7.035076591684153e-16,
+        "y": -8.431645530589564e-15,
+        "z": -9.5
+      },
+      "normal": {
+        "x": 0,
+        "y": 0,
+        "z": 1
+      },
+      "axis": null,
+      "axis_location": {
+        "x": 0,
+        "y": 0,
+        "z": -9.5
+      },
+      "radius_mm": null,
+      "minor_radius_mm": null,
+      "cone_half_angle_deg": null,
+      "angular_span_deg": null,
+      "is_internal": null,
+      "is_planar_extreme": false,
+      "edge_count": 4
+    },
+    {
+      "face_id": 86,
+      "surface_type": "CYLINDER",
+      "area_mm2": 208.48,
+      "bounding_box": {
+        "min": {
+          "x": -13.825,
+          "y": 0,
+          "z": -9.5
+        },
+        "max": {
+          "x": 13.825,
+          "y": 13.825,
+          "z": -4.7
+        },
+        "length_mm": 27.65,
+        "width_mm": 13.825,
+        "height_mm": 4.8,
+        "diagonal_mm": 31.284
+      },
+      "centroid": {
+        "x": 6.08313881485393e-17,
+        "y": 8.801268352981811,
+        "z": -7.1
+      },
+      "normal": null,
+      "axis": {
+        "x": 0,
+        "y": 0,
+        "z": 1
+      },
+      "axis_location": {
+        "x": 0,
+        "y": 0,
+        "z": -9.5
+      },
+      "radius_mm": 13.825000000000001,
+      "minor_radius_mm": null,
+      "cone_half_angle_deg": null,
+      "angular_span_deg": 180,
+      "is_internal": true,
+      "is_planar_extreme": false,
+      "edge_count": 4
+    },
+    {
+      "face_id": 87,
+      "surface_type": "PLANE",
+      "area_mm2": 3.3,
+      "bounding_box": {
+        "min": {
+          "x": 12.364,
+          "y": 14.662,
+          "z": 0
+        },
+        "max": {
+          "x": 13.531,
+          "y": 15.829,
+          "z": 2
+        },
+        "length_mm": 1.167,
+        "width_mm": 1.167,
+        "height_mm": 2,
+        "diagonal_mm": 2.593
+      },
+      "centroid": {
+        "x": 12.947588386092946,
+        "y": 15.245685424949567,
+        "z": 1
+      },
+      "normal": {
+        "x": -0.7071067811863273,
+        "y": 0.7071067811867677,
+        "z": 0
+      },
+      "axis": null,
+      "axis_location": {
+        "x": 13.530951480571856,
+        "y": 15.829048519428113,
+        "z": -6.387615433949351
+      },
+      "radius_mm": null,
+      "minor_radius_mm": null,
+      "cone_half_angle_deg": null,
+      "angular_span_deg": null,
+      "is_internal": null,
+      "is_planar_extreme": false,
+      "edge_count": 4
+    },
+    {
+      "face_id": 88,
+      "surface_type": "CYLINDER",
+      "area_mm2": 10.21,
+      "bounding_box": {
+        "min": {
+          "x": 11.888,
+          "y": 11.888,
+          "z": 0
+        },
+        "max": {
+          "x": 14.662,
+          "y": 14.662,
+          "z": 2
+        },
+        "length_mm": 2.774,
+        "width_mm": 2.774,
+        "height_mm": 2,
+        "diagonal_mm": 4.403
+      },
+      "centroid": {
+        "x": 12.781766804164548,
+        "y": 12.78176680416524,
+        "z": 1
+      },
+      "normal": null,
+      "axis": {
+        "x": 0,
+        "y": 0,
+        "z": 1
+      },
+      "axis_location": {
+        "x": 13.5132738110422,
+        "y": 13.5132738110429,
+        "z": -6.387615433949351
+      },
+      "radius_mm": 1.625000000000003,
+      "minor_radius_mm": null,
+      "cone_half_angle_deg": null,
+      "angular_span_deg": 179.99999999999838,
+      "is_internal": false,
+      "is_planar_extreme": false,
+      "edge_count": 4
+    },
+    {
+      "face_id": 89,
+      "surface_type": "PLANE",
+      "area_mm2": 3.3,
+      "bounding_box": {
+        "min": {
+          "x": 14.662,
+          "y": 12.364,
+          "z": 0
+        },
+        "max": {
+          "x": 15.829,
+          "y": 13.531,
+          "z": 2
+        },
+        "length_mm": 1.167,
+        "width_mm": 1.167,
+        "height_mm": 2,
+        "diagonal_mm": 2.593
+      },
+      "centroid": {
+        "x": 15.245685424949233,
+        "y": 12.947588386093312,
+        "z": 1
+      },
+      "normal": {
+        "x": 0.7071067811863436,
+        "y": -0.7071067811867515,
+        "z": 0
+      },
+      "axis": null,
+      "axis_location": {
+        "x": 14.662322330470332,
+        "y": 12.364225291614748,
+        "z": -6.387615433949351
+      },
+      "radius_mm": null,
+      "minor_radius_mm": null,
+      "cone_half_angle_deg": null,
+      "angular_span_deg": null,
+      "is_internal": null,
+      "is_planar_extreme": false,
+      "edge_count": 4
+    },
+    {
+      "face_id": 90,
+      "surface_type": "CYLINDER",
+      "area_mm2": 7.66,
+      "bounding_box": {
+        "min": {
+          "x": 13.531,
+          "y": 14.68,
+          "z": 0
+        },
+        "max": {
+          "x": 16.305,
+          "y": 16.305,
+          "z": 2
+        },
+        "length_mm": 2.774,
+        "width_mm": 1.625,
+        "height_mm": 2,
+        "diagonal_mm": 3.786
+      },
+      "centroid": {
+        "x": 15.167671337918419,
+        "y": 15.857342757983302,
+        "z": 1
+      },
+      "normal": null,
+      "axis": {
+        "x": 0,
+        "y": 0,
+        "z": 1
+      },
+      "axis_location": {
+        "x": 14.68,
+        "y": 14.68,
+        "z": -6.387615433949351
+      },
+      "radius_mm": 1.6249999999999858,
+      "minor_radius_mm": null,
+      "cone_half_angle_deg": null,
+      "angular_span_deg": 135.00000000000082,
+      "is_internal": false,
+      "is_planar_extreme": false,
+      "edge_count": 4
+    },
+    {
+      "face_id": 91,
+      "surface_type": "PLANE",
+      "area_mm2": 3.3,
+      "bounding_box": {
+        "min": {
+          "x": -13.531,
+          "y": -15.829,
+          "z": 0
+        },
+        "max": {
+          "x": -12.364,
+          "y": -14.662,
+          "z": 2
+        },
+        "length_mm": 1.167,
+        "width_mm": 1.167,
+        "height_mm": 2,
+        "diagonal_mm": 2.593
+      },
+      "centroid": {
+        "x": -12.94758838609257,
+        "y": -15.245685424950693,
+        "z": 1
+      },
+      "normal": {
+        "x": 0.7071067811863267,
+        "y": -0.7071067811867684,
+        "z": 0
+      },
+      "axis": null,
+      "axis_location": {
+        "x": -13.530951480571476,
+        "y": -15.829048519429238,
+        "z": -6.387615433949351
+      },
+      "radius_mm": null,
+      "minor_radius_mm": null,
+      "cone_half_angle_deg": null,
+      "angular_span_deg": null,
+      "is_internal": null,
+      "is_planar_extreme": false,
+      "edge_count": 4
+    },
+    {
+      "face_id": 92,
+      "surface_type": "CYLINDER",
+      "area_mm2": 7.66,
+      "bounding_box": {
+        "min": {
+          "x": -14.662,
+          "y": -13.513,
+          "z": 0
+        },
+        "max": {
+          "x": -11.888,
+          "y": -11.888,
+          "z": 2
+        },
+        "length_mm": 2.774,
+        "width_mm": 1.625,
+        "height_mm": 2,
+        "diagonal_mm": 3.786
+      },
+      "centroid": {
+        "x": -13.02560247312281,
+        "y": -12.335931053060335,
+        "z": 0.9999999999999999
+      },
+      "normal": null,
+      "axis": {
+        "x": 0,
+        "y": 0,
+        "z": 1
+      },
+      "axis_location": {
+        "x": -13.513273811041442,
+        "y": -13.513273811043652,
+        "z": -6.387615433949351
+      },
+      "radius_mm": 1.6250000000000013,
+      "minor_radius_mm": null,
+      "cone_half_angle_deg": null,
+      "angular_span_deg": 134.99999999998357,
+      "is_internal": false,
+      "is_planar_extreme": false,
+      "edge_count": 4
+    },
+    {
+      "face_id": 93,
+      "surface_type": "PLANE",
+      "area_mm2": 3.3,
+      "bounding_box": {
+        "min": {
+          "x": -15.829,
+          "y": -13.531,
+          "z": 0
+        },
+        "max": {
+          "x": -14.662,
+          "y": -12.364,
+          "z": 2
+        },
+        "length_mm": 1.167,
+        "width_mm": 1.167,
+        "height_mm": 2,
+        "diagonal_mm": 2.593
+      },
+      "centroid": {
+        "x": -15.245685424948148,
+        "y": -12.947588386093738,
+        "z": 1
+      },
+      "normal": {
+        "x": -0.7071067811863431,
+        "y": 0.707106781186752,
+        "z": 0
+      },
+      "axis": null,
+      "axis_location": {
+        "x": -14.662322330469253,
+        "y": -12.364225291615181,
+        "z": -6.387615433949351
+      },
+      "radius_mm": null,
+      "minor_radius_mm": null,
+      "cone_half_angle_deg": null,
+      "angular_span_deg": null,
+      "is_internal": null,
+      "is_planar_extreme": false,
+      "edge_count": 4
+    },
+    {
+      "face_id": 94,
+      "surface_type": "CYLINDER",
+      "area_mm2": 10.21,
+      "bounding_box": {
+        "min": {
+          "x": -16.305,
+          "y": -16.305,
+          "z": 0
+        },
+        "max": {
+          "x": -13.531,
+          "y": -13.531,
+          "z": 2
+        },
+        "length_mm": 2.774,
+        "width_mm": 2.774,
+        "height_mm": 2,
+        "diagonal_mm": 4.403
+      },
+      "centroid": {
+        "x": -15.411507006877107,
+        "y": -15.41150700687818,
+        "z": 1
+      },
+      "normal": null,
+      "axis": {
+        "x": 0,
+        "y": 0,
+        "z": 1
+      },
+      "axis_location": {
+        "x": -14.679999999999243,
+        "y": -14.680000000000751,
+        "z": -6.387615433949351
+      },
+      "radius_mm": 1.6249999999999825,
+      "minor_radius_mm": null,
+      "cone_half_angle_deg": null,
+      "angular_span_deg": 179.99999999999852,
+      "is_internal": false,
+      "is_planar_extreme": false,
+      "edge_count": 4
+    },
+    {
+      "face_id": 95,
+      "surface_type": "PLANE",
+      "area_mm2": 3.3,
+      "bounding_box": {
+        "min": {
+          "x": 14.662,
+          "y": -13.531,
+          "z": 0
+        },
+        "max": {
+          "x": 15.829,
+          "y": -12.364,
+          "z": 2
+        },
+        "length_mm": 1.167,
+        "width_mm": 1.167,
+        "height_mm": 2,
+        "diagonal_mm": 2.593
+      },
+      "centroid": {
+        "x": 15.245685424950695,
+        "y": -12.947588386093324,
+        "z": 1
+      },
+      "normal": {
+        "x": 0.7071067811867694,
+        "y": 0.7071067811863256,
+        "z": 0
+      },
+      "axis": null,
+      "axis_location": {
+        "x": 15.829048519429238,
+        "y": -13.53095148057223,
+        "z": -6.387615433949351
+      },
+      "radius_mm": null,
+      "minor_radius_mm": null,
+      "cone_half_angle_deg": null,
+      "angular_span_deg": null,
+      "is_internal": null,
+      "is_planar_extreme": false,
+      "edge_count": 4
+    },
+    {
+      "face_id": 96,
+      "surface_type": "CYLINDER",
+      "area_mm2": 10.21,
+      "bounding_box": {
+        "min": {
+          "x": 11.888,
+          "y": -14.662,
+          "z": 0
+        },
+        "max": {
+          "x": 14.662,
+          "y": -11.888,
+          "z": 2
+        },
+        "length_mm": 2.774,
+        "width_mm": 2.774,
+        "height_mm": 2,
+        "diagonal_mm": 4.403
+      },
+      "centroid": {
+        "x": 12.78176680416623,
+        "y": -12.781766804164333,
+        "z": 1
+      },
+      "normal": null,
+      "axis": {
+        "x": 0,
+        "y": 0,
+        "z": 1
+      },
+      "axis_location": {
+        "x": 13.513273811043653,
+        "y": -13.513273811042197,
+        "z": -6.387615433949351
+      },
+      "radius_mm": 1.6250000000000013,
+      "minor_radius_mm": null,
+      "cone_half_angle_deg": null,
+      "angular_span_deg": 180.00000000000145,
+      "is_internal": false,
+      "is_planar_extreme": false,
+      "edge_count": 4
+    },
+    {
+      "face_id": 97,
+      "surface_type": "PLANE",
+      "area_mm2": 3.3,
+      "bounding_box": {
+        "min": {
+          "x": 12.364,
+          "y": -15.829,
+          "z": 0
+        },
+        "max": {
+          "x": 13.531,
+          "y": -14.662,
+          "z": 2
+        },
+        "length_mm": 1.167,
+        "width_mm": 1.167,
+        "height_mm": 2,
+        "diagonal_mm": 2.593
+      },
+      "centroid": {
+        "x": 12.94758838609374,
+        "y": -15.2456854249489,
+        "z": 1
+      },
+      "normal": {
+        "x": -0.7071067811867515,
+        "y": -0.7071067811863435,
+        "z": 0
+      },
+      "axis": null,
+      "axis_location": {
+        "x": 12.364225291615183,
+        "y": -14.662322330470008,
+        "z": -6.387615433949351
+      },
+      "radius_mm": null,
+      "minor_radius_mm": null,
+      "cone_half_angle_deg": null,
+      "angular_span_deg": null,
+      "is_internal": null,
+      "is_planar_extreme": false,
+      "edge_count": 4
+    },
+    {
+      "face_id": 98,
+      "surface_type": "CYLINDER",
+      "area_mm2": 2.55,
+      "bounding_box": {
+        "min": {
+          "x": 15.829,
+          "y": -14.68,
+          "z": 0
+        },
+        "max": {
+          "x": 16.305,
+          "y": -13.531,
+          "z": 2
+        },
+        "length_mm": 0.476,
+        "width_mm": 1.149,
+        "height_mm": 2,
+        "diagonal_mm": 2.355
+      },
+      "centroid": {
+        "x": 16.14301401375616,
+        "y": -14.073999753560877,
+        "z": 0.9999999999999998
+      },
+      "normal": null,
+      "axis": {
+        "x": 0,
+        "y": 0,
+        "z": 1
+      },
+      "axis_location": {
+        "x": 14.680000000000755,
+        "y": -14.679999999999994,
+        "z": -6.387615433949351
+      },
+      "radius_mm": 1.6249999999999807,
+      "minor_radius_mm": null,
+      "cone_half_angle_deg": null,
+      "angular_span_deg": 44.99999999998214,
+      "is_internal": false,
+      "is_planar_extreme": false,
+      "edge_count": 4
+    },
+    {
+      "face_id": 99,
+      "surface_type": "PLANE",
+      "area_mm2": 3.3,
+      "bounding_box": {
+        "min": {
+          "x": -15.829,
+          "y": 12.364,
+          "z": 0
+        },
+        "max": {
+          "x": -14.662,
+          "y": 13.531,
+          "z": 2
+        },
+        "length_mm": 1.167,
+        "width_mm": 1.167,
+        "height_mm": 2,
+        "diagonal_mm": 2.593
+      },
+      "centroid": {
+        "x": -15.245685424949942,
+        "y": 12.94758838609257,
+        "z": 1
+      },
+      "normal": {
+        "x": -0.7071067811867688,
+        "y": -0.7071067811863262,
+        "z": 0
+      },
+      "axis": null,
+      "axis_location": {
+        "x": -15.829048519428484,
+        "y": 13.53095148057148,
+        "z": -6.387615433949351
+      },
+      "radius_mm": null,
+      "minor_radius_mm": null,
+      "cone_half_angle_deg": null,
+      "angular_span_deg": null,
+      "is_internal": null,
+      "is_planar_extreme": false,
+      "edge_count": 4
+    },
+    {
+      "face_id": 100,
+      "surface_type": "CYLINDER",
+      "area_mm2": 2.55,
+      "bounding_box": {
+        "min": {
+          "x": -12.364,
+          "y": 13.513,
+          "z": 0
+        },
+        "max": {
+          "x": -11.888,
+          "y": 14.662,
+          "z": 2
+        },
+        "length_mm": 0.476,
+        "width_mm": 1.149,
+        "height_mm": 2,
+        "diagonal_mm": 2.355
+      },
+      "centroid": {
+        "x": -12.050259797287481,
+        "y": 14.119274057480592,
+        "z": 1
+      },
+      "normal": null,
+      "axis": {
+        "x": 0,
+        "y": 0,
+        "z": 1
+      },
+      "axis_location": {
+        "x": -13.513273811042895,
+        "y": 13.513273811041449,
+        "z": -6.387615433949351
+      },
+      "radius_mm": 1.6250000000000013,
+      "minor_radius_mm": null,
+      "cone_half_angle_deg": null,
+      "angular_span_deg": 44.99999999998357,
+      "is_internal": false,
+      "is_planar_extreme": false,
+      "edge_count": 4
+    },
+    {
+      "face_id": 101,
+      "surface_type": "PLANE",
+      "area_mm2": 3.3,
+      "bounding_box": {
+        "min": {
+          "x": -13.531,
+          "y": 14.662,
+          "z": 0
+        },
+        "max": {
+          "x": -12.364,
+          "y": 15.829,
+          "z": 2
+        },
+        "length_mm": 1.167,
+        "width_mm": 1.167,
+        "height_mm": 2,
+        "diagonal_mm": 2.593
+      },
+      "centroid": {
+        "x": -12.947588386092985,
+        "y": 15.24568542494815,
+        "z": 1
+      },
+      "normal": {
+        "x": 0.707106781186751,
+        "y": 0.7071067811863442,
+        "z": 0
+      },
+      "axis": null,
+      "axis_location": {
+        "x": -12.364225291614428,
+        "y": 14.662322330469257,
+        "z": -6.387615433949351
+      },
+      "radius_mm": null,
+      "minor_radius_mm": null,
+      "cone_half_angle_deg": null,
+      "angular_span_deg": null,
+      "is_internal": null,
+      "is_planar_extreme": false,
+      "edge_count": 4
+    },
+    {
+      "face_id": 102,
+      "surface_type": "CYLINDER",
+      "area_mm2": 10.21,
+      "bounding_box": {
+        "min": {
+          "x": -16.305,
+          "y": 13.531,
+          "z": 0
+        },
+        "max": {
+          "x": -13.531,
+          "y": 16.305,
+          "z": 2
+        },
+        "length_mm": 2.774,
+        "width_mm": 2.774,
+        "height_mm": 2,
+        "diagonal_mm": 4.403
+      },
+      "centroid": {
+        "x": -15.411507006877422,
+        "y": 15.411507006877113,
+        "z": 1
+      },
+      "normal": null,
+      "axis": {
+        "x": 0,
+        "y": 0,
+        "z": 1
+      },
+      "axis_location": {
+        "x": -14.679999999999996,
+        "y": 14.679999999999248,
+        "z": -6.387615433949351
+      },
+      "radius_mm": 1.6249999999999807,
+      "minor_radius_mm": null,
+      "cone_half_angle_deg": null,
+      "angular_span_deg": 179.99999999999855,
+      "is_internal": false,
+      "is_planar_extreme": false,
+      "edge_count": 4
+    }
+  ],
+  "topology_entities": null,
+  "features": {
+    "holes": [
+      {
+        "id": "HOLE-001",
+        "type": "hole",
+        "detection": {
+          "method": "ray_casting",
+          "confidence": 0.95,
+          "evidence": [
+            "2 coaxial concave cylindrical face(s)",
+            "bore wrap 360.0 deg summed across 2 fragments",
+            "decided by sampling for material past each end",
+            "through"
+          ],
+          "source": "GEOMETRY"
+        },
+        "status": "resolved",
+        "reason": null,
+        "face_ids": [
+          69,
+          77
+        ],
+        "subtype": "through",
+        "diameter_mm": 2.4999999999999987,
+        "radius_mm": 1.2499999999999993,
+        "depth_mm": 4.000000199999999,
+        "through": true,
+        "position": {
+          "x": 14.68,
+          "y": 14.68,
+          "z": 2.0000001
+        },
+        "axis": {
+          "x": 0,
+          "y": 0,
+          "z": 1
+        },
+        "quantity": 1,
+        "depth_diameter_ratio": 1.6000000800000003,
+        "is_stepped": false,
+        "has_counterbore": false,
+        "has_countersink": false,
+        "counterbore_diameter_mm": null,
+        "counterbore_depth_mm": null,
+        "countersink_diameter_mm": null,
+        "countersink_angle_deg": null,
+        "coaxial_feature_ids": [],
+        "steps": []
+      },
+      {
+        "id": "HOLE-002",
+        "type": "hole",
+        "detection": {
+          "method": "ray_casting",
+          "confidence": 0.95,
+          "evidence": [
+            "2 coaxial concave cylindrical face(s)",
+            "bore wrap 360.0 deg summed across 2 fragments",
+            "decided by sampling for material past each end",
+            "through"
+          ],
+          "source": "GEOMETRY"
+        },
+        "status": "resolved",
+        "reason": null,
+        "face_ids": [
+          70,
+          76
+        ],
+        "subtype": "through",
+        "diameter_mm": 2.4999999999999987,
+        "radius_mm": 1.2499999999999993,
+        "depth_mm": 4.000000199999999,
+        "through": true,
+        "position": {
+          "x": -14.68,
+          "y": -14.68,
+          "z": 2.0000001
+        },
+        "axis": {
+          "x": 0,
+          "y": 0,
+          "z": 1
+        },
+        "quantity": 1,
+        "depth_diameter_ratio": 1.6000000800000003,
+        "is_stepped": false,
+        "has_counterbore": false,
+        "has_countersink": false,
+        "counterbore_diameter_mm": null,
+        "counterbore_depth_mm": null,
+        "countersink_diameter_mm": null,
+        "countersink_angle_deg": null,
+        "coaxial_feature_ids": [],
+        "steps": []
+      },
+      {
+        "id": "HOLE-003",
+        "type": "hole",
+        "detection": {
+          "method": "ray_casting",
+          "confidence": 0.95,
+          "evidence": [
+            "2 coaxial concave cylindrical face(s)",
+            "bore wrap 360.0 deg summed across 2 fragments",
+            "decided by sampling for material past each end",
+            "through"
+          ],
+          "source": "GEOMETRY"
+        },
+        "status": "resolved",
+        "reason": null,
+        "face_ids": [
+          71,
+          75
+        ],
+        "subtype": "through",
+        "diameter_mm": 2.4999999999999987,
+        "radius_mm": 1.2499999999999993,
+        "depth_mm": 4.000000199999999,
+        "through": true,
+        "position": {
+          "x": 14.68,
+          "y": -14.68,
+          "z": 2.0000001
+        },
+        "axis": {
+          "x": 0,
+          "y": 0,
+          "z": 1
+        },
+        "quantity": 1,
+        "depth_diameter_ratio": 1.6000000800000003,
+        "is_stepped": false,
+        "has_counterbore": false,
+        "has_countersink": false,
+        "counterbore_diameter_mm": null,
+        "counterbore_depth_mm": null,
+        "countersink_diameter_mm": null,
+        "countersink_angle_deg": null,
+        "coaxial_feature_ids": [],
+        "steps": []
+      },
+      {
+        "id": "HOLE-004",
+        "type": "hole",
+        "detection": {
+          "method": "ray_casting",
+          "confidence": 0.95,
+          "evidence": [
+            "2 coaxial concave cylindrical face(s)",
+            "bore wrap 360.0 deg summed across 2 fragments",
+            "decided by sampling for material past each end",
+            "through"
+          ],
+          "source": "GEOMETRY"
+        },
+        "status": "resolved",
+        "reason": null,
+        "face_ids": [
+          72,
+          74
+        ],
+        "subtype": "through",
+        "diameter_mm": 2.4999999999999987,
+        "radius_mm": 1.2499999999999993,
+        "depth_mm": 4.000000199999999,
+        "through": true,
+        "position": {
+          "x": -14.68,
+          "y": 14.68,
+          "z": 2.0000001
+        },
+        "axis": {
+          "x": 0,
+          "y": 0,
+          "z": 1
+        },
+        "quantity": 1,
+        "depth_diameter_ratio": 1.6000000800000003,
+        "is_stepped": false,
+        "has_counterbore": false,
+        "has_countersink": false,
+        "counterbore_diameter_mm": null,
+        "counterbore_depth_mm": null,
+        "countersink_diameter_mm": null,
+        "countersink_angle_deg": null,
+        "coaxial_feature_ids": [],
+        "steps": []
+      },
+      {
+        "id": "HOLE-005",
+        "type": "hole",
+        "detection": {
+          "method": "ray_casting",
+          "confidence": 0.8,
+          "evidence": [
+            "2 coaxial concave cylindrical face(s)",
+            "bore wrap 360.0 deg summed across 2 fragments",
+            "decided by sampling for material past each end",
+            "blind"
+          ],
+          "source": "GEOMETRY"
+        },
+        "status": "ambiguous",
+        "reason": "Material lies beyond one end of the bore but no closing face was identified; the hole is blind, though its bottom geometry could not be characterised.",
+        "face_ids": [
+          43,
+          82
+        ],
+        "subtype": "blind",
+        "diameter_mm": 2.4999999999999987,
+        "radius_mm": 1.2499999999999993,
+        "depth_mm": 5.000000199999997,
+        "through": false,
+        "position": {
+          "x": 12.3675457626796,
+          "y": 12.4023802879942,
+          "z": -15.050000099999998
+        },
+        "axis": {
+          "x": 0,
+          "y": 0,
+          "z": -1
+        },
+        "quantity": 1,
+        "depth_diameter_ratio": 2.00000008,
+        "is_stepped": false,
+        "has_counterbore": false,
+        "has_countersink": false,
+        "counterbore_diameter_mm": null,
+        "counterbore_depth_mm": null,
+        "countersink_diameter_mm": null,
+        "countersink_angle_deg": null,
+        "coaxial_feature_ids": [],
+        "steps": []
+      },
+      {
+        "id": "HOLE-006",
+        "type": "hole",
+        "detection": {
+          "method": "ray_casting",
+          "confidence": 0.8,
+          "evidence": [
+            "2 coaxial concave cylindrical face(s)",
+            "bore wrap 360.0 deg summed across 2 fragments",
+            "decided by sampling for material past each end",
+            "blind"
+          ],
+          "source": "GEOMETRY"
+        },
+        "status": "ambiguous",
+        "reason": "Material lies beyond one end of the bore but no closing face was identified; the hole is blind, though its bottom geometry could not be characterised.",
+        "face_ids": [
+          50,
+          81
+        ],
+        "subtype": "blind",
+        "diameter_mm": 2.4999999999999987,
+        "radius_mm": 1.2499999999999993,
+        "depth_mm": 5.000000199999997,
+        "through": false,
+        "position": {
+          "x": -12.4023802879942,
+          "y": 12.3675457626796,
+          "z": -15.050000099999998
+        },
+        "axis": {
+          "x": 0,
+          "y": 0,
+          "z": -1
+        },
+        "quantity": 1,
+        "depth_diameter_ratio": 2.00000008,
+        "is_stepped": false,
+        "has_counterbore": false,
+        "has_countersink": false,
+        "counterbore_diameter_mm": null,
+        "counterbore_depth_mm": null,
+        "countersink_diameter_mm": null,
+        "countersink_angle_deg": null,
+        "coaxial_feature_ids": [],
+        "steps": []
+      },
+      {
+        "id": "HOLE-007",
+        "type": "hole",
+        "detection": {
+          "method": "ray_casting",
+          "confidence": 0.8,
+          "evidence": [
+            "2 coaxial concave cylindrical face(s)",
+            "bore wrap 360.0 deg summed across 2 fragments",
+            "decided by sampling for material past each end",
+            "blind"
+          ],
+          "source": "GEOMETRY"
+        },
+        "status": "ambiguous",
+        "reason": "Material lies beyond one end of the bore but no closing face was identified; the hole is blind, though its bottom geometry could not be characterised.",
+        "face_ids": [
+          57,
+          80
+        ],
+        "subtype": "blind",
+        "diameter_mm": 2.4999999999999987,
+        "radius_mm": 1.2499999999999993,
+        "depth_mm": 5.000000199999997,
+        "through": false,
+        "position": {
+          "x": -12.3675457626796,
+          "y": -12.4023802879942,
+          "z": -15.050000099999998
+        },
+        "axis": {
+          "x": 0,
+          "y": 0,
+          "z": -1
+        },
+        "quantity": 1,
+        "depth_diameter_ratio": 2.00000008,
+        "is_stepped": false,
+        "has_counterbore": false,
+        "has_countersink": false,
+        "counterbore_diameter_mm": null,
+        "counterbore_depth_mm": null,
+        "countersink_diameter_mm": null,
+        "countersink_angle_deg": null,
+        "coaxial_feature_ids": [],
+        "steps": []
+      },
+      {
+        "id": "HOLE-008",
+        "type": "hole",
+        "detection": {
+          "method": "ray_casting",
+          "confidence": 0.8,
+          "evidence": [
+            "2 coaxial concave cylindrical face(s)",
+            "bore wrap 360.0 deg summed across 2 fragments",
+            "decided by sampling for material past each end",
+            "blind"
+          ],
+          "source": "GEOMETRY"
+        },
+        "status": "ambiguous",
+        "reason": "Material lies beyond one end of the bore but no closing face was identified; the hole is blind, though its bottom geometry could not be characterised.",
+        "face_ids": [
+          64,
+          79
+        ],
+        "subtype": "blind",
+        "diameter_mm": 2.4999999999999987,
+        "radius_mm": 1.2499999999999993,
+        "depth_mm": 5.000000199999997,
+        "through": false,
+        "position": {
+          "x": 12.4023802879942,
+          "y": -12.3675457626796,
+          "z": -15.050000099999998
+        },
+        "axis": {
+          "x": 0,
+          "y": 0,
+          "z": -1
+        },
+        "quantity": 1,
+        "depth_diameter_ratio": 2.00000008,
+        "is_stepped": false,
+        "has_counterbore": false,
+        "has_countersink": false,
+        "counterbore_diameter_mm": null,
+        "counterbore_depth_mm": null,
+        "countersink_diameter_mm": null,
+        "countersink_angle_deg": null,
+        "coaxial_feature_ids": [],
+        "steps": []
+      },
+      {
+        "id": "HOLE-009",
+        "type": "hole",
+        "detection": {
+          "method": "ray_casting",
+          "confidence": 0.95,
+          "evidence": [
+            "6 coaxial concave cylindrical face(s)",
+            "bore wrap 720.0 deg summed across 6 fragments",
+            "decided by sampling for material past each end",
+            "through"
+          ],
+          "source": "GEOMETRY"
+        },
+        "status": "resolved",
+        "reason": null,
+        "face_ids": [
+          5,
+          6,
+          7,
+          12,
+          84,
+          86
+        ],
+        "subtype": "counterbore",
+        "diameter_mm": 22.849999999999998,
+        "radius_mm": 11.424999999999999,
+        "depth_mm": 10.700000199999998,
+        "through": true,
+        "position": {
+          "x": 0,
+          "y": 0,
+          "z": 9.99999993922529e-8
+        },
+        "axis": {
+          "x": 0,
+          "y": 0,
+          "z": 1
+        },
+        "quantity": 1,
+        "depth_diameter_ratio": 0.4682713435448577,
+        "is_stepped": true,
+        "has_counterbore": true,
+        "has_countersink": false,
+        "counterbore_diameter_mm": 27.7,
+        "counterbore_depth_mm": 4.7,
+        "countersink_diameter_mm": null,
+        "countersink_angle_deg": null,
+        "coaxial_feature_ids": [],
+        "steps": [
+          {
+            "diameter_mm": 27.7,
+            "depth_mm": 4.7,
+            "face_id": 6
+          },
+          {
+            "diameter_mm": 27.7,
+            "depth_mm": 4.7,
+            "face_id": 84
+          },
+          {
+            "diameter_mm": 27.65,
+            "depth_mm": 4.8,
+            "face_id": 5
+          },
+          {
+            "diameter_mm": 27.65,
+            "depth_mm": 4.8,
+            "face_id": 86
+          },
+          {
+            "diameter_mm": 22.85,
+            "depth_mm": 1.2,
+            "face_id": 7
+          },
+          {
+            "diameter_mm": 22.85,
+            "depth_mm": 1.2,
+            "face_id": 12
+          }
+        ]
+      }
+    ],
+    "bores": [],
+    "internal_cylindrical_features": [],
+    "pockets": [],
+    "slots": [],
+    "bosses": [],
+    "threads": [],
+    "fillets": [
+      {
+        "id": "FILLET-001",
+        "type": "fillet",
+        "detection": {
+          "method": "tangency_analysis",
+          "confidence": 0.9,
+          "evidence": [
+            "cylindrical face 1 of radius 1.625 mm",
+            "tangent-continuous across 2 shared edge(s)"
+          ],
+          "source": "GEOMETRY"
+        },
+        "status": "resolved",
+        "reason": null,
+        "face_ids": [
+          1
+        ],
+        "radius_mm": 1.6250000000000013,
+        "edge_count": 2,
+        "length_mm": 3.8288160465630723,
+        "position": {
+          "x": -13.02560247312468,
+          "y": 12.33593105305814,
+          "z": 0.9999999999999999
+        },
+        "internal": false,
+        "is_corner_fillet": false
+      },
+      {
+        "id": "FILLET-002",
+        "type": "fillet",
+        "detection": {
+          "method": "tangency_analysis",
+          "confidence": 0.9,
+          "evidence": [
+            "cylindrical face 2 of radius 1.625 mm",
+            "tangent-continuous across 2 shared edge(s)"
+          ],
+          "source": "GEOMETRY"
+        },
+        "status": "resolved",
+        "reason": null,
+        "face_ids": [
+          2
+        ],
+        "radius_mm": 1.6249999999999807,
+        "edge_count": 2,
+        "length_mm": 3.8288160465629817,
+        "position": {
+          "x": 15.167671337918982,
+          "y": -15.85734275798329,
+          "z": 0.9999999999999999
+        },
+        "internal": false,
+        "is_corner_fillet": false
+      },
+      {
+        "id": "FILLET-003",
+        "type": "fillet",
+        "detection": {
+          "method": "tangency_analysis",
+          "confidence": 0.9,
+          "evidence": [
+            "cylindrical face 3 of radius 1.625 mm",
+            "tangent-continuous across 2 shared edge(s)"
+          ],
+          "source": "GEOMETRY"
+        },
+        "status": "resolved",
+        "reason": null,
+        "face_ids": [
+          3
+        ],
+        "radius_mm": 1.6250000000000013,
+        "edge_count": 2,
+        "length_mm": 2,
+        "position": {
+          "x": -12.050259797286268,
+          "y": -14.11927405748321,
+          "z": 0.9999999999999998
+        },
+        "internal": false,
+        "is_corner_fillet": false
+      },
+      {
+        "id": "FILLET-004",
+        "type": "fillet",
+        "detection": {
+          "method": "tangency_analysis",
+          "confidence": 0.9,
+          "evidence": [
+            "cylindrical face 4 of radius 1.625 mm",
+            "tangent-continuous across 2 shared edge(s)"
+          ],
+          "source": "GEOMETRY"
+        },
+        "status": "resolved",
+        "reason": null,
+        "face_ids": [
+          4
+        ],
+        "radius_mm": 1.6249999999999858,
+        "edge_count": 2,
+        "length_mm": 2,
+        "position": {
+          "x": 16.143014013755288,
+          "y": 14.073999753560667,
+          "z": 0.9999999999999998
+        },
+        "internal": false,
+        "is_corner_fillet": false
+      },
+      {
+        "id": "FILLET-005",
+        "type": "fillet",
+        "detection": {
+          "method": "tangency_analysis",
+          "confidence": 0.9,
+          "evidence": [
+            "cylindrical face 88 of radius 1.625 mm",
+            "tangent-continuous across 2 shared edge(s)"
+          ],
+          "source": "GEOMETRY"
+        },
+        "status": "resolved",
+        "reason": null,
+        "face_ids": [
+          88
+        ],
+        "radius_mm": 1.625000000000003,
+        "edge_count": 2,
+        "length_mm": 5.105088062083377,
+        "position": {
+          "x": 12.781766804164548,
+          "y": 12.78176680416524,
+          "z": 1
+        },
+        "internal": false,
+        "is_corner_fillet": false
+      },
+      {
+        "id": "FILLET-006",
+        "type": "fillet",
+        "detection": {
+          "method": "tangency_analysis",
+          "confidence": 0.9,
+          "evidence": [
+            "cylindrical face 90 of radius 1.625 mm",
+            "tangent-continuous across 2 shared edge(s)"
+          ],
+          "source": "GEOMETRY"
+        },
+        "status": "resolved",
+        "reason": null,
+        "face_ids": [
+          90
+        ],
+        "radius_mm": 1.6249999999999858,
+        "edge_count": 2,
+        "length_mm": 3.8288160465625487,
+        "position": {
+          "x": 15.167671337918419,
+          "y": 15.857342757983302,
+          "z": 1
+        },
+        "internal": false,
+        "is_corner_fillet": false
+      },
+      {
+        "id": "FILLET-007",
+        "type": "fillet",
+        "detection": {
+          "method": "tangency_analysis",
+          "confidence": 0.9,
+          "evidence": [
+            "cylindrical face 92 of radius 1.625 mm",
+            "tangent-continuous across 2 shared edge(s)"
+          ],
+          "source": "GEOMETRY"
+        },
+        "status": "resolved",
+        "reason": null,
+        "face_ids": [
+          92
+        ],
+        "radius_mm": 1.6250000000000013,
+        "edge_count": 2,
+        "length_mm": 3.8288160465620966,
+        "position": {
+          "x": -13.02560247312281,
+          "y": -12.335931053060335,
+          "z": 0.9999999999999999
+        },
+        "internal": false,
+        "is_corner_fillet": false
+      },
+      {
+        "id": "FILLET-008",
+        "type": "fillet",
+        "detection": {
+          "method": "tangency_analysis",
+          "confidence": 0.9,
+          "evidence": [
+            "cylindrical face 94 of radius 1.625 mm",
+            "tangent-continuous across 2 shared edge(s)"
+          ],
+          "source": "GEOMETRY"
+        },
+        "status": "resolved",
+        "reason": null,
+        "face_ids": [
+          94
+        ],
+        "radius_mm": 1.6249999999999825,
+        "edge_count": 2,
+        "length_mm": 5.105088062083316,
+        "position": {
+          "x": -15.411507006877107,
+          "y": -15.41150700687818,
+          "z": 1
+        },
+        "internal": false,
+        "is_corner_fillet": false
+      },
+      {
+        "id": "FILLET-009",
+        "type": "fillet",
+        "detection": {
+          "method": "tangency_analysis",
+          "confidence": 0.9,
+          "evidence": [
+            "cylindrical face 98 of radius 1.625 mm",
+            "tangent-continuous across 2 shared edge(s)"
+          ],
+          "source": "GEOMETRY"
+        },
+        "status": "resolved",
+        "reason": null,
+        "face_ids": [
+          98
+        ],
+        "radius_mm": 1.6249999999999807,
+        "edge_count": 2,
+        "length_mm": 2,
+        "position": {
+          "x": 16.14301401375616,
+          "y": -14.073999753560877,
+          "z": 0.9999999999999998
+        },
+        "internal": false,
+        "is_corner_fillet": false
+      },
+      {
+        "id": "FILLET-010",
+        "type": "fillet",
+        "detection": {
+          "method": "tangency_analysis",
+          "confidence": 0.9,
+          "evidence": [
+            "cylindrical face 100 of radius 1.625 mm",
+            "tangent-continuous across 2 shared edge(s)"
+          ],
+          "source": "GEOMETRY"
+        },
+        "status": "resolved",
+        "reason": null,
+        "face_ids": [
+          100
+        ],
+        "radius_mm": 1.6250000000000013,
+        "edge_count": 2,
+        "length_mm": 2,
+        "position": {
+          "x": -12.050259797287481,
+          "y": 14.119274057480592,
+          "z": 1
+        },
+        "internal": false,
+        "is_corner_fillet": false
+      },
+      {
+        "id": "FILLET-011",
+        "type": "fillet",
+        "detection": {
+          "method": "tangency_analysis",
+          "confidence": 0.9,
+          "evidence": [
+            "cylindrical face 102 of radius 1.625 mm",
+            "tangent-continuous across 2 shared edge(s)"
+          ],
+          "source": "GEOMETRY"
+        },
+        "status": "resolved",
+        "reason": null,
+        "face_ids": [
+          102
+        ],
+        "radius_mm": 1.6249999999999807,
+        "edge_count": 2,
+        "length_mm": 5.105088062083313,
+        "position": {
+          "x": -15.411507006877422,
+          "y": 15.411507006877113,
+          "z": 1
+        },
+        "internal": false,
+        "is_corner_fillet": false
+      }
+    ],
+    "chamfers": [
+      {
+        "id": "CHAMFER-001",
+        "type": "chamfer",
+        "detection": {
+          "method": "adjacency_analysis",
+          "confidence": 0.8,
+          "evidence": [
+            "planar band face 25, width 2.0 mm",
+            "meets 2 face(s) at an angle (45.0 deg)"
+          ],
+          "source": "GEOMETRY"
+        },
+        "status": "resolved",
+        "reason": null,
+        "face_ids": [
+          25
+        ],
+        "size_mm": 2.0000001999999997,
+        "angle_deg": 45,
+        "edge_count": 2,
+        "length_mm": 30.5000002,
+        "position": {
+          "x": 1.1102230246251565e-16,
+          "y": 18.25,
+          "z": -1
+        }
+      },
+      {
+        "id": "CHAMFER-002",
+        "type": "chamfer",
+        "detection": {
+          "method": "adjacency_analysis",
+          "confidence": 0.8,
+          "evidence": [
+            "planar band face 27, width 2.0 mm",
+            "meets 2 face(s) at an angle (45.0 deg)"
+          ],
+          "source": "GEOMETRY"
+        },
+        "status": "resolved",
+        "reason": null,
+        "face_ids": [
+          27
+        ],
+        "size_mm": 2.0000001999999997,
+        "angle_deg": 44.999999999999964,
+        "edge_count": 2,
+        "length_mm": 30.5000002,
+        "position": {
+          "x": -18.25,
+          "y": -4.440892098500626e-16,
+          "z": -1
+        }
+      },
+      {
+        "id": "CHAMFER-003",
+        "type": "chamfer",
+        "detection": {
+          "method": "adjacency_analysis",
+          "confidence": 0.8,
+          "evidence": [
+            "planar band face 29, width 2.0 mm",
+            "meets 2 face(s) at an angle (45.0 deg)"
+          ],
+          "source": "GEOMETRY"
+        },
+        "status": "resolved",
+        "reason": null,
+        "face_ids": [
+          29
+        ],
+        "size_mm": 2.0000001999999997,
+        "angle_deg": 45.00000000000004,
+        "edge_count": 2,
+        "length_mm": 30.5000002,
+        "position": {
+          "x": 1.1102230246251565e-16,
+          "y": -18.25,
+          "z": -1
+        }
+      },
+      {
+        "id": "CHAMFER-004",
+        "type": "chamfer",
+        "detection": {
+          "method": "adjacency_analysis",
+          "confidence": 0.8,
+          "evidence": [
+            "planar band face 31, width 2.0 mm",
+            "meets 2 face(s) at an angle (45.0 deg)"
+          ],
+          "source": "GEOMETRY"
+        },
+        "status": "resolved",
+        "reason": null,
+        "face_ids": [
+          31
+        ],
+        "size_mm": 2.0000001999999997,
+        "angle_deg": 44.999999999999964,
+        "edge_count": 2,
+        "length_mm": 30.5000002,
+        "position": {
+          "x": 18.25,
+          "y": 1.1102230246251565e-16,
+          "z": -1
+        }
+      }
+    ],
+    "fillet_summary": {
+      "count": 11,
+      "unique_radii_mm": [
+        1.625
+      ],
+      "minimum_radius_mm": 1.625,
+      "minimum_internal_radius_mm": null
+    },
+    "chamfer_summary": {
+      "count": 4,
+      "sizes_mm": [
+        2
+      ],
+      "unique_angles_deg": [
+        45
+      ]
+    }
+  },
+  "feature_patterns": [
+    {
+      "type": "repeated_hole",
+      "feature_type": "hole",
+      "feature_count": 4,
+      "feature_ids": [
+        "HOLE-001",
+        "HOLE-002",
+        "HOLE-003",
+        "HOLE-004"
+      ],
+      "pattern_type": "circular",
+      "diameter_mm": 2.4999999999999987,
+      "length_mm": null,
+      "width_mm": null,
+      "depth_mm": 4.000000199999999,
+      "spacing_mm": 41.52131019127407,
+      "axis": {
+        "x": 0,
+        "y": 0,
+        "z": 1
+      },
+      "detection": {
+        "method": "topology_and_surface_analysis",
+        "confidence": 0.95,
+        "evidence": [
+          "4 features identical on diameter and depth",
+          "positions form a circular arrangement"
+        ],
+        "source": "GEOMETRY"
+      }
+    },
+    {
+      "type": "repeated_hole",
+      "feature_type": "hole",
+      "feature_count": 4,
+      "feature_ids": [
+        "HOLE-005",
+        "HOLE-006",
+        "HOLE-007",
+        "HOLE-008"
+      ],
+      "pattern_type": "rectangular",
+      "diameter_mm": 2.4999999999999987,
+      "length_mm": null,
+      "width_mm": null,
+      "depth_mm": 5.000000199999997,
+      "spacing_mm": null,
+      "axis": {
+        "x": 0,
+        "y": 0,
+        "z": -1
+      },
+      "detection": {
+        "method": "topology_and_surface_analysis",
+        "confidence": 0.95,
+        "evidence": [
+          "4 features identical on diameter and depth",
+          "positions form a rectangular arrangement"
+        ],
+        "source": "GEOMETRY"
+      }
+    },
+    {
+      "type": "repeated_chamfer",
+      "feature_type": "chamfer",
+      "feature_count": 4,
+      "feature_ids": [
+        "CHAMFER-001",
+        "CHAMFER-002",
+        "CHAMFER-003",
+        "CHAMFER-004"
+      ],
+      "pattern_type": "rectangular",
+      "diameter_mm": null,
+      "length_mm": null,
+      "width_mm": 2.0000001999999997,
+      "depth_mm": null,
+      "spacing_mm": null,
+      "axis": null,
+      "detection": {
+        "method": "topology_and_surface_analysis",
+        "confidence": 0.95,
+        "evidence": [
+          "4 features identical on size and angle",
+          "positions form a rectangular arrangement"
+        ],
+        "source": "GEOMETRY"
+      }
+    },
+    {
+      "type": "repeated_fillet",
+      "feature_type": "fillet",
+      "feature_count": 11,
+      "feature_ids": [
+        "FILLET-001",
+        "FILLET-002",
+        "FILLET-003",
+        "FILLET-004",
+        "FILLET-005",
+        "FILLET-006",
+        "FILLET-007",
+        "FILLET-008",
+        "FILLET-009",
+        "FILLET-010",
+        "FILLET-011"
+      ],
+      "pattern_type": "grouped",
+      "diameter_mm": 3.2500000000000027,
+      "length_mm": null,
+      "width_mm": null,
+      "depth_mm": null,
+      "spacing_mm": null,
+      "axis": null,
+      "detection": {
+        "method": "topology_and_surface_analysis",
+        "confidence": 0.8,
+        "evidence": [
+          "11 features identical on radius",
+          "positions form a grouped arrangement"
+        ],
+        "source": "GEOMETRY"
+      }
+    }
+  ],
+  "feature_dimensions": [
+    {
+      "feature_id": "HOLE-001",
+      "feature_type": "hole",
+      "diameter_mm": 2.4999999999999987,
+      "width_mm": null,
+      "depth_mm": 4.000000199999999,
+      "depth_diameter_ratio": 1.6000000800000003,
+      "depth_width_ratio": null
+    },
+    {
+      "feature_id": "HOLE-002",
+      "feature_type": "hole",
+      "diameter_mm": 2.4999999999999987,
+      "width_mm": null,
+      "depth_mm": 4.000000199999999,
+      "depth_diameter_ratio": 1.6000000800000003,
+      "depth_width_ratio": null
+    },
+    {
+      "feature_id": "HOLE-003",
+      "feature_type": "hole",
+      "diameter_mm": 2.4999999999999987,
+      "width_mm": null,
+      "depth_mm": 4.000000199999999,
+      "depth_diameter_ratio": 1.6000000800000003,
+      "depth_width_ratio": null
+    },
+    {
+      "feature_id": "HOLE-004",
+      "feature_type": "hole",
+      "diameter_mm": 2.4999999999999987,
+      "width_mm": null,
+      "depth_mm": 4.000000199999999,
+      "depth_diameter_ratio": 1.6000000800000003,
+      "depth_width_ratio": null
+    },
+    {
+      "feature_id": "HOLE-005",
+      "feature_type": "hole",
+      "diameter_mm": 2.4999999999999987,
+      "width_mm": null,
+      "depth_mm": 5.000000199999997,
+      "depth_diameter_ratio": 2.00000008,
+      "depth_width_ratio": null
+    },
+    {
+      "feature_id": "HOLE-006",
+      "feature_type": "hole",
+      "diameter_mm": 2.4999999999999987,
+      "width_mm": null,
+      "depth_mm": 5.000000199999997,
+      "depth_diameter_ratio": 2.00000008,
+      "depth_width_ratio": null
+    },
+    {
+      "feature_id": "HOLE-007",
+      "feature_type": "hole",
+      "diameter_mm": 2.4999999999999987,
+      "width_mm": null,
+      "depth_mm": 5.000000199999997,
+      "depth_diameter_ratio": 2.00000008,
+      "depth_width_ratio": null
+    },
+    {
+      "feature_id": "HOLE-008",
+      "feature_type": "hole",
+      "diameter_mm": 2.4999999999999987,
+      "width_mm": null,
+      "depth_mm": 5.000000199999997,
+      "depth_diameter_ratio": 2.00000008,
+      "depth_width_ratio": null
+    },
+    {
+      "feature_id": "HOLE-009",
+      "feature_type": "hole",
+      "diameter_mm": 22.849999999999998,
+      "width_mm": null,
+      "depth_mm": 10.700000199999998,
+      "depth_diameter_ratio": 0.4682713435448577,
+      "depth_width_ratio": null
+    }
+  ],
+  "machining_flags": [],
+  "machining_constraints": [],
+  "accessibility": [
+    {
+      "feature_id": "HOLE-001",
+      "feature_type": "hole",
+      "accessibility": {
+        "+X": false,
+        "-X": false,
+        "+Y": false,
+        "-Y": false,
+        "+Z": true,
+        "-Z": true
+      },
+      "accessible_direction_count": 2,
+      "primary_direction": "+Z",
+      "requires_rotation": false,
+      "requires_advanced_axis_analysis": false,
+      "detection": {
+        "method": "ray_casting",
+        "confidence": 0.9,
+        "evidence": [
+          "2 of 6 principal directions clear",
+          "obstruction tested by ray casting against the solid"
+        ],
+        "source": "GEOMETRY"
+      }
+    },
+    {
+      "feature_id": "HOLE-002",
+      "feature_type": "hole",
+      "accessibility": {
+        "+X": false,
+        "-X": false,
+        "+Y": false,
+        "-Y": false,
+        "+Z": true,
+        "-Z": true
+      },
+      "accessible_direction_count": 2,
+      "primary_direction": "+Z",
+      "requires_rotation": false,
+      "requires_advanced_axis_analysis": false,
+      "detection": {
+        "method": "ray_casting",
+        "confidence": 0.9,
+        "evidence": [
+          "2 of 6 principal directions clear",
+          "obstruction tested by ray casting against the solid"
+        ],
+        "source": "GEOMETRY"
+      }
+    },
+    {
+      "feature_id": "HOLE-003",
+      "feature_type": "hole",
+      "accessibility": {
+        "+X": false,
+        "-X": false,
+        "+Y": false,
+        "-Y": false,
+        "+Z": true,
+        "-Z": true
+      },
+      "accessible_direction_count": 2,
+      "primary_direction": "+Z",
+      "requires_rotation": false,
+      "requires_advanced_axis_analysis": false,
+      "detection": {
+        "method": "ray_casting",
+        "confidence": 0.9,
+        "evidence": [
+          "2 of 6 principal directions clear",
+          "obstruction tested by ray casting against the solid"
+        ],
+        "source": "GEOMETRY"
+      }
+    },
+    {
+      "feature_id": "HOLE-004",
+      "feature_type": "hole",
+      "accessibility": {
+        "+X": false,
+        "-X": false,
+        "+Y": false,
+        "-Y": false,
+        "+Z": true,
+        "-Z": true
+      },
+      "accessible_direction_count": 2,
+      "primary_direction": "+Z",
+      "requires_rotation": false,
+      "requires_advanced_axis_analysis": false,
+      "detection": {
+        "method": "ray_casting",
+        "confidence": 0.9,
+        "evidence": [
+          "2 of 6 principal directions clear",
+          "obstruction tested by ray casting against the solid"
+        ],
+        "source": "GEOMETRY"
+      }
+    },
+    {
+      "feature_id": "HOLE-005",
+      "feature_type": "hole",
+      "accessibility": {
+        "+X": false,
+        "-X": false,
+        "+Y": false,
+        "-Y": false,
+        "+Z": false,
+        "-Z": true
+      },
+      "accessible_direction_count": 1,
+      "primary_direction": "-Z",
+      "requires_rotation": false,
+      "requires_advanced_axis_analysis": false,
+      "detection": {
+        "method": "ray_casting",
+        "confidence": 0.9,
+        "evidence": [
+          "1 of 6 principal directions clear",
+          "obstruction tested by ray casting against the solid"
+        ],
+        "source": "GEOMETRY"
+      }
+    },
+    {
+      "feature_id": "HOLE-006",
+      "feature_type": "hole",
+      "accessibility": {
+        "+X": false,
+        "-X": false,
+        "+Y": false,
+        "-Y": false,
+        "+Z": false,
+        "-Z": true
+      },
+      "accessible_direction_count": 1,
+      "primary_direction": "-Z",
+      "requires_rotation": false,
+      "requires_advanced_axis_analysis": false,
+      "detection": {
+        "method": "ray_casting",
+        "confidence": 0.9,
+        "evidence": [
+          "1 of 6 principal directions clear",
+          "obstruction tested by ray casting against the solid"
+        ],
+        "source": "GEOMETRY"
+      }
+    },
+    {
+      "feature_id": "HOLE-007",
+      "feature_type": "hole",
+      "accessibility": {
+        "+X": false,
+        "-X": false,
+        "+Y": false,
+        "-Y": false,
+        "+Z": false,
+        "-Z": true
+      },
+      "accessible_direction_count": 1,
+      "primary_direction": "-Z",
+      "requires_rotation": false,
+      "requires_advanced_axis_analysis": false,
+      "detection": {
+        "method": "ray_casting",
+        "confidence": 0.9,
+        "evidence": [
+          "1 of 6 principal directions clear",
+          "obstruction tested by ray casting against the solid"
+        ],
+        "source": "GEOMETRY"
+      }
+    },
+    {
+      "feature_id": "HOLE-008",
+      "feature_type": "hole",
+      "accessibility": {
+        "+X": false,
+        "-X": false,
+        "+Y": false,
+        "-Y": false,
+        "+Z": false,
+        "-Z": true
+      },
+      "accessible_direction_count": 1,
+      "primary_direction": "-Z",
+      "requires_rotation": false,
+      "requires_advanced_axis_analysis": false,
+      "detection": {
+        "method": "ray_casting",
+        "confidence": 0.9,
+        "evidence": [
+          "1 of 6 principal directions clear",
+          "obstruction tested by ray casting against the solid"
+        ],
+        "source": "GEOMETRY"
+      }
+    },
+    {
+      "feature_id": "HOLE-009",
+      "feature_type": "hole",
+      "accessibility": {
+        "+X": false,
+        "-X": false,
+        "+Y": false,
+        "-Y": false,
+        "+Z": true,
+        "-Z": true
+      },
+      "accessible_direction_count": 2,
+      "primary_direction": "+Z",
+      "requires_rotation": false,
+      "requires_advanced_axis_analysis": false,
+      "detection": {
+        "method": "ray_casting",
+        "confidence": 0.9,
+        "evidence": [
+          "2 of 6 principal directions clear",
+          "obstruction tested by ray casting against the solid"
+        ],
+        "source": "GEOMETRY"
+      }
+    }
+  ],
+  "setup_analysis": {
+    "candidate_directions": [
+      {
+        "direction": "-Z",
+        "accessible_feature_count": 9,
+        "feature_ids": [
+          "HOLE-001",
+          "HOLE-002",
+          "HOLE-003",
+          "HOLE-004",
+          "HOLE-005",
+          "HOLE-006",
+          "HOLE-007",
+          "HOLE-008",
+          "HOLE-009"
+        ]
+      },
+      {
+        "direction": "+Z",
+        "accessible_feature_count": 5,
+        "feature_ids": [
+          "HOLE-001",
+          "HOLE-002",
+          "HOLE-003",
+          "HOLE-004",
+          "HOLE-009"
+        ]
+      },
+      {
+        "direction": "+X",
+        "accessible_feature_count": 0,
+        "feature_ids": []
+      },
+      {
+        "direction": "+Y",
+        "accessible_feature_count": 0,
+        "feature_ids": []
+      },
+      {
+        "direction": "-X",
+        "accessible_feature_count": 0,
+        "feature_ids": []
+      },
+      {
+        "direction": "-Y",
+        "accessible_feature_count": 0,
+        "feature_ids": []
+      }
+    ],
+    "minimum_direction_count_covering_all": 1,
+    "unreachable_feature_ids": [],
+    "requires_rotation": false,
+    "note": "Geometric evidence for a downstream planner. This is not a setup plan."
+  },
+  "stock_analysis": {
+    "method": "bounding_box_plus_allowance",
+    "estimated": true,
+    "allowance_per_side_mm": 2.5,
+    "stock_dimensions_mm": {
+      "length": 41.5,
+      "width": 41.5,
+      "height": 22.05
+    },
+    "stock_volume_mm3": 37975.61,
+    "finished_volume_mm3": 4145.2,
+    "removed_volume_mm3": 33830.41,
+    "material_removal_ratio": 0.8908,
+    "stock_form": {
+      "method": "extent_ratios_and_surface_evidence",
+      "form": "BLOCK",
+      "status": "resolved",
+      "reason": null,
+      "candidate_forms": [],
+      "bounds_method": "obb",
+      "sorted_dimensions_mm": {
+        "length": 47.131,
+        "width": 47.131,
+        "height": 17.05
+      },
+      "thickness_mm": 17.05,
+      "flatness_ratio": 0.3618,
+      "slenderness_ratio": 1,
+      "cross_section_ratio": 0.6382,
+      "round_evidence": null,
+      "sheet_evidence": null,
+      "note": "Geometric form of the envelope. No material, grade, availability or cost is implied, and this is not a purchasing recommendation."
+    },
+    "note": "Bounding-box estimate. Not a commercially purchased stock size, and no material, grade, or cost is implied."
+  },
+  "complexity_indicators": {
+    "hole_count": 9,
+    "deep_hole_count": 0,
+    "pocket_count": 0,
+    "slot_count": 0,
+    "bore_count": 0,
+    "thread_count": 0,
+    "fillet_count": 11,
+    "chamfer_count": 4,
+    "boss_count": 0,
+    "freeform_surface_count": 0,
+    "thin_wall_count": 9,
+    "unique_tool_diameter_constraints": 0,
+    "accessible_directions": 2,
+    "distinct_hole_diameter_count": 2,
+    "minimum_internal_radius_mm": null,
+    "maximum_depth_diameter_ratio": 2,
+    "feature_count_total": 24
+  },
+  "pmi": {
+    "available": true,
+    "part_name": "LBB Adapter - Size 19",
+    "part_number": "LBB Adapter - Size 19",
+    "revision": "ANY",
+    "material": null,
+    "surface_finish": null,
+    "gdt": [],
+    "datums": [],
+    "annotations": [],
+    "feature_names": [],
+    "raw": [
+      {
+        "key": "file_name",
+        "value": "LBB Adapter - Size 19.STEP",
+        "source": "CAD_METADATA"
+      },
+      {
+        "key": "file_description",
+        "value": "STEP AP214",
+        "source": "CAD_METADATA"
+      },
+      {
+        "key": "product_id",
+        "value": "LBB Adapter - Size 19",
+        "source": "CAD_METADATA"
+      },
+      {
+        "key": "product_name",
+        "value": "LBB Adapter - Size 19",
+        "source": "CAD_METADATA"
+      },
+      {
+        "key": "revision",
+        "value": "ANY",
+        "source": "CAD_METADATA"
+      }
+    ],
+    "source": "CAD_METADATA",
+    "note": "Everything here is declared by the CAD file, not measured from the geometry."
+  },
+  "warnings": [
+    {
+      "code": "AMBIGUOUS_FEATURE",
+      "message": "4 feature(s) could not be resolved unambiguously from geometry; each carries a 'reason'.",
+      "detail": {
+        "feature_ids": [
+          "HOLE-005",
+          "HOLE-006",
+          "HOLE-007",
+          "HOLE-008"
+        ]
+      }
+    }
+  ],
+  "errors": [],
+  "debug_geometry": null
+}
