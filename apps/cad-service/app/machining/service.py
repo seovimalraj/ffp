@@ -205,9 +205,29 @@ class MachiningAnalysisService:
             )
             or []
         )
+        # Thin walls run before the flag stage so their flags join the same
+        # list; a wall is measured from the model, not from a feature, so it is
+        # the one flag source that does not come out of `features`.
+        thin_walls = (
+            self._stage(
+                "thin_walls",
+                timings,
+                warnings,
+                lambda: self.thin_wall_analyzer.analyze(model, warnings),
+            )
+            or []
+        )
         response.machining_flags = (
             self._stage(
                 "flags", timings, warnings, lambda: self.complexity_analyzer.flags(features)
+            )
+            or []
+        ) + (
+            self._stage(
+                "thin_wall_flags",
+                timings,
+                warnings,
+                lambda: self.complexity_analyzer.thin_wall_flags(thin_walls),
             )
             or []
         )
@@ -240,15 +260,6 @@ class MachiningAnalysisService:
             "stock", timings, warnings, lambda: self.stock_analyzer.analyze(model, mass)
         )
 
-        thin_walls = (
-            self._stage(
-                "thin_walls",
-                timings,
-                warnings,
-                lambda: self.thin_wall_analyzer.count(model, warnings),
-            )
-            or 0
-        )
         response.complexity_indicators = self._stage(
             "indicators",
             timings,
@@ -259,7 +270,7 @@ class MachiningAnalysisService:
                 response.machining_flags,
                 response.machining_constraints,
                 response.accessibility,
-                thin_walls,
+                len(thin_walls),
             ),
             default=response.complexity_indicators,
         )
@@ -277,6 +288,12 @@ class MachiningAnalysisService:
                 ),
                 detector_timings_ms={k: round(v, 3) for k, v in sorted(timings.items())},
                 kernel=occ.kernel_name(),
+                pocket_rejections={
+                    str(face_id): reason
+                    for face_id, reason in sorted(
+                        self.pocket_detector.rejections.items()
+                    )
+                },
             )
 
         response.warnings = warnings

@@ -824,6 +824,15 @@ class DebugGeometry(BaseModel):
     unclassified_face_ids: List[int] = Field(default_factory=list)
     detector_timings_ms: Dict[str, float] = Field(default_factory=dict)
     kernel: Optional[str] = None
+    pocket_rejections: Dict[str, str] = Field(
+        default_factory=dict,
+        description=(
+            "``face_id -> reason`` for every planar face considered as a pocket "
+            "floor and turned down. An empty pocket list is otherwise "
+            "indistinguishable from a part that genuinely has no pockets, which "
+            "makes a detector gap impossible to tell from a correct answer."
+        ),
+    )
 
 
 # ---------------------------------------------------------------------------

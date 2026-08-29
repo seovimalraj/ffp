@@ -982,3 +982,96 @@ class TestPlanarExtremeFaces:
         ]
         assert sunk_upward_faces, "fixture should have a sunk upward-facing floor"
         assert not any(f in extremes for f in sunk_upward_faces)
+
+
+class TestThinWallFlags:
+    """`thin_wall_count` was reported but raised no flag.
+
+    A part with nine thin walls and a part with none produced an identical
+    (empty) flag list, so the one machining risk that most affects fixturing
+    and scrap never reached anything that reads flags.
+    """
+
+    def _thin_walled_box(self, tmp_path):
+        # 40 x 40 x 20 block hollowed to leave a 1.0 mm wall on all four sides,
+        # under the 1.5 mm default threshold.
+        shape = fixtures._cut(
+            fixtures._box(0, 0, 0, 40, 40, 20),
+            fixtures._box(1.0, 1.0, 5, 38.0, 38.0, 20),
+        )
+        return fixtures._write_step(shape, tmp_path / "thin_walled_box.step")
+
+    def test_each_thin_wall_raises_a_flag(self, analyze, step_dir):
+        result = analyze(self._thin_walled_box(step_dir))
+        walls = [f for f in result["machining_flags"] if f["flag"] == "THIN_WALL"]
+        assert len(walls) == 4
+        assert result["complexity_indicators"]["thin_wall_count"] == 4
+
+    def test_the_flag_carries_the_measured_thickness_and_threshold(
+        self, analyze, step_dir
+    ):
+        result = analyze(self._thin_walled_box(step_dir))
+        wall = next(f for f in result["machining_flags"] if f["flag"] == "THIN_WALL")
+        assert wall["value"] == pytest.approx(1.0, abs=1e-3)
+        assert wall["threshold"] == pytest.approx(1.5)
+        # A wall is a pair of faces, not a feature, so the reason has to name
+        # them - there is no feature id to look up.
+        assert "faces" in wall["reason"]
+
+    def test_flag_count_and_indicator_count_agree(self, analyze, step_dir):
+        result = analyze(self._thin_walled_box(step_dir))
+        flagged = len(
+            [f for f in result["machining_flags"] if f["flag"] == "THIN_WALL"]
+        )
+        assert flagged == result["complexity_indicators"]["thin_wall_count"]
+
+    def test_a_solid_block_raises_no_thin_wall_flag(self, analyze, step_dir):
+        result = analyze(fixtures.simple_block_with_through_hole(step_dir))
+        assert [f for f in result["machining_flags"] if f["flag"] == "THIN_WALL"] == []
+
+    def test_feature_flags_still_come_through_alongside(self, analyze, step_dir):
+        """Thin-wall flags are appended, so they must not displace the others."""
+        result = analyze(fixtures.deep_hole_block(step_dir))
+        assert "VERY_DEEP_HOLE" in {f["flag"] for f in result["machining_flags"]}
+
+
+class TestPocketRejectionDiagnostics:
+    """An empty pocket list must say why it is empty.
+
+    `pockets: []` is indistinguishable between "this part has no pockets" and
+    "every candidate was silently dropped", which is what made a real part's
+    zero impossible to triage.
+    """
+
+    def test_rejections_are_reported_with_debug_geometry(self, analyze, step_dir):
+        result = analyze(
+            fixtures.simple_block_with_through_hole(step_dir),
+            include_debug_geometry=True,
+        )
+        rejections = result["debug_geometry"]["pocket_rejections"]
+        assert result["features"]["pockets"] == []
+        # Six faces of the block, each turned down for a stated reason.
+        assert len(rejections) == 6
+        assert all("silhouette" in reason for reason in rejections.values())
+
+    def test_a_wall_is_reported_as_a_wall_not_silently_dropped(
+        self, analyze, step_dir
+    ):
+        result = analyze(
+            fixtures.block_with_pocket(step_dir), include_debug_geometry=True
+        )
+        reasons = set(result["debug_geometry"]["pocket_rejections"].values())
+        assert any("a wall, not a floor" in reason for reason in reasons)
+
+    def test_an_accepted_floor_is_not_listed_as_rejected(self, analyze, step_dir):
+        result = analyze(
+            fixtures.block_with_pocket(step_dir), include_debug_geometry=True
+        )
+        pocket_faces = set(result["features"]["pockets"][0]["face_ids"])
+        rejected = {int(k) for k in result["debug_geometry"]["pocket_rejections"]}
+        floor_ids = pocket_faces - rejected
+        assert floor_ids, "the accepted floor must not appear in the rejections"
+
+    def test_diagnostics_stay_behind_the_debug_flag(self, analyze, step_dir):
+        result = analyze(fixtures.block_with_pocket(step_dir))
+        assert result["debug_geometry"] is None
