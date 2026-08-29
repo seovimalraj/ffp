@@ -350,3 +350,23 @@ def block_declared_in_inches(tmp_path: Path) -> str:
     finally:
         set_cval("write.step.unit", "MM")
     return str(path)
+
+
+def block_with_rib_interrupted_bore(tmp_path: Path) -> str:
+    """A Ø20 recess whose wall is broken into four arcs by radial ribs.
+
+    Mirrors a real back-face counterbore interrupted by corner webs. Each rib
+    is as wide as the bore radius, so it consumes 60 deg of wall and leaves
+    four 30 deg arcs - 120 deg summed, well under the 180 deg wrap threshold a
+    continuous bore has to clear. The bore is nonetheless real, and the four
+    arcs sit exactly 90 deg apart, which is what identifies it.
+    """
+    shape = _cut(_box(-30, -30, 0, 60, 60, 20), _cylinder(0, 0, 12, 10.0, 20.0))
+    for dx, dy in ((1, 0), (-1, 0), (0, 1), (0, -1)):
+        # Each rib spans the full recess depth and crosses the wall radially.
+        if dx:
+            rib = _box(0 if dx > 0 else -15.0, -5.0, 12, 15.0, 10.0, 10.0)
+        else:
+            rib = _box(-5.0, 0 if dy > 0 else -15.0, 12, 10.0, 15.0, 10.0)
+        shape = _fuse(shape, rib)
+    return _write_step(shape, tmp_path / "block_with_rib_interrupted_bore.step")

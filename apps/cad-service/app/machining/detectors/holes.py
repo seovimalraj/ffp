@@ -29,6 +29,7 @@ from ..vectors import (
     canonical_axis,
     dot,
     is_parallel,
+    perpendicular_basis,
     normalize,
     project_scalar,
     scale,
@@ -67,6 +68,9 @@ class HoleDetector:
 
     def __init__(self, config: MachiningConfig):
         self.config = config
+        #: Face ids admitted by the interrupted-bore rule rather than by wrap
+        #: alone, so the detection evidence can say which test carried them.
+        self._interrupted: set = set()
 
     # -- entry point -------------------------------------------------------
 
@@ -74,6 +78,9 @@ class HoleDetector:
         self, model: ShapeModel
     ) -> Tuple[List[HoleFeature], List[BoreFeature], List[BoreFeature]]:
         """Return ``(holes, bores, unresolved_internal_cylindrical_features)``."""
+        # Face ids restart per model, so a reused detector would otherwise
+        # attribute a previous part's interruptions to this one.
+        self._interrupted.clear()
         groups = self._build_groups(model)
         # One classifier for the whole model: construction is the costly
         # part, each query after that is cheap.
@@ -191,7 +198,58 @@ class HoleDetector:
             best_span = max(best_span, span)
             if span >= self.config.hole_min_angular_span_deg:
                 kept.extend(segment)
+            elif self._is_interrupted_bore(segment, span, axis, origin):
+                kept.extend(segment)
+                self._interrupted.update(face.id for face in segment)
         return sorted(kept, key=lambda f: f.id), best_span
+
+    def _arc_bearing_deg(self, face: FaceRecord, axis: Vec, origin: Vec) -> float:
+        """Angle of ``face``'s centroid about ``axis``, in [0, 360).
+
+        The bore's own axis frame is used rather than world XY so the bearing
+        is meaningful for a bore in any orientation.
+        """
+        u, v = perpendicular_basis(axis)
+        offset = sub(face.centroid, origin)
+        return math.degrees(math.atan2(dot(offset, v), dot(offset, u))) % 360.0
+
+    def _is_interrupted_bore(
+        self, segment: List[FaceRecord], span: float, axis: Vec, origin: Vec
+    ) -> bool:
+        """True when ``segment`` is one bore whose wall is broken by ribs.
+
+        A bore crossed by webs survives only as arcs, so its summed wrap falls
+        below :attr:`hole_min_angular_span_deg` and the plain wrap test drops a
+        real feature - a back-face counterbore interrupted by four corner webs
+        being the case that motivated this.
+
+        Lowering the wrap threshold instead would readmit the blends and
+        partial walls it exists to reject, so the discriminator is rotational
+        symmetry: several arcs of one radius and one depth, spaced evenly about
+        the axis, are a machined bore. Slivers of a fillet are not evenly
+        spaced, and a lone partial wall has no siblings at all.
+        """
+        if len(segment) < self.config.interrupted_bore_min_fragments:
+            return False
+        if span < self.config.interrupted_bore_min_total_span_deg:
+            return False
+
+        # One depth: arcs of a single bore start and end together.
+        ranges = [axial_range(face, axis, origin) for face in segment]
+        if max(r[0] for r in ranges) - min(r[0] for r in ranges) > self.config.coaxial_tolerance_mm:
+            return False
+        if max(r[1] for r in ranges) - min(r[1] for r in ranges) > self.config.coaxial_tolerance_mm:
+            return False
+
+        # Regular spacing: consecutive bearings 360/N apart, wrapping around.
+        bearings = sorted(self._arc_bearing_deg(f, axis, origin) for f in segment)
+        expected = 360.0 / len(bearings)
+        gaps = [
+            (bearings[(i + 1) % len(bearings)] - bearings[i]) % 360.0
+            for i in range(len(bearings))
+        ]
+        tolerance = self.config.interrupted_bore_spacing_tolerance_deg
+        return all(abs(gap - expected) <= tolerance for gap in gaps)
 
     def _build_groups(self, model: ShapeModel) -> List[CylindricalGroup]:
         cylinders = self._candidate_cylinders(model)
@@ -573,6 +631,11 @@ class HoleDetector:
             ),
             self._METHOD_EVIDENCE.get(common["method"], common["method"]),
         ]
+        if self._interrupted.intersection(f.id for f in group.cylinders):
+            evidence.append(
+                f"wall interrupted - {fragments} equal arcs evenly spaced about "
+                "the axis, admitted below the wrap threshold"
+            )
         if cap is not None:
             evidence.append(f"closing face {cap.id}")
         evidence.append("through" if common["through"] else "blind")

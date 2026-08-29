@@ -166,16 +166,18 @@ export function DataTable<T>({
   useEffect(() => {
     onFilterChange?.(filteredData);
 
-    // Only reset visibleCount if the data has fundamentally changed (e.g. filtered/searched)
-    // If it's just an append (new length > old length and old items match), don't reset.
-    const isAppend =
-      filteredData.length > prevDataRef.current.length &&
-      prevDataRef.current.every((item, i) => item === filteredData[i]);
+    // Only reset visibleCount if the data has fundamentally changed (e.g. filtered/searched).
+    // A plain re-render (same rows, new array identity) or an append must NOT reset it,
+    // otherwise the list collapses back to pageSize and the page jumps to the top.
+    const prev = prevDataRef.current;
+    const isSameOrAppend =
+      filteredData.length >= prev.length &&
+      prev.every((item, i) => item === filteredData[i]);
 
-    if (!isAppend) {
+    if (!isSameOrAppend) {
       setVisibleCount(pageSize);
-    } else {
-      // If it is an append, we want to make sure the new items are visible
+    } else if (filteredData.length > prev.length) {
+      // Newly appended rows should be visible immediately
       setVisibleCount(filteredData.length);
     }
 

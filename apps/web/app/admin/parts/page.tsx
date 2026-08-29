@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo, useCallback } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -93,13 +93,13 @@ export default function AdminPartsPage() {
     }
   };
 
-  const handleLoadMore = () => {
+  const handleLoadMore = useCallback(() => {
     if (pagination.hasMore && !loading) {
       fetchData(pagination.offset + pagination.limit, true);
     }
-  };
+  }, [pagination.hasMore, pagination.offset, pagination.limit, loading]);
 
-  const columns: Column<ActivePart | AbandonedPart>[] = [
+  const columns: Column<ActivePart | AbandonedPart>[] = useMemo(() => [
     {
       key: "snapshot_2d_url",
       header: "Preview",
@@ -178,7 +178,7 @@ export default function AdminPartsPage() {
       render: (row: any) =>
         formatDate(activeTab === "active" ? row.created_at : row.abandoned_at),
     },
-  ];
+  ], [activeTab]);
 
   return (
     <div className="min-h-screen space-y-6">

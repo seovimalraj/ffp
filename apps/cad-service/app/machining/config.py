@@ -103,6 +103,30 @@ class MachiningConfig(BaseModel):
             "each face; below this the geometry is a fillet or a partial wall."
         ),
     )
+    interrupted_bore_min_fragments: int = Field(
+        default=3,
+        description=(
+            "A bore wrapping less than hole_min_angular_span_deg is still "
+            "accepted when at least this many equal-radius, equal-depth arcs "
+            "sit at regular angular spacing about the axis - the signature of "
+            "a bore whose wall is interrupted by ribs or webs. Two arcs cannot "
+            "distinguish a pattern from a coincidence."
+        ),
+    )
+    interrupted_bore_min_total_span_deg: float = Field(
+        default=90.0,
+        description=(
+            "Floor on the summed wrap of an interrupted bore. Regular spacing "
+            "alone would admit a ring of tiny slivers."
+        ),
+    )
+    interrupted_bore_spacing_tolerance_deg: float = Field(
+        default=5.0,
+        description=(
+            "How far arc centres may deviate from perfectly regular spacing "
+            "(360/N apart) and still read as one interrupted bore."
+        ),
+    )
     hole_end_probe_offset_mm: float = Field(
         default=0.05,
         description=(
