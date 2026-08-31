@@ -153,6 +153,18 @@ export default function MachiningAnalysisPage() {
   };
 
   const kernelReady = capabilities?.kernel_available ?? true;
+  // A binding that imports but is missing symbols is a broken install, not an
+  // absent one - the distinction is what points at the environment rather than
+  // at the uploaded file, so the badge must not report both the same way.
+  const kernelIncomplete =
+    !kernelReady && capabilities?.kernel_binding_importable === true;
+  const kernelTitle = kernelReady
+    ? `CAD kernel: ${capabilities?.kernel}`
+    : kernelIncomplete
+      ? `CAD kernel ${capabilities?.kernel} loaded but incomplete - missing ${
+          capabilities?.kernel_missing_symbols?.join(", ") || "required symbols"
+        }. This is a CAD service environment problem, not a problem with your file.`
+      : "No OpenCASCADE binding installed on the CAD service";
 
   return (
     <div className="flex h-screen flex-col bg-slate-50 text-slate-900">
@@ -179,14 +191,14 @@ export default function MachiningAnalysisPage() {
                   ? "bg-emerald-50 text-emerald-700"
                   : "bg-red-50 text-red-700"
               }`}
-              title={
-                kernelReady
-                  ? `CAD kernel: ${capabilities.kernel}`
-                  : "No OpenCASCADE binding installed on the CAD service"
-              }
+              title={kernelTitle}
             >
               <Cpu className="h-3 w-3" />
-              {kernelReady ? capabilities.kernel : "Kernel unavailable"}
+              {kernelReady
+                ? capabilities.kernel
+                : kernelIncomplete
+                  ? "Kernel incomplete"
+                  : "Kernel unavailable"}
             </span>
           )}
 

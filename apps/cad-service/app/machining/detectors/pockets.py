@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass, field
-from typing import List, Optional, Tuple
+from typing import Dict, List, Optional, Tuple
 
 from ..config import MachiningConfig
 from ..raycast import RayProbe
@@ -64,10 +64,17 @@ class PocketDetector:
 
     def __init__(self, config: MachiningConfig):
         self.config = config
+        #: ``face_id -> reason`` for planar faces turned down as pocket floors.
+        #: Reported through ``debug_geometry`` so an empty pocket list can be
+        #: told apart from a detector that quietly dropped everything.
+        self.rejections: Dict[int, str] = {}
 
     # -- candidate discovery ----------------------------------------------
 
     def find_candidates(self, model: ShapeModel) -> List[PocketCandidate]:
+        # Face ids restart per model; a reused detector must not carry the
+        # previous part's rejections into this one.
+        self.rejections = {}
         probe = RayProbe(model, self.config)
         if not probe.available:
             logger.warning(
@@ -82,17 +89,33 @@ class PocketDetector:
                 candidates.append(candidate)
         return candidates
 
+    def _reject(self, floor: FaceRecord, reason: str) -> None:
+        """Record why a planar face was not accepted as a pocket floor.
+
+        Only planar faces are recorded: every other surface type is not a
+        candidate in the first place, and listing them would bury the
+        interesting rejections in noise.
+        """
+        self.rejections[floor.id] = reason
+
     def _evaluate(
         self, model: ShapeModel, floor: FaceRecord, probe: RayProbe
     ) -> Optional[PocketCandidate]:
         if floor.surface_type != PLANE or floor.normal is None:
             return None
         if floor.claimed_by == "hole":
+            self._reject(floor, "already claimed by a hole or bore")
             return None
         if floor.area_mm2 < self.config.pocket_min_area_mm2:
+            self._reject(
+                floor,
+                f"area {round(floor.area_mm2, 2)} mm2 is below "
+                f"pocket_min_area_mm2 ({self.config.pocket_min_area_mm2})",
+            )
             return None
         if is_outer_face(model, floor, self.config):
             # Sits on the silhouette - this is stock surface, not a pocket floor.
+            self._reject(floor, "lies on the model silhouette - stock surface")
             return None
 
         # A pocket *wall* also has a recessed position and perpendicular
@@ -100,19 +123,33 @@ class PocketDetector:
         # difference is that a floor is visible looking down its own normal,
         # while a wall is edge-on to that view and hidden behind the part.
         if not probe.is_face_exposed(floor.centroid, floor.normal):
+            self._reject(
+                floor, "not visible along its own normal - a wall, not a floor"
+            )
             return None
 
         walls = wall_faces_of(model, floor, self.config)
         if len(walls) < self.config.pocket_min_wall_count:
+            self._reject(
+                floor,
+                f"{len(walls)} surrounding wall face(s), below "
+                f"pocket_min_wall_count ({self.config.pocket_min_wall_count})",
+            )
             return None
 
         normal = floor.normal
         depth = self._depth(floor, walls, normal)
         if depth < self.config.pocket_min_depth_mm:
+            self._reject(
+                floor,
+                f"depth {round(depth, 3)} mm is below pocket_min_depth_mm "
+                f"({self.config.pocket_min_depth_mm})",
+            )
             return None
 
         length, width, long_axis, short_axis = planar_dimensions(floor, normal)
         if width <= 0:
+            self._reject(floor, "degenerate in-plane dimensions")
             return None
 
         return PocketCandidate(

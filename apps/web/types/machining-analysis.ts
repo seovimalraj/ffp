@@ -124,6 +124,7 @@ export interface FaceDetail {
   surface_type: SurfaceType;
   area_mm2: number;
   bounding_box: BoundingBox;
+  centroid: Vector3 | null;
   normal: Vector3 | null;
   axis: Vector3 | null;
   axis_location: Vector3 | null;
@@ -132,6 +133,8 @@ export interface FaceDetail {
   cone_half_angle_deg: number | null;
   angular_span_deg: number | null;
   is_internal: boolean | null;
+  /** Face lies on the outer silhouette - the top, bottom or side of the stock. */
+  is_planar_extreme: boolean;
   edge_count: number;
 }
 
@@ -508,8 +511,17 @@ export function isMachiningError(
 /** Capabilities reported by `GET /api/cad/analyze-machining`. */
 export interface MachiningCapabilities {
   analysis_version: string;
+  /** True only when the kernel is present *and* complete enough to analyse. */
   kernel_available: boolean;
   kernel: string | null;
+  /**
+   * Diagnostics for a kernel that imports but cannot work - a partial OCCT
+   * install loads TopoDS yet not STEPControl. Optional: a service older than
+   * this field omits them, so absence means "not reported", not "healthy".
+   */
+  kernel_binding_importable?: boolean;
+  kernel_missing_symbols?: string[];
+  kernel_import_failures?: Record<string, string>;
   supported_input_formats: string[];
   supported_extensions: string[];
   max_upload_bytes: number;

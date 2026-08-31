@@ -16,6 +16,8 @@ import logging
 from typing import List, Optional, Sequence, Tuple
 
 from .config import MachiningConfig
+from .detectors.shared import feature_id
+from .records import FaceRecord
 from .schemas import (
     FeatureCollection,
     FeatureDimensionRatio,
@@ -170,6 +172,37 @@ class MachiningComplexityAnalyzer:
         # Stable ordering so identical input always serialises identically.
         flags.sort(key=lambda f: (f.feature_id, f.flag))
         return flags
+
+    def thin_wall_flags(
+        self, walls: Sequence[Tuple[FaceRecord, FaceRecord, float]]
+    ) -> List[MachiningFlag]:
+        """One ``THIN_WALL`` flag per measured wall, thinnest first.
+
+        ``thin_wall_count`` was already reported but raised nothing, so a part
+        with nine thin walls looked identical to a part with none in the flag
+        list. Wall thickness drives fixturing, chatter and scrap risk, so it
+        belongs with the other machining flags rather than only in a count.
+
+        A wall is a pair of faces, not a feature, so ``feature_id`` carries a
+        synthetic ``WALL-nnn`` id and the two face ids go in the reason - there
+        is no feature to point at.
+        """
+        ordered = sorted(walls, key=lambda w: (w[2], w[0].id, w[1].id))
+        threshold = self.config.thin_wall_thickness_mm
+        return [
+            MachiningFlag(
+                feature_id=feature_id("WALL", index),
+                flag="THIN_WALL",
+                reason=(
+                    f"faces {face_a.id} and {face_b.id} are "
+                    f"{round(thickness, 3)} mm apart, below the {threshold} mm "
+                    "wall threshold"
+                ),
+                value=round(thickness, 4),
+                threshold=threshold,
+            )
+            for index, (face_a, face_b, thickness) in enumerate(ordered, start=1)
+        ]
 
     def _flag(
         self, feature_id: str, name: str, metric: str, value: float, threshold: float

@@ -33,12 +33,20 @@ _MAX_PLANAR_FACES_FOR_WALL_SCAN = 1500
 
 
 class ThinWallAnalyzer:
-    """Counts pairs of opposed planar faces closer than the wall threshold."""
+    """Finds pairs of opposed planar faces closer than the wall threshold."""
 
     def __init__(self, config: MachiningConfig):
         self.config = config
 
-    def count(self, model: ShapeModel, warnings: List[AnalysisWarning]) -> int:
+    def analyze(
+        self, model: ShapeModel, warnings: List[AnalysisWarning]
+    ) -> List[Tuple[FaceRecord, FaceRecord, float]]:
+        """Return each thin wall as ``(face_a, face_b, thickness_mm)``.
+
+        The pairs are returned rather than only counted so a wall can raise a
+        flag naming the two faces. A count on its own tells a caller that a
+        problem exists without saying where, which is not actionable.
+        """
         planar = [
             face
             for face in model.faces.values()
@@ -56,15 +64,17 @@ class ThinWallAnalyzer:
                     ),
                 )
             )
-            return 0
+            return []
 
-        return len(
-            opposed_planar_pairs(
-                planar,
-                min_gap=self.config.linear_tolerance_mm,
-                max_gap=self.config.thin_wall_thickness_mm,
-            )
+        return opposed_planar_pairs(
+            planar,
+            min_gap=self.config.linear_tolerance_mm,
+            max_gap=self.config.thin_wall_thickness_mm,
         )
+
+    def count(self, model: ShapeModel, warnings: List[AnalysisWarning]) -> int:
+        """Number of thin walls - kept for callers that only need the total."""
+        return len(self.analyze(model, warnings))
 
 
 class ComplexityIndicatorBuilder:
