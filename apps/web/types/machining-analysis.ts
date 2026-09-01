@@ -155,6 +155,8 @@ export interface HoleFeature extends FeatureBase {
   counterbore_depth_mm: number | null;
   countersink_diameter_mm: number | null;
   countersink_angle_deg: number | null;
+  /** Every recessed end, entry first. Empty when the bore is not counterbored. */
+  counterbores: CounterboreStep[];
   steps: Array<Record<string, number>>;
 }
 
@@ -194,6 +196,26 @@ export interface SlotFeature extends FeatureBase {
   machining_direction: number[];
   position: Vector3;
   depth_width_ratio: number | null;
+}
+
+export interface CounterboreStep {
+  diameter_mm: number;
+  depth_mm: number;
+  /** `"entry"` = the end the hole's axis points out of; `"far"` = second setup. */
+  end: string;
+  face_ids: number[];
+}
+
+export interface GrooveFeature extends FeatureBase {
+  subtype: string;
+  diameter_mm: number;
+  width_mm: number;
+  depth_mm: number;
+  neighbour_diameter_mm: number;
+  width_depth_ratio: number | null;
+  position: Vector3;
+  axis: Vector3;
+  is_internal: boolean;
 }
 
 export interface BossFeature extends FeatureBase {
@@ -254,6 +276,7 @@ export interface FeatureCollection {
   pockets: PocketFeature[];
   slots: SlotFeature[];
   bosses: BossFeature[];
+  grooves: GrooveFeature[];
   threads: ThreadFeature[];
   fillets: FilletFeature[];
   chamfers: ChamferFeature[];
@@ -407,6 +430,7 @@ export interface ComplexityIndicators {
   fillet_count: number;
   chamfer_count: number;
   boss_count: number;
+  groove_count: number;
   freeform_surface_count: number;
   thin_wall_count: number;
   unique_tool_diameter_constraints: number;
@@ -538,6 +562,7 @@ export type AnyMachiningFeature =
   | PocketFeature
   | SlotFeature
   | BossFeature
+  | GrooveFeature
   | ThreadFeature
   | FilletFeature
   | ChamferFeature;

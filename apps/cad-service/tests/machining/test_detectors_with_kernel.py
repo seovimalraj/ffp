@@ -1075,3 +1075,156 @@ class TestPocketRejectionDiagnostics:
     def test_diagnostics_stay_behind_the_debug_flag(self, analyze, step_dir):
         result = analyze(fixtures.block_with_pocket(step_dir))
         assert result["debug_geometry"] is None
+
+
+class TestCounterboreSelection:
+    """The counterbore is the widest section *at the entry*, not overall.
+
+    Regression: the detector took the globally largest cylinder and only then
+    asked whether it sat at the entry, so any wider section further down the
+    bore - a relief, or an interrupted recess at the far end - silently
+    suppressed a real counterbore.
+    """
+
+    def test_a_wider_recess_at_the_far_end_does_not_hide_the_counterbore(
+        self, analyze, step_dir
+    ):
+        hole = analyze(fixtures.counterbored_hole_with_wider_far_recess(step_dir))[
+            "features"
+        ]["holes"][0]
+        assert hole["has_counterbore"] is True
+        assert hole["subtype"] == "counterbore"
+        assert hole["counterbore_diameter_mm"] == pytest.approx(12.0)
+        assert hole["counterbore_depth_mm"] == pytest.approx(5.0, abs=1e-3)
+
+    def test_the_widest_section_is_still_reported_among_the_steps(
+        self, analyze, step_dir
+    ):
+        """The far recess is not discarded - it is simply not the counterbore."""
+        hole = analyze(fixtures.counterbored_hole_with_wider_far_recess(step_dir))[
+            "features"
+        ]["holes"][0]
+        diameters = sorted({step["diameter_mm"] for step in hole["steps"]})
+        assert diameters == pytest.approx([6.0, 12.0, 16.0])
+        assert hole["is_stepped"] is True
+
+    def test_a_plain_counterbore_is_unaffected(self, analyze, step_dir):
+        hole = analyze(fixtures.block_with_counterbored_hole(step_dir))["features"][
+            "holes"
+        ][0]
+        assert hole["counterbore_diameter_mm"] == pytest.approx(12.0)
+
+    def test_interrupted_arc_count_in_evidence_excludes_continuous_faces(
+        self, analyze, step_dir
+    ):
+        """Evidence counts the arcs the rule admitted, not the whole stack."""
+        result = analyze(fixtures.block_with_rib_interrupted_bore(step_dir))
+        evidence = " ".join(result["features"]["holes"][0]["detection"]["evidence"])
+        assert "wall interrupted - 4 equal arcs" in evidence
+
+
+class TestGrooveDetector:
+    """Grooves were not detected at all - there was no groove rule.
+
+    A groove cannot be recognised from one face: a Ø34 cylinder is a groove
+    floor, a turned diameter or a bore wall depending entirely on what sits
+    either side of it. The rule is therefore relative, not absolute.
+    """
+
+    def test_an_od_groove_is_measured(self, analyze, step_dir):
+        grooves = analyze(fixtures.shaft_with_od_groove(step_dir))["features"]["grooves"]
+        assert len(grooves) == 1
+        groove = grooves[0]
+        assert groove["subtype"] == "outer_diameter"
+        assert groove["is_internal"] is False
+        assert groove["diameter_mm"] == pytest.approx(34.0, abs=1e-3)
+        assert groove["width_mm"] == pytest.approx(4.0, abs=1e-3)
+        assert groove["depth_mm"] == pytest.approx(3.0, abs=1e-3)
+        assert groove["neighbour_diameter_mm"] == pytest.approx(40.0, abs=1e-3)
+
+    def test_an_internal_groove_inside_a_bore_is_found(self, analyze, step_dir):
+        """The bore owns these faces; the groove is still a separate operation."""
+        grooves = analyze(fixtures.sleeve_with_internal_groove(step_dir))["features"][
+            "grooves"
+        ]
+        assert len(grooves) == 1
+        assert grooves[0]["subtype"] == "internal"
+        assert grooves[0]["is_internal"] is True
+        assert grooves[0]["diameter_mm"] == pytest.approx(36.0, abs=1e-3)
+        assert grooves[0]["depth_mm"] == pytest.approx(3.0, abs=1e-3)
+
+    def test_a_shoulder_is_not_a_groove(self, analyze, step_dir):
+        """Material on one side only is a step - turned, not form-cut."""
+        assert (
+            analyze(fixtures.stepped_shaft_without_groove(step_dir))["features"][
+                "grooves"
+            ]
+            == []
+        )
+
+    def test_a_counterbore_is_not_reported_as_an_internal_groove(
+        self, analyze, step_dir
+    ):
+        """A counterbore is at an end, so it has no neighbour on the outer side."""
+        result = analyze(fixtures.block_with_counterbored_hole(step_dir))
+        assert result["features"]["grooves"] == []
+        assert result["features"]["holes"][0]["has_counterbore"] is True
+
+    def test_ordinary_parts_produce_no_grooves(self, analyze, step_dir):
+        for builder in (
+            fixtures.simple_block_with_through_hole,
+            fixtures.plate_with_hole_pattern,
+            fixtures.stepped_shaft,
+            fixtures.ring,
+        ):
+            assert analyze(builder(step_dir))["features"]["grooves"] == [], builder
+
+    def test_the_groove_carries_its_evidence(self, analyze, step_dir):
+        groove = analyze(fixtures.shaft_with_od_groove(step_dir))["features"]["grooves"][0]
+        evidence = " ".join(groove["detection"]["evidence"])
+        assert "on both sides" in evidence
+        assert groove["detection"]["source"] == "GEOMETRY"
+
+
+class TestCounterboresAtBothEnds:
+    """A through hole recessed at both ends is two setups, not one.
+
+    The scalar `counterbore_*` fields describe the entry only, so a recess at
+    the far end was reported nowhere - it appeared in `steps` as an anonymous
+    diameter with no indication that it was reached from the opposite side.
+    """
+
+    def test_both_ends_are_reported(self, analyze, step_dir):
+        hole = analyze(fixtures.counterbored_hole_with_wider_far_recess(step_dir))[
+            "features"
+        ]["holes"][0]
+        ends = {c["end"]: c for c in hole["counterbores"]}
+        assert set(ends) == {"entry", "far"}
+        assert ends["entry"]["diameter_mm"] == pytest.approx(12.0)
+        assert ends["far"]["diameter_mm"] == pytest.approx(16.0)
+
+    def test_the_scalar_fields_still_describe_the_entry(self, analyze, step_dir):
+        hole = analyze(fixtures.counterbored_hole_with_wider_far_recess(step_dir))[
+            "features"
+        ]["holes"][0]
+        entry = next(c for c in hole["counterbores"] if c["end"] == "entry")
+        assert hole["counterbore_diameter_mm"] == entry["diameter_mm"]
+        assert hole["counterbore_depth_mm"] == entry["depth_mm"]
+
+    def test_each_end_names_its_faces(self, analyze, step_dir):
+        hole = analyze(fixtures.counterbored_hole_with_wider_far_recess(step_dir))[
+            "features"
+        ]["holes"][0]
+        assert all(c["face_ids"] for c in hole["counterbores"])
+
+    def test_a_single_ended_counterbore_reports_one_entry(self, analyze, step_dir):
+        hole = analyze(fixtures.block_with_counterbored_hole(step_dir))["features"][
+            "holes"
+        ][0]
+        assert [c["end"] for c in hole["counterbores"]] == ["entry"]
+
+    def test_a_plain_hole_reports_none(self, analyze, step_dir):
+        hole = analyze(fixtures.simple_block_with_through_hole(step_dir))["features"][
+            "holes"
+        ][0]
+        assert hole["counterbores"] == []

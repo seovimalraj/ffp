@@ -28,6 +28,7 @@ from .config import MachiningConfig, get_machining_config
 from .constraints import MachiningComplexityAnalyzer
 from .detectors import (
     BossDetector,
+    GrooveDetector,
     ChamferDetector,
     FilletDetector,
     HoleDetector,
@@ -84,6 +85,7 @@ class MachiningAnalysisService:
         self.pocket_detector = PocketDetector(self.config)
         self.slot_detector = SlotDetector(self.config)
         self.boss_detector = BossDetector(self.config)
+        self.groove_detector = GrooveDetector(self.config)
         self.fillet_detector = FilletDetector(self.config)
         self.chamfer_detector = ChamferDetector(self.config)
         self.thread_detector = ThreadDetector(self.config)
@@ -345,6 +347,14 @@ class MachiningAnalysisService:
         )
         features.bosses = (
             self._stage("bosses", timings, warnings, lambda: self.boss_detector.detect(model))
+            or []
+        )
+        # Grooves run after holes and bosses so a band already claimed as a
+        # bore wall is not re-reported as an internal groove.
+        features.grooves = (
+            self._stage(
+                "grooves", timings, warnings, lambda: self.groove_detector.detect(model)
+            )
             or []
         )
         features.fillets = (

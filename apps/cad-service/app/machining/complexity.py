@@ -146,6 +146,7 @@ class ComplexityIndicatorBuilder:
             fillet_count=len(features.fillets),
             chamfer_count=len(features.chamfers),
             boss_count=len(features.bosses),
+            groove_count=len(features.grooves),
             freeform_surface_count=surface_summary.freeform_faces,
             thin_wall_count=thin_wall_count,
             unique_tool_diameter_constraints=len(tool_diameters),

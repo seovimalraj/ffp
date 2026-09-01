@@ -34,6 +34,10 @@
   "slot_max_width_mm": 50.0,
   "keyway_max_width_mm": 25.0,
 
+  "groove_max_width_mm": 15.0,
+  "groove_min_depth_mm": 0.3,
+  "groove_max_width_depth_ratio": 12.0,
+
   "boss_min_height_mm": 1.0,
   "boss_min_diameter_mm": 1.0,
 

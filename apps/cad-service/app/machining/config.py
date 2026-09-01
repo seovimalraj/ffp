@@ -155,6 +155,26 @@ class MachiningConfig(BaseModel):
     slot_max_width_mm: float = Field(default=50.0)
     keyway_max_width_mm: float = Field(default=25.0)
 
+    # --- grooves ----------------------------------------------------------
+    groove_max_width_mm: float = Field(
+        default=15.0,
+        description=(
+            "Axial extent above which a recessed band is a change of diameter "
+            "rather than a groove cut with a form tool."
+        ),
+    )
+    groove_min_depth_mm: float = Field(
+        default=0.3,
+        description="Radial step below which a band is surface noise, not a groove.",
+    )
+    groove_max_width_depth_ratio: float = Field(
+        default=12.0,
+        description=(
+            "Width/depth above which a band is a shallow relief or a diameter "
+            "transition rather than a groove."
+        ),
+    )
+
     # --- bosses -----------------------------------------------------------
     boss_min_height_mm: float = Field(default=1.0)
     boss_min_diameter_mm: float = Field(default=1.0)

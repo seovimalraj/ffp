@@ -141,6 +141,12 @@ export function featureGroups(result: MachiningAnalysisResponse): FeatureGroup[]
       features: f.bosses,
     },
     {
+      key: "grooves",
+      label: "Grooves",
+      note: "Coaxial bands stepping away from the material on both sides. A shoulder has a neighbour on one side only and is not a groove.",
+      features: f.grooves,
+    },
+    {
       key: "threads",
       label: "Threads",
       note: "From CAD metadata or modelled helical geometry. A designation is never inferred from diameter.",
@@ -191,6 +197,10 @@ export function featureSummary(
       )} · ${humanize(f.subtype as string)}`;
     case "boss":
       return `⌀ ${len("diameter_mm")} · height ${len("height_mm")}`;
+    case "groove":
+      return `⌀ ${len("diameter_mm")} · width ${len("width_mm")} · depth ${len(
+        "depth_mm",
+      )} · ${humanize(f.subtype as string)}`;
     case "fillet":
       return `R ${len("radius_mm")} · ${f.edge_count} edge(s)`;
     case "chamfer": {
