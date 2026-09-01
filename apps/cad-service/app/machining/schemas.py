@@ -260,6 +260,19 @@ class FaceDetail(BaseModel):
 # ---------------------------------------------------------------------------
 
 
+class CounterboreStep(BaseModel):
+    """A widened section at one end of a bore.
+
+    ``end`` is ``entry`` for the end the hole's ``axis`` points out of, and
+    ``far`` for the opposite end - which is reached in a second setup.
+    """
+
+    diameter_mm: float
+    depth_mm: float
+    end: str = Field(description="entry | far")
+    face_ids: List[int] = Field(default_factory=list)
+
+
 class HoleFeature(FeatureBase):
     """A cylindrical internal feature below the bore diameter threshold.
 
@@ -284,6 +297,15 @@ class HoleFeature(FeatureBase):
     has_countersink: bool = False
     counterbore_diameter_mm: Optional[float] = None
     counterbore_depth_mm: Optional[float] = None
+    counterbores: List["CounterboreStep"] = Field(
+        default_factory=list,
+        description=(
+            "Every widened section at an end of the bore, entry end first. A "
+            "through hole recessed at both ends is two setups, not one, so the "
+            "scalar fields above - which describe the entry only - cannot "
+            "represent it. They are retained unchanged for existing callers."
+        ),
+    )
     countersink_diameter_mm: Optional[float] = None
     countersink_angle_deg: Optional[float] = None
     coaxial_feature_ids: List[str] = Field(default_factory=list)
@@ -360,6 +382,36 @@ class SlotFeature(FeatureBase):
     machining_direction: List[float]
     position: Vector3
     depth_width_ratio: Optional[float] = None
+
+
+class GrooveFeature(FeatureBase):
+    """A recessed band running around an axis.
+
+    External (``outer_diameter``) when the band is narrower than the material
+    either side of it; internal (``internal``) when a bore widens over a short
+    length. Both are cut with a form tool whose width the groove sets, which is
+    why width and depth are reported separately from the radius.
+
+    ``face`` grooves - a ring cut into a flat end - are not claimed here: they
+    are bounded by planar and cylindrical walls rather than by a coaxial
+    neighbour, and calling them grooves from radius alone would put guesses
+    into the costing input.
+    """
+
+    type: str = "groove"
+    subtype: str = Field(description="outer_diameter | internal")
+    diameter_mm: float = Field(description="Diameter at the groove floor.")
+    width_mm: float = Field(description="Axial extent of the groove.")
+    depth_mm: float = Field(
+        description="Radial drop from the neighbouring diameter to the floor."
+    )
+    neighbour_diameter_mm: float = Field(
+        description="Diameter of the material the groove is cut into."
+    )
+    width_depth_ratio: Optional[float] = None
+    position: Vector3 = Field(description="Centre of the groove on its axis.")
+    axis: Vector3
+    is_internal: bool = False
 
 
 class BossFeature(FeatureBase):
@@ -472,6 +524,7 @@ class FeatureCollection(BaseModel):
     pockets: List[PocketFeature] = Field(default_factory=list)
     slots: List[SlotFeature] = Field(default_factory=list)
     bosses: List[BossFeature] = Field(default_factory=list)
+    grooves: List[GrooveFeature] = Field(default_factory=list)
     threads: List[ThreadFeature] = Field(default_factory=list)
     fillets: List[FilletFeature] = Field(default_factory=list)
     chamfers: List[ChamferFeature] = Field(default_factory=list)
@@ -725,6 +778,7 @@ class ComplexityIndicators(BaseModel):
     fillet_count: int = 0
     chamfer_count: int = 0
     boss_count: int = 0
+    groove_count: int = 0
     freeform_surface_count: int = 0
     thin_wall_count: int = 0
     unique_tool_diameter_constraints: int = 0

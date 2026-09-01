@@ -370,3 +370,46 @@ def block_with_rib_interrupted_bore(tmp_path: Path) -> str:
             rib = _box(-5.0, 0 if dy > 0 else -15.0, 12, 10.0, 15.0, 10.0)
         shape = _fuse(shape, rib)
     return _write_step(shape, tmp_path / "block_with_rib_interrupted_bore.step")
+
+
+def counterbored_hole_with_wider_far_recess(tmp_path: Path) -> str:
+    """Ø6 through hole, Ø12 counterbore at the top, Ø16 recess at the bottom.
+
+    The widest section is at the *far* end, which is what broke counterbore
+    reporting: the detector picked the globally largest cylinder and only then
+    asked whether it sat at the entry, so the real Ø12 counterbore was lost.
+    """
+    shape = _cut(_box(-25, -25, 0, 50, 50, 30), _cylinder(0, 0, -5, 3.0, 40.0))
+    shape = _cut(shape, _cylinder(0, 0, 25, 6.0, 10.0))   # entry counterbore
+    shape = _cut(shape, _cylinder(0, 0, -5, 8.0, 9.0))    # wider far-end recess
+    return _write_step(shape, tmp_path / "counterbore_with_far_recess.step")
+
+
+def shaft_with_od_groove(tmp_path: Path) -> str:
+    """Ø40 x 60 shaft with a 4 mm wide, 3 mm deep O-ring groove at mid-length.
+
+    The groove floor (Ø34) is narrower than the Ø40 material on both sides -
+    the relative step that identifies it. Radius alone cannot: Ø34 is a
+    perfectly ordinary turned diameter in any other context.
+    """
+    shape = _cylinder(0, 0, 0, 20.0, 60.0)
+    shape = _cut(shape, _cut(_cylinder(0, 0, 28, 25.0, 4.0), _cylinder(0, 0, 28, 17.0, 4.0)))
+    return _write_step(shape, tmp_path / "shaft_with_od_groove.step")
+
+
+def stepped_shaft_without_groove(tmp_path: Path) -> str:
+    """Ø40 shaft stepping down to Ø30 once - a shoulder, not a groove.
+
+    The narrower section has larger material on one side only, so nothing here
+    should be claimed: a step is turned with the same tool as the diameters,
+    while a groove needs a form tool.
+    """
+    shape = _fuse(_cylinder(0, 0, 0, 20.0, 30.0), _cylinder(0, 0, 30, 15.0, 30.0))
+    return _write_step(shape, tmp_path / "stepped_shaft_no_groove.step")
+
+
+def sleeve_with_internal_groove(tmp_path: Path) -> str:
+    """Ø50 sleeve, Ø30 bore, with a Ø36 x 5 mm internal circlip groove."""
+    shape = _cut(_cylinder(0, 0, 0, 25.0, 60.0), _cylinder(0, 0, -5, 15.0, 70.0))
+    shape = _cut(shape, _cut(_cylinder(0, 0, 28, 18.0, 5.0), _cylinder(0, 0, 28, 15.0, 5.0)))
+    return _write_step(shape, tmp_path / "sleeve_with_internal_groove.step")

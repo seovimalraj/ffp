@@ -18,6 +18,7 @@ from ..raycast import PointClassifier
 from ..records import CONE, CYLINDER, PLANE, FaceRecord, ShapeModel
 from ..schemas import (
     BoreFeature,
+    CounterboreStep,
     Detection,
     DetectionMethod,
     FeatureStatus,
@@ -501,6 +502,7 @@ class HoleDetector:
             "countersink_angle_deg": None,
             "is_stepped": False,
             "steps": [],
+            "counterbores": [],
         }
 
         primary_radius = group.primary.radius_mm or 0.0
@@ -529,15 +531,59 @@ class HoleDetector:
             info["is_stepped"] = True
             info["steps"] = steps
 
-            largest = max(distinct_radii)
-            if largest / primary_radius >= self.config.counterbore_min_diameter_ratio:
-                cb_face = max(group.cylinders, key=lambda f: (f.radius_mm or 0.0, -f.id))
-                low, high = axial_range(cb_face, group.axis, group.origin)
-                # Only counts as a counterbore when it sits at the entry end.
-                near_entry = min(abs(entry_t - low), abs(entry_t - high))
-                if near_entry <= self.config.linear_tolerance_mm * 100:
+            # The counterbore is the widest section *at the entry*, so the
+            # entry test has to select the candidate rather than veto it. The
+            # other order silently loses a real counterbore whenever some wider
+            # section exists further down the bore - a relief or an interrupted
+            # recess at the far end is enough to do it.
+            entry_tolerance = self.config.linear_tolerance_mm * 100
+            far_t = group.t_min if entry_t >= group.t_max else group.t_max
+
+            def widest_at(end_t: float) -> Optional[FaceRecord]:
+                """Widest cylinder touching ``end_t``, or None."""
+                touching = [
+                    face
+                    for face in group.cylinders
+                    if min(
+                        abs(end_t - bound)
+                        for bound in axial_range(face, group.axis, group.origin)
+                    )
+                    <= entry_tolerance
+                ]
+                if not touching:
+                    return None
+                widest = max(touching, key=lambda f: (f.radius_mm or 0.0, -f.id))
+                ratio = round(widest.radius_mm or 0.0, 4) / primary_radius
+                if ratio < self.config.counterbore_min_diameter_ratio:
+                    return None
+                return widest
+
+            # Both ends are examined: a through hole recessed at each end takes
+            # two setups, and reporting only the entry silently loses the
+            # second one. The scalar fields keep describing the entry.
+            for label, end_t in (("entry", entry_t), ("far", far_t)):
+                face = widest_at(end_t)
+                if face is None:
+                    continue
+                radius = round(face.radius_mm or 0.0, 4)
+                low, high = axial_range(face, group.axis, group.origin)
+                siblings = [
+                    other.id
+                    for other in group.cylinders
+                    if abs((other.radius_mm or 0.0) - radius)
+                    <= self.config.coaxial_tolerance_mm
+                ]
+                info["counterbores"].append(
+                    {
+                        "diameter_mm": round(radius * 2.0, 4),
+                        "depth_mm": round(high - low, 4),
+                        "end": label,
+                        "face_ids": sorted(siblings),
+                    }
+                )
+                if label == "entry":
                     info["has_counterbore"] = True
-                    info["counterbore_diameter_mm"] = round(largest * 2.0, 4)
+                    info["counterbore_diameter_mm"] = round(radius * 2.0, 4)
                     info["counterbore_depth_mm"] = round(high - low, 4)
 
         for cone in group.cones:
@@ -631,10 +677,14 @@ class HoleDetector:
             ),
             self._METHOD_EVIDENCE.get(common["method"], common["method"]),
         ]
-        if self._interrupted.intersection(f.id for f in group.cylinders):
+        interrupted = self._interrupted.intersection(f.id for f in group.cylinders)
+        if interrupted:
+            # Count the interrupted arcs, not every face in the stack: a
+            # counterbored hole carries continuous sections too, and reporting
+            # the stack total misdescribes what the rule actually admitted.
             evidence.append(
-                f"wall interrupted - {fragments} equal arcs evenly spaced about "
-                "the axis, admitted below the wrap threshold"
+                f"wall interrupted - {len(interrupted)} equal arcs evenly "
+                "spaced about the axis, admitted below the wrap threshold"
             )
         if cap is not None:
             evidence.append(f"closing face {cap.id}")
@@ -679,6 +729,7 @@ class HoleDetector:
             has_countersink=counters["has_countersink"],
             counterbore_diameter_mm=counters["counterbore_diameter_mm"],
             counterbore_depth_mm=counters["counterbore_depth_mm"],
+            counterbores=[CounterboreStep(**cb) for cb in counters["counterbores"]],
             countersink_diameter_mm=counters["countersink_diameter_mm"],
             countersink_angle_deg=counters["countersink_angle_deg"],
             steps=counters["steps"],
