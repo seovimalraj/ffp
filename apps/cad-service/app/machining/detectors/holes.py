@@ -186,23 +186,58 @@ class HoleDetector:
 
     def _qualifying_faces(
         self, members: List[FaceRecord], axis: Vec, origin: Vec
-    ) -> Tuple[List[FaceRecord], float]:
+    ) -> Tuple[List[FaceRecord], Dict[int, float]]:
         """Keep only fragments belonging to a sufficiently wrapped bore.
 
-        Returns the surviving faces and the largest summed wrap found, which is
-        reported as detection evidence.
+        Returns the surviving faces and, per face id, the summed wrap of the
+        bore segment it came from - :meth:`_split_into_axial_clusters` uses
+        this to report the right wrap for each physically separate hole,
+        rather than the largest wrap found anywhere on the axis.
         """
         kept: List[FaceRecord] = []
-        best_span = 0.0
+        span_by_face: Dict[int, float] = {}
         for segment in self._bore_segments(members, axis, origin):
             span = sum(face.angular_span_deg or 360.0 for face in segment)
-            best_span = max(best_span, span)
-            if span >= self.config.hole_min_angular_span_deg:
+            interrupted = span < self.config.hole_min_angular_span_deg and (
+                self._is_interrupted_bore(segment, span, axis, origin)
+            )
+            if span >= self.config.hole_min_angular_span_deg or interrupted:
                 kept.extend(segment)
-            elif self._is_interrupted_bore(segment, span, axis, origin):
-                kept.extend(segment)
-                self._interrupted.update(face.id for face in segment)
-        return sorted(kept, key=lambda f: f.id), best_span
+                for face in segment:
+                    span_by_face[face.id] = span
+                if interrupted:
+                    self._interrupted.update(face.id for face in segment)
+        return sorted(kept, key=lambda f: f.id), span_by_face
+
+    def _split_into_axial_clusters(
+        self, members: List[FaceRecord], axis: Vec, origin: Vec
+    ) -> List[List[FaceRecord]]:
+        """Split one coaxial axis's qualifying faces into physically separate holes.
+
+        Sharing an axis line is necessary but not sufficient: two blind holes
+        drilled from opposite faces of a part, perfectly aligned, are two
+        holes with material (or open air) between them, not one hole spanning
+        the gap. Faces only belong to the same hole when their axial extents
+        are contiguous - touching or overlapping - so this re-clusters the
+        faces :meth:`_qualifying_faces` already vetted, this time ignoring
+        radius: a counterbore's steps differ in radius but still touch end to
+        end, so that case still merges into one cluster.
+        """
+        ranges = {f.id: axial_range(f, axis, origin) for f in members}
+        ordered = sorted(members, key=lambda f: (ranges[f.id][0], f.id))
+        tolerance = self.config.linear_tolerance_mm
+
+        clusters: List[List[FaceRecord]] = []
+        cluster_high: Optional[float] = None
+        for face in ordered:
+            low, high = ranges[face.id]
+            if clusters and cluster_high is not None and low <= cluster_high + tolerance:
+                clusters[-1].append(face)
+                cluster_high = max(cluster_high, high)
+            else:
+                clusters.append([face])
+                cluster_high = high
+        return clusters
 
     def _arc_bearing_deg(self, face: FaceRecord, axis: Vec, origin: Vec) -> float:
         """Angle of ``face``'s centroid about ``axis``, in [0, 360).
@@ -260,40 +295,50 @@ class HoleDetector:
             axis = canonical_axis(coaxial_members[0].axis)
             origin = coaxial_members[0].axis_location
 
-            members, best_span = self._qualifying_faces(coaxial_members, axis, origin)
+            members, span_by_face = self._qualifying_faces(coaxial_members, axis, origin)
             if not members:
                 continue  # only partial wraps - a blend or a wall, not a bore
-            ranges = [axial_range(face, axis, origin) for face in members]
-            t_min = min(r[0] for r in ranges)
-            t_max = max(r[1] for r in ranges)
 
-            cones = self._coaxial_cones(model, axis, origin)
-            if cones:
-                cone_ranges = [axial_range(c, axis, origin) for c in cones]
-                t_min = min(t_min, min(r[0] for r in cone_ranges))
-                t_max = max(t_max, max(r[1] for r in cone_ranges))
+            for cluster in self._split_into_axial_clusters(members, axis, origin):
+                ranges = [axial_range(face, axis, origin) for face in cluster]
+                t_min = min(r[0] for r in ranges)
+                t_max = max(r[1] for r in ranges)
+                best_span = max(span_by_face[f.id] for f in cluster)
 
-            groups.append(
-                CylindricalGroup(
-                    axis=axis,
-                    origin=origin,
-                    cylinders=sorted(members, key=lambda f: f.id),
-                    cones=cones,
-                    t_min=t_min,
-                    t_max=t_max,
-                    wrap_span_deg=best_span,
+                cones = self._coaxial_cones(model, axis, origin, t_min, t_max)
+                if cones:
+                    cone_ranges = [axial_range(c, axis, origin) for c in cones]
+                    t_min = min(t_min, min(r[0] for r in cone_ranges))
+                    t_max = max(t_max, max(r[1] for r in cone_ranges))
+
+                groups.append(
+                    CylindricalGroup(
+                        axis=axis,
+                        origin=origin,
+                        cylinders=sorted(cluster, key=lambda f: f.id),
+                        cones=cones,
+                        t_min=t_min,
+                        t_max=t_max,
+                        wrap_span_deg=best_span,
+                    )
                 )
-            )
 
         # Deterministic ordering independent of kernel traversal order.
         groups.sort(key=lambda g: (round(g.t_max, 6), min(f.id for f in g.cylinders)))
         return groups
 
     def _coaxial_cones(
-        self, model: ShapeModel, axis: Vec, origin: Vec
+        self, model: ShapeModel, axis: Vec, origin: Vec, t_min: float, t_max: float
     ) -> List[FaceRecord]:
-        """Internal cones sharing the group's axis - countersinks and drill points."""
+        """Internal cones sharing the group's axis *and* sitting at this hole's ends.
+
+        Restricted to ``[t_min, t_max]`` (plus a small margin) so a
+        countersink or drill point belonging to a *different* hole further
+        along the same axis line - two holes drilled from opposite faces,
+        perfectly aligned - is not pulled into this one's group.
+        """
         result = []
+        margin = self.config.linear_tolerance_mm * 100
         for face in model.faces_of_type(CONE):
             if face.is_internal is not True or face.axis is None or face.axis_location is None:
                 continue
@@ -302,8 +347,12 @@ class HoleDetector:
             offset = sub(face.axis_location, origin)
             axial = dot(offset, axis)
             radial = sub(offset, scale(axis, axial))
-            if (radial[0] ** 2 + radial[1] ** 2 + radial[2] ** 2) ** 0.5 <= self.config.coaxial_tolerance_mm:
-                result.append(face)
+            if (radial[0] ** 2 + radial[1] ** 2 + radial[2] ** 2) ** 0.5 > self.config.coaxial_tolerance_mm:
+                continue
+            low, high = axial_range(face, axis, origin)
+            if high < t_min - margin or low > t_max + margin:
+                continue
+            result.append(face)
         return sorted(result, key=lambda f: f.id)
 
     def _claimed_face_ids(self, groups: List[CylindricalGroup]) -> List[int]:
