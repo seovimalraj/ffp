@@ -187,6 +187,12 @@ export function featureSummary(
     case "internal_cylindrical_feature": {
       const parts = [`⌀ ${len("diameter_mm")}`, `depth ${len("depth_mm")}`];
       if (typeof f.subtype === "string") parts.push(humanize(f.subtype as string));
+      if (f.has_counterbore && typeof f.counterbore_diameter_mm === "number") {
+        parts.push(`counterbore ⌀ ${len("counterbore_diameter_mm")}`);
+      }
+      if (Array.isArray(f.coaxial_feature_ids) && f.coaxial_feature_ids.length > 0) {
+        parts.push(`linked to ${(f.coaxial_feature_ids as string[]).join(", ")}`);
+      }
       return parts.join(" · ");
     }
     case "pocket":

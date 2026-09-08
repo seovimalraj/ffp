@@ -94,11 +94,28 @@ class HoleDetector:
         for group in groups:
             classification = self._classify(group)
             if classification == "hole":
-                holes.append(
-                    self._build_hole(
-                        model, group, feature_id("HOLE", len(holes) + 1), classifier
+                split = self._split_oversized_counterbore(model, group, classifier)
+                if split is not None:
+                    wide_group, narrow_group, boundary_t, full = split
+                    wide_id = feature_id("HOLE", len(holes) + 1)
+                    narrow_id = feature_id("HOLE", len(holes) + 2)
+                    wide_hole, narrow_hole = self._build_split_holes(
+                        model,
+                        wide_group,
+                        narrow_group,
+                        boundary_t,
+                        full,
+                        wide_id,
+                        narrow_id,
                     )
-                )
+                    holes.append(wide_hole)
+                    holes.append(narrow_hole)
+                else:
+                    holes.append(
+                        self._build_hole(
+                            model, group, feature_id("HOLE", len(holes) + 1), classifier
+                        )
+                    )
             elif classification == "bore":
                 bores.append(
                     self._build_bore(
@@ -589,7 +606,11 @@ class HoleDetector:
             far_t = group.t_min if entry_t >= group.t_max else group.t_max
 
             def widest_at(end_t: float) -> Optional[FaceRecord]:
-                """Widest cylinder touching ``end_t``, or None."""
+                """Widest cylinder touching ``end_t``, or None.
+
+                A ratio below ``counterbore_min_diameter_ratio`` is too close
+                to the bore diameter to read as a deliberate counterbore.
+                """
                 touching = [
                     face
                     for face in group.cylinders
@@ -615,6 +636,16 @@ class HoleDetector:
                 if face is None:
                     continue
                 radius = round(face.radius_mm or 0.0, 4)
+                if (
+                    label == "entry"
+                    and radius / primary_radius > self.config.counterbore_max_diameter_ratio
+                ):
+                    # Too large a jump to merge as one counterbore step - this
+                    # is instead offered to _split_oversized_counterbore,
+                    # which reports it as two linked coaxial hole features. A
+                    # far-side jump of the same size has no single entry axis
+                    # to split cleanly around, so it is left as before.
+                    continue
                 low, high = axial_range(face, group.axis, group.origin)
                 siblings = [
                     other.id
@@ -747,6 +778,268 @@ class HoleDetector:
             confidence=common["confidence"],
             evidence=evidence,
         )
+
+    # -- oversized coaxial ratio: two linked holes instead of one merged one --
+
+    def _split_oversized_counterbore(
+        self,
+        model: ShapeModel,
+        group: CylindricalGroup,
+        classifier: Optional[PointClassifier],
+    ) -> Optional[Tuple[CylindricalGroup, CylindricalGroup, float, Dict[str, Any]]]:
+        """Split a coaxial stack whose entry section is disproportionately wide.
+
+        The geometry here is genuinely one coaxial bore system - a narrower,
+        deeper section with a wider, shallower section on top of it. Below
+        ``counterbore_max_diameter_ratio`` that is reported as one hole with
+        counterbore metadata. Above it, this method reports two linked coaxial
+        hole features instead: it is *not* a claim that these are two distinct
+        physical holes or two distinct manufacturing operations, only that the
+        diameter jump is large enough that collapsing it into one counterbored
+        hole would overstate what the geometry alone supports.
+
+        Only an oversized section at the *entry* is handled: a single entry
+        axis and position can no longer describe two independently-approached
+        features cleanly once the wide section sits at the far end instead,
+        so that case is left to the ordinary (merged) counterbore path, which
+        still records its geometry in ``steps`` without calling it a
+        counterbore.
+
+        Returns ``(wide_group, narrow_group, boundary_t, full)`` or ``None``
+        when no split applies. ``full`` carries the whole stack's own
+        through/blind resolution, which the narrow section inherits.
+        """
+        if len(group.cylinders) < 2:
+            return None
+        primary_radius = group.primary.radius_mm or 0.0
+        if primary_radius <= 0:
+            return None
+
+        ends = self._probe_ends(group, classifier)
+        through, cap, closed_t, method, confidence, conflict = self._resolve_ends(
+            model, group, ends
+        )
+        entry_axis, entry_t = self._entry_direction(group, closed_t)
+
+        entry_tolerance = self.config.linear_tolerance_mm * 100
+        touching = [
+            face
+            for face in group.cylinders
+            if min(
+                abs(entry_t - bound)
+                for bound in axial_range(face, group.axis, group.origin)
+            )
+            <= entry_tolerance
+        ]
+        if not touching:
+            return None
+        widest = max(touching, key=lambda f: (f.radius_mm or 0.0, -f.id))
+        widest_radius = round(widest.radius_mm or 0.0, 4)
+        ratio = widest_radius / primary_radius
+        if ratio <= self.config.counterbore_max_diameter_ratio:
+            return None
+
+        wide_ids = {
+            f.id
+            for f in group.cylinders
+            if abs((f.radius_mm or 0.0) - widest_radius) <= self.config.coaxial_tolerance_mm
+        }
+        wide_faces = [f for f in group.cylinders if f.id in wide_ids]
+        narrow_faces = [f for f in group.cylinders if f.id not in wide_ids]
+        if not narrow_faces:
+            return None  # nothing left to be the linked, narrower feature
+
+        wide_ranges = [axial_range(f, group.axis, group.origin) for f in wide_faces]
+        w_t_min = min(r[0] for r in wide_ranges)
+        w_t_max = max(r[1] for r in wide_ranges)
+        narrow_ranges = [axial_range(f, group.axis, group.origin) for f in narrow_faces]
+        n_t_min = min(r[0] for r in narrow_ranges)
+        n_t_max = max(r[1] for r in narrow_ranges)
+
+        margin = self.config.linear_tolerance_mm * 100
+
+        def cones_within(lo: float, hi: float) -> List[FaceRecord]:
+            result = []
+            for cone in group.cones:
+                clo, chi = axial_range(cone, group.axis, group.origin)
+                if chi < lo - margin or clo > hi + margin:
+                    continue
+                result.append(cone)
+            return result
+
+        wide_group = CylindricalGroup(
+            axis=group.axis,
+            origin=group.origin,
+            cylinders=sorted(wide_faces, key=lambda f: f.id),
+            cones=cones_within(w_t_min, w_t_max),
+            t_min=w_t_min,
+            t_max=w_t_max,
+            wrap_span_deg=group.wrap_span_deg,
+        )
+        narrow_group = CylindricalGroup(
+            axis=group.axis,
+            origin=group.origin,
+            cylinders=sorted(narrow_faces, key=lambda f: f.id),
+            cones=cones_within(n_t_min, n_t_max),
+            t_min=n_t_min,
+            t_max=n_t_max,
+            wrap_span_deg=group.wrap_span_deg,
+        )
+
+        # The boundary is whichever end of the wide section is *not* the true
+        # part-exterior entry - i.e. the end it shares with the narrow group.
+        boundary_t = w_t_min if abs(entry_t - w_t_max) < abs(entry_t - w_t_min) else w_t_max
+
+        full = {
+            "through": through,
+            "cap": cap,
+            "closed_t": closed_t,
+            "method": method,
+            "confidence": confidence,
+            "conflict": conflict,
+            "entry_axis": entry_axis,
+            "entry_t": entry_t,
+        }
+        return wide_group, narrow_group, boundary_t, full
+
+    def _split_detection(
+        self, group: CylindricalGroup, common: Dict[str, Any]
+    ) -> Detection:
+        fragments = len(group.cylinders)
+        evidence = [
+            f"{fragments} coaxial concave cylindrical face(s)",
+            (
+                "diameter ratio to its linked coaxial section exceeds "
+                f"{self.config.counterbore_max_diameter_ratio} - reported as "
+                "two linked coaxial hole features rather than one merged "
+                "counterbore, without asserting they are separate physical "
+                "holes or separate manufacturing operations"
+            ),
+        ]
+        if common.get("cap") is not None:
+            evidence.append(f"closing face {common['cap'].id}")
+        evidence.append("through" if common["through"] else "blind")
+        return Detection(
+            method=DetectionMethod.COAXIAL_GROUPING,
+            confidence=common["confidence"],
+            evidence=evidence,
+        )
+
+    def _build_split_holes(
+        self,
+        model: ShapeModel,
+        wide_group: CylindricalGroup,
+        narrow_group: CylindricalGroup,
+        boundary_t: float,
+        full: Dict[str, Any],
+        wide_id: str,
+        narrow_id: str,
+    ) -> Tuple[HoleFeature, HoleFeature]:
+        """Build the wide/shallow and narrow/deep halves of a ratio split.
+
+        Neither record claims to be a distinct physical hole or a distinct
+        manufacturing operation - see :meth:`_split_oversized_counterbore`.
+        """
+        # -- wide (entry) side: always resolved against the boundary it
+        # shares with the narrow section, since that is the one question this
+        # split exists to answer honestly - it is typically blind/shallow.
+        wide_cap, _wide_cap_t = self._bottom_cap(model, wide_group, boundary_t)
+        wide_diameter = (wide_group.primary.radius_mm or 0.0) * 2.0
+        wide_depth = wide_group.depth
+        wide_position = axis_point(wide_group.origin, wide_group.axis, full["entry_t"])
+        wide_counters = self._counter_features(wide_group, full["entry_axis"], full["entry_t"])
+        wide_face_ids = sorted(
+            {f.id for f in wide_group.cylinders}
+            | {f.id for f in wide_group.cones}
+            | ({wide_cap.id} if wide_cap else set())
+        )
+        wide_reason = None
+        if wide_cap is None:
+            wide_reason = (
+                "This coaxial section is reported linked to a narrower, "
+                "deeper coaxial section rather than merged into one "
+                "counterbored hole, because the diameter ratio between them "
+                "exceeds the configured ceiling; the boundary between them "
+                "could not be characterised with a closing face."
+            )
+        wide_common = {
+            "cap": wide_cap,
+            "through": False,
+            "confidence": 0.9 if wide_cap is not None else 0.6,
+        }
+        wide_hole = HoleFeature(
+            id=wide_id,
+            subtype=self._subtype(False, wide_counters),
+            diameter_mm=wide_diameter,
+            radius_mm=wide_diameter / 2.0,
+            depth_mm=wide_depth,
+            through=False,
+            position=Vector3.from_tuple(wide_position),
+            axis=Vector3.from_tuple(full["entry_axis"]),
+            depth_diameter_ratio=(wide_depth / wide_diameter if wide_diameter > 0 else None),
+            face_ids=wide_face_ids,
+            detection=self._split_detection(wide_group, wide_common),
+            status=FeatureStatus.RESOLVED if wide_cap is not None else FeatureStatus.AMBIGUOUS,
+            reason=wide_reason,
+            is_stepped=wide_counters["is_stepped"],
+            has_counterbore=wide_counters["has_counterbore"],
+            has_countersink=wide_counters["has_countersink"],
+            counterbore_diameter_mm=wide_counters["counterbore_diameter_mm"],
+            counterbore_depth_mm=wide_counters["counterbore_depth_mm"],
+            counterbores=[CounterboreStep(**cb) for cb in wide_counters["counterbores"]],
+            countersink_diameter_mm=wide_counters["countersink_diameter_mm"],
+            countersink_angle_deg=wide_counters["countersink_angle_deg"],
+            steps=wide_counters["steps"],
+            coaxial_feature_ids=[narrow_id],
+        )
+
+        # -- narrow (deep) side: inherits the whole stack's own through/blind
+        # resolution, since the far end that decides it is entirely within
+        # this section regardless of where the wide section was cut away.
+        narrow_diameter = (narrow_group.primary.radius_mm or 0.0) * 2.0
+        narrow_depth = narrow_group.depth
+        narrow_entry_axis, _ = self._entry_direction(narrow_group, full["closed_t"])
+        narrow_entry_t = boundary_t
+        narrow_position = axis_point(narrow_group.origin, narrow_group.axis, narrow_entry_t)
+        narrow_counters = self._counter_features(narrow_group, narrow_entry_axis, narrow_entry_t)
+        narrow_face_ids = sorted(
+            {f.id for f in narrow_group.cylinders}
+            | {f.id for f in narrow_group.cones}
+            | ({full["cap"].id} if full["cap"] else set())
+        )
+        narrow_common = {
+            "cap": full["cap"],
+            "through": full["through"],
+            "confidence": full["confidence"],
+        }
+        narrow_hole = HoleFeature(
+            id=narrow_id,
+            subtype=self._subtype(full["through"], narrow_counters),
+            diameter_mm=narrow_diameter,
+            radius_mm=narrow_diameter / 2.0,
+            depth_mm=narrow_depth,
+            through=full["through"],
+            position=Vector3.from_tuple(narrow_position),
+            axis=Vector3.from_tuple(narrow_entry_axis),
+            depth_diameter_ratio=(
+                narrow_depth / narrow_diameter if narrow_diameter > 0 else None
+            ),
+            face_ids=narrow_face_ids,
+            detection=self._split_detection(narrow_group, narrow_common),
+            status=FeatureStatus.AMBIGUOUS if full["conflict"] else FeatureStatus.RESOLVED,
+            reason=full["conflict"],
+            is_stepped=narrow_counters["is_stepped"],
+            has_counterbore=narrow_counters["has_counterbore"],
+            has_countersink=narrow_counters["has_countersink"],
+            counterbore_diameter_mm=narrow_counters["counterbore_diameter_mm"],
+            counterbore_depth_mm=narrow_counters["counterbore_depth_mm"],
+            counterbores=[CounterboreStep(**cb) for cb in narrow_counters["counterbores"]],
+            countersink_diameter_mm=narrow_counters["countersink_diameter_mm"],
+            countersink_angle_deg=narrow_counters["countersink_angle_deg"],
+            steps=narrow_counters["steps"],
+            coaxial_feature_ids=[wide_id],
+        )
+        return wide_hole, narrow_hole
 
     def _build_hole(
         self,

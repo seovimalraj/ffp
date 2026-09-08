@@ -26,6 +26,7 @@
   "hole_end_probe_offset_mm": 0.05,
   "countersink_max_half_angle_deg": 75.0,
   "counterbore_min_diameter_ratio": 1.15,
+  "counterbore_max_diameter_ratio": 2.0,
 
   "pocket_min_depth_mm": 0.5,
   "pocket_min_wall_count": 3,

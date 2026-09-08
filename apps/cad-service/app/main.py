@@ -7,6 +7,7 @@ import logging
 from .routers import analyze, gltf, health
 from .api import manufacturability_scoring, conversion
 from .api.v1 import machining as machining_v1
+from .api.v1 import sheet_metal as sheet_metal_v1
 from .workers.celery import celery_app
 from . import otel
 from . import logging_config
@@ -76,6 +77,17 @@ OPENAPI_TAGS = [
             "description": "Endpoint README - detectors, thresholds, error codes",
             "url": "https://github.com/seovimalraj/cnc-quote/blob/main/apps/cad-service/app/machining/README.md",
         },
+    },
+    {
+        "name": "sheet-metal-analysis",
+        "description": (
+            "**Deterministic sheet-metal geometry extraction** (Phase 1: "
+            "schema/plumbing only, detectors land in later phases). "
+            "Structurally parallel to machining-analysis but targets "
+            "sheet-metal parts - thickness, bends, flanges, holes/cutouts, "
+            "hems, DFM distance checks. Flat-pattern unfolding is out of "
+            "scope for this iteration."
+        ),
     },
     {
         "name": "analyze",
@@ -188,6 +200,11 @@ def create_app():
     # Deterministic machining geometry extraction (no cost, no pricing).
     app.include_router(
         machining_v1.router, prefix="/api/v1/cad", tags=["machining-analysis"]
+    )
+    # Deterministic sheet-metal geometry extraction (no cost, no pricing).
+    # Phase 1: schema/plumbing only - detectors land in later phases.
+    app.include_router(
+        sheet_metal_v1.router, prefix="/api/v1/cad", tags=["sheet-metal-analysis"]
     )
 
     @app.get("/")

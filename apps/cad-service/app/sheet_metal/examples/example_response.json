@@ -1,0 +1,267 @@
+{
+  "success": true,
+  "analysis_version": "0.1",
+  "kernel": "OCP",
+  "units": "mm",
+  "options": {
+    "unit_system": "metric",
+    "include_face_details": false,
+    "include_feature_details": true,
+    "include_debug_geometry": false,
+    "include_topology_entities": false
+  },
+  "analysis_duration_ms": 45.429,
+  "file": {
+    "filename": "swept_l_bracket_bend.step",
+    "format": "STEP",
+    "file_size_bytes": 30984,
+    "sha256": "a3f5c9d2e14b7086f2ab55c9d1e4a7b3c8f01d5e6a2b9c4d7e0f3a6b9c2d5e8f1"
+  },
+  "model": {
+    "solid_count": 1,
+    "shell_count": 1,
+    "face_count": 12,
+    "edge_count": 28,
+    "vertex_count": 18,
+    "wire_count": 12,
+    "compound_count": 0,
+    "is_valid": true,
+    "has_open_shells": false,
+    "is_multi_body": false
+  },
+  "topology": {
+    "faces_per_solid": [
+      12
+    ],
+    "closed_shell_count": 1,
+    "open_shell_count": 0,
+    "free_edge_count": 0,
+    "seam_edge_count": 0,
+    "max_faces_per_edge": 2,
+    "euler_characteristic": 2
+  },
+  "geometry": {
+    "bounding_box": {
+      "min": {
+        "x": -0.0,
+        "y": -60.0,
+        "z": -0.0
+      },
+      "max": {
+        "x": 60.0,
+        "y": 0.0,
+        "z": 45.0
+      },
+      "length_mm": 60.0,
+      "width_mm": 60.0,
+      "height_mm": 45.0,
+      "diagonal_mm": 96.047
+    },
+    "volume_mm3": 1646.02,
+    "surface_area_mm2": 13396.75,
+    "center_of_mass": {
+      "x": 30.0,
+      "y": -118.371,
+      "z": -69.629
+    },
+    "moments_of_inertia": {
+      "ixx": -26124309.4852409,
+      "iyy": -11122380.651669148,
+      "izz": -14014318.175688626,
+      "ixy": -1.0244548320770264e-08,
+      "ixz": -5.587935447692871e-09,
+      "iyz": 13296716.277437687,
+      "principal": [
+        806757.6671404764,
+        -25943456.494498253,
+        -26124309.4852409
+      ]
+    },
+    "is_closed_volume": true,
+    "source": "GEOMETRY"
+  },
+  "sheet_metal_candidate": {
+    "is_candidate": true,
+    "confidence": 0.8,
+    "evidence": {
+      "paired_area_fraction": 0.4479,
+      "flatness_ratio": 0.033333,
+      "dominant_thickness_mm": 2.0,
+      "method": "paired_planar_faces"
+    },
+    "status": "ambiguous",
+    "reason": "Thickness is in the sheet-metal range but paired-face area coverage is below the configured threshold: paired area fraction 44.8% is moderate; dominant thickness 2.00 mm is in sheet range; flat profile (thickness/extent=0.033); dominant cluster infx the next-best"
+  },
+  "thickness": {
+    "dominant_thickness_mm": 2.0,
+    "is_uniform": true,
+    "variance_mm": 0.0,
+    "method": "paired_planar_faces",
+    "sample_count": 2,
+    "note": "Dominant thickness 2.000 mm from 2 paired face(s), std dev 0.0000 mm (0.0% of thickness)."
+  },
+  "faces": {
+    "base_face_id": 1,
+    "flange_faces": [
+      {
+        "face_id": 3,
+        "area_mm2": 3600.0,
+        "plane_normal": {
+          "x": -0.0,
+          "y": -0.0,
+          "z": 1.0
+        },
+        "adjacent_bend_ids": [
+          "bend_1"
+        ]
+      },
+      {
+        "face_id": 5,
+        "area_mm2": 2400.0,
+        "plane_normal": {
+          "x": -0.0,
+          "y": 1.0,
+          "z": -0.0
+        },
+        "adjacent_bend_ids": []
+      },
+      {
+        "face_id": 7,
+        "area_mm2": 2400.0,
+        "plane_normal": {
+          "x": 0.0,
+          "y": -1.0,
+          "z": -0.0
+        },
+        "adjacent_bend_ids": [
+          "bend_1"
+        ]
+      }
+    ]
+  },
+  "bends": [
+    {
+      "id": "bend_1",
+      "angle_deg": 90.0,
+      "inner_radius_mm": 3.0,
+      "bend_line": {
+        "start": {
+          "x": 60.0,
+          "y": 0.0,
+          "z": 5.0
+        },
+        "end": {
+          "x": -3.552713678800501e-15,
+          "y": 0.0,
+          "z": 5.0
+        }
+      },
+      "axis": {
+        "x": -1.0,
+        "y": -0.0,
+        "z": -0.0
+      },
+      "length_mm": 60.0,
+      "direction": "down",
+      "sequence_hint": 1,
+      "k_factor_assumed": 0.44,
+      "bend_allowance_mm": 6.095,
+      "bend_deduction_mm": 3.905,
+      "adjacent_flange_ids": [
+        "3",
+        "7"
+      ],
+      "detection": {
+        "method": "topology_and_surface_analysis",
+        "confidence": 0.9,
+        "evidence": [
+          "cylindrical face 9 (r=3.000mm) bridges planar faces 3 and 7",
+          "flange normals 90.0 deg apart, within the configured [45.0, 135.0] deg bend window"
+        ],
+        "source": "GEOMETRY"
+      }
+    }
+  ],
+  "bend_reliefs": [
+    {
+      "id": "relief_bend_1",
+      "bend_id": "bend_1",
+      "type": "none-detected",
+      "width_mm": null,
+      "depth_mm": null,
+      "position": null,
+      "note": "Bend-relief detection is not yet implemented (see design doc section 9); this is a placeholder, not a geometric finding. The absence of a detected relief here does not mean the part has none."
+    }
+  ],
+  "holes": [],
+  "cutouts": [],
+  "slots": [],
+  "hems": [],
+  "outer_profile": {
+    "perimeter_mm": 240.0,
+    "is_closed": true,
+    "validity_issues": []
+  },
+  "distance_flags": [],
+  "feature_patterns": [],
+  "symmetry": {
+    "has_symmetry": true,
+    "axis_or_plane": "mirror plane normal to local X, through the profile centroid",
+    "symmetry_type": "mirror",
+    "confidence": 0.7,
+    "note": "Bounding-profile mirror check only against the outer silhouette - not full topological symmetry (design doc section 9)."
+  },
+  "complexity_indicators": {
+    "bend_count": 1,
+    "unique_bend_angle_count": 1,
+    "unique_bend_radius_count": 1,
+    "hole_count": 0,
+    "cutout_count": 0,
+    "slot_count": 0,
+    "hem_count": 0,
+    "distinct_hole_diameter_count": 0,
+    "minimum_bend_radius_mm": 3.0,
+    "minimum_feature_to_edge_distance_mm": null,
+    "minimum_feature_to_bend_distance_mm": null,
+    "feature_count_total": 1
+  },
+  "pmi": {
+    "available": true,
+    "part_name": "Open CASCADE STEP translator 7.9 1",
+    "part_number": "Open CASCADE STEP translator 7.9 1",
+    "revision": null,
+    "material": null,
+    "surface_finish": null,
+    "gdt": [],
+    "datums": [],
+    "annotations": [],
+    "feature_names": [],
+    "raw": [
+      {
+        "key": "file_name",
+        "value": "Open CASCADE Shape Model",
+        "source": "CAD_METADATA"
+      },
+      {
+        "key": "file_description",
+        "value": "Open CASCADE Model",
+        "source": "CAD_METADATA"
+      },
+      {
+        "key": "product_id",
+        "value": "Open CASCADE STEP translator 7.9 1",
+        "source": "CAD_METADATA"
+      },
+      {
+        "key": "product_name",
+        "value": "Open CASCADE STEP translator 7.9 1",
+        "source": "CAD_METADATA"
+      }
+    ],
+    "source": "CAD_METADATA",
+    "note": "Everything here is declared by the CAD file, not measured from the geometry."
+  },
+  "warnings": [],
+  "errors": [],
+  "debug_geometry": null
+}

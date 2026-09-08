@@ -142,6 +142,13 @@ class MachiningConfig(BaseModel):
         default=1.15,
         description="Coaxial larger cylinder must exceed this ratio to be a counterbore.",
     )
+    counterbore_max_diameter_ratio: float = Field(
+        default=2.0,
+        description=(
+            "Coaxial larger cylinder beyond this ratio is reported as a second "
+            "linked coaxial hole rather than merged as a counterbore step."
+        ),
+    )
 
     # --- pockets / slots --------------------------------------------------
     pocket_min_depth_mm: float = Field(default=0.5)
