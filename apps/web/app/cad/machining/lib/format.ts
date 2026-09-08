@@ -226,10 +226,24 @@ export function featureSummary(
   }
 }
 
+/** Look up a feature by id across every feature collection, for the 3D-view marker. */
+export function findFeatureById(
+  result: MachiningAnalysisResponse,
+  featureId: string | null,
+): AnyMachiningFeature | null {
+  if (!featureId) return null;
+  for (const group of featureGroups(result)) {
+    const match = group.features.find((f) => f.id === featureId);
+    if (match) return match;
+  }
+  return null;
+}
+
 /** Feature position, when the feature type carries one. */
 export function featurePosition(
-  feature: AnyMachiningFeature,
+  feature: AnyMachiningFeature | null,
 ): Vector3 | null {
+  if (!feature) return null;
   const position = (feature as { position?: Vector3 | null }).position;
   return position ?? null;
 }

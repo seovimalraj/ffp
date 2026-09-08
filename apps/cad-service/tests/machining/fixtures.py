@@ -422,6 +422,46 @@ def stepped_shaft_without_groove(tmp_path: Path) -> str:
     return _write_step(shape, tmp_path / "stepped_shaft_no_groove.step")
 
 
+def block_with_ring_channel_around_boss(tmp_path: Path) -> str:
+    """80 x 80 x 20 block, a Ø10 boss on top, and a ring channel cut around it.
+
+    A Ø10 boss (radius 5 mm), 15 mm tall, is fused to the top of the block, so
+    it stands proud of the top face at z = 20 (boss top at z = 35). A
+    ring-shaped channel is then cut *down into* the block's own material
+    around the boss: outer radius 12 mm (diameter 24 mm - a candidate hole
+    diameter, comfortably under ``max_hole_diameter_mm``), 5 mm deep (from
+    z = 15 to z = 20), leaving the boss - and the material directly beneath
+    it - untouched.
+
+    This reproduces the annular-cap bug: the channel's outer wall (a Ø24
+    internal cylinder, z = 15 to 20) is a coaxial internal cylinder just like
+    a blind hole's wall, and its floor (the annulus at z = 15, from r = 5 to
+    r = 12) is planar, perpendicular to the axis, and touches only one
+    member of its own coaxial stack - exactly the signature ``_bottom_cap``
+    used to accept as a genuine bottom. But the floor is an *annulus*, not a
+    solid disk: its inner edge is bounded by the boss's own cylindrical
+    wall, a face that belongs to a completely different (external) feature,
+    not to this hole's ``member_ids``. Before the fix, this was wrongly
+    reported as a resolved blind hole; the boss passing through the middle
+    was invisible to the only check in place (touching >= 2 members of the
+    same stack), because the boss is not a member of this stack at all.
+    """
+    block = _box(0, 0, 0, 80, 80, 20)
+    boss = _cylinder(40, 40, 20, 5.0, 15.0)
+    shape = _fuse(block, boss)
+    # Ring tool: Ø24 outer, Ø10 inner (matching the boss), 5 mm deep, cut
+    # into the block below its top face. The inner cutter is taller and
+    # extends past both faces of the tool so the boolean cleanly removes
+    # only the annular region, leaving the boss standing through the middle
+    # of the channel.
+    ring_tool = _cut(
+        _cylinder(40, 40, 15, 12.0, 5.0),
+        _cylinder(40, 40, 14, 5.0, 7.0),
+    )
+    shape = _cut(shape, ring_tool)
+    return _write_step(shape, tmp_path / "block_with_ring_channel_around_boss.step")
+
+
 def sleeve_with_internal_groove(tmp_path: Path) -> str:
     """Ø50 sleeve, Ø30 bore, with a Ø36 x 5 mm internal circlip groove."""
     shape = _cut(_cylinder(0, 0, 0, 25.0, 60.0), _cylinder(0, 0, -5, 15.0, 70.0))

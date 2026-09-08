@@ -21,7 +21,13 @@ import type {
 import { isMachiningError } from "@/types/machining-analysis";
 
 import { AnalysisPanel } from "./components/analysis-panel";
-import { formatBytes, formatDuration, humanize } from "./lib/format";
+import {
+  featurePosition,
+  findFeatureById,
+  formatBytes,
+  formatDuration,
+  humanize,
+} from "./lib/format";
 
 /**
  * CAD machining analysis workbench.
@@ -269,6 +275,13 @@ export default function MachiningAnalysisPage() {
                 showControls
                 className="h-full w-full"
                 backgroundColor="#ffffff"
+                markerLocation={
+                  status.kind === "done"
+                    ? featurePosition(
+                        findFeatureById(status.result, selectedFeatureId),
+                      )
+                    : null
+                }
               />
 
               {status.kind === "analyzing" && (
