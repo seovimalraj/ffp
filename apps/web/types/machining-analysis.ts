@@ -158,6 +158,13 @@ export interface HoleFeature extends FeatureBase {
   /** Every recessed end, entry first. Empty when the bore is not counterbored. */
   counterbores: CounterboreStep[];
   steps: Array<Record<string, number>>;
+  /**
+   * Other hole ids sharing this hole's axis. Populated when a coaxial
+   * diameter jump is too large to merge into one counterbored hole -
+   * this links the two resulting hole records without asserting they are
+   * physically distinct holes or separate manufacturing operations.
+   */
+  coaxial_feature_ids: string[];
 }
 
 export interface BoreFeature extends FeatureBase {

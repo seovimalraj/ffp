@@ -176,6 +176,43 @@ class TestHoleDetector:
         diameters = sorted(step["diameter_mm"] for step in hole["steps"])
         assert diameters == pytest.approx([6.0, 12.0])
 
+    def test_a_counterbore_at_the_ratio_ceiling_still_merges_into_one_hole(
+        self, analyze, step_dir
+    ):
+        # Regression check: a ratio of exactly 2.0 (the default
+        # counterbore_max_diameter_ratio) is not "exceeding" it, so this must
+        # keep behaving exactly as before the ratio-split feature existed.
+        result = analyze(fixtures.block_with_counterbored_hole(step_dir))
+        holes = result["features"]["holes"]
+        assert len(holes) == 1
+        hole = holes[0]
+        assert hole["has_counterbore"] is True
+        assert hole["subtype"] == "counterbore"
+        assert hole["coaxial_feature_ids"] == []
+
+    def test_an_oversized_coaxial_recess_is_reported_as_two_linked_holes(
+        self, analyze, step_dir
+    ):
+        result = analyze(fixtures.block_with_oversized_coaxial_recess(step_dir))
+        holes = result["features"]["holes"]
+        assert len(holes) == 2
+
+        wide = next(h for h in holes if h["diameter_mm"] == pytest.approx(42.0))
+        narrow = next(h for h in holes if h["diameter_mm"] == pytest.approx(15.0))
+
+        assert wide["id"] != narrow["id"]
+        assert wide["coaxial_feature_ids"] == [narrow["id"]]
+        assert narrow["coaxial_feature_ids"] == [wide["id"]]
+
+        # Neither is reported as a merged counterbore - the ratio is too
+        # large for that, per counterbore_max_diameter_ratio.
+        assert wide["has_counterbore"] is False
+        assert narrow["has_counterbore"] is False
+
+        assert wide["depth_mm"] == pytest.approx(6.0, abs=1e-3)
+        assert wide["through"] is False
+        assert narrow["through"] is True
+
     def test_a_bore_split_into_sub_threshold_arcs_is_still_found(
         self, analyze, step_dir
     ):

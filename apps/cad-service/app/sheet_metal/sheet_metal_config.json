@@ -1,0 +1,27 @@
+{
+  "_comment": [
+    "Effective thresholds for POST /api/v1/cad/analyze-sheet-metal.",
+    "Every value is a geometric decision boundary - there are no prices,",
+    "rates, machines or processes here, by design.",
+    "Override a single value with SHEET_METAL_<FIELD_NAME_UPPERCASE>, or point",
+    "SHEET_METAL_CONFIG_PATH at a different JSON file. See app/sheet_metal/config.py."
+  ],
+
+  "max_upload_bytes": 104857600,
+  "max_faces": 50000,
+
+  "min_sheet_thickness_mm": 0.4,
+  "max_sheet_thickness_mm": 6.0,
+
+  "min_bend_angle_deg": 45.0,
+  "max_bend_angle_deg": 135.0,
+
+  "default_k_factor": 0.44,
+
+  "min_bend_radius_to_thickness_ratio": 1.0,
+  "min_feature_size_mm": 1.0,
+  "min_hole_to_edge_distance_mm": 2.0,
+  "min_hole_to_bend_distance_mm": 3.0,
+
+  "paired_face_area_fraction_threshold": 0.5
+}

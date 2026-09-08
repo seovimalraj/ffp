@@ -115,6 +115,20 @@ def block_with_counterbored_hole(tmp_path: Path) -> str:
     return _write_step(shape, tmp_path / "block_with_counterbored_hole.step")
 
 
+def block_with_oversized_coaxial_recess(tmp_path: Path) -> str:
+    """Ø15 through bore with a Ø42 recess 6 mm deep at the top face.
+
+    Ratio 42/15 = 2.8, above the default ``counterbore_max_diameter_ratio``
+    of 2.0 - unlike :func:`block_with_counterbored_hole` (ratio 2.0, at the
+    ceiling but not over it), this is expected to come back as two linked
+    coaxial hole features rather than one merged counterbore.
+    """
+    shape = _box(0, 0, 0, 100, 100, 30)
+    shape = _cut(shape, _cylinder(50, 50, -5, 7.5, 40.0))
+    shape = _cut(shape, _cylinder(50, 50, 24, 21.0, 7.0))
+    return _write_step(shape, tmp_path / "block_with_oversized_coaxial_recess.step")
+
+
 def plate_with_boss(tmp_path: Path) -> str:
     """80 x 80 x 10 plate with a 30 mm diameter, 12 mm tall cylindrical boss."""
     shape = _fuse(_box(0, 0, 0, 80, 80, 10), _cylinder(40, 40, 10, 15.0, 12.0))

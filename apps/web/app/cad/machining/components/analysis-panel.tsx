@@ -379,6 +379,7 @@ function FeaturesTab({
                     selectedFeatureId === feature.id ? null : feature.id,
                   )
                 }
+                onJumpTo={(id) => onSelectFeature(id)}
               />
             ))}
           </ul>
@@ -396,6 +397,7 @@ function FeatureRow({
   directions,
   maxToolDiameter,
   onToggle,
+  onJumpTo,
 }: {
   feature: AnyMachiningFeature;
   unit: string;
@@ -404,9 +406,19 @@ function FeatureRow({
   directions: string[];
   maxToolDiameter: number | null;
   onToggle: () => void;
+  onJumpTo: (featureId: string) => void;
 }) {
   const ambiguous = feature.status === "ambiguous";
   const position = featurePosition(feature);
+  const coaxialIds =
+    (feature as { coaxial_feature_ids?: string[] }).coaxial_feature_ids ?? [];
+  const counterbore =
+    (feature as { has_counterbore?: boolean }).has_counterbore
+      ? (feature as {
+          counterbore_diameter_mm: number | null;
+          counterbore_depth_mm: number | null;
+        })
+      : null;
 
   return (
     <li>
@@ -479,6 +491,20 @@ function FeatureRow({
                       ],
                     ] as Array<[string, string]>)
                   : []),
+                ...(counterbore
+                  ? ([
+                      [
+                        "Counterbore",
+                        `⌀ ${formatLength(
+                          counterbore.counterbore_diameter_mm ?? 0,
+                          unit,
+                        )} × ${formatLength(
+                          counterbore.counterbore_depth_mm ?? 0,
+                          unit,
+                        )} deep`,
+                      ],
+                    ] as Array<[string, string]>)
+                  : []),
                 ["Faces", feature.face_ids.join(", ") || "—"],
                 [
                   "Detected by",
@@ -488,6 +514,35 @@ function FeatureRow({
                 ],
               ]}
             />
+
+            {coaxialIds.length > 0 && (
+              <div>
+                <p className="text-[10px] font-semibold uppercase tracking-wide text-slate-400">
+                  Linked coaxial hole{coaxialIds.length > 1 ? "s" : ""}
+                </p>
+                <p className="mt-1 text-[11px] leading-relaxed text-slate-500">
+                  Shares an axis with a large diameter jump - reported as
+                  linked hole records rather than one counterbored hole. Not
+                  an assertion that these are separate physical holes or
+                  operations.
+                </p>
+                <div className="mt-1 flex flex-wrap gap-1.5">
+                  {coaxialIds.map((id) => (
+                    <button
+                      key={id}
+                      type="button"
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        onJumpTo(id);
+                      }}
+                      className="rounded bg-slate-100 px-1.5 py-0.5 font-mono text-[10px] font-medium text-slate-700 hover:bg-slate-200"
+                    >
+                      {id}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
 
             {feature.detection.evidence.length > 0 && (
               <div>
