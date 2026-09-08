@@ -525,6 +525,24 @@ interface CadViewerProps {
    * Pass `null`/`undefined` to clear it.
    */
   markerLocation?: { x: number; y: number; z: number } | null;
+  /**
+   * Frontend-space `ExactFace.id` values (already resolved by the caller,
+   * e.g. via `app/cad/machining/lib/face-matching.ts`) to highlight as
+   * exact colored patches using each face's own triangulated geometry.
+   * Takes priority over `markerLocation` when a match is found; pass
+   * `null`/`undefined`/`[]` to clear it. Falls back to no highlight (leaving
+   * `markerLocation` as the approximate cue) when ids don't resolve to any
+   * loaded face - e.g. before topology has loaded, or when the runtime WASM
+   * build predates per-face patch geometry.
+   */
+  highlightedFaceIds?: string[] | null;
+  /**
+   * Fired once per successful CAD load with the exact topology extracted
+   * for it (or `null` when the runtime returned none), so a parent page can
+   * geometrically match backend-detected feature faces against this
+   * viewer's own `ExactFace[]` and drive `highlightedFaceIds`.
+   */
+  onTopologyLoaded?: (topology: CadTopologyResult | null) => void;
 }
 
 export interface CadViewerRef {
@@ -549,6 +567,8 @@ export const CadViewer = forwardRef<CadViewerRef, CadViewerProps>(
       showFlatParts = false,
       assemblyLoadMode: assemblyLoadModeProp,
       markerLocation,
+      highlightedFaceIds,
+      onTopologyLoaded,
     },
     ref,
   ) => {
@@ -1005,6 +1025,38 @@ export const CadViewer = forwardRef<CadViewerRef, CadViewerProps>(
       viewerRef.current.setMarker(markerLocation ?? null);
     }, [markerLocation]);
 
+    // Exact face-patch highlight: resolve the caller's matched frontend
+    // ExactFace ids against this load's topology and hand their own
+    // triangulated geometry to the viewer. Falls through to no-op (leaving
+    // `markerLocation`'s approximate marker as the visible cue) when ids are
+    // absent or don't resolve - e.g. no geometric match was found, or the
+    // runtime WASM build predates per-face patch geometry.
+    useEffect(() => {
+      if (!viewerRef.current) return;
+      const ids = highlightedFaceIds;
+      if (!ids || ids.length === 0) {
+        viewerRef.current.setFaceHighlight(null);
+        return;
+      }
+      const topology = cadTopologyContextRef.current?.topology;
+      if (!topology) {
+        viewerRef.current.setFaceHighlight(null);
+        return;
+      }
+      const facesById = new Map(topology.faces.map((face) => [face.id, face]));
+      const matchedFaces: Array<{ positions: Float32Array; indices: Uint32Array }> =
+        [];
+      for (const id of ids) {
+        const face = facesById.get(id);
+        if (face?.positions && face?.indices) {
+          matchedFaces.push({ positions: face.positions, indices: face.indices });
+        }
+      }
+      viewerRef.current.setFaceHighlight(
+        matchedFaces.length > 0 ? matchedFaces : null,
+      );
+    }, [highlightedFaceIds, cadTopologyEdgeCount]);
+
     function setDimsFromGeometry(geom: THREE.BufferGeometry) {
       geom.computeBoundingBox();
       const size = new THREE.Vector3();
@@ -1120,6 +1172,7 @@ export const CadViewer = forwardRef<CadViewerRef, CadViewerProps>(
       cadTopologyContextRef.current = context;
       setCadTopologyAvailability(context?.topologyAvailability ?? null);
       setCadTopologyEdgeCount(context?.topology?.edges?.length ?? 0);
+      onTopologyLoaded?.(context?.topology ?? null);
     }
 
     function setCadTopologyContextFromCadLoad(

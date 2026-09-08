@@ -66,6 +66,18 @@ export type ExactFace = {
     axis?: [number, number, number];
     radius?: number;
   };
+  /**
+   * Self-contained triangulation of this single face, in the same
+   * part/global coordinate frame as everything else in the topology
+   * payload. `indices` are local to this face's own `positions` array (not
+   * indices into the merged per-part render mesh). Optional: only present
+   * when the runtime WASM build emits per-face patch geometry (see
+   * `tools/occt-wasm-build/patches/0004-add-face-patch-geometry.patch`).
+   * Used to build an exact colored-patch highlight for a selected feature's
+   * faces (`viewer.ts#setFaceHighlight`), rather than an approximate marker.
+   */
+  positions?: Float32Array;
+  indices?: Uint32Array;
 };
 
 export type CadTopologyResult = {

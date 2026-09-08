@@ -633,6 +633,10 @@ function normalizeExactFaces(raw: unknown): ExactFace[] {
     const item = raw[index];
     if (!item || typeof item !== "object") continue;
     const obj = item as any;
+    const positions =
+      obj.positions != null ? toFloat32Array(obj.positions) : undefined;
+    const indices =
+      obj.indices != null ? toUint32Array(obj.indices) : undefined;
     out.push({
       id: asString(obj.id, `f_${index}`),
       partId: normalizePartId(obj.partId),
@@ -645,6 +649,12 @@ function normalizeExactFaces(raw: unknown): ExactFace[] {
             radius: toNumber(obj.analytic?.radius),
           }
         : undefined,
+      // Self-contained per-face triangulation, when the runtime WASM build
+      // emits it (see topology_export.cpp's AppendFacePatchGeometry). Absent
+      // on older/unpatched runtime artifacts - callers must treat this as
+      // optional.
+      ...(positions && positions.length > 0 ? { positions } : {}),
+      ...(indices && indices.length > 0 ? { indices } : {}),
     });
   }
   return out;
@@ -680,6 +690,14 @@ function collectTopologyTransferables(
   for (const edge of topology.edges) {
     if (edge.samplePositions instanceof Float32Array) {
       transferables.push(edge.samplePositions.buffer);
+    }
+  }
+  for (const face of topology.faces) {
+    if (face.positions instanceof Float32Array) {
+      transferables.push(face.positions.buffer);
+    }
+    if (face.indices instanceof Uint32Array) {
+      transferables.push(face.indices.buffer);
     }
   }
   return transferables;

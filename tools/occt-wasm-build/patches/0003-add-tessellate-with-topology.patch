@@ -98,7 +98,7 @@ diff --git a/occt-import-js/src/topology_export.cpp b/occt-import-js/src/topolog
 new file mode 100644
 --- /dev/null
 +++ b/occt-import-js/src/topology_export.cpp
-@@ -0,0 +1,703 @@
+@@ -0,0 +1,794 @@
 +#ifdef EMSCRIPTEN
 +
 +#include "topology_export.hpp"
@@ -112,7 +112,11 @@ new file mode 100644
 +#include <BRep_Tool.hxx>
 +#include <GeomAbs_CurveType.hxx>
 +#include <GeomAbs_SurfaceType.hxx>
++#include <BRepMesh_IncrementalMesh.hxx>
++#include <Poly_Array1OfTriangle.hxx>
 +#include <Poly_Polygon3D.hxx>
++#include <Poly_Triangle.hxx>
++#include <Poly_Triangulation.hxx>
 +#include <Precision.hxx>
 +#include <TColgp_Array1OfPnt.hxx>
 +#include <TCollection_AsciiString.hxx>
@@ -508,6 +512,86 @@ new file mode 100644
 +    }
 +}
 +
++// Emits this face's own self-contained triangulation (positions local to the
++// face, indices local to that same array) so the face can be rendered as a
++// standalone highlight overlay without cross-referencing the merged
++// per-part render mesh's index space. Reuses the triangulation OCCT already
++// attached to the face during import (at the deflection settings the caller
++// passed into ReadStepFile/ReadIgesFile/ReadBrepFile) rather than
++// re-tessellating, so this never changes the visual density of the part
++// mesh. If for any reason the face carries no triangulation yet (seen with
++// some BREP-only import paths), a light on-demand mesh pass at
++// conservative default deflections is used purely so a highlight overlay
++// still exists - it does not touch or replace the shape's stored mesh used
++// elsewhere.
++static void AppendFaceTessellationData (const TopoDS_Face& face, emscripten::val& faceObj)
++{
++    TopLoc_Location faceLocation;
++    Handle (Poly_Triangulation) triangulation = BRep_Tool::Triangulation (face, faceLocation);
++
++    if (triangulation.IsNull ()) {
++        try {
++            BRepMesh_IncrementalMesh incrementalMesh (face, 0.1, Standard_False, 0.5, Standard_True);
++        } catch (...) {
++            return;
++        }
++        triangulation = BRep_Tool::Triangulation (face, faceLocation);
++    }
++
++    if (triangulation.IsNull ()) {
++        return;
++    }
++
++    const Standard_Integer nodeCount = triangulation->NbNodes ();
++    const Standard_Integer triangleCount = triangulation->NbTriangles ();
++    if (nodeCount <= 0 || triangleCount <= 0) {
++        return;
++    }
++
++    // Face orientation flips the winding order that the underlying surface
++    // parameterization produced, exactly as the rest of this importer and
++    // the merged-mesh exporter (WriteMeshes) already account for - a
++    // REVERSED face must swap two triangle corners so the outward normal
++    // matches the rest of the model instead of pointing inward.
++    const bool reversed = (face.Orientation () == TopAbs_REVERSED);
++    const gp_Trsf nodeTransform = faceLocation.Transformation ();
++
++    emscripten::val positionsArr (emscripten::val::array ());
++    for (Standard_Integer nodeIndex = 1; nodeIndex <= nodeCount; nodeIndex++) {
++        gp_Pnt point = triangulation->Node (nodeIndex);
++        point.Transform (nodeTransform);
++        const Standard_Integer base = (nodeIndex - 1) * 3;
++        positionsArr.set (base, point.X ());
++        positionsArr.set (base + 1, point.Y ());
++        positionsArr.set (base + 2, point.Z ());
++    }
++
++    emscripten::val indicesArr (emscripten::val::array ());
++    Standard_Integer outTriangleIndex = 0;
++    for (Standard_Integer triIndex = 1; triIndex <= triangleCount; triIndex++) {
++        const Poly_Triangle& triangle = triangulation->Triangle (triIndex);
++        Standard_Integer n1 = 0;
++        Standard_Integer n2 = 0;
++        Standard_Integer n3 = 0;
++        triangle.Get (n1, n2, n3);
++
++        // Node indices in Poly_Triangulation are 1-based; the emitted index
++        // array is local to this face's own positions array and 0-based.
++        Standard_Integer i0 = n1 - 1;
++        Standard_Integer i1 = reversed ? (n3 - 1) : (n2 - 1);
++        Standard_Integer i2 = reversed ? (n2 - 1) : (n3 - 1);
++
++        const Standard_Integer base = outTriangleIndex * 3;
++        indicesArr.set (base, i0);
++        indicesArr.set (base + 1, i1);
++        indicesArr.set (base + 2, i2);
++        outTriangleIndex += 1;
++    }
++
++    faceObj.set ("positions", positionsArr);
++    faceObj.set ("indices", indicesArr);
++}
++
 +static void AppendTopologyForPart (
 +    const PartShapeRef& partRef,
 +    emscripten::val& verticesArr,
@@ -558,6 +642,7 @@ new file mode 100644
 +        BRepAdaptor_Surface surfaceAdaptor (face, Standard_True);
 +        faceObj.set ("kind", FaceKindToString (surfaceAdaptor.GetType ()));
 +        SetFaceAnalyticData (faceObj, surfaceAdaptor);
++        AppendFaceTessellationData (face, faceObj);
 +
 +        facesArr.set (nextFaceIndex, faceObj);
 +        nextFaceIndex += 1;
