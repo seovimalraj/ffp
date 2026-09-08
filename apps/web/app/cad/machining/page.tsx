@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useDropzone } from "react-dropzone";
 import {
   AlertCircle,
@@ -13,6 +13,7 @@ import {
 } from "lucide-react";
 
 import { CadViewer } from "@/components/cad/cad-viewer";
+import type { CadTopologyResult } from "@/components/cad/exact-cad-topology";
 import type {
   MachiningAnalysisResponse,
   MachiningCapabilities,
@@ -21,6 +22,7 @@ import type {
 import { isMachiningError } from "@/types/machining-analysis";
 
 import { AnalysisPanel } from "./components/analysis-panel";
+import { matchFeatureFaces, scaleDistanceTolerance } from "./lib/face-matching";
 import {
   featurePosition,
   findFeatureById,
@@ -63,6 +65,10 @@ export default function MachiningAnalysisPage() {
   );
   const [selectedFeatureId, setSelectedFeatureId] = useState<string | null>(null);
   const [includeFaceDetails, setIncludeFaceDetails] = useState(false);
+  // Exact topology loaded by the viewer for the current file, used to
+  // geometrically match a selected feature's backend face_ids against the
+  // viewer's own tessellated faces for exact-patch highlighting.
+  const [topology, setTopology] = useState<CadTopologyResult | null>(null);
 
   // Abort an in-flight analysis when a new file is dropped, so a slow response
   // for the previous part cannot overwrite the new one.
@@ -95,12 +101,20 @@ export default function MachiningAnalysisPage() {
 
       setStatus({ kind: "analyzing" });
       setSelectedFeatureId(null);
+      setTopology(null);
 
       const body = new FormData();
       body.append("file", target);
       body.append("unit_system", "metric");
       body.append("include_feature_details", "true");
-      body.append("include_face_details", String(withFaceDetails));
+      // Exact face-patch highlighting in the 3D view matches a selected
+      // feature's backend face_ids against `face_details[]` geometry, so
+      // this is always requested regardless of the (larger-response) UI
+      // toggle - `withFaceDetails` is currently unused but kept as a
+      // parameter in case that toggle is reintroduced to gate something
+      // else later.
+      void withFaceDetails;
+      body.append("include_face_details", "true");
       body.append("include_debug_geometry", "false");
 
       try {
@@ -156,7 +170,35 @@ export default function MachiningAnalysisPage() {
     setFile(null);
     setStatus({ kind: "idle" });
     setSelectedFeatureId(null);
+    setTopology(null);
   };
+
+  // Resolve the selected feature's backend face_ids into matched frontend
+  // ExactFace ids, geometrically (see lib/face-matching.ts) - the two
+  // kernels tessellate independently, so face ids never line up directly.
+  // Falls back to an empty array (which CadViewer treats as "no highlight,
+  // keep the marker") whenever topology hasn't loaded yet, the feature
+  // carries no face_ids, or nothing matched within tolerance.
+  const highlightedFaceIds = useMemo(() => {
+    if (status.kind !== "done" || !topology) return [];
+    const feature = findFeatureById(status.result, selectedFeatureId);
+    if (!feature || !Array.isArray(feature.face_ids) || feature.face_ids.length === 0) {
+      return [];
+    }
+    const faceDetails = status.result.face_details;
+    if (!faceDetails || faceDetails.length === 0) return [];
+    const diagonal = status.result.geometry?.bounding_box?.diagonal_mm ?? 0;
+    return matchFeatureFaces(feature.face_ids, faceDetails, topology.faces, {
+      radiusRelativeTolerance: 0.02,
+      axisDotTolerance: 0.05,
+      distanceTolerance: scaleDistanceTolerance(diagonal || 100),
+    });
+  }, [status, selectedFeatureId, topology]);
+
+  // The marker is the fallback cue: shown only when no exact face match was
+  // found (including when topology or face_details are unavailable), so the
+  // user is never left with neither a highlight nor a marker.
+  const showFallbackMarker = highlightedFaceIds.length === 0;
 
   const kernelReady = capabilities?.kernel_available ?? true;
   // A binding that imports but is missing symbols is a broken install, not an
@@ -275,8 +317,10 @@ export default function MachiningAnalysisPage() {
                 showControls
                 className="h-full w-full"
                 backgroundColor="#ffffff"
+                onTopologyLoaded={setTopology}
+                highlightedFaceIds={highlightedFaceIds}
                 markerLocation={
-                  status.kind === "done"
+                  status.kind === "done" && showFallbackMarker
                     ? featurePosition(
                         findFeatureById(status.result, selectedFeatureId),
                       )

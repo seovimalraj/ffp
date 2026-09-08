@@ -1256,19 +1256,30 @@ class TestAnnularCapIsNotAGenuineBottom:
         # No cap face at all was accepted, annular or otherwise.
         assert len(hole["face_ids"]) == 1
 
-    def test_the_ring_channel_is_not_also_reported_as_a_groove(
-        self, analyze, step_dir
-    ):
-        # This specific construction - a single coaxial cylinder standing
-        # alone on its axis, with the boss on a *different* (external) axis
-        # pool - never assembles the three same-pool axial bands
-        # GrooveDetector's rule requires, so it does not fire here. That is a
-        # separate, pre-existing gap in groove detection for a ring milled
-        # around an unrelated feature; it is not silently absorbed into this
-        # fix, which is only about not reporting the ring wall as a genuine
-        # hole bottom.
+    def test_the_ring_channel_is_also_reported_as_a_groove(self, analyze, step_dir):
+        # GrooveDetector groups internal and external cylinders on one axis
+        # into a single coaxial stack, so the channel's internal outer wall
+        # (radius 12) and the boss's external wall standing through it
+        # (radius 5, both above and below the channel) land in the same
+        # stack and form three bands. The channel is a local recess relative
+        # to the boss's own wall on both sides, so it is reported as an
+        # internal groove - coexisting with HoleDetector's separate,
+        # unresolved "ambiguous hole" outcome for the same wall, since
+        # neither detector claims faces away from the other.
         result = analyze(fixtures.block_with_ring_channel_around_boss(step_dir))
-        assert result["features"]["grooves"] == []
+        grooves = result["features"]["grooves"]
+        assert len(grooves) == 1
+        groove = grooves[0]
+        assert groove["subtype"] == "internal"
+        assert groove["is_internal"] is True
+        assert groove["diameter_mm"] == pytest.approx(24.0, abs=1e-3)
+        assert groove["width_mm"] == pytest.approx(5.0, abs=1e-3)
+        assert groove["depth_mm"] == pytest.approx(7.0, abs=1e-3)
+        assert groove["neighbour_diameter_mm"] == pytest.approx(10.0, abs=1e-3)
+        # The hole detector's own, separately-fixed outcome for this
+        # geometry is untouched by grooves running afterwards.
+        hole = result["features"]["holes"][0]
+        assert hole["status"] == "ambiguous"
 
     def test_a_counterbore_shoulder_still_resolves_as_before(self, analyze, step_dir):
         # Regression: the counterbore shoulder belongs to this hole's own

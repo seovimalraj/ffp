@@ -17,7 +17,7 @@ a form-tool operation into the costing input that the part does not need.
 from __future__ import annotations
 
 import logging
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional, Sequence, Tuple
 
 from ..config import MachiningConfig
 from ..records import CYLINDER, FaceRecord, ShapeModel
@@ -48,44 +48,109 @@ class GrooveDetector:
         faces would make an internal groove undetectable in the one place it
         normally occurs. The three-band rule keeps this safe: a counterbore
         sits at an end and so has a neighbour on one side only.
+
+        Internal and external cylinders are grouped together, one coaxial
+        stack per axis line, rather than in two separate pools. A ring
+        channel milled around a boss straddles both: the channel's outer
+        wall is internal (concave - material lies outside it), the boss
+        standing through the middle is external (convex - material lies
+        inside it), yet they sit on the same axis and the channel is only a
+        recess relative to the boss's own wall. Splitting the pools by
+        ``is_internal`` before grouping would keep such a pair permanently
+        apart. ``group_coaxial`` itself does not care about ``is_internal``
+        (it only groups by axis line), so nothing else needs to change to
+        combine them - only how a band's own recessed-ness is judged, which
+        ``_grooves_in`` now derives per band instead of assuming one
+        constant flag for the whole stack.
         """
+        candidates = [
+            face
+            for face in model.faces_of_type(CYLINDER)
+            if face.radius_mm and face.radius_mm > 0
+        ]
         features: List[GrooveFeature] = []
-        for internal in (False, True):
-            candidates = [
-                face
-                for face in model.faces_of_type(CYLINDER)
-                if face.is_internal is internal
-                and face.radius_mm
-                and face.radius_mm > 0
-            ]
-            for group in group_coaxial(candidates, self.config):
-                features.extend(self._grooves_in(group, internal, len(features)))
+        for group in group_coaxial(candidates, self.config):
+            features.extend(self._grooves_in(group, len(features)))
         return features
 
     # -- one coaxial stack -------------------------------------------------
 
     def _sections(
         self, group: List[FaceRecord], axis: Vec, origin: Vec
-    ) -> List[Tuple[float, float, float, List[int]]]:
-        """Merge the stack into ``(t_low, t_high, radius, face_ids)`` bands.
+    ) -> List[Tuple[float, float, float, List[int], bool]]:
+        """Merge the stack into ``(t_low, t_high, radius, face_ids, is_internal)`` bands.
 
         Faces of one radius that share an axial span are arcs of the same band -
         a groove interrupted by a keyway or a flat would otherwise read as
-        several narrow grooves.
+        several narrow grooves. A band's ``is_internal`` comes from the faces
+        that compose it (they always agree - a band is one physical wall),
+        not from any assumption about the rest of the stack.
         """
         bands: Dict[Tuple[float, float, float], List[int]] = {}
+        internal_of: Dict[Tuple[float, float, float], bool] = {}
         for face in group:
             low, high = axial_range(face, axis, origin)
             radius = round(face.radius_mm or 0.0, 4)
             key = (round(low, 4), round(high, 4), radius)
             bands.setdefault(key, []).append(face.id)
+            internal_of.setdefault(key, bool(face.is_internal))
         return sorted(
-            (low, high, radius, sorted(ids))
+            (low, high, radius, sorted(ids), internal_of[(low, high, radius)])
             for (low, high, radius), ids in bands.items()
         )
 
+    def _neighbour_radius(
+        self,
+        sections: Sequence[Tuple[float, float, float, List[int], bool]],
+        index: int,
+        before: bool,
+    ) -> Optional[float]:
+        """Radius of the band immediately beside ``sections[index]``.
+
+        A groove's neighbours are found by touching a boundary, not by list
+        position - the two no longer coincide once internal and external
+        bands share one stack, because a band that spans the *whole* stack
+        (a shaft's OD running the full length, say) can sort in between two
+        bore bands without ever actually bordering either of them.
+
+        Two kinds of boundary count:
+
+        * an axial touch - another band's high edge meets this band's low
+          edge (or vice versa for the far side) - the ordinary case of one
+          section ending where the next begins;
+        * a radial companion - another band spanning the *exact same* axial
+          range at a different radius, e.g. a boss's own wall standing
+          through a channel cut into the material around it. That band sits
+          beside the tested one just as genuinely as an axial neighbour
+          does, only sideways rather than end-to-end.
+
+        Only bands that actually touch this one are considered - a band
+        that merely overlaps it (spans across it without sharing an edge)
+        is not a valid neighbour, e.g. a full-length OD face never borders
+        a short internal groove band cut somewhere along a bore.
+        """
+        low, high, _radius, _ids, _internal = sections[index]
+        target = low if before else high
+        for other_index, (o_low, o_high, o_radius, _o_ids, _o_internal) in enumerate(
+            sections
+        ):
+            if other_index == index:
+                continue
+            if before and o_high == target:
+                return o_radius
+            if not before and o_low == target:
+                return o_radius
+        for other_index, (o_low, o_high, o_radius, _o_ids, _o_internal) in enumerate(
+            sections
+        ):
+            if other_index == index:
+                continue
+            if o_low == low and o_high == high:
+                return o_radius
+        return None
+
     def _grooves_in(
-        self, group: List[FaceRecord], internal: bool, offset: int
+        self, group: List[FaceRecord], offset: int
     ) -> List[GrooveFeature]:
         if len(group) < 2:
             return []
@@ -98,13 +163,22 @@ class GrooveDetector:
             return []
 
         found: List[GrooveFeature] = []
-        for index in range(1, len(sections) - 1):
-            low, high, radius, face_ids = sections[index]
-            before_radius = sections[index - 1][2]
-            after_radius = sections[index + 1][2]
+        for index, (low, high, radius, face_ids, internal) in enumerate(sections):
+            before_radius = self._neighbour_radius(sections, index, before=True)
+            after_radius = self._neighbour_radius(sections, index, before=False)
+            if before_radius is None or after_radius is None:
+                # No material context on one side (an open end, or a band
+                # that never actually touches another) - not a groove.
+                continue
 
             # A groove floor steps away from the material on *both* sides:
-            # inward for an external groove, outward for an internal one.
+            # inward for an external band, outward for an internal one. The
+            # comparison is always against the band's *own* is_internal -
+            # the neighbours' own internal/external-ness plays no part, only
+            # their raw radius, so a band is judged the same way whether its
+            # neighbours are both the same type as it (the original,
+            # single-pool cases) or not (a channel wall recessed between two
+            # external boss faces on either side of it).
             if internal:
                 recessed = radius > before_radius and radius > after_radius
                 neighbour = min(before_radius, after_radius)

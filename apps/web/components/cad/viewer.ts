@@ -110,6 +110,9 @@ export type Viewer = {
     location?: { x: number; y: number; z: number },
   ) => void;
   setMarker: (location: { x: number; y: number; z: number } | null) => void;
+  setFaceHighlight: (
+    faces: Array<{ positions: Float32Array; indices: Uint32Array }> | null,
+  ) => void;
   setBackgroundColor: (color: string | number) => void;
   setOverlayVisible: (visible: boolean) => void;
   setShowViewCube: (visible: boolean) => void;
@@ -7374,6 +7377,7 @@ export function createViewer(container: HTMLElement): Viewer {
   // Highlighting for DFM features
   let highlightMesh: THREE.Mesh | null = null;
   let markerMesh: THREE.Mesh | null = null;
+  let faceHighlightMesh: THREE.Mesh | null = null;
 
   function setHighlight(
     triangles: number[] | null,
@@ -7478,6 +7482,89 @@ export function createViewer(container: HTMLElement): Viewer {
   }
 
   /**
+   * Build a standalone highlight mesh directly from one or more faces' own
+   * self-contained triangulation (`ExactFace.positions`/`ExactFace.indices`,
+   * emitted by the patched OCCT runtime - see
+   * `tools/occt-wasm-build/patches/0004-add-face-patch-geometry.patch`).
+   *
+   * Unlike `setHighlight`, this does not read triangle indices out of the
+   * main render mesh's shared position buffer - each entry here already
+   * carries its own complete geometry in the model's coordinate frame, so
+   * multiple faces (a feature can span more than one, e.g. a counterbore's
+   * cylinder + floor) are simply concatenated into one combined geometry.
+   * This is a new, simpler sibling to `setHighlight`, not a replacement -
+   * `setHighlight`'s raw-triangle-index contract still has its own caller.
+   */
+  function setFaceHighlight(
+    faces: Array<{ positions: Float32Array; indices: Uint32Array }> | null,
+  ) {
+    if (faceHighlightMesh) {
+      if (faceHighlightMesh.parent) {
+        faceHighlightMesh.parent.remove(faceHighlightMesh);
+      } else {
+        scene.remove(faceHighlightMesh);
+      }
+      faceHighlightMesh.geometry.dispose();
+      (faceHighlightMesh.material as THREE.Material).dispose();
+      faceHighlightMesh = null;
+    }
+
+    if (!faces || faces.length === 0) return;
+
+    // Concatenate every face's own position/index arrays into one combined
+    // buffer geometry, offsetting each face's indices by the running vertex
+    // count so they still address the right positions after merging.
+    let totalVertexCount = 0;
+    let totalIndexCount = 0;
+    for (const face of faces) {
+      if (!face.positions || !face.indices) continue;
+      totalVertexCount += face.positions.length / 3;
+      totalIndexCount += face.indices.length;
+    }
+    if (totalVertexCount === 0 || totalIndexCount === 0) return;
+
+    const positions = new Float32Array(totalVertexCount * 3);
+    const indices = new Uint32Array(totalIndexCount);
+    let vertexOffset = 0;
+    let indexOffset = 0;
+    for (const face of faces) {
+      if (!face.positions || !face.indices) continue;
+      positions.set(face.positions, vertexOffset * 3);
+      for (let k = 0; k < face.indices.length; k++) {
+        indices[indexOffset + k] = face.indices[k] + vertexOffset;
+      }
+      vertexOffset += face.positions.length / 3;
+      indexOffset += face.indices.length;
+    }
+
+    const geometry = new THREE.BufferGeometry();
+    geometry.setAttribute("position", new THREE.Float32BufferAttribute(positions, 3));
+    geometry.setIndex(new THREE.Uint32BufferAttribute(indices, 1));
+    geometry.computeVertexNormals();
+
+    const material = new THREE.MeshBasicMaterial({
+      color: 0x22d3ee,
+      transparent: true,
+      opacity: 0.55,
+      side: THREE.DoubleSide,
+      depthTest: true,
+      depthWrite: false,
+      polygonOffset: true,
+      polygonOffsetFactor: -2,
+      polygonOffsetUnits: -2,
+    });
+
+    faceHighlightMesh = new THREE.Mesh(geometry, material);
+    faceHighlightMesh.renderOrder = 998;
+
+    // Face positions are already in the same coordinate frame as the rest of
+    // the topology payload (part/global frame), matching how `modelRoot`
+    // hosts the loaded geometry - so add directly to modelRoot, not as a
+    // child of a specific mesh (there may be several source meshes/parts).
+    modelRoot.add(faceHighlightMesh);
+  }
+
+  /**
    * Drop a small marker sphere at a point and fly the camera to it, without
    * needing mesh triangle indices. Backend-detected features (holes,
    * pockets, bends, ...) carry a `position` but not a mapping into the
@@ -7538,6 +7625,9 @@ export function createViewer(container: HTMLElement): Viewer {
 
   function dispose() {
     window.removeEventListener("resize", onResize);
+    try {
+      setFaceHighlight(null);
+    } catch {}
     try {
       clearEdgeHighlight();
     } catch {}
@@ -7734,6 +7824,7 @@ export function createViewer(container: HTMLElement): Viewer {
     frameObject,
     setHighlight,
     setMarker,
+    setFaceHighlight,
     setBackgroundColor,
     setOverlayVisible,
     setControlsEnabled,
