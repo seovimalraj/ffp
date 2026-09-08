@@ -431,6 +431,33 @@ class HoleDetector:
                     )
                     if touching >= 2:
                         continue
+                    # An annular groove floor is also planar, perpendicular to
+                    # the axis, and touches only one member of *this* stack -
+                    # the same signature as a genuine disk bottom. What tells
+                    # them apart is whether the cap actually reaches the axis:
+                    # an annulus has its own inner boundary, formed by some
+                    # other coaxial cylindrical or conical face (a boss, pin,
+                    # or unrelated bore wall) that is not part of this hole's
+                    # stack at all, sitting inside the ring at a smaller
+                    # radius. A true solid disk has no such neighbour.
+                    cap_radius = face.radius_mm or 0.0
+                    is_annulus = False
+                    for cap_neighbor in model.neighbors(neighbor.id):
+                        if cap_neighbor.id in member_ids:
+                            continue
+                        if cap_neighbor.surface_type not in (CYLINDER, CONE):
+                            continue
+                        if cap_neighbor.axis is None:
+                            continue
+                        if not is_parallel(
+                            cap_neighbor.axis, group.axis, self.config.angular_tolerance_deg
+                        ):
+                            continue
+                        if (cap_neighbor.radius_mm or 0.0) < cap_radius:
+                            is_annulus = True
+                            break
+                    if is_annulus:
+                        continue
                     # A cap must not be wider than the surrounding stock face:
                     # require it to be comparable to the bore cross-section.
                     radius = face.radius_mm or 0.0

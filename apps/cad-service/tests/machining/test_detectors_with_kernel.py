@@ -1223,6 +1223,79 @@ class TestGrooveDetector:
         assert groove["detection"]["source"] == "GEOMETRY"
 
 
+class TestAnnularCapIsNotAGenuineBottom:
+    """A ring channel's floor is an annulus, not a solid disk bottom.
+
+    ``_bottom_cap`` used to accept any planar face perpendicular to the axis
+    that touched only one member of its own coaxial stack - which is also
+    true of an annular groove floor whose inner boundary belongs to some
+    other, unrelated coaxial feature (a boss standing through the middle).
+    """
+
+    def test_the_ring_wall_is_not_reported_as_a_resolved_blind_hole(
+        self, analyze, step_dir
+    ):
+        result = analyze(fixtures.block_with_ring_channel_around_boss(step_dir))
+        holes = result["features"]["holes"]
+        assert len(holes) == 1
+        hole = holes[0]
+        # The annulus is correctly refused as a bottom, so the hole is not
+        # reported as a cleanly-resolved blind hole with a characterised
+        # bottom - it falls back to the honest "material found, but no
+        # closing face identified" outcome.
+        assert hole["through"] is False
+        assert hole["status"] == "ambiguous"
+        assert "no closing face" in (hole["reason"] or "")
+
+    def test_the_boss_wall_is_not_pulled_into_the_ring_wall_s_face_ids(
+        self, analyze, step_dir
+    ):
+        hole = analyze(fixtures.block_with_ring_channel_around_boss(step_dir))[
+            "features"
+        ]["holes"][0]
+        # No cap face at all was accepted, annular or otherwise.
+        assert len(hole["face_ids"]) == 1
+
+    def test_the_ring_channel_is_not_also_reported_as_a_groove(
+        self, analyze, step_dir
+    ):
+        # This specific construction - a single coaxial cylinder standing
+        # alone on its axis, with the boss on a *different* (external) axis
+        # pool - never assembles the three same-pool axial bands
+        # GrooveDetector's rule requires, so it does not fire here. That is a
+        # separate, pre-existing gap in groove detection for a ring milled
+        # around an unrelated feature; it is not silently absorbed into this
+        # fix, which is only about not reporting the ring wall as a genuine
+        # hole bottom.
+        result = analyze(fixtures.block_with_ring_channel_around_boss(step_dir))
+        assert result["features"]["grooves"] == []
+
+    def test_a_counterbore_shoulder_still_resolves_as_before(self, analyze, step_dir):
+        # Regression: the counterbore shoulder belongs to this hole's own
+        # stack (touching >= 2 already rejects it), so the new annulus check
+        # must never even be reached for it - the hole still merges cleanly
+        # and reads through.
+        hole = analyze(fixtures.block_with_counterbored_hole(step_dir))["features"][
+            "holes"
+        ][0]
+        assert hole["through"] is True
+        assert hole["has_counterbore"] is True
+        assert hole["is_stepped"] is True
+        assert hole["status"] == "resolved"
+
+    def test_a_plain_blind_hole_s_solid_disk_bottom_still_passes(
+        self, analyze, step_dir
+    ):
+        # Regression: a genuine solid disk bottom has no other coaxial
+        # cylindrical/conical neighbour inside it, so the new check must not
+        # reject it.
+        hole = analyze(fixtures.block_with_blind_hole(step_dir))["features"]["holes"][0]
+        assert hole["through"] is False
+        assert hole["subtype"] == "blind"
+        assert hole["status"] == "resolved"
+        assert len(hole["face_ids"]) == 2  # the cylindrical wall plus its cap
+
+
 class TestCounterboresAtBothEnds:
     """A through hole recessed at both ends is two setups, not one.
 

@@ -516,6 +516,15 @@ interface CadViewerProps {
   showHomeButton?: boolean;
   showFlatParts?: boolean;
   assemblyLoadMode?: AssemblyLoadMode;
+  /**
+   * Drops a small marker sphere at this point and pans the camera toward
+   * it - an approximate "here it is" cue for a selected feature. There is
+   * no mapping from a detected feature's face ids to this viewer's
+   * tessellated mesh triangles, so this is not a precise face outline
+   * (compare `selectedHighlight`, which needs real triangle indices).
+   * Pass `null`/`undefined` to clear it.
+   */
+  markerLocation?: { x: number; y: number; z: number } | null;
 }
 
 export interface CadViewerRef {
@@ -539,6 +548,7 @@ export const CadViewer = forwardRef<CadViewerRef, CadViewerProps>(
       showHomeButton = true,
       showFlatParts = false,
       assemblyLoadMode: assemblyLoadModeProp,
+      markerLocation,
     },
     ref,
   ) => {
@@ -988,6 +998,12 @@ export const CadViewer = forwardRef<CadViewerRef, CadViewerProps>(
         viewerRef.current.setHighlight(null);
       }
     }, [selectedHighlight]);
+
+    // Update the approximate feature marker when the selected location changes.
+    useEffect(() => {
+      if (!viewerRef.current) return;
+      viewerRef.current.setMarker(markerLocation ?? null);
+    }, [markerLocation]);
 
     function setDimsFromGeometry(geom: THREE.BufferGeometry) {
       geom.computeBoundingBox();

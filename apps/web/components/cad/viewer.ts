@@ -109,6 +109,7 @@ export type Viewer = {
     triangles: number[] | null,
     location?: { x: number; y: number; z: number },
   ) => void;
+  setMarker: (location: { x: number; y: number; z: number } | null) => void;
   setBackgroundColor: (color: string | number) => void;
   setOverlayVisible: (visible: boolean) => void;
   setShowViewCube: (visible: boolean) => void;
@@ -7372,6 +7373,7 @@ export function createViewer(container: HTMLElement): Viewer {
 
   // Highlighting for DFM features
   let highlightMesh: THREE.Mesh | null = null;
+  let markerMesh: THREE.Mesh | null = null;
 
   function setHighlight(
     triangles: number[] | null,
@@ -7473,6 +7475,65 @@ export function createViewer(container: HTMLElement): Viewer {
 
       animateCamera();
     }
+  }
+
+  /**
+   * Drop a small marker sphere at a point and fly the camera to it, without
+   * needing mesh triangle indices. Backend-detected features (holes,
+   * pockets, bends, ...) carry a `position` but not a mapping into the
+   * tessellated viewer mesh's triangle indices - that mapping doesn't exist
+   * in this pipeline today, so exact face highlighting (`setHighlight`)
+   * isn't available for them. This gives an approximate "here it is in 3D"
+   * cue instead: close enough to orient the viewer, not a precise outline
+   * of the feature's faces.
+   */
+  function setMarker(location: { x: number; y: number; z: number } | null) {
+    if (markerMesh) {
+      markerMesh.parent?.remove(markerMesh);
+      markerMesh.geometry.dispose();
+      (markerMesh.material as THREE.Material).dispose();
+      markerMesh = null;
+    }
+
+    if (!location) return;
+
+    const modelBox = new THREE.Box3().setFromObject(modelRoot);
+    const modelSize = modelBox.isEmpty()
+      ? new THREE.Vector3(1, 1, 1)
+      : modelBox.getSize(new THREE.Vector3());
+    const maxDim = Math.max(modelSize.x, modelSize.y, modelSize.z, 1e-3);
+    const radius = Math.max(maxDim * 0.015, 1e-3);
+
+    const geometry = new THREE.SphereGeometry(radius, 16, 16);
+    const material = new THREE.MeshBasicMaterial({
+      color: 0xf97316,
+      transparent: true,
+      opacity: 0.9,
+      depthTest: false,
+    });
+    markerMesh = new THREE.Mesh(geometry, material);
+    markerMesh.renderOrder = 999;
+    markerMesh.position.set(location.x, location.y, location.z);
+
+    const mainMesh = modelRoot.children.find(
+      (child): child is THREE.Mesh => (child as THREE.Mesh).isMesh,
+    );
+    (mainMesh ?? modelRoot).add(markerMesh);
+
+    const targetPos = new THREE.Vector3(location.x, location.y, location.z);
+    const currentTarget = controls.target.clone();
+    const duration = 600;
+    const startTime = Date.now();
+
+    const animateCamera = () => {
+      const elapsed = Date.now() - startTime;
+      const progress = Math.min(elapsed / duration, 1);
+      const eased = 1 - Math.pow(1 - progress, 3);
+      controls.target.lerpVectors(currentTarget, targetPos, eased);
+      controls.update();
+      if (progress < 1) requestAnimationFrame(animateCamera);
+    };
+    animateCamera();
   }
 
   function dispose() {
@@ -7672,6 +7733,7 @@ export function createViewer(container: HTMLElement): Viewer {
     fitToScreen,
     frameObject,
     setHighlight,
+    setMarker,
     setBackgroundColor,
     setOverlayVisible,
     setControlsEnabled,
