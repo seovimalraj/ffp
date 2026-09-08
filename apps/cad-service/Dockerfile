@@ -2,7 +2,7 @@ FROM continuumio/miniconda3:24.1.2-0
 SHELL ["/bin/bash", "-c"]
 ENV DEBIAN_FRONTEND=noninteractive
 
-RUN apt-get update && apt-get install -y --no-install-recommends \
+RUN apt-get update -o Acquire::Check-Valid-Until=false && apt-get install -y --no-install-recommends \
     libgl1 \
     libglu1-mesa \
     libspatialindex-dev \
