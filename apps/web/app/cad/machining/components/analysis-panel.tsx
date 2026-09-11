@@ -419,6 +419,9 @@ function FeatureRow({
           counterbore_depth_mm: number | null;
         })
       : null;
+  const threadCandidate =
+    (feature as { thread_candidate?: { designation: string; note: string } | null })
+      .thread_candidate ?? null;
 
   return (
     <li>
@@ -541,6 +544,20 @@ function FeatureRow({
                     </button>
                   ))}
                 </div>
+              </div>
+            )}
+
+            {threadCandidate && (
+              <div className="rounded-md border border-amber-200 bg-amber-50 p-2">
+                <p className="text-[10px] font-semibold uppercase tracking-wide text-amber-700">
+                  Possible thread - unconfirmed
+                </p>
+                <p className="mt-1 text-[11px] font-semibold text-amber-900">
+                  {threadCandidate.designation}
+                </p>
+                <p className="mt-1 text-[11px] leading-relaxed text-amber-800">
+                  {threadCandidate.note}
+                </p>
               </div>
             )}
 

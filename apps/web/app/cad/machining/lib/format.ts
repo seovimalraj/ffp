@@ -193,6 +193,10 @@ export function featureSummary(
       if (Array.isArray(f.coaxial_feature_ids) && f.coaxial_feature_ids.length > 0) {
         parts.push(`linked to ${(f.coaxial_feature_ids as string[]).join(", ")}`);
       }
+      const candidate = f.thread_candidate as { designation?: string } | null | undefined;
+      if (candidate?.designation) {
+        parts.push(`possibly ${candidate.designation}?`);
+      }
       return parts.join(" · ");
     }
     case "pocket":

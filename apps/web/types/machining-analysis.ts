@@ -165,6 +165,25 @@ export interface HoleFeature extends FeatureBase {
    * physically distinct holes or separate manufacturing operations.
    */
   coaxial_feature_ids: string[];
+  /**
+   * A heuristic guess only - never a confirmed thread. Populated when the
+   * hole's diameter matches a standard ISO metric tap-drill size within a
+   * tight tolerance. Deliberately a separate field/type from the
+   * authoritative `threads[]`/`ThreadFeature` list: nothing here has been
+   * confirmed by CAD metadata or modelled thread geometry, so it must never
+   * be treated as equivalent to a real detected thread.
+   */
+  thread_candidate: ThreadCandidate | null;
+}
+
+/** Confidence tier for a `ThreadCandidate` - always "heuristic", by design a
+ * distinct type from `ThreadConfidence` so the two can never be confused. */
+export type ThreadCandidateConfidence = "heuristic";
+
+export interface ThreadCandidate {
+  designation: string;
+  confidence: ThreadCandidateConfidence;
+  note: string;
 }
 
 export interface BoreFeature extends FeatureBase {
