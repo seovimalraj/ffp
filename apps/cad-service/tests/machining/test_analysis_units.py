@@ -21,7 +21,14 @@ from app.machining.constraints import MachiningComplexityAnalyzer
 from app.machining.detectors.threads import ThreadDetector
 from app.machining.parser import sanitize_filename, validate_extension, CADParseError
 from app.machining.patterns import PatternDetector, classify_arrangement
-from app.machining.records import PLANE, FaceRecord, MassProperties, ShapeModel
+from app.machining.records import (
+    CYLINDER,
+    PLANE,
+    EdgeRecord,
+    FaceRecord,
+    MassProperties,
+    ShapeModel,
+)
 from app.machining.schemas import (
     Detection,
     DetectionMethod,
@@ -498,6 +505,176 @@ class TestThreadDesignationParsing:
         assert len(threads) == 1
         assert threads[0].designation == "M10x1.5"
         assert threads[0].confidence.value == "explicit"
+
+
+# ---------------------------------------------------------------------------
+# Helix accumulation across fragmented coaxial thread faces
+# ---------------------------------------------------------------------------
+
+
+def _helix_samples(radius, pitch, turns, start_turn=0.0, steps=12):
+    """Sample points on a helix of ``radius``/``pitch`` from ``start_turn``.
+
+    Mirrors the construction used by ``test_helix_measurement_recovers_pitch``
+    above, but allows slicing out an arbitrary sub-span of turns so a single
+    continuous helix can be cut into several short fragments - exactly what a
+    kernel does when it splits a modelled thread into many small coaxial
+    "wedge" faces.
+    """
+    samples = []
+    for i in range(steps + 1):
+        turn = start_turn + turns * i / steps
+        angle = 2 * math.pi * turn
+        samples.append(
+            (radius * math.cos(angle), radius * math.sin(angle), pitch * turn)
+        )
+    return samples
+
+
+def _cylinder_face(face_id, radius, edge_ids, axis=(0.0, 0.0, 1.0), axis_location=(0.0, 0.0, 0.0)):
+    return FaceRecord(
+        id=face_id,
+        surface_type=CYLINDER,
+        radius_mm=radius,
+        axis=axis,
+        axis_location=axis_location,
+        edge_ids=edge_ids,
+        bbox_min=(-radius, -radius, 0.0),
+        bbox_max=(radius, radius, 100.0),
+    )
+
+
+class TestHelixAccumulationAcrossFragments:
+    """Regression coverage for the fragmented-thread accumulation fix.
+
+    A real, genuinely helical thread is sometimes modelled as one continuous
+    edge on one cylindrical face (turns >= 1 already, on its own), and
+    sometimes fragmented by the CAD kernel into many small coaxial wedge
+    faces, each carrying a short helical edge covering only a fraction of a
+    turn. Both must be recognised; a family whose accumulated turns never
+    reach a full turn, or whose edges are not actually helical, must not be.
+    """
+
+    @pytest.fixture
+    def detector(self, config) -> ThreadDetector:
+        return ThreadDetector(config)
+
+    def test_a_single_face_already_at_or_above_one_turn_is_unaffected(self, detector):
+        # The pre-existing case this detector was written for: one face, one
+        # edge, already >= 1 turn on its own. Must still be found, as a
+        # family of size one.
+        radius, pitch, turns = 4.0, 1.25, 1.5
+        samples = _helix_samples(radius, pitch, turns)
+        model = ShapeModel()
+        model.edges[1] = EdgeRecord(id=1, samples=samples)
+        model.faces[10] = _cylinder_face(10, radius, edge_ids=[1])
+
+        evidence = detector._find_helices(model)
+        assert len(evidence) == 1
+        assert evidence[0].face_ids == [10]
+        assert evidence[0].edge_ids == [1]
+        assert evidence[0].turns == pytest.approx(turns, abs=0.05)
+        assert evidence[0].pitch_mm == pytest.approx(pitch, abs=0.05)
+
+    def test_many_sub_turn_fragments_on_the_same_axis_accumulate_to_a_thread(
+        self, detector
+    ):
+        # The real-world case: a thread split into several small coaxial
+        # cylindrical fragments, each with one short helical edge covering
+        # well under one full turn individually, whose combined total
+        # reaches >= 1 turn.
+        radius, pitch = 1.5, 0.5
+        turns_per_fragment = 0.3
+        fragment_count = 5  # 5 * 0.3 = 1.5 turns combined
+        model = ShapeModel()
+        for i in range(fragment_count):
+            edge_id = 100 + i
+            face_id = 10 + i
+            samples = _helix_samples(
+                radius, pitch, turns_per_fragment, start_turn=turns_per_fragment * i
+            )
+            model.edges[edge_id] = EdgeRecord(id=edge_id, samples=samples)
+            model.faces[face_id] = _cylinder_face(face_id, radius, edge_ids=[edge_id])
+
+        evidence = detector._find_helices(model)
+        assert len(evidence) == 1
+        result = evidence[0]
+        assert result.face_ids == [10, 11, 12, 13, 14]
+        assert sorted(result.edge_ids) == [100, 101, 102, 103, 104]
+        assert result.turns == pytest.approx(fragment_count * turns_per_fragment, abs=0.05)
+        assert result.pitch_mm == pytest.approx(pitch, abs=0.05)
+
+    def test_fragments_whose_combined_total_stays_under_one_turn_are_rejected(
+        self, detector
+    ):
+        # Same fragmentation pattern, but too few fragments for the family to
+        # ever reach a full turn - must not be admitted just because there
+        # happen to be several small pieces on the same axis.
+        radius, pitch = 1.5, 0.5
+        turns_per_fragment = 0.3
+        fragment_count = 2  # 2 * 0.3 = 0.6 turns combined, below the threshold
+        model = ShapeModel()
+        for i in range(fragment_count):
+            edge_id = 200 + i
+            face_id = 20 + i
+            samples = _helix_samples(
+                radius, pitch, turns_per_fragment, start_turn=turns_per_fragment * i
+            )
+            model.edges[edge_id] = EdgeRecord(id=edge_id, samples=samples)
+            model.faces[face_id] = _cylinder_face(face_id, radius, edge_ids=[edge_id])
+
+        assert detector._find_helices(model) == []
+
+    def test_non_helical_fragments_on_the_same_axis_are_never_admitted(self, detector):
+        # Several small coaxial cylindrical faces, each bounded by a plain
+        # circular arc (constant height, no rise) rather than a helix. No
+        # amount of fragmentation should turn non-helical geometry into a
+        # thread.
+        radius = 2.0
+        model = ShapeModel()
+        for i in range(6):
+            edge_id = 300 + i
+            face_id = 30 + i
+            angles = [j * math.pi / 8 for j in range(9)]
+            samples = [(radius * math.cos(a), radius * math.sin(a), 0.0) for a in angles]
+            model.edges[edge_id] = EdgeRecord(id=edge_id, samples=samples)
+            model.faces[face_id] = _cylinder_face(face_id, radius, edge_ids=[edge_id])
+
+        assert detector._find_helices(model) == []
+
+    def test_a_family_relates_to_a_hole_via_any_member_face(self, detector):
+        radius, pitch = 1.5, 0.5
+        turns_per_fragment = 0.3
+        model = ShapeModel()
+        for i in range(4):
+            edge_id = 400 + i
+            face_id = 40 + i
+            samples = _helix_samples(
+                radius, pitch, turns_per_fragment, start_turn=turns_per_fragment * i
+            )
+            model.edges[edge_id] = EdgeRecord(id=edge_id, samples=samples)
+            model.faces[face_id] = _cylinder_face(face_id, radius, edge_ids=[edge_id])
+
+        hole = _hole("HOLE-001", diameter=3.0, depth=10.0, position=(0.0, 0.0, 0.0))
+        # The hole only references one of the family's fragment faces - the
+        # relationship must still be found via that single overlapping id.
+        hole.face_ids = [42]
+
+        threads = detector.detect(model, holes=[hole])
+        assert len(threads) == 1
+        assert threads[0].thread_type == "internal_thread"
+        assert threads[0].related_feature_id == "HOLE-001"
+        assert threads[0].face_ids == [40, 41, 42, 43]
+
+    def test_cad_metadata_thread_path_is_unaffected(self, detector):
+        # The metadata-declared thread path shares no code with the helix
+        # accumulation change and must behave identically.
+        model = ShapeModel()
+        threads = detector.detect(model, holes=[], metadata_names=["M8x1.25 TAPPED"])
+        assert len(threads) == 1
+        assert threads[0].designation == "M8x1.25"
+        assert threads[0].confidence.value == "explicit"
+        assert threads[0].detection.method.value == "cad_metadata"
 
 
 # ---------------------------------------------------------------------------

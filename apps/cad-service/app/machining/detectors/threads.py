@@ -33,7 +33,7 @@ from ..schemas import (
     ThreadFeature,
 )
 from ..vectors import Vec, cross, dot, normalize, scale, sub
-from .shared import feature_id
+from .shared import axial_range, feature_id, group_coaxial
 
 logger = logging.getLogger(__name__)
 
@@ -53,7 +53,7 @@ _MIN_HELIX_TURNS = 1.0
 
 @dataclass
 class HelixEvidence:
-    face_id: int
+    face_ids: List[int]
     axis: Vec
     radius_mm: float
     pitch_mm: Optional[float]
@@ -148,41 +148,75 @@ class ThreadDetector:
     # -- helical geometry --------------------------------------------------
 
     def _find_helices(self, model: ShapeModel) -> List[HelixEvidence]:
+        """Find helical thread evidence, accumulated across coaxial faces.
+
+        A genuinely modelled thread is sometimes represented as a single
+        continuous helical edge on one cylindrical face, but it is just as
+        often fragmented by the CAD kernel into many small coaxial "wedge"
+        faces - each carrying one short helical edge covering only a
+        fraction of a turn. Neither an individual edge nor an individual
+        face is the right unit of evidence: the whole coaxial family is. So
+        every candidate cylinder is grouped by axis first (via the same
+        ``group_coaxial`` helper the hole/boss/groove detectors use), every
+        edge on every face in a family is measured, and the turns threshold
+        is applied to the family's accumulated total rather than to any one
+        edge or face in isolation.
+        """
         results: List[HelixEvidence] = []
-        for face in sorted(model.faces_of_type(CYLINDER), key=lambda f: f.id):
-            if face.axis is None or face.axis_location is None or not face.radius_mm:
-                continue
-            helical_edges = []
+        candidates = [
+            f
+            for f in model.faces_of_type(CYLINDER)
+            if f.axis is not None and f.axis_location is not None and f.radius_mm
+        ]
+        for group in group_coaxial(candidates, self.config):
+            group = sorted(group, key=lambda f: f.id)
+            helical_edges: List[int] = []
             total_turns = 0.0
             pitches: List[float] = []
-            for edge_id in face.edge_ids:
-                edge = model.edges.get(edge_id)
-                if edge is None or len(edge.samples) < 4:
-                    continue
-                measurement = self._measure_helix(
-                    edge.samples, face.axis, face.axis_location, face.radius_mm
-                )
-                if measurement is None:
-                    continue
-                turns, pitch = measurement
-                if turns < _MIN_HELIX_TURNS:
-                    continue
-                helical_edges.append(edge_id)
-                total_turns += turns
-                if pitch is not None:
-                    pitches.append(pitch)
+            seen_edge_ids: set = set()
 
-            if not helical_edges:
+            for face in group:
+                for edge_id in face.edge_ids:
+                    if edge_id in seen_edge_ids:
+                        continue
+                    seen_edge_ids.add(edge_id)
+                    edge = model.edges.get(edge_id)
+                    if edge is None or len(edge.samples) < 4:
+                        continue
+                    measurement = self._measure_helix(
+                        edge.samples, face.axis, face.axis_location, face.radius_mm
+                    )
+                    if measurement is None:
+                        continue
+                    turns, pitch = measurement
+                    # Accumulate every genuinely helical edge regardless of
+                    # its own turn count - the threshold below applies to
+                    # the family total, not to this one edge.
+                    helical_edges.append(edge_id)
+                    total_turns += turns
+                    if pitch is not None:
+                        pitches.append(pitch)
+
+            if not helical_edges or total_turns < _MIN_HELIX_TURNS:
                 continue
+
+            axis = group[0].axis
+            origin = group[0].axis_location
+            lows: List[float] = []
+            highs: List[float] = []
+            for face in group:
+                lo, hi = axial_range(face, axis, origin)
+                lows.append(lo)
+                highs.append(hi)
 
             results.append(
                 HelixEvidence(
-                    face_id=face.id,
-                    axis=face.axis,
-                    radius_mm=float(face.radius_mm),
+                    face_ids=[f.id for f in group],
+                    axis=axis,
+                    radius_mm=float(group[0].radius_mm),
                     pitch_mm=(sum(pitches) / len(pitches)) if pitches else None,
                     turns=total_turns,
-                    depth_mm=float(face.axial_extent_mm or 0.0),
+                    depth_mm=max(highs) - min(lows),
                     edge_ids=sorted(helical_edges),
                 )
             )
@@ -246,7 +280,12 @@ class ThreadDetector:
         self, evidence: HelixEvidence, holes: Sequence[HoleFeature], index: int
     ) -> ThreadFeature:
         related = next(
-            (h.id for h in holes if evidence.face_id in h.face_ids), None
+            (
+                h.id
+                for h in holes
+                if any(fid in h.face_ids for fid in evidence.face_ids)
+            ),
+            None,
         )
         return ThreadFeature(
             id=feature_id("THREAD", index),
@@ -257,7 +296,7 @@ class ThreadDetector:
             depth_mm=round(evidence.depth_mm, 4) or None,
             confidence=ThreadConfidence.GEOMETRIC,
             related_feature_id=related,
-            face_ids=[evidence.face_id],
+            face_ids=evidence.face_ids,
             status=FeatureStatus.AMBIGUOUS,
             reason=(
                 "Helical geometry detected but no thread designation is present "
@@ -273,8 +312,8 @@ class ThreadDetector:
                 method=DetectionMethod.HELICAL_GEOMETRY,
                 confidence=0.8,
                 evidence=[
-                    f"helical edge(s) {evidence.edge_ids} riding cylindrical face "
-                    f"{evidence.face_id}",
+                    f"helical edge(s) {evidence.edge_ids} riding cylindrical face(s) "
+                    f"{evidence.face_ids}",
                     f"{round(evidence.turns, 2)} turns"
                     + (
                         f", measured pitch {round(evidence.pitch_mm, 3)} mm"
