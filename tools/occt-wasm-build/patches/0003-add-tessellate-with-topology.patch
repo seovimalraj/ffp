@@ -98,7 +98,7 @@ diff --git a/occt-import-js/src/topology_export.cpp b/occt-import-js/src/topolog
 new file mode 100644
 --- /dev/null
 +++ b/occt-import-js/src/topology_export.cpp
-@@ -0,0 +1,794 @@
+@@ -0,0 +1,797 @@
 +#ifdef EMSCRIPTEN
 +
 +#include "topology_export.hpp"
@@ -490,7 +490,10 @@ new file mode 100644
 +        case GeomAbs_Sphere: {
 +            gp_Sphere sphere = surfaceAdaptor.Sphere ();
 +            analyticObj.set ("origin", Vec3 (sphere.Location ()));
-+            analyticObj.set ("axis", Vec3 (sphere.Axis ().Direction ()));
++            // gp_Sphere has no Axis() - unlike gp_Cylinder/gp_Cone/gp_Torus,
++            // it exposes its orientation via Position() (a gp_Ax3), whose
++            // own Axis() gives the main gp_Ax1 direction.
++            analyticObj.set ("axis", Vec3 (sphere.Position ().Axis ().Direction ()));
 +            analyticObj.set ("radius", sphere.Radius ());
 +            hasAnalytic = true;
 +            break;

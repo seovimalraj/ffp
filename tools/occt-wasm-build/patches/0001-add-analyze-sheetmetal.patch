@@ -39,7 +39,7 @@ new file mode 100644
 index 0000000..57197d5
 --- /dev/null
 +++ b/occt-import-js/src/sheetmetal_analyze.cpp
-@@ -0,0 +1,207 @@
+@@ -0,0 +1,219 @@
 +#ifdef EMSCRIPTEN
 +
 +#include "sheetmetal_analyze.hpp"
@@ -68,6 +68,7 @@ index 0000000..57197d5
 +#include <TopoDS_Face.hxx>
 +#include <TopoDS_Shape.hxx>
 +#include <XCAFDoc_DocumentTool.hxx>
++#include <XCAFDoc_ShapeTool.hxx>
 +
 +#include <emscripten/bind.h>
 +

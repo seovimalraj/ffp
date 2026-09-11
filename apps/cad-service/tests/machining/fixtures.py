@@ -386,6 +386,81 @@ def block_with_rib_interrupted_bore(tmp_path: Path) -> str:
     return _write_step(shape, tmp_path / "block_with_rib_interrupted_bore.step")
 
 
+def block_with_edge_broken_hole(tmp_path: Path) -> str:
+    """A 10 mm through hole drilled so its wall crosses the block's own edge.
+
+    A 60 x 60 x 20 block has a radius-5 mm cylinder cut through it centred at
+    x = -1 (i.e. 1 mm *outside* the block's x = 0 face), y = 30. Only the
+    portion of the circle with x >= 0 is ever inside the block, so only that
+    material is removed - the wall on the missing side never existed, rather
+    than having been cut away by some other feature.
+
+    The surviving wall covers a wrap of ``2 * acos(1/5) =~ 156.9 deg`` -
+    comfortably under the 180 deg threshold, and (thanks to the kernel's own
+    cylindrical seam falling inside this particular arc) it is reported as
+    two touching fragments rather than one, which is exactly the case the
+    radial probe's seam tolerance exists for. Both are true regardless: this
+    is a single physical arc, with open air - not another solid - on the
+    missing side, so it is expected to be admitted as an (ambiguous)
+    edge-broken hole rather than silently dropped as a blend.
+    """
+    shape = _cut(_box(0, 0, 0, 60, 60, 20), _cylinder(-1, 30, -5, 5.0, 30.0))
+    return _write_step(shape, tmp_path / "block_with_edge_broken_hole.step")
+
+
+def block_with_corner_blend(tmp_path: Path) -> str:
+    """A shallow concave corner fillet - a blend, not a hole.
+
+    A stepped block (a 20 mm tall shelf from x = 0 to 20, dropping to 10 mm
+    tall from x = 20 to 80, both 80 mm deep in y) has its interior step edge
+    - where the vertical riser at x = 20 meets the shelf floor at z = 10 -
+    rounded with a 5 mm fillet, exactly as a machinist would relieve that
+    corner.
+
+    The fillet forms a single concave cylindrical face wrapping 90 deg, the
+    same ballpark as the edge-broken case above but for a completely
+    different reason: the fillet is tangent to the two flat faces it blends,
+    so real material continues immediately past each end of its arc - there
+    is no missing wall to confirm, only a rounded transition between two
+    faces that were always there. This must still be rejected as a blend,
+    exactly as before the edge-broken-hole admission path existed.
+    """
+    tall = _box(0, 0, 0, 20, 80, 20)
+    short = _box(20, 0, 0, 60, 80, 10)
+    shape = _fuse(tall, short)
+
+    maker = _fillet.BRepFilletAPI_MakeFillet(shape)
+    explorer = _explorer.TopExp_Explorer(shape, _abs.TopAbs_ShapeEnum.TopAbs_EDGE)
+    added = 0
+    while explorer.More():
+        edge = occ.to_edge(explorer.Current())
+        if _is_step_corner_edge(edge):
+            maker.Add(5.0, edge)
+            added += 1
+        explorer.Next()
+    shape = maker.Shape() if added else shape
+    return _write_step(shape, tmp_path / "block_with_corner_blend.step")
+
+
+def _is_step_corner_edge(edge) -> bool:
+    """True for the straight edge running along Y at x = 20, z = 10."""
+    try:
+        curve = occ.BRepAdaptor_Curve(edge)
+        if curve.GetType() != occ.GeomAbs_Line:
+            return False
+        start = curve.Value(curve.FirstParameter())
+        end = curve.Value(curve.LastParameter())
+        on_corner = (
+            abs(start.X() - 20.0) < 1e-6
+            and abs(start.Z() - 10.0) < 1e-6
+            and abs(end.X() - 20.0) < 1e-6
+            and abs(end.Z() - 10.0) < 1e-6
+        )
+        return on_corner
+    except Exception:
+        return False
+
+
 def counterbored_hole_with_wider_far_recess(tmp_path: Path) -> str:
     """Ø6 through hole, Ø12 counterbore at the top, Ø16 recess at the bottom.
 
@@ -460,6 +535,18 @@ def block_with_ring_channel_around_boss(tmp_path: Path) -> str:
     )
     shape = _cut(shape, ring_tool)
     return _write_step(shape, tmp_path / "block_with_ring_channel_around_boss.step")
+
+
+def block_with_tap_drill_hole(tmp_path: Path) -> str:
+    """60 x 60 x 20 block, one 6.8 mm blind hole - the M8x1.25 tap-drill size.
+
+    Exists solely to exercise the `thread_candidate` heuristic end to end: no
+    CAD metadata or helical geometry backs this hole, so `threads[]` must stay
+    empty while `thread_candidate` should still be populated from diameter
+    alone.
+    """
+    shape = _cut(_box(0, 0, 0, 60, 60, 20), _cylinder(30, 30, 8, 3.4, 15.0))
+    return _write_step(shape, tmp_path / "block_with_tap_drill_hole.step")
 
 
 def sleeve_with_internal_groove(tmp_path: Path) -> str:

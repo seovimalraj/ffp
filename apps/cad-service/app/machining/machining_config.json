@@ -24,9 +24,11 @@
   "interrupted_bore_min_total_span_deg": 90.0,
   "interrupted_bore_spacing_tolerance_deg": 5.0,
   "hole_end_probe_offset_mm": 0.05,
+  "hole_radial_probe_offset_mm": 0.05,
   "countersink_max_half_angle_deg": 75.0,
   "counterbore_min_diameter_ratio": 1.15,
   "counterbore_max_diameter_ratio": 2.0,
+  "tap_drill_diameter_tolerance_mm": 0.05,
 
   "pocket_min_depth_mm": 0.5,
   "pocket_min_wall_count": 3,

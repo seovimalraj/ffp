@@ -23,10 +23,13 @@ from ..schemas import (
     DetectionMethod,
     FeatureStatus,
     HoleFeature,
+    ThreadCandidate,
     Vector3,
 )
+from ..thread_candidates import match_tap_drill
 from ..vectors import (
     Vec,
+    add,
     canonical_axis,
     dot,
     is_parallel,
@@ -72,6 +75,10 @@ class HoleDetector:
         #: Face ids admitted by the interrupted-bore rule rather than by wrap
         #: alone, so the detection evidence can say which test carried them.
         self._interrupted: set = set()
+        #: Face ids admitted because a lone sub-threshold arc's missing wall
+        #: was confirmed to be open space (the bore exits the part boundary)
+        #: rather than a blend - see :meth:`_is_edge_broken_hole`.
+        self._edge_broken: set = set()
 
     # -- entry point -------------------------------------------------------
 
@@ -82,10 +89,12 @@ class HoleDetector:
         # Face ids restart per model, so a reused detector would otherwise
         # attribute a previous part's interruptions to this one.
         self._interrupted.clear()
-        groups = self._build_groups(model)
+        self._edge_broken.clear()
         # One classifier for the whole model: construction is the costly
-        # part, each query after that is cheap.
+        # part, each query after that is cheap. Built before grouping so the
+        # edge-broken-hole radial probe (inside _qualifying_faces) can use it.
         classifier = PointClassifier(model, self.config)
+        groups = self._build_groups(model, classifier)
 
         holes: List[HoleFeature] = []
         bores: List[BoreFeature] = []
@@ -202,7 +211,11 @@ class HoleDetector:
         return a[0] <= b[1] + tolerance and b[0] <= a[1] + tolerance
 
     def _qualifying_faces(
-        self, members: List[FaceRecord], axis: Vec, origin: Vec
+        self,
+        members: List[FaceRecord],
+        axis: Vec,
+        origin: Vec,
+        classifier: Optional[PointClassifier] = None,
     ) -> Tuple[List[FaceRecord], Dict[int, float]]:
         """Keep only fragments belonging to a sufficiently wrapped bore.
 
@@ -215,15 +228,23 @@ class HoleDetector:
         span_by_face: Dict[int, float] = {}
         for segment in self._bore_segments(members, axis, origin):
             span = sum(face.angular_span_deg or 360.0 for face in segment)
-            interrupted = span < self.config.hole_min_angular_span_deg and (
-                self._is_interrupted_bore(segment, span, axis, origin)
+            below_threshold = span < self.config.hole_min_angular_span_deg
+            interrupted = below_threshold and self._is_interrupted_bore(
+                segment, span, axis, origin
             )
-            if span >= self.config.hole_min_angular_span_deg or interrupted:
+            edge_broken = (
+                below_threshold
+                and not interrupted
+                and self._is_edge_broken_hole(segment, span, axis, origin, classifier)
+            )
+            if span >= self.config.hole_min_angular_span_deg or interrupted or edge_broken:
                 kept.extend(segment)
                 for face in segment:
                     span_by_face[face.id] = span
                 if interrupted:
                     self._interrupted.update(face.id for face in segment)
+                if edge_broken:
+                    self._edge_broken.update(face.id for face in segment)
         return sorted(kept, key=lambda f: f.id), span_by_face
 
     def _split_into_axial_clusters(
@@ -304,7 +325,108 @@ class HoleDetector:
         tolerance = self.config.interrupted_bore_spacing_tolerance_deg
         return all(abs(gap - expected) <= tolerance for gap in gaps)
 
-    def _build_groups(self, model: ShapeModel) -> List[CylindricalGroup]:
+    def _is_edge_broken_hole(
+        self,
+        segment: List[FaceRecord],
+        span: float,
+        axis: Vec,
+        origin: Vec,
+        classifier: Optional[PointClassifier],
+    ) -> bool:
+        """True when a lone sub-threshold arc is a hole broken by the part edge.
+
+        :meth:`_is_interrupted_bore` only ever admits *several* regularly
+        spaced fragments - a lone partial wall has no siblings to test
+        regularity against, and is rejected there as a blend or a wall. But a
+        lone arc has two distinct physical causes that look identical by wrap
+        angle alone:
+
+        * a hole drilled near the part's own edge, so the missing wall simply
+          never existed as material - a real hole, just one the model cannot
+          fully characterise from the remaining wall alone;
+        * a corner fillet or blend, where the "missing" wall is exactly
+          accounted for by the solid material the blend transitions into.
+
+        The two are told apart the same way :meth:`_probe_ends` tells through
+        from blind: by sampling the solid directly rather than reasoning from
+        face topology. Two points are placed at the bore's own radius (nudged
+        outward by ``hole_radial_probe_offset_mm``), just past each end of the
+        surviving arc, into the missing portion of the circle.
+
+        The probe is deliberately placed just past each *end* of the arc
+        rather than diametrically opposite its centre. A genuine blend is
+        tangent to the flat wall(s) it transitions into, so material
+        continues right past the tangent point - a point diametrically
+        opposite could easily fall inside a completely unrelated cavity
+        further round the same axis (an embedded pocket, say) and read as
+        open there for reasons that have nothing to do with this arc,
+        wrongly admitting a blend. Right past the tangent point is exactly
+        where a real blend's continuing wall would be, and exactly where a
+        genuine edge-broken hole - whose wall simply stops because the part
+        does - has nothing at all.
+
+        Both ends must read as open (not merely one) for the hole to be
+        admitted; either end reading as material means a wall continues
+        there and this is rejected as a blend, exactly as before.
+
+        At most two fragments are considered: a lone arc is the case this
+        exists for, but the kernel's own cylindrical parametrisation has a
+        seam, and an arc that happens to straddle it is reported as two
+        touching fragments rather than one - an implementation artefact, not
+        a second physical arc. Three or more fragments are left to
+        :meth:`_is_interrupted_bore`, which is the rule for a wall genuinely
+        broken into several pieces.
+        """
+        if len(segment) > 2:
+            return False
+        if classifier is None or not classifier.available:
+            return False
+
+        radius = segment[0].radius_mm or 0.0
+        if radius <= 0:
+            return False
+
+        # Circular mean of the fragments' bearings, weighted by span, stands
+        # in for "the arc's centre" whether there are one or two of them.
+        sin_sum = cos_sum = 0.0
+        for face in segment:
+            bearing = math.radians(self._arc_bearing_deg(face, axis, origin))
+            weight = face.angular_span_deg or 1.0
+            sin_sum += weight * math.sin(bearing)
+            cos_sum += weight * math.cos(bearing)
+        center_bearing = math.degrees(math.atan2(sin_sum, cos_sum)) % 360.0
+        half_span = span / 2.0
+
+        ranges = [axial_range(face, axis, origin) for face in segment]
+        mid_t = (min(r[0] for r in ranges) + max(r[1] for r in ranges)) / 2.0
+        center = axis_point(origin, axis, mid_t)
+
+        u, v = perpendicular_basis(axis)
+        probe_radius = radius + self.config.hole_radial_probe_offset_mm
+
+        def probe(bearing_deg: float) -> Optional[bool]:
+            angle = math.radians(bearing_deg % 360.0)
+            offset = add(
+                scale(u, probe_radius * math.cos(angle)),
+                scale(v, probe_radius * math.sin(angle)),
+            )
+            return classifier.is_material(add(center, offset))
+
+        # A small angular margin clear of the nominal tangent point: sampled
+        # exactly at the arc's own boundary the point can land right on the
+        # kernel's face/edge boundary itself, which is unreliable; a few
+        # degrees into the missing side is unambiguous while still short of
+        # a genuine blend's own tangent wall.
+        margin = self.config.interrupted_bore_spacing_tolerance_deg
+        low_material = probe(center_bearing - half_span - margin)
+        high_material = probe(center_bearing + half_span + margin)
+        if low_material is None or high_material is None:
+            return False
+        return not low_material and not high_material
+
+    def _build_groups(
+        self, model: ShapeModel, classifier: Optional[PointClassifier] = None
+    ) -> List[CylindricalGroup]:
         cylinders = self._candidate_cylinders(model)
         groups: List[CylindricalGroup] = []
 
@@ -312,7 +434,9 @@ class HoleDetector:
             axis = canonical_axis(coaxial_members[0].axis)
             origin = coaxial_members[0].axis_location
 
-            members, span_by_face = self._qualifying_faces(coaxial_members, axis, origin)
+            members, span_by_face = self._qualifying_faces(
+                coaxial_members, axis, origin, classifier
+            )
             if not members:
                 continue  # only partial wraps - a blend or a wall, not a bore
 
@@ -720,6 +844,26 @@ class HoleDetector:
             return "blind"
         return "unknown"
 
+    # -- thread candidate heuristic -----------------------------------------
+
+    #: Subtypes where a tap is plausible enough to run the diameter heuristic
+    #: on. `counterbore` and `countersink` are excluded: both are the classic
+    #: signature of a *clearance* hole for a fastener head (a socket-head cap
+    #: screw's shank, a flat-head screw's cone), so flagging them as tap
+    #: candidates from diameter alone would be misleading more often than
+    #: not. Nothing on HoleFeature positively marks a hole as a dowel or
+    #: clearance hole, so beyond this the heuristic is not narrowed further.
+    _TAP_PLAUSIBLE_SUBTYPES = frozenset({"through", "blind", "stepped", "unknown"})
+
+    def _thread_candidate(
+        self, diameter_mm: float, subtype: str
+    ) -> Optional[ThreadCandidate]:
+        if subtype not in self._TAP_PLAUSIBLE_SUBTYPES:
+            return None
+        return match_tap_drill(
+            diameter_mm, self.config.tap_drill_diameter_tolerance_mm
+        )
+
     # -- builders ----------------------------------------------------------
 
     def _common(
@@ -792,6 +936,14 @@ class HoleDetector:
             evidence.append(
                 f"wall interrupted - {len(interrupted)} equal arcs evenly "
                 "spaced about the axis, admitted below the wrap threshold"
+            )
+        edge_broken = self._edge_broken.intersection(f.id for f in group.cylinders)
+        if edge_broken:
+            evidence.append(
+                "edge_broken - lone arc below the wrap threshold, admitted "
+                "because a radial probe found open space (not material) where "
+                "the rest of the circle would be, confirming the bore exits "
+                "the part boundary rather than being a blend"
             )
         if cap is not None:
             evidence.append(f"closing face {cap.id}")
@@ -994,9 +1146,10 @@ class HoleDetector:
             "through": False,
             "confidence": 0.9 if wide_cap is not None else 0.6,
         }
+        wide_subtype = self._subtype(False, wide_counters)
         wide_hole = HoleFeature(
             id=wide_id,
-            subtype=self._subtype(False, wide_counters),
+            subtype=wide_subtype,
             diameter_mm=wide_diameter,
             radius_mm=wide_diameter / 2.0,
             depth_mm=wide_depth,
@@ -1018,6 +1171,7 @@ class HoleDetector:
             countersink_angle_deg=wide_counters["countersink_angle_deg"],
             steps=wide_counters["steps"],
             coaxial_feature_ids=[narrow_id],
+            thread_candidate=self._thread_candidate(wide_diameter, wide_subtype),
         )
 
         # -- narrow (deep) side: inherits the whole stack's own through/blind
@@ -1039,9 +1193,10 @@ class HoleDetector:
             "through": full["through"],
             "confidence": full["confidence"],
         }
+        narrow_subtype = self._subtype(full["through"], narrow_counters)
         narrow_hole = HoleFeature(
             id=narrow_id,
-            subtype=self._subtype(full["through"], narrow_counters),
+            subtype=narrow_subtype,
             diameter_mm=narrow_diameter,
             radius_mm=narrow_diameter / 2.0,
             depth_mm=narrow_depth,
@@ -1065,8 +1220,18 @@ class HoleDetector:
             countersink_angle_deg=narrow_counters["countersink_angle_deg"],
             steps=narrow_counters["steps"],
             coaxial_feature_ids=[wide_id],
+            thread_candidate=self._thread_candidate(narrow_diameter, narrow_subtype),
         )
         return wide_hole, narrow_hole
+
+    def _edge_broken_reason(self, group: CylindricalGroup) -> str:
+        """Why a lone sub-threshold arc admitted via the radial probe is ambiguous."""
+        return (
+            f"Bore wraps only {round(group.wrap_span_deg, 1)} deg because it "
+            "exits the stock at the part boundary; the hole's full circular "
+            "extent could not be confirmed from the remaining material alone "
+            "- verify against design intent."
+        )
 
     def _build_hole(
         self,
@@ -1077,9 +1242,12 @@ class HoleDetector:
     ) -> HoleFeature:
         c = self._common(model, group, classifier)
         counters = c["counters"]
+        edge_broken = self._edge_broken.intersection(f.id for f in group.cylinders)
+        reason = c["conflict"] or (self._edge_broken_reason(group) if edge_broken else None)
+        subtype = self._subtype(c["through"], counters)
         return HoleFeature(
             id=hole_id,
-            subtype=self._subtype(c["through"], counters),
+            subtype=subtype,
             diameter_mm=c["diameter"],
             radius_mm=c["diameter"] / 2.0,
             depth_mm=c["depth"],
@@ -1090,9 +1258,11 @@ class HoleDetector:
             face_ids=c["face_ids"],
             detection=self._detection(group, c),
             status=(
-                FeatureStatus.AMBIGUOUS if c["conflict"] else FeatureStatus.RESOLVED
+                FeatureStatus.AMBIGUOUS
+                if (c["conflict"] or edge_broken)
+                else FeatureStatus.RESOLVED
             ),
-            reason=c["conflict"],
+            reason=reason,
             is_stepped=counters["is_stepped"],
             has_counterbore=counters["has_counterbore"],
             has_countersink=counters["has_countersink"],
@@ -1102,6 +1272,7 @@ class HoleDetector:
             countersink_diameter_mm=counters["countersink_diameter_mm"],
             countersink_angle_deg=counters["countersink_angle_deg"],
             steps=counters["steps"],
+            thread_candidate=self._thread_candidate(c["diameter"], subtype),
         )
 
     def _build_bore(
@@ -1114,7 +1285,20 @@ class HoleDetector:
     ) -> BoreFeature:
         c = self._common(model, group, classifier)
         unresolved_type = type_name == "internal_cylindrical_feature"
-        ambiguous = unresolved_type or bool(c["conflict"])
+        edge_broken = self._edge_broken.intersection(f.id for f in group.cylinders)
+        ambiguous = unresolved_type or bool(c["conflict"]) or bool(edge_broken)
+        reason = (
+            c["conflict"]
+            or (
+                "Internal cylindrical surface is above the hole diameter limit "
+                f"({self.config.max_hole_diameter_mm} mm) but below the bore depth "
+                f"threshold ({self.config.bore_min_depth_mm} mm); geometry alone "
+                "cannot separate a bore from a shallow recess."
+                if unresolved_type
+                else None
+            )
+            or (self._edge_broken_reason(group) if edge_broken else None)
+        )
         return BoreFeature(
             id=bore_id,
             type=type_name,
@@ -1127,14 +1311,6 @@ class HoleDetector:
             is_stepped=c["counters"]["is_stepped"],
             face_ids=c["face_ids"],
             status=FeatureStatus.AMBIGUOUS if ambiguous else FeatureStatus.RESOLVED,
-            reason=c["conflict"]
-            or (
-                "Internal cylindrical surface is above the hole diameter limit "
-                f"({self.config.max_hole_diameter_mm} mm) but below the bore depth "
-                f"threshold ({self.config.bore_min_depth_mm} mm); geometry alone "
-                "cannot separate a bore from a shallow recess."
-                if unresolved_type
-                else None
-            ),
+            reason=reason,
             detection=self._detection(group, c),
         )

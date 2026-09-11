@@ -134,6 +134,16 @@ class MachiningConfig(BaseModel):
             "A closing wall thinner than this reads as open."
         ),
     )
+    hole_radial_probe_offset_mm: float = Field(
+        default=0.05,
+        description=(
+            "How far outward from a bore's own radius to sample, at a bearing "
+            "inside its missing arc, when a lone sub-threshold wrap might be an "
+            "edge-broken hole rather than a blend. Open space there means the "
+            "bore genuinely exits the part boundary; material means it is a "
+            "blend/fillet and is rejected as before."
+        ),
+    )
     countersink_max_half_angle_deg: float = Field(
         default=75.0,
         description="Coaxial cone with half-angle under this reads as a countersink.",
@@ -147,6 +157,19 @@ class MachiningConfig(BaseModel):
         description=(
             "Coaxial larger cylinder beyond this ratio is reported as a second "
             "linked coaxial hole rather than merged as a counterbore step."
+        ),
+    )
+    tap_drill_diameter_tolerance_mm: float = Field(
+        default=0.05,
+        description=(
+            "Maximum deviation between a hole's measured diameter and a "
+            "standard ISO metric tap-drill diameter before the heuristic "
+            "`thread_candidate` flag on HoleFeature is populated. Matches "
+            "`coaxial_tolerance_mm` in scale: tight enough that an ordinary "
+            "clearance hole (whose diameter is a design choice, not tied to a "
+            "tap) essentially never lands inside it by coincidence, while a "
+            "hole genuinely modelled at a tap-drill size still matches despite "
+            "normal rounding in the source CAD file."
         ),
     )
 

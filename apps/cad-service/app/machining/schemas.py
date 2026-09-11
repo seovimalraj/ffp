@@ -71,6 +71,18 @@ class ThreadConfidence(str, Enum):
     UNKNOWN = "unknown"
 
 
+class ThreadCandidateConfidence(str, Enum):
+    """Labels a diameter-based guess, never a confirmed thread.
+
+    Deliberately disjoint from :class:`ThreadConfidence` - a value here must
+    never be mistaken for ``explicit``/``geometric`` evidence downstream. The
+    single member exists so the type (not just the value) is visibly
+    different from ``ThreadConfidence`` at every call site.
+    """
+
+    HEURISTIC = "heuristic"
+
+
 class WarningCode(str, Enum):
     MULTIPLE_SOLIDS = "MULTIPLE_SOLIDS"
     NO_SOLID = "NO_SOLID"
@@ -273,6 +285,45 @@ class CounterboreStep(BaseModel):
     face_ids: List[int] = Field(default_factory=list)
 
 
+class ThreadCandidate(BaseModel):
+    """A diameter-based guess that a hole *might* be tapped - not a thread.
+
+    Populated only as a courtesy heuristic when a hole's measured diameter
+    happens to match a standard ISO metric tap-drill size within a tight
+    tolerance. This is a coincidence-of-diameter signal, not evidence: it
+    carries no information about whether the hole was actually tapped, and
+    it must never be merged into or confused with ``ThreadFeature`` /
+    ``ThreadConfidence`` (``explicit``/``geometric``), which are reserved for
+    threads the CAD file or its geometry actually states.
+    """
+
+    designation: str = Field(
+        description="Nominal metric designation whose tap-drill size matched, e.g. 'M8x1.25'."
+    )
+    confidence: ThreadCandidateConfidence = ThreadCandidateConfidence.HEURISTIC
+    note: str = Field(
+        description=(
+            "Plain-language caveat explaining this is an unconfirmed guess "
+            "from diameter alone, to be verified before assuming the hole is "
+            "threaded."
+        )
+    )
+
+    model_config = {
+        "json_schema_extra": {
+            "example": {
+                "designation": "M8x1.25",
+                "confidence": "heuristic",
+                "note": (
+                    "Diameter matches the standard M8x1.25 tap-drill size "
+                    "(6.8mm); not confirmed by CAD metadata or geometry - "
+                    "verify before assuming this hole is threaded."
+                ),
+            }
+        }
+    }
+
+
 class HoleFeature(FeatureBase):
     """A cylindrical internal feature below the bore diameter threshold.
 
@@ -311,6 +362,16 @@ class HoleFeature(FeatureBase):
     coaxial_feature_ids: List[str] = Field(default_factory=list)
     steps: List[Dict[str, Any]] = Field(
         default_factory=list, description="Ordered diameter/depth pairs when stepped."
+    )
+    thread_candidate: Optional["ThreadCandidate"] = Field(
+        default=None,
+        description=(
+            "Set only when this hole's diameter happens to match a standard "
+            "tap-drill size within a tight tolerance. A heuristic hint, not a "
+            "confirmed thread - see ThreadCandidate. Completely separate from "
+            "`threads[]`/ThreadFeature, which is only ever populated from CAD "
+            "metadata or modelled helical geometry."
+        ),
     )
 
     model_config = {
