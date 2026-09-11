@@ -149,6 +149,44 @@ def group_coaxial(
     return groups
 
 
+def cluster_by_axial_contiguity(
+    faces: Sequence[FaceRecord], axis: Vec, origin: Vec, tolerance: float
+) -> List[List[FaceRecord]]:
+    """Split faces sharing one axis line into physically separate features.
+
+    Sharing an axis line is necessary but not sufficient for two faces to
+    belong to the same physical feature: two blind holes drilled from
+    opposite faces of a part, perfectly aligned, sit on the same infinite
+    axis line but are two separate features with material (or open air)
+    between them, not one feature spanning the gap. Faces only belong
+    together when their axial extents (via :func:`axial_range`) are
+    contiguous - touching or overlapping within ``tolerance`` - regardless of
+    radius, since a counterbore's steps differ in radius but still touch end
+    to end and must still merge into one cluster.
+
+    This is the same interval-merging approach ``HoleDetector`` uses to keep
+    diametrically opposed holes on a shared axis line from being merged into
+    one; it is kept here as a shared, side-effect-free helper so other
+    detectors facing the same "same line, different feature" problem (for
+    example coaxial helix families) can reuse it without duplicating or
+    diverging from that logic.
+    """
+    ranges = {f.id: axial_range(f, axis, origin) for f in faces}
+    ordered = sorted(faces, key=lambda f: (ranges[f.id][0], f.id))
+
+    clusters: List[List[FaceRecord]] = []
+    cluster_high: Optional[float] = None
+    for face in ordered:
+        low, high = ranges[face.id]
+        if clusters and cluster_high is not None and low <= cluster_high + tolerance:
+            clusters[-1].append(face)
+            cluster_high = max(cluster_high, high)
+        else:
+            clusters.append([face])
+            cluster_high = high
+    return clusters
+
+
 def model_extreme_along(model: ShapeModel, direction: Vec) -> float:
     """Highest projection of the model bounding box along ``direction``."""
     corners = [

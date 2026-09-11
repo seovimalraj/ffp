@@ -12,6 +12,7 @@ import pytest
 from app.machining.config import MachiningConfig
 from app.machining.detectors.shared import (
     axial_range,
+    cluster_by_axial_contiguity,
     group_coaxial,
     min_corner_radius,
     planar_dimensions,
@@ -155,3 +156,52 @@ class TestCoaxialGrouping:
 
     def test_faces_without_an_axis_are_skipped(self, config):
         assert group_coaxial([_plane(1, (0, 0, 1), (0, 0, 0), (1, 1, 0))], config) == []
+
+
+def _cyl_at(face_id: int, z_low: float, z_high: float, radius: float = 3.0) -> FaceRecord:
+    """A cylinder whose bounding box spans ``[z_low, z_high]`` along Z."""
+    return FaceRecord(
+        id=face_id,
+        surface_type=CYLINDER,
+        radius_mm=radius,
+        axis=(0.0, 0.0, 1.0),
+        axis_location=(0.0, 0.0, 0.0),
+        bbox_min=(-radius, -radius, z_low),
+        bbox_max=(radius, radius, z_high),
+    )
+
+
+class TestClusterByAxialContiguity:
+    """Unit coverage for the shared same-line/different-feature re-split.
+
+    Mirrors the interval-merging ``HoleDetector._split_into_axial_clusters``
+    already relies on to keep two coaxial-but-separate bores apart.
+    """
+
+    def test_fully_overlapping_ranges_merge(self, config):
+        faces = [_cyl_at(1, 0.0, 10.0), _cyl_at(2, 2.0, 6.0)]
+        clusters = cluster_by_axial_contiguity(
+            faces, (0.0, 0.0, 1.0), (0.0, 0.0, 0.0), config.linear_tolerance_mm
+        )
+        assert len(clusters) == 1
+        assert {f.id for f in clusters[0]} == {1, 2}
+
+    def test_touching_at_the_boundary_merges_within_tolerance(self, config):
+        tolerance = config.linear_tolerance_mm
+        faces = [_cyl_at(1, 0.0, 8.0), _cyl_at(2, 8.0 + tolerance / 2, 16.0)]
+        clusters = cluster_by_axial_contiguity(
+            faces, (0.0, 0.0, 1.0), (0.0, 0.0, 0.0), tolerance
+        )
+        assert len(clusters) == 1
+        assert {f.id for f in clusters[0]} == {1, 2}
+
+    def test_a_real_gap_keeps_them_separate(self, config):
+        # Two blind holes drilled from opposite ends of a part, perfectly
+        # aligned, with a real gap of material (or air) between them.
+        faces = [_cyl_at(1, 0.0, 8.0), _cyl_at(2, 50.0, 58.0)]
+        clusters = cluster_by_axial_contiguity(
+            faces, (0.0, 0.0, 1.0), (0.0, 0.0, 0.0), config.linear_tolerance_mm
+        )
+        assert len(clusters) == 2
+        ids = sorted(sorted(f.id for f in cluster) for cluster in clusters)
+        assert ids == [[1], [2]]

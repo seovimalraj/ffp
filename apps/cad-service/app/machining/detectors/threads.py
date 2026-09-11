@@ -33,7 +33,7 @@ from ..schemas import (
     ThreadFeature,
 )
 from ..vectors import Vec, cross, dot, normalize, scale, sub
-from .shared import axial_range, feature_id, group_coaxial
+from .shared import axial_range, cluster_by_axial_contiguity, feature_id, group_coaxial
 
 logger = logging.getLogger(__name__)
 
@@ -161,6 +161,19 @@ class ThreadDetector:
         edge on every face in a family is measured, and the turns threshold
         is applied to the family's accumulated total rather than to any one
         edge or face in isolation.
+
+        Sharing an axis *line* is not the same as being the same physical
+        thread: two radially opposed holes (for example diametrically
+        opposite side holes drilled 90 degrees apart around a part) have
+        exactly negated axis vectors, which sit on the very same infinite
+        axis line and so land in the same ``group_coaxial`` family despite
+        being two entirely separate, non-touching bores. Before accumulating
+        turns, each coaxial family is re-split by axial contiguity (mirroring
+        the same "same line, different feature" guard ``HoleDetector``
+        already applies to holes, via the shared
+        :func:`cluster_by_axial_contiguity` helper) so two physically
+        distinct threads on the same line are never merged into one bloated
+        feature.
         """
         results: List[HelixEvidence] = []
         candidates = [
@@ -168,7 +181,16 @@ class ThreadDetector:
             for f in model.faces_of_type(CYLINDER)
             if f.axis is not None and f.axis_location is not None and f.radius_mm
         ]
-        for group in group_coaxial(candidates, self.config):
+        coaxial_groups: List[List[FaceRecord]] = []
+        for coaxial_family in group_coaxial(candidates, self.config):
+            axis = coaxial_family[0].axis
+            origin = coaxial_family[0].axis_location
+            coaxial_groups.extend(
+                cluster_by_axial_contiguity(
+                    coaxial_family, axis, origin, self.config.linear_tolerance_mm
+                )
+            )
+        for group in coaxial_groups:
             group = sorted(group, key=lambda f: f.id)
             helical_edges: List[int] = []
             total_turns = 0.0
