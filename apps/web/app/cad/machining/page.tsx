@@ -65,6 +65,11 @@ export default function MachiningAnalysisPage() {
   );
   const [selectedFeatureId, setSelectedFeatureId] = useState<string | null>(null);
   const [includeFaceDetails, setIncludeFaceDetails] = useState(false);
+  // Diagnostic-only toggles - larger responses, useful when investigating a
+  // detector gap (e.g. inspecting raw edge curve_type/face fragmentation for
+  // a hole that should have been recognized as threaded but wasn't).
+  const [includeDebugGeometry, setIncludeDebugGeometry] = useState(false);
+  const [includeTopologyEntities, setIncludeTopologyEntities] = useState(false);
   // Exact topology loaded by the viewer for the current file, used to
   // geometrically match a selected feature's backend face_ids against the
   // viewer's own tessellated faces for exact-patch highlighting.
@@ -115,7 +120,11 @@ export default function MachiningAnalysisPage() {
       // else later.
       void withFaceDetails;
       body.append("include_face_details", "true");
-      body.append("include_debug_geometry", "false");
+      body.append("include_debug_geometry", includeDebugGeometry ? "true" : "false");
+      body.append(
+        "include_topology_entities",
+        includeTopologyEntities ? "true" : "false",
+      );
 
       try {
         const response = await fetch("/api/cad/analyze-machining", {
@@ -145,7 +154,7 @@ export default function MachiningAnalysisPage() {
         });
       }
     },
-    [],
+    [includeDebugGeometry, includeTopologyEntities],
   );
 
   const onDrop = useCallback(
@@ -446,6 +455,30 @@ export default function MachiningAnalysisPage() {
                 className="h-3.5 w-3.5 rounded border-slate-300"
               />
               Include per-face details (larger response)
+            </label>
+
+            <label className="mt-2 flex cursor-pointer items-center gap-2 text-xs text-slate-500">
+              <input
+                type="checkbox"
+                checked={includeTopologyEntities}
+                onChange={(event) =>
+                  setIncludeTopologyEntities(event.target.checked)
+                }
+                className="h-3.5 w-3.5 rounded border-slate-300"
+              />
+              Include raw edge/vertex topology (diagnostic, larger response)
+            </label>
+
+            <label className="mt-2 flex cursor-pointer items-center gap-2 text-xs text-slate-500">
+              <input
+                type="checkbox"
+                checked={includeDebugGeometry}
+                onChange={(event) =>
+                  setIncludeDebugGeometry(event.target.checked)
+                }
+                className="h-3.5 w-3.5 rounded border-slate-300"
+              />
+              Include debug geometry (diagnostic, larger response)
             </label>
           </div>
         )}
