@@ -666,6 +666,86 @@ class TestHelixAccumulationAcrossFragments:
         assert threads[0].related_feature_id == "HOLE-001"
         assert threads[0].face_ids == [40, 41, 42, 43]
 
+    def test_two_diametrically_opposed_holes_on_the_same_axis_line_stay_separate(
+        self, detector
+    ):
+        # Reproduces the real-world over-merge bug: two physically separate
+        # blind holes (e.g. radial side holes 90 degrees apart on a part)
+        # happen to have exactly negated axis vectors, so they sit on the
+        # very same infinite axis line and land in the same group_coaxial
+        # family - but their axial extents do not touch or overlap at all.
+        # Each fragment group independently accumulates enough turns to pass
+        # the threshold on its own; the fix must keep them as two features,
+        # not merge them into one bloated thread that also fails to relate
+        # to the second hole at all.
+        radius, pitch = 1.5, 0.5
+        turns_per_fragment = 0.3
+        fragment_count = 5  # 5 * 0.3 = 1.5 turns combined, per group
+
+        model = ShapeModel()
+
+        # Group A: axis +Z, located at the origin, occupying z in [0, 8].
+        for i in range(fragment_count):
+            edge_id = 500 + i
+            face_id = 50 + i
+            samples = _helix_samples(
+                radius, pitch, turns_per_fragment, start_turn=turns_per_fragment * i
+            )
+            model.edges[edge_id] = EdgeRecord(id=edge_id, samples=samples)
+            model.faces[face_id] = FaceRecord(
+                id=face_id,
+                surface_type=CYLINDER,
+                radius_mm=radius,
+                axis=(0.0, 0.0, 1.0),
+                axis_location=(0.0, 0.0, 0.0),
+                edge_ids=[edge_id],
+                bbox_min=(-radius, -radius, 0.0),
+                bbox_max=(radius, radius, 8.0),
+            )
+
+        # Group B: axis -Z (the exact negation of group A's axis - same
+        # infinite line once canonicalised), located 50 mm further along
+        # that same line, occupying z in [50, 58]. No overlap or contact
+        # with group A's [0, 8] range whatsoever.
+        for i in range(fragment_count):
+            edge_id = 600 + i
+            face_id = 60 + i
+            raw = _helix_samples(
+                radius, pitch, turns_per_fragment, start_turn=turns_per_fragment * i
+            )
+            samples = [(x, y, z + 50.0) for (x, y, z) in raw]
+            model.edges[edge_id] = EdgeRecord(id=edge_id, samples=samples)
+            model.faces[face_id] = FaceRecord(
+                id=face_id,
+                surface_type=CYLINDER,
+                radius_mm=radius,
+                axis=(0.0, 0.0, -1.0),
+                axis_location=(0.0, 0.0, 50.0),
+                edge_ids=[edge_id],
+                bbox_min=(-radius, -radius, 50.0),
+                bbox_max=(radius, radius, 58.0),
+            )
+
+        evidence = detector._find_helices(model)
+        assert len(evidence) == 2
+
+        by_faces = sorted(evidence, key=lambda e: min(e.face_ids))
+        group_a, group_b = by_faces
+
+        assert group_a.face_ids == [50, 51, 52, 53, 54]
+        assert sorted(group_a.edge_ids) == [500, 501, 502, 503, 504]
+        assert group_a.turns == pytest.approx(fragment_count * turns_per_fragment, abs=0.05)
+        assert group_a.depth_mm == pytest.approx(8.0, abs=1e-6)
+
+        assert group_b.face_ids == [60, 61, 62, 63, 64]
+        assert sorted(group_b.edge_ids) == [600, 601, 602, 603, 604]
+        assert group_b.turns == pytest.approx(fragment_count * turns_per_fragment, abs=0.05)
+        assert group_b.depth_mm == pytest.approx(8.0, abs=1e-6)
+
+        # No cross-contamination of face/edge ids between the two features.
+        assert set(group_a.face_ids).isdisjoint(group_b.face_ids)
+        assert set(group_a.edge_ids).isdisjoint(group_b.edge_ids)
+
     def test_cad_metadata_thread_path_is_unaffected(self, detector):
         # The metadata-declared thread path shares no code with the helix
         # accumulation change and must behave identically.
