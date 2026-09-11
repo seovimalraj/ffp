@@ -423,6 +423,39 @@ class TestThreadDetector:
             assert thread["designation"] is None or thread["confidence"] == "explicit"
 
 
+class TestThreadCandidateHeuristic:
+    """The separate, lower-trust `thread_candidate` field on HoleFeature."""
+
+    def test_a_tap_drill_sized_hole_carries_a_thread_candidate(self, analyze, step_dir):
+        hole = analyze(fixtures.block_with_tap_drill_hole(step_dir))["features"]["holes"][0]
+        assert hole["diameter_mm"] == pytest.approx(6.8, abs=0.01)
+        candidate = hole["thread_candidate"]
+        assert candidate is not None
+        assert candidate["designation"] == "M8x1.25"
+        assert candidate["confidence"] == "heuristic"
+        assert "not confirmed" in candidate["note"].lower()
+
+    def test_a_hole_with_no_matching_tap_drill_size_has_no_candidate(
+        self, analyze, step_dir
+    ):
+        # 10 mm diameter matches nothing in the tap-drill table within tolerance.
+        hole = analyze(fixtures.simple_block_with_through_hole(step_dir))["features"][
+            "holes"
+        ][0]
+        assert hole["diameter_mm"] == pytest.approx(10.0, abs=0.01)
+        assert hole["thread_candidate"] is None
+
+    def test_thread_candidate_never_populates_the_authoritative_threads_list(
+        self, analyze, step_dir
+    ):
+        # Regression: the heuristic must never leak into threads[]/ThreadFeature,
+        # even on a hole whose diameter matches a tap-drill size.
+        result = analyze(fixtures.block_with_tap_drill_hole(step_dir))
+        assert result["features"]["threads"] == []
+        hole = result["features"]["holes"][0]
+        assert hole["thread_candidate"] is not None
+
+
 # ---------------------------------------------------------------------------
 # Patterns, accessibility, setups, stock, indicators
 # ---------------------------------------------------------------------------
@@ -974,6 +1007,124 @@ class TestInterruptedBores:
             for i, s in ((1, 1.0), (2, -1.0))
         ]
         assert HoleDetector(config)._is_interrupted_bore(pair, 120.0, axis, origin) is False
+
+
+class TestEdgeBrokenHoles:
+    """A lone sub-threshold arc can be a hole broken by the part's own edge.
+
+    Unlike :class:`TestInterruptedBores` (several regularly spaced arcs), this
+    is the single-arc case that rule deliberately rejects. It is admitted only
+    when a radial probe confirms open space - not material - past each end of
+    the surviving wall, which is what tells an edge-broken hole apart from an
+    ordinary blend wrapping a similar angle.
+    """
+
+    def test_an_edge_broken_hole_is_reported_not_dropped(self, analyze, step_dir):
+        result = analyze(fixtures.block_with_edge_broken_hole(step_dir))
+        holes = result["features"]["holes"]
+        assert len(holes) == 1, "the edge-broken hole was silently dropped"
+        assert holes[0]["diameter_mm"] == pytest.approx(10.0)
+
+    def test_an_edge_broken_hole_is_reported_ambiguous_with_a_clear_reason(
+        self, analyze, step_dir
+    ):
+        hole = analyze(fixtures.block_with_edge_broken_hole(step_dir))["features"][
+            "holes"
+        ][0]
+        assert hole["status"] == "ambiguous"
+        assert hole["reason"] is not None
+        assert "exits the stock at the part boundary" in hole["reason"]
+        assert "verify" in hole["reason"].lower()
+
+    def test_an_edge_broken_hole_carries_edge_broken_evidence(self, analyze, step_dir):
+        hole = analyze(fixtures.block_with_edge_broken_hole(step_dir))["features"][
+            "holes"
+        ][0]
+        evidence = " ".join(hole["detection"]["evidence"])
+        assert "edge_broken" in evidence
+        # The wrap is genuinely below the threshold - this is not a hole that
+        # would have passed the ordinary wrap test anyway.
+        assert "156.9" in evidence
+
+    def test_a_genuine_corner_blend_is_still_rejected(self, analyze, step_dir):
+        # The critical discrimination test: a real blend at a similar wrap
+        # angle must not be admitted just because it is now possible for a
+        # lone sub-threshold arc to be a hole.
+        result = analyze(fixtures.block_with_corner_blend(step_dir))
+        found = (
+            result["features"]["holes"]
+            + result["features"]["bores"]
+            + result["features"]["internal_cylindrical_features"]
+        )
+        assert found == [], "a plain corner blend was wrongly admitted as a hole"
+
+    def test_a_continuous_bore_is_unaffected_by_the_edge_broken_path(
+        self, analyze, step_dir
+    ):
+        # Explicit regression check: an ordinary through hole, comfortably
+        # above the wrap threshold, must not pick up edge-broken evidence.
+        hole = analyze(fixtures.simple_block_with_through_hole(step_dir))["features"][
+            "holes"
+        ][0]
+        assert hole["status"] == "resolved"
+        evidence = " ".join(hole["detection"]["evidence"])
+        assert "edge_broken" not in evidence
+
+    def test_an_interrupted_bore_is_unaffected_by_the_edge_broken_path(
+        self, analyze, step_dir
+    ):
+        # Explicit regression check: the rib-interrupted bore keeps being
+        # admitted by _is_interrupted_bore, not by the new radial probe.
+        result = analyze(fixtures.block_with_rib_interrupted_bore(step_dir))
+        hole = (
+            result["features"]["holes"]
+            + result["features"]["bores"]
+            + result["features"]["internal_cylindrical_features"]
+        )[0]
+        evidence = " ".join(hole["detection"]["evidence"])
+        assert "wall interrupted" in evidence
+        assert "edge_broken" not in evidence
+
+    def test_a_fragmented_bore_above_threshold_is_unaffected(self, analyze, step_dir):
+        # Explicit regression check: the multi-fragment bore that already
+        # clears the wrap threshold when summed keeps its original evidence.
+        hole = analyze(fixtures.block_with_hole_split_into_arcs(step_dir))["features"][
+            "holes"
+        ][0]
+        evidence = " ".join(hole["detection"]["evidence"])
+        assert "summed across" in evidence
+        assert "edge_broken" not in evidence
+
+    def test_only_one_or_two_fragment_segments_are_considered(self, config):
+        """Three or more fragments belong to _is_interrupted_bore, not here."""
+        from app.machining.detectors.holes import HoleDetector
+        from app.machining.raycast import PointClassifier
+        from app.machining.records import CYLINDER, FaceRecord
+
+        axis, origin = (0.0, 0.0, 1.0), (0.0, 0.0, 0.0)
+
+        def arc(face_id, bearing_deg, span=40.0):
+            angle = math.radians(bearing_deg)
+            return FaceRecord(
+                id=face_id,
+                surface_type=CYLINDER,
+                centroid=(10.0 * math.cos(angle), 10.0 * math.sin(angle), 2.5),
+                bbox_min=(-10.0, -10.0, 0.0),
+                bbox_max=(10.0, 10.0, 5.0),
+                axis=axis,
+                axis_location=origin,
+                radius_mm=10.0,
+                angular_span_deg=span,
+                is_internal=True,
+            )
+
+        three = [arc(i, b) for i, b in enumerate((0, 120, 240), start=1)]
+        detector = HoleDetector(config)
+        # No classifier needed: three fragments must short-circuit to False
+        # before any probing happens.
+        assert (
+            detector._is_edge_broken_hole(three, 120.0, axis, origin, None) is False
+        )
 
 
 class TestPlanarExtremeFaces:
