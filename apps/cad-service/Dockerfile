@@ -2,7 +2,15 @@ FROM continuumio/miniconda3:24.1.2-0
 SHELL ["/bin/bash", "-c"]
 ENV DEBIAN_FRONTEND=noninteractive
 
-RUN apt-get update -o Acquire::Check-Valid-Until=false && apt-get install -y --no-install-recommends \
+# Debian bullseye is EOL: its live mirrors (deb.debian.org) prune old package
+# files over time, so even with the Valid-Until check disabled, individual
+# .deb files can 404. archive.debian.org freezes every EOL release's packages
+# permanently, so repoint sources there before installing anything.
+RUN sed -i \
+        -e 's|deb.debian.org/debian-security|archive.debian.org/debian-security|g' \
+        -e 's|deb.debian.org/debian|archive.debian.org/debian|g' \
+        /etc/apt/sources.list \
+    && apt-get update -o Acquire::Check-Valid-Until=false && apt-get install -y --no-install-recommends \
     libgl1 \
     libglu1-mesa \
     libspatialindex-dev \
