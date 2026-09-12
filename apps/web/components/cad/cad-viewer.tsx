@@ -12,6 +12,11 @@ import * as THREE from "three";
 import * as BufferGeometryUtils from "three/examples/jsm/utils/BufferGeometryUtils.js";
 import { createViewer, Viewer } from "./viewer";
 import {
+  classifyTriangles,
+  scaleDistanceTolerance as scaleTriangleDistanceTolerance,
+  type FaceSurfaceGeometry,
+} from "@/app/cad/machining/lib/triangle-face-matching";
+import {
   analyzeCadSheetMetal,
   DEFAULT_WORKER_CAPABILITIES,
   getWorkerCapabilities,
@@ -543,6 +548,25 @@ interface CadViewerProps {
    * viewer's own `ExactFace[]` and drive `highlightedFaceIds`.
    */
   onTopologyLoaded?: (topology: CadTopologyResult | null) => void;
+  /**
+   * Backend face geometry (already filtered by the caller to one selected
+   * feature's `face_ids`) to highlight via WASM-free triangle classification:
+   * `CadViewer` reads the currently-loaded main mesh's own raw position/index
+   * buffers and geometrically classifies each triangle against these faces
+   * (see `app/cad/machining/lib/triangle-face-matching.ts`) - no dependency
+   * on the vendored OCCT WASM build's exact-topology output at all. Takes a
+   * small structural subset of `FaceDetail` rather than importing that
+   * machining-specific type, since `CadViewer` is a generic component. Pass
+   * `null`/`undefined`/`[]` to clear the highlight.
+   */
+  highlightFaceDetails?: FaceSurfaceGeometry[] | null;
+  /**
+   * Fired after every `highlightFaceDetails` change with how many mesh
+   * triangles actually matched (0 when nothing matched, mesh isn't loaded
+   * yet, or `highlightFaceDetails` is empty/absent) - lets a parent page
+   * decide whether to fall back to `markerLocation`'s approximate cue.
+   */
+  onFeatureHighlightResolved?: (matchedTriangleCount: number) => void;
 }
 
 export interface CadViewerRef {
@@ -569,6 +593,8 @@ export const CadViewer = forwardRef<CadViewerRef, CadViewerProps>(
       markerLocation,
       highlightedFaceIds,
       onTopologyLoaded,
+      highlightFaceDetails,
+      onFeatureHighlightResolved,
     },
     ref,
   ) => {
@@ -1056,6 +1082,47 @@ export const CadViewer = forwardRef<CadViewerRef, CadViewerProps>(
         matchedFaces.length > 0 ? matchedFaces : null,
       );
     }, [highlightedFaceIds, cadTopologyEdgeCount]);
+
+    // WASM-free feature highlight: classify the currently-loaded main mesh's
+    // own triangles directly against caller-supplied backend face geometry
+    // (see `app/cad/machining/lib/triangle-face-matching.ts`). This is the
+    // primary highlighting mechanism now - unlike `highlightedFaceIds` above,
+    // it needs no exact-topology WASM data at all, so it works regardless of
+    // whether that patched OCCT runtime is available. Runs whenever the
+    // caller's face list changes or a new mesh finishes loading.
+    useEffect(() => {
+      if (!viewerRef.current) return;
+      const faces = highlightFaceDetails;
+      if (!faces || faces.length === 0) {
+        viewerRef.current.setFeatureHighlight(null);
+        onFeatureHighlightResolved?.(0);
+        return;
+      }
+      const meshData = viewerRef.current.getMainMeshGeometryData();
+      if (!meshData) {
+        viewerRef.current.setFeatureHighlight(null);
+        onFeatureHighlightResolved?.(0);
+        return;
+      }
+      const diagonal = dimsMM
+        ? Math.sqrt(dimsMM.x ** 2 + dimsMM.y ** 2 + dimsMM.z ** 2)
+        : 0;
+      const matchedTriangles = classifyTriangles(
+        meshData.positions,
+        meshData.indices,
+        faces,
+        {
+          radiusRelativeTolerance: 0.02,
+          normalDotTolerance: 0.95,
+          distanceTolerance: scaleTriangleDistanceTolerance(diagonal || 100),
+        },
+      );
+      viewerRef.current.setFeatureHighlight(
+        matchedTriangles.length > 0 ? matchedTriangles : null,
+      );
+      onFeatureHighlightResolved?.(matchedTriangles.length);
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [highlightFaceDetails, dimsMM, isLoading]);
 
     function setDimsFromGeometry(geom: THREE.BufferGeometry) {
       geom.computeBoundingBox();

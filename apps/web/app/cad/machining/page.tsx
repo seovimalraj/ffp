@@ -22,7 +22,6 @@ import type {
 import { isMachiningError } from "@/types/machining-analysis";
 
 import { AnalysisPanel } from "./components/analysis-panel";
-import { matchFeatureFaces, scaleDistanceTolerance } from "./lib/face-matching";
 import {
   featurePosition,
   findFeatureById,
@@ -70,10 +69,17 @@ export default function MachiningAnalysisPage() {
   // a hole that should have been recognized as threaded but wasn't).
   const [includeDebugGeometry, setIncludeDebugGeometry] = useState(false);
   const [includeTopologyEntities, setIncludeTopologyEntities] = useState(false);
-  // Exact topology loaded by the viewer for the current file, used to
-  // geometrically match a selected feature's backend face_ids against the
-  // viewer's own tessellated faces for exact-patch highlighting.
+  // Exact topology loaded by the viewer for the current file. No longer used
+  // to drive feature highlighting (see `highlightFaceDetails` below, which
+  // classifies mesh triangles directly and needs no WASM topology at all) -
+  // kept wired up only in case a WASM-based exact-topology highlight is
+  // reintroduced later as a fallback; it is otherwise unused by this page
+  // today.
   const [topology, setTopology] = useState<CadTopologyResult | null>(null);
+  // How many mesh triangles the WASM-free triangle classifier
+  // (`highlightFaceDetails` below) actually matched for the selected
+  // feature - drives the `showFallbackMarker` decision.
+  const [matchedTriangleCount, setMatchedTriangleCount] = useState(0);
 
   // Abort an in-flight analysis when a new file is dropped, so a slow response
   // for the previous part cannot overwrite the new one.
@@ -182,32 +188,43 @@ export default function MachiningAnalysisPage() {
     setTopology(null);
   };
 
-  // Resolve the selected feature's backend face_ids into matched frontend
-  // ExactFace ids, geometrically (see lib/face-matching.ts) - the two
-  // kernels tessellate independently, so face ids never line up directly.
-  // Falls back to an empty array (which CadViewer treats as "no highlight,
-  // keep the marker") whenever topology hasn't loaded yet, the feature
-  // carries no face_ids, or nothing matched within tolerance.
-  const highlightedFaceIds = useMemo(() => {
-    if (status.kind !== "done" || !topology) return [];
+  // Resolve the selected feature's backend `face_ids` into the `FaceDetail[]`
+  // entries for those faces - `CadViewer` classifies the currently rendered
+  // mesh's own triangles against this geometry directly (see
+  // `app/cad/machining/lib/triangle-face-matching.ts`), needing no WASM
+  // exact-topology data at all. Falls back to an empty array (no highlight)
+  // whenever the analysis isn't done, the feature carries no face_ids, or
+  // `face_details` weren't returned.
+  const highlightFaceDetails = useMemo(() => {
+    if (status.kind !== "done") return [];
     const feature = findFeatureById(status.result, selectedFeatureId);
     if (!feature || !Array.isArray(feature.face_ids) || feature.face_ids.length === 0) {
       return [];
     }
     const faceDetails = status.result.face_details;
     if (!faceDetails || faceDetails.length === 0) return [];
-    const diagonal = status.result.geometry?.bounding_box?.diagonal_mm ?? 0;
-    return matchFeatureFaces(feature.face_ids, faceDetails, topology.faces, {
-      radiusRelativeTolerance: 0.02,
-      axisDotTolerance: 0.05,
-      distanceTolerance: scaleDistanceTolerance(diagonal || 100),
-    });
-  }, [status, selectedFeatureId, topology]);
+    const faceIds = new Set(feature.face_ids);
+    return faceDetails.filter((detail) => faceIds.has(detail.face_id));
+  }, [status, selectedFeatureId]);
 
-  // The marker is the fallback cue: shown only when no exact face match was
-  // found (including when topology or face_details are unavailable), so the
-  // user is never left with neither a highlight nor a marker.
-  const showFallbackMarker = highlightedFaceIds.length === 0;
+  // The marker is the fallback cue: shown only when the triangle classifier
+  // found no matching mesh triangles for the selected feature (including
+  // when `face_details` are unavailable), so the user is never left with
+  // neither a highlight nor a marker. `matchedTriangleCount` is reported
+  // asynchronously by `CadViewer` (mesh load + classification both happen
+  // after this feature id is selected), so this also resets to "assume a
+  // marker is needed" whenever the candidate face list changes, until the
+  // real resolved count arrives.
+  const showFallbackMarker =
+    highlightFaceDetails.length === 0 || matchedTriangleCount === 0;
+
+  // Reset the resolved-match count whenever the candidate face list changes,
+  // so a stale "matched" result from the previously selected feature cannot
+  // suppress the marker for a newly selected one before `CadViewer` reports
+  // back.
+  useEffect(() => {
+    setMatchedTriangleCount(0);
+  }, [highlightFaceDetails]);
 
   const kernelReady = capabilities?.kernel_available ?? true;
   // A binding that imports but is missing symbols is a broken install, not an
@@ -327,7 +344,8 @@ export default function MachiningAnalysisPage() {
                 className="h-full w-full"
                 backgroundColor="#ffffff"
                 onTopologyLoaded={setTopology}
-                highlightedFaceIds={highlightedFaceIds}
+                highlightFaceDetails={highlightFaceDetails}
+                onFeatureHighlightResolved={setMatchedTriangleCount}
                 markerLocation={
                   status.kind === "done" && showFallbackMarker
                     ? featurePosition(

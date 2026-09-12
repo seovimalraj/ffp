@@ -113,6 +113,11 @@ export type Viewer = {
   setFaceHighlight: (
     faces: Array<{ positions: Float32Array; indices: Uint32Array }> | null,
   ) => void;
+  setFeatureHighlight: (triangles: number[] | null) => void;
+  getMainMeshGeometryData: () => {
+    positions: Float32Array;
+    indices: Uint32Array | Uint16Array;
+  } | null;
   setBackgroundColor: (color: string | number) => void;
   setOverlayVisible: (visible: boolean) => void;
   setShowViewCube: (visible: boolean) => void;
@@ -7378,6 +7383,7 @@ export function createViewer(container: HTMLElement): Viewer {
   let highlightMesh: THREE.Mesh | null = null;
   let markerMesh: THREE.Mesh | null = null;
   let faceHighlightMesh: THREE.Mesh | null = null;
+  let featureHighlightMesh: THREE.Mesh | null = null;
 
   function setHighlight(
     triangles: number[] | null,
@@ -7565,6 +7571,98 @@ export function createViewer(container: HTMLElement): Viewer {
   }
 
   /**
+   * Read the currently rendered main mesh's raw position/index buffers out
+   * of the viewer, so a caller can classify triangles against externally
+   * supplied face geometry (see
+   * `app/cad/machining/lib/triangle-face-matching.ts`) without needing the
+   * WASM-patched exact-topology pipeline (`setFaceHighlight`/`ExactFace`).
+   * Returns `null` when nothing is loaded yet, or the loaded mesh has no
+   * index buffer (non-indexed geometry - triangle-index-based highlighting
+   * has no meaning there).
+   */
+  function getMainMeshGeometryData(): {
+    positions: Float32Array;
+    indices: Uint32Array | Uint16Array;
+  } | null {
+    const mainMesh = modelRoot.children.find(
+      (child): child is THREE.Mesh => (child as THREE.Mesh).isMesh,
+    );
+    if (!mainMesh || !mainMesh.geometry) return null;
+    const posAttr = mainMesh.geometry.getAttribute("position");
+    const indexAttr = mainMesh.geometry.getIndex();
+    if (!posAttr || !indexAttr) return null;
+    const positions = posAttr.array as Float32Array;
+    const indices = indexAttr.array as Uint32Array | Uint16Array;
+    return { positions, indices };
+  }
+
+  /**
+   * Highlight a plain list of triangle indices (into the main render mesh's
+   * shared position buffer, exactly like `setHighlight`'s contract) as
+   * colored patches, without the camera-pan side effect `setHighlight`
+   * carries. Used by the pure-TypeScript, WASM-free triangle classification
+   * path (`triangle-face-matching.ts` + `getMainMeshGeometryData`) - kept as
+   * its own mesh/method rather than reusing `setHighlight` so the two
+   * highlight mechanisms (a manually-selected measurement/feature highlight
+   * vs. this geometry-classified one) can coexist without one clobbering the
+   * other's mesh.
+   */
+  function setFeatureHighlight(triangles: number[] | null) {
+    if (featureHighlightMesh) {
+      if (featureHighlightMesh.parent) {
+        featureHighlightMesh.parent.remove(featureHighlightMesh);
+      } else {
+        scene.remove(featureHighlightMesh);
+      }
+      featureHighlightMesh.geometry.dispose();
+      (featureHighlightMesh.material as THREE.Material).dispose();
+      featureHighlightMesh = null;
+    }
+
+    if (!triangles || triangles.length === 0) return;
+
+    const mainMesh = modelRoot.children.find(
+      (child): child is THREE.Mesh => (child as THREE.Mesh).isMesh,
+    );
+    if (!mainMesh || !mainMesh.geometry) return;
+
+    const posAttr = mainMesh.geometry.getAttribute("position");
+    if (!posAttr) return;
+
+    const positions: number[] = [];
+    for (const triIdx of triangles) {
+      const i0 = triIdx * 3;
+      const i1 = triIdx * 3 + 1;
+      const i2 = triIdx * 3 + 2;
+      for (const idx of [i0, i1, i2]) {
+        if (idx < posAttr.count) {
+          positions.push(posAttr.getX(idx), posAttr.getY(idx), posAttr.getZ(idx));
+        }
+      }
+    }
+    if (positions.length === 0) return;
+
+    const geometry = new THREE.BufferGeometry();
+    geometry.setAttribute("position", new THREE.Float32BufferAttribute(positions, 3));
+    geometry.computeVertexNormals();
+
+    const material = new THREE.MeshBasicMaterial({
+      color: 0x3b82f6,
+      transparent: true,
+      opacity: 0.5,
+      side: THREE.DoubleSide,
+      depthTest: true,
+      depthWrite: false,
+    });
+
+    featureHighlightMesh = new THREE.Mesh(geometry, material);
+    featureHighlightMesh.position.set(0, 0, 0);
+    featureHighlightMesh.rotation.set(0, 0, 0);
+    featureHighlightMesh.scale.set(1, 1, 1);
+    mainMesh.add(featureHighlightMesh);
+  }
+
+  /**
    * Drop a small marker sphere at a point and fly the camera to it, without
    * needing mesh triangle indices. Backend-detected features (holes,
    * pockets, bends, ...) carry a `position` but not a mapping into the
@@ -7627,6 +7725,9 @@ export function createViewer(container: HTMLElement): Viewer {
     window.removeEventListener("resize", onResize);
     try {
       setFaceHighlight(null);
+    } catch {}
+    try {
+      setFeatureHighlight(null);
     } catch {}
     try {
       clearEdgeHighlight();
@@ -7825,6 +7926,8 @@ export function createViewer(container: HTMLElement): Viewer {
     setHighlight,
     setMarker,
     setFaceHighlight,
+    setFeatureHighlight,
+    getMainMeshGeometryData,
     setBackgroundColor,
     setOverlayVisible,
     setControlsEnabled,
