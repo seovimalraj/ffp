@@ -109,7 +109,9 @@ export type Viewer = {
     triangles: number[] | null,
     location?: { x: number; y: number; z: number },
   ) => void;
-  setMarker: (location: { x: number; y: number; z: number } | null) => void;
+  setMarker: (
+    locations: Array<{ x: number; y: number; z: number }> | null,
+  ) => void;
   setFaceHighlight: (
     faces: Array<{ positions: Float32Array; indices: Uint32Array }> | null,
   ) => void;
@@ -7390,7 +7392,7 @@ export function createViewer(container: HTMLElement): Viewer {
 
   // Highlighting for DFM features
   let highlightMesh: THREE.Mesh | null = null;
-  let markerMesh: THREE.Mesh | null = null;
+  let markerMeshes: THREE.Mesh[] = [];
   let faceHighlightMesh: THREE.Mesh | null = null;
   let featureHighlightMesh: THREE.Mesh | null = null;
 
@@ -7705,41 +7707,45 @@ export function createViewer(container: HTMLElement): Viewer {
    * cue instead: close enough to orient the viewer, not a precise outline
    * of the feature's faces.
    */
-  function setMarker(location: { x: number; y: number; z: number } | null) {
-    if (markerMesh) {
-      markerMesh.parent?.remove(markerMesh);
-      markerMesh.geometry.dispose();
-      (markerMesh.material as THREE.Material).dispose();
-      markerMesh = null;
+  function setMarker(
+    locations: Array<{ x: number; y: number; z: number }> | null,
+  ) {
+    for (const mesh of markerMeshes) {
+      mesh.parent?.remove(mesh);
+      mesh.geometry.dispose();
+      (mesh.material as THREE.Material).dispose();
     }
+    markerMeshes = [];
 
-    if (!location) return;
+    if (!locations || locations.length === 0) return;
 
     const mainMesh = modelRoot.children.find(
       (child): child is THREE.Mesh => (child as THREE.Mesh).isMesh,
     );
 
-    // `location` is the backend's reported feature position, in the CAD
+    // Each location is the backend's reported feature position, in the CAD
     // file's own coordinate frame - the same frame `getMainMeshGeometryData`
-    // corrects triangle positions into for matching. This marker is placed
-    // as a child of `mainMesh` and read directly as that mesh's own LOCAL
-    // coordinates, though, which `recenterGeometryAtOrigin` has shifted away
-    // from the file's native frame. Without subtracting that same offset
-    // back out here, both the marker and (worse) the orbit camera's pan
-    // target land far from the actual model whenever the shift is
-    // significant - OrbitControls pivoting around a target far outside the
-    // visible geometry is what makes small drags look like the whole model
-    // is spinning uncontrolled ("goes off the base").
+    // corrects triangle positions into for matching. These markers are
+    // placed as children of `mainMesh` and read directly as that mesh's own
+    // LOCAL coordinates, though, which `recenterGeometryAtOrigin` has
+    // shifted away from the file's native frame. Without subtracting that
+    // same offset back out here, both the markers and (worse) the orbit
+    // camera's pan target land far from the actual model whenever the shift
+    // is significant - OrbitControls pivoting around a target far outside
+    // the visible geometry is what makes small drags look like the whole
+    // model is spinning uncontrolled ("goes off the base").
     const recenterOffset = mainMesh?.geometry?.userData?.recenterOffset as
       | THREE.Vector3
       | undefined;
-    const localLocation = recenterOffset
-      ? {
-          x: location.x - recenterOffset.x,
-          y: location.y - recenterOffset.y,
-          z: location.z - recenterOffset.z,
-        }
-      : location;
+    const localLocations = locations.map((location) =>
+      recenterOffset
+        ? {
+            x: location.x - recenterOffset.x,
+            y: location.y - recenterOffset.y,
+            z: location.z - recenterOffset.z,
+          }
+        : location,
+    );
 
     const modelBox = new THREE.Box3().setFromObject(modelRoot);
     const modelSize = modelBox.isEmpty()
@@ -7748,28 +7754,35 @@ export function createViewer(container: HTMLElement): Viewer {
     const maxDim = Math.max(modelSize.x, modelSize.y, modelSize.z, 1e-3);
     const radius = Math.max(maxDim * 0.015, 1e-3);
 
-    const geometry = new THREE.SphereGeometry(radius, 16, 16);
-    const material = new THREE.MeshBasicMaterial({
-      color: 0xf97316,
-      transparent: true,
-      opacity: 0.9,
-      depthTest: false,
-    });
-    markerMesh = new THREE.Mesh(geometry, material);
-    markerMesh.renderOrder = 999;
-    markerMesh.position.set(localLocation.x, localLocation.y, localLocation.z);
-
     const highlightParent = mainMesh ?? modelRoot;
-    highlightParent.add(markerMesh);
+    const centroid = new THREE.Vector3();
+    for (const localLocation of localLocations) {
+      const geometry = new THREE.SphereGeometry(radius, 16, 16);
+      const material = new THREE.MeshBasicMaterial({
+        color: 0xf97316,
+        transparent: true,
+        opacity: 0.9,
+        depthTest: false,
+      });
+      const mesh = new THREE.Mesh(geometry, material);
+      mesh.renderOrder = 999;
+      mesh.position.set(localLocation.x, localLocation.y, localLocation.z);
+      highlightParent.add(mesh);
+      markerMeshes.push(mesh);
+      centroid.add(
+        new THREE.Vector3(localLocation.x, localLocation.y, localLocation.z),
+      );
+    }
+    centroid.divideScalar(localLocations.length);
 
-    // `controls.target` is a world-space point, but `localLocation` is only
-    // in `highlightParent`'s local space - `modelRoot` carries its own
-    // separate world-position offset (set for on-screen framing, never
-    // baked into the geometry). Let Three.js compose the full parent chain
-    // rather than assuming a single flat translation.
-    const targetPos = highlightParent.localToWorld(
-      new THREE.Vector3(localLocation.x, localLocation.y, localLocation.z),
-    );
+    // `controls.target` is a world-space point, but `centroid` is only in
+    // `highlightParent`'s local space - `modelRoot` carries its own separate
+    // world-position offset (set for on-screen framing, never baked into the
+    // geometry). Let Three.js compose the full parent chain rather than
+    // assuming a single flat translation. Panning to the centroid of every
+    // marker (rather than only the first) keeps all of them roughly in view
+    // when more than one feature needs the fallback cue at once.
+    const targetPos = highlightParent.localToWorld(centroid);
     const currentTarget = controls.target.clone();
     const duration = 600;
     const startTime = Date.now();

@@ -168,6 +168,94 @@ export function featureGroups(result: MachiningAnalysisResponse): FeatureGroup[]
   return groups.filter((group) => group.features.length > 0);
 }
 
+export interface FeatureSubgroup {
+  /** Stable grouping key - not for display. */
+  key: string;
+  /** Shared-dimension label, e.g. "⌀ 32.5" or "48 × 9.91". */
+  label: string;
+  features: AnyMachiningFeature[];
+}
+
+/**
+ * The dimension that makes two features of the same type "the same size",
+ * for sub-grouping within a `FeatureGroup` - mirrors reference CAM tools that
+ * bucket e.g. every 32.50mm turned diameter face together under one row.
+ *
+ * Returns `null` when the type has no single natural sizing dimension (or
+ * the feature is missing the field), so callers can fall back to an
+ * "unspecified" bucket rather than mis-group unrelated features together.
+ */
+function subgroupKeyAndLabel(
+  feature: AnyMachiningFeature,
+): { key: string; label: string } | null {
+  const f = feature as unknown as Record<string, unknown>;
+  // Round before keying so 32.500000002 and 32.499999998 (kernel precision
+  // noise, see this file's module docstring) land in the same bucket.
+  const num = (field: string): number | null =>
+    typeof f[field] === "number" ? Math.round((f[field] as number) * 100) / 100 : null;
+
+  switch (feature.type) {
+    case "hole":
+    case "bore":
+    case "internal_cylindrical_feature":
+    case "boss":
+    case "groove": {
+      const d = num("diameter_mm");
+      return d === null ? null : { key: `d:${d}`, label: `⌀ ${formatNumber(d)}` };
+    }
+    case "pocket":
+    case "slot": {
+      const l = num("length_mm");
+      const w = num("width_mm");
+      return l === null || w === null
+        ? null
+        : { key: `lw:${l}x${w}`, label: `${formatNumber(l)} × ${formatNumber(w)}` };
+    }
+    case "fillet": {
+      const r = num("radius_mm");
+      return r === null ? null : { key: `r:${r}`, label: `R ${formatNumber(r)}` };
+    }
+    case "chamfer": {
+      const s = num("size_mm");
+      return s === null ? null : { key: `s:${s}`, label: formatNumber(s) };
+    }
+    case "thread": {
+      const designation = typeof f.designation === "string" ? f.designation : null;
+      const d = num("nominal_diameter_mm");
+      if (designation) return { key: `t:${designation}`, label: designation };
+      return d === null ? null : { key: `t:${d}`, label: `⌀ ${formatNumber(d)}` };
+    }
+    default:
+      return null;
+  }
+}
+
+/**
+ * Bucket one `FeatureGroup`'s features by shared dimension. Features whose
+ * type has no natural sizing dimension, or that are missing the field, land
+ * in one "Unspecified size" bucket rather than being silently dropped or
+ * mis-bucketed with unrelated features.
+ */
+export function subgroupFeatures(
+  features: AnyMachiningFeature[],
+): FeatureSubgroup[] {
+  const buckets = new Map<string, FeatureSubgroup>();
+  for (const feature of features) {
+    const keyed = subgroupKeyAndLabel(feature);
+    const key = keyed?.key ?? "unspecified";
+    const label = keyed?.label ?? "Unspecified size";
+    const existing = buckets.get(key);
+    if (existing) {
+      existing.features.push(feature);
+    } else {
+      buckets.set(key, { key, label, features: [feature] });
+    }
+  }
+  return [...buckets.values()].sort((a, b) =>
+    a.label.localeCompare(b.label, undefined, { numeric: true }),
+  );
+}
+
 /** One-line dimensional summary per feature type, for the collapsed row. */
 export function featureSummary(
   feature: AnyMachiningFeature,

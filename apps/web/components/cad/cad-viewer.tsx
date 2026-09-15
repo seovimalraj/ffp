@@ -522,21 +522,22 @@ interface CadViewerProps {
   showFlatParts?: boolean;
   assemblyLoadMode?: AssemblyLoadMode;
   /**
-   * Drops a small marker sphere at this point and pans the camera toward
-   * it - an approximate "here it is" cue for a selected feature. There is
-   * no mapping from a detected feature's face ids to this viewer's
-   * tessellated mesh triangles, so this is not a precise face outline
-   * (compare `selectedHighlight`, which needs real triangle indices).
-   * Pass `null`/`undefined` to clear it.
+   * Drops a small marker sphere at each of these points and pans the camera
+   * toward their combined centroid - an approximate "here it is" cue for one
+   * or more features that didn't get a real highlight. There is no mapping
+   * from a detected feature's face ids to this viewer's tessellated mesh
+   * triangles, so this is not a precise face outline (compare
+   * `selectedHighlight`, which needs real triangle indices). Pass
+   * `null`/`undefined`/`[]` to clear all markers.
    */
-  markerLocation?: { x: number; y: number; z: number } | null;
+  markerLocations?: Array<{ x: number; y: number; z: number }> | null;
   /**
    * Frontend-space `ExactFace.id` values (already resolved by the caller,
    * e.g. via `app/cad/machining/lib/face-matching.ts`) to highlight as
    * exact colored patches using each face's own triangulated geometry.
-   * Takes priority over `markerLocation` when a match is found; pass
+   * Takes priority over `markerLocations` when a match is found; pass
    * `null`/`undefined`/`[]` to clear it. Falls back to no highlight (leaving
-   * `markerLocation` as the approximate cue) when ids don't resolve to any
+   * `markerLocations` as the approximate cue) when ids don't resolve to any
    * loaded face - e.g. before topology has loaded, or when the runtime WASM
    * build predates per-face patch geometry.
    */
@@ -549,24 +550,32 @@ interface CadViewerProps {
    */
   onTopologyLoaded?: (topology: CadTopologyResult | null) => void;
   /**
-   * Backend face geometry (already filtered by the caller to one selected
-   * feature's `face_ids`) to highlight via WASM-free triangle classification:
-   * `CadViewer` reads the currently-loaded main mesh's own raw position/index
-   * buffers and geometrically classifies each triangle against these faces
-   * (see `app/cad/machining/lib/triangle-face-matching.ts`) - no dependency
-   * on the vendored OCCT WASM build's exact-topology output at all. Takes a
-   * small structural subset of `FaceDetail` rather than importing that
-   * machining-specific type, since `CadViewer` is a generic component. Pass
-   * `null`/`undefined`/`[]` to clear the highlight.
+   * Backend face geometry to highlight via WASM-free triangle classification,
+   * one entry per currently-visible feature (a caller-assigned `id` plus that
+   * feature's own `face_ids` already resolved to `FaceDetail`s): `CadViewer`
+   * reads the currently-loaded main mesh's own raw position/index buffers and
+   * geometrically classifies each triangle against each feature's faces (see
+   * `app/cad/machining/lib/triangle-face-matching.ts`) - no dependency on the
+   * vendored OCCT WASM build's exact-topology output at all. Matched
+   * triangles from every entry are unioned into one combined highlight, but
+   * each feature's own match count is still tracked separately (see
+   * `onFeatureHighlightResolved`) so a caller supporting multiple
+   * simultaneously-visible features can tell which ones actually got a real
+   * highlight versus which need a fallback cue. Takes a small structural
+   * subset of `FaceDetail` rather than importing that machining-specific
+   * type, since `CadViewer` is a generic component. Pass `null`/`undefined`/
+   * `[]` to clear the highlight.
    */
-  highlightFaceDetails?: FaceSurfaceGeometry[] | null;
+  highlightFeatures?: Array<{ id: string; faces: FaceSurfaceGeometry[] }> | null;
   /**
-   * Fired after every `highlightFaceDetails` change with how many mesh
-   * triangles actually matched (0 when nothing matched, mesh isn't loaded
-   * yet, or `highlightFaceDetails` is empty/absent) - lets a parent page
-   * decide whether to fall back to `markerLocation`'s approximate cue.
+   * Fired after every `highlightFeatures` change with each feature's own
+   * matched-triangle count, keyed by the `id` it was passed in with (0 for a
+   * feature that matched nothing, including when the mesh isn't loaded yet).
+   * A feature absent from `highlightFeatures` is simply absent from this
+   * record - lets a parent page decide, per feature, whether to fall back to
+   * `markerLocations`' approximate cue.
    */
-  onFeatureHighlightResolved?: (matchedTriangleCount: number) => void;
+  onFeatureHighlightResolved?: (matchedByFeatureId: Record<string, number>) => void;
 }
 
 export interface CadViewerRef {
@@ -590,10 +599,10 @@ export const CadViewer = forwardRef<CadViewerRef, CadViewerProps>(
       showHomeButton = true,
       showFlatParts = false,
       assemblyLoadMode: assemblyLoadModeProp,
-      markerLocation,
+      markerLocations,
       highlightedFaceIds,
       onTopologyLoaded,
-      highlightFaceDetails,
+      highlightFeatures,
       onFeatureHighlightResolved,
     },
     ref,
@@ -1048,13 +1057,13 @@ export const CadViewer = forwardRef<CadViewerRef, CadViewerProps>(
     // Update the approximate feature marker when the selected location changes.
     useEffect(() => {
       if (!viewerRef.current) return;
-      viewerRef.current.setMarker(markerLocation ?? null);
-    }, [markerLocation]);
+      viewerRef.current.setMarker(markerLocations ?? null);
+    }, [markerLocations]);
 
     // Exact face-patch highlight: resolve the caller's matched frontend
     // ExactFace ids against this load's topology and hand their own
     // triangulated geometry to the viewer. Falls through to no-op (leaving
-    // `markerLocation`'s approximate marker as the visible cue) when ids are
+    // `markerLocations`' approximate marker as the visible cue) when ids are
     // absent or don't resolve - e.g. no geometric match was found, or the
     // runtime WASM build predates per-face patch geometry.
     useEffect(() => {
@@ -1089,40 +1098,57 @@ export const CadViewer = forwardRef<CadViewerRef, CadViewerProps>(
     // primary highlighting mechanism now - unlike `highlightedFaceIds` above,
     // it needs no exact-topology WASM data at all, so it works regardless of
     // whether that patched OCCT runtime is available. Runs whenever the
-    // caller's face list changes or a new mesh finishes loading.
+    // caller's feature list changes or a new mesh finishes loading.
+    //
+    // Classifies once per feature (rather than one combined call across all
+    // faces) so each feature's own match count can be reported back
+    // separately - a caller showing several features at once needs to know
+    // which specific ones actually got a real highlight versus which need a
+    // fallback cue, not just whether anything matched at all.
     useEffect(() => {
       if (!viewerRef.current) return;
-      const faces = highlightFaceDetails;
-      if (!faces || faces.length === 0) {
+      const features = highlightFeatures;
+      if (!features || features.length === 0) {
         viewerRef.current.setFeatureHighlight(null);
-        onFeatureHighlightResolved?.(0);
+        onFeatureHighlightResolved?.({});
         return;
       }
       const meshData = viewerRef.current.getMainMeshGeometryData();
       if (!meshData) {
         viewerRef.current.setFeatureHighlight(null);
-        onFeatureHighlightResolved?.(0);
+        onFeatureHighlightResolved?.(
+          Object.fromEntries(features.map((f) => [f.id, 0])),
+        );
         return;
       }
       const diagonal = dimsMM
         ? Math.sqrt(dimsMM.x ** 2 + dimsMM.y ** 2 + dimsMM.z ** 2)
         : 0;
-      const matchedTriangles = classifyTriangles(
-        meshData.positions,
-        meshData.indices,
-        faces,
-        {
-          radiusRelativeTolerance: 0.02,
-          normalDotTolerance: 0.95,
-          distanceTolerance: scaleTriangleDistanceTolerance(diagonal || 100),
-        },
-      );
+      const tolerances = {
+        radiusRelativeTolerance: 0.02,
+        normalDotTolerance: 0.95,
+        distanceTolerance: scaleTriangleDistanceTolerance(diagonal || 100),
+      };
+
+      const matchedByFeatureId: Record<string, number> = {};
+      const allMatchedTriangles = new Set<number>();
+      for (const feature of features) {
+        const matched = classifyTriangles(
+          meshData.positions,
+          meshData.indices,
+          feature.faces,
+          tolerances,
+        );
+        matchedByFeatureId[feature.id] = matched.length;
+        for (const idx of matched) allMatchedTriangles.add(idx);
+      }
+
       viewerRef.current.setFeatureHighlight(
-        matchedTriangles.length > 0 ? matchedTriangles : null,
+        allMatchedTriangles.size > 0 ? [...allMatchedTriangles] : null,
       );
-      onFeatureHighlightResolved?.(matchedTriangles.length);
+      onFeatureHighlightResolved?.(matchedByFeatureId);
       // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [highlightFaceDetails, dimsMM, isLoading]);
+    }, [highlightFeatures, dimsMM, isLoading]);
 
     function setDimsFromGeometry(geom: THREE.BufferGeometry) {
       geom.computeBoundingBox();

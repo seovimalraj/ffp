@@ -6,6 +6,8 @@ import {
   Box,
   ChevronRight,
   CircleDot,
+  Eye,
+  EyeOff,
   Info,
   Ruler,
   Sparkles,
@@ -33,6 +35,7 @@ import {
   formatVector,
   formatVolume,
   humanize,
+  subgroupFeatures,
   unitLabel,
 } from "../lib/format";
 
@@ -47,14 +50,27 @@ const TABS: Array<{ key: TabKey; label: string }> = [
 
 interface AnalysisPanelProps {
   result: MachiningAnalysisResponse;
+  /** Which feature's detail row is expanded - independent of highlight visibility. */
   selectedFeatureId: string | null;
   onSelectFeature: (featureId: string | null) => void;
+  /** Which features currently have their 3D highlight switched on. */
+  visibleFeatureIds: ReadonlySet<string>;
+  /**
+   * Toggle one feature id, or (from a group/subgroup eye) every id in a
+   * list at once - see `page.tsx`'s `toggleFeatureVisibility`.
+   */
+  onToggleVisibility: (ids: string | string[]) => void;
+  /** Expand AND reveal a linked feature (e.g. a coaxial-hole cross-reference). */
+  onJumpToFeature: (featureId: string) => void;
 }
 
 export function AnalysisPanel({
   result,
   selectedFeatureId,
   onSelectFeature,
+  visibleFeatureIds,
+  onToggleVisibility,
+  onJumpToFeature,
 }: AnalysisPanelProps) {
   const [tab, setTab] = useState<TabKey>("overview");
   const unit = unitLabel(result);
@@ -87,6 +103,9 @@ export function AnalysisPanel({
             unit={unit}
             selectedFeatureId={selectedFeatureId}
             onSelectFeature={onSelectFeature}
+            visibleFeatureIds={visibleFeatureIds}
+            onToggleVisibility={onToggleVisibility}
+            onJumpToFeature={onJumpToFeature}
           />
         )}
         {tab === "manufacturing" && (
@@ -285,16 +304,36 @@ function FeaturesTab({
   unit,
   selectedFeatureId,
   onSelectFeature,
+  visibleFeatureIds,
+  onToggleVisibility,
+  onJumpToFeature,
 }: {
   result: MachiningAnalysisResponse;
   unit: string;
   selectedFeatureId: string | null;
   onSelectFeature: (featureId: string | null) => void;
+  visibleFeatureIds: ReadonlySet<string>;
+  onToggleVisibility: (ids: string | string[]) => void;
+  onJumpToFeature: (featureId: string) => void;
 }) {
   const groups = useMemo(() => featureGroups(result), [result]);
   const flags = useMemo(() => flagsByFeature(result), [result]);
   const access = useMemo(() => accessibilityByFeature(result), [result]);
   const constraints = useMemo(() => constraintsByFeature(result), [result]);
+  // Which dimension-sub-groups (see `subgroupFeatures`) are collapsed, keyed
+  // by `${group.key}:${subgroup.key}`. Empty by default - everything starts
+  // expanded, matching the previous flat-list behaviour until a user
+  // collapses a bucket they don't care about.
+  const [collapsedSubgroups, setCollapsedSubgroups] = useState<Set<string>>(
+    new Set(),
+  );
+  const toggleSubgroup = (key: string) =>
+    setCollapsedSubgroups((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
 
   if (!result.options.include_feature_details) {
     return (
@@ -348,43 +387,106 @@ function FeaturesTab({
         </div>
       )}
 
-      {groups.map((group) => (
-        <div key={group.key} className="p-4">
-          <SectionTitle>
-            {group.label}
-            <span className="ml-1.5 font-normal text-slate-400">
-              {group.features.length}
-            </span>
-          </SectionTitle>
-          <p className="mt-1 text-[11px] leading-relaxed text-slate-500">
-            {group.note}
-          </p>
-          <ul className="mt-2 space-y-1.5">
-            {group.features.map((feature) => (
-              <FeatureRow
-                key={feature.id}
-                feature={feature}
-                unit={unit}
-                expanded={selectedFeatureId === feature.id}
-                flags={flags.get(feature.id) ?? []}
-                directions={accessibleDirections(
-                  access.get(feature.id)?.accessibility,
-                )}
-                maxToolDiameter={
-                  constraints.get(feature.id)?.tooling_constraints
-                    .maximum_tool_diameter_mm ?? null
-                }
-                onToggle={() =>
-                  onSelectFeature(
-                    selectedFeatureId === feature.id ? null : feature.id,
-                  )
-                }
-                onJumpTo={(id) => onSelectFeature(id)}
+      {groups.map((group) => {
+        const subgroups = subgroupFeatures(group.features);
+        // A single bucket (every feature the same size, or the type has no
+        // natural sizing dimension) adds a pointless extra layer - render
+        // those flat, exactly as before this feature existed.
+        const showSubgroups = subgroups.length > 1;
+
+        const renderFeatureRow = (feature: AnyMachiningFeature) => (
+          <FeatureRow
+            key={feature.id}
+            feature={feature}
+            unit={unit}
+            expanded={selectedFeatureId === feature.id}
+            visible={visibleFeatureIds.has(feature.id)}
+            flags={flags.get(feature.id) ?? []}
+            directions={accessibleDirections(
+              access.get(feature.id)?.accessibility,
+            )}
+            maxToolDiameter={
+              constraints.get(feature.id)?.tooling_constraints
+                .maximum_tool_diameter_mm ?? null
+            }
+            onToggle={() =>
+              onSelectFeature(
+                selectedFeatureId === feature.id ? null : feature.id,
+              )
+            }
+            onToggleVisibility={() => onToggleVisibility(feature.id)}
+            onJumpTo={onJumpToFeature}
+          />
+        );
+
+        const groupIds = group.features.map((f) => f.id);
+        const groupAllVisible = groupIds.every((id) => visibleFeatureIds.has(id));
+
+        return (
+          <div key={group.key} className="p-4">
+            <div className="flex items-center justify-between gap-2">
+              <SectionTitle>
+                {group.label}
+                <span className="ml-1.5 font-normal text-slate-400">
+                  {group.features.length}
+                </span>
+              </SectionTitle>
+              <VisibilityToggle
+                visible={groupAllVisible}
+                onClick={() => onToggleVisibility(groupIds)}
+                label={`${group.label} highlight`}
               />
-            ))}
-          </ul>
-        </div>
-      ))}
+            </div>
+            <p className="mt-1 text-[11px] leading-relaxed text-slate-500">
+              {group.note}
+            </p>
+            <ul className="mt-2 space-y-1.5">
+              {showSubgroups
+                ? subgroups.map((subgroup) => {
+                    const subKey = `${group.key}:${subgroup.key}`;
+                    const collapsed = collapsedSubgroups.has(subKey);
+                    const subIds = subgroup.features.map((f) => f.id);
+                    const subAllVisible = subIds.every((id) =>
+                      visibleFeatureIds.has(id),
+                    );
+                    return (
+                      <li key={subKey}>
+                        <div className="flex items-center gap-1">
+                          <button
+                            type="button"
+                            onClick={() => toggleSubgroup(subKey)}
+                            aria-expanded={!collapsed}
+                            className="flex flex-1 items-center gap-1.5 rounded-md py-1 text-left text-[11px] font-medium text-slate-600 hover:bg-slate-50"
+                          >
+                            <ChevronRight
+                              className={`h-3 w-3 shrink-0 text-slate-400 transition-transform ${
+                                collapsed ? "" : "rotate-90"
+                              }`}
+                            />
+                            {subgroup.label} {unit}
+                            <span className="ml-auto rounded bg-slate-100 px-1.5 py-0.5 text-[10px] font-medium text-slate-500">
+                              {subgroup.features.length}
+                            </span>
+                          </button>
+                          <VisibilityToggle
+                            visible={subAllVisible}
+                            onClick={() => onToggleVisibility(subIds)}
+                            label={`${subgroup.label} highlight`}
+                          />
+                        </div>
+                        {!collapsed && (
+                          <ul className="mt-1.5 space-y-1.5 pl-4">
+                            {subgroup.features.map(renderFeatureRow)}
+                          </ul>
+                        )}
+                      </li>
+                    );
+                  })
+                : group.features.map(renderFeatureRow)}
+            </ul>
+          </div>
+        );
+      })}
     </div>
   );
 }
@@ -393,19 +495,23 @@ function FeatureRow({
   feature,
   unit,
   expanded,
+  visible,
   flags,
   directions,
   maxToolDiameter,
   onToggle,
+  onToggleVisibility,
   onJumpTo,
 }: {
   feature: AnyMachiningFeature;
   unit: string;
   expanded: boolean;
+  visible: boolean;
   flags: string[];
   directions: string[];
   maxToolDiameter: number | null;
   onToggle: () => void;
+  onToggleVisibility: () => void;
   onJumpTo: (featureId: string) => void;
 }) {
   const ambiguous = feature.status === "ambiguous";
@@ -424,11 +530,11 @@ function FeatureRow({
       .thread_candidate ?? null;
 
   return (
-    <li>
+    <li className="flex items-stretch gap-1">
       <button
         onClick={onToggle}
         aria-expanded={expanded}
-        className={`w-full rounded-lg border p-2.5 text-left transition-colors ${
+        className={`min-w-0 flex-1 rounded-lg border p-2.5 text-left transition-colors ${
           expanded
             ? "border-blue-400 bg-blue-50/60"
             : "border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50"
@@ -581,7 +687,47 @@ function FeatureRow({
           </div>
         )}
       </button>
+      <VisibilityToggle
+        visible={visible}
+        onClick={onToggleVisibility}
+        label={`${feature.id} highlight`}
+      />
     </li>
+  );
+}
+
+/**
+ * The eye/eye-off icon used at every level (feature row, dimension subgroup,
+ * whole group) to switch a 3D highlight on or off - toggling a group or
+ * subgroup applies to every feature id it contains at once.
+ */
+function VisibilityToggle({
+  visible,
+  onClick,
+  label,
+}: {
+  visible: boolean;
+  onClick: () => void;
+  label: string;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={(event) => {
+        event.stopPropagation();
+        onClick();
+      }}
+      aria-pressed={visible}
+      aria-label={visible ? `Hide ${label}` : `Show ${label}`}
+      title={visible ? "Hide highlight" : "Show highlight"}
+      className={`flex shrink-0 items-center justify-center rounded-lg border px-2 transition-colors ${
+        visible
+          ? "border-blue-300 bg-blue-50 text-blue-600 hover:bg-blue-100"
+          : "border-slate-200 bg-white text-slate-400 hover:border-slate-300 hover:bg-slate-50"
+      }`}
+    >
+      {visible ? <Eye className="h-3.5 w-3.5" /> : <EyeOff className="h-3.5 w-3.5" />}
+    </button>
   );
 }
 
