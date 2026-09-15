@@ -5617,6 +5617,15 @@ export function createViewer(container: HTMLElement): Viewer {
     const gbox = geom.boundingBox!.clone();
     const gcenter = gbox.getCenter(new THREE.Vector3());
     geom.translate(-gcenter.x, -gcenter.y, -gcenter.z);
+    // Record the shift so anything reading this geometry's raw vertex data
+    // later (e.g. the WASM-free triangle classifier in
+    // `getMainMeshGeometryData`) can undo it to recover the CAD file's own
+    // coordinate frame - the one the backend's `face_details` geometry is
+    // reported in. Accumulate rather than overwrite: some load paths call
+    // this more than once on the same geometry.
+    const previous = (geom.userData.recenterOffset as THREE.Vector3 | undefined) ??
+      new THREE.Vector3(0, 0, 0);
+    geom.userData.recenterOffset = previous.clone().add(gcenter);
   }
 
   type Vec3Like = { x: number; y: number; z: number };
@@ -7591,8 +7600,32 @@ export function createViewer(container: HTMLElement): Viewer {
     const posAttr = mainMesh.geometry.getAttribute("position");
     const indexAttr = mainMesh.geometry.getIndex();
     if (!posAttr || !indexAttr) return null;
-    const positions = posAttr.array as Float32Array;
     const indices = indexAttr.array as Uint32Array | Uint16Array;
+
+    // `recenterGeometryAtOrigin` bakes a `-boundingBoxCenter` shift directly
+    // into this mesh's vertex data (for camera framing) - a viewer-only
+    // cosmetic transform the CAD service's `face_details` geometry knows
+    // nothing about, since the backend measures straight from the original
+    // B-Rep with no such shift. Undo it here so triangle-face-matching.ts
+    // compares points in the same coordinate frame the backend used, rather
+    // than silently matching (or failing to match) against an offset model.
+    // No other transform needs undoing: the mesh itself is never given its
+    // own position/rotation/scale, and the separate `modelRoot.position`
+    // shift applied for on-screen framing is an Object3D-level transform
+    // that never gets baked into this geometry's own local buffer.
+    const offset = mainMesh.geometry.userData.recenterOffset as
+      | THREE.Vector3
+      | undefined;
+    const rawPositions = posAttr.array as Float32Array;
+    if (!offset || (offset.x === 0 && offset.y === 0 && offset.z === 0)) {
+      return { positions: rawPositions, indices };
+    }
+    const positions = new Float32Array(rawPositions.length);
+    for (let i = 0; i < rawPositions.length; i += 3) {
+      positions[i] = rawPositions[i] + offset.x;
+      positions[i + 1] = rawPositions[i + 1] + offset.y;
+      positions[i + 2] = rawPositions[i + 2] + offset.z;
+    }
     return { positions, indices };
   }
 
@@ -7682,6 +7715,32 @@ export function createViewer(container: HTMLElement): Viewer {
 
     if (!location) return;
 
+    const mainMesh = modelRoot.children.find(
+      (child): child is THREE.Mesh => (child as THREE.Mesh).isMesh,
+    );
+
+    // `location` is the backend's reported feature position, in the CAD
+    // file's own coordinate frame - the same frame `getMainMeshGeometryData`
+    // corrects triangle positions into for matching. This marker is placed
+    // as a child of `mainMesh` and read directly as that mesh's own LOCAL
+    // coordinates, though, which `recenterGeometryAtOrigin` has shifted away
+    // from the file's native frame. Without subtracting that same offset
+    // back out here, both the marker and (worse) the orbit camera's pan
+    // target land far from the actual model whenever the shift is
+    // significant - OrbitControls pivoting around a target far outside the
+    // visible geometry is what makes small drags look like the whole model
+    // is spinning uncontrolled ("goes off the base").
+    const recenterOffset = mainMesh?.geometry?.userData?.recenterOffset as
+      | THREE.Vector3
+      | undefined;
+    const localLocation = recenterOffset
+      ? {
+          x: location.x - recenterOffset.x,
+          y: location.y - recenterOffset.y,
+          z: location.z - recenterOffset.z,
+        }
+      : location;
+
     const modelBox = new THREE.Box3().setFromObject(modelRoot);
     const modelSize = modelBox.isEmpty()
       ? new THREE.Vector3(1, 1, 1)
@@ -7698,14 +7757,19 @@ export function createViewer(container: HTMLElement): Viewer {
     });
     markerMesh = new THREE.Mesh(geometry, material);
     markerMesh.renderOrder = 999;
-    markerMesh.position.set(location.x, location.y, location.z);
+    markerMesh.position.set(localLocation.x, localLocation.y, localLocation.z);
 
-    const mainMesh = modelRoot.children.find(
-      (child): child is THREE.Mesh => (child as THREE.Mesh).isMesh,
+    const highlightParent = mainMesh ?? modelRoot;
+    highlightParent.add(markerMesh);
+
+    // `controls.target` is a world-space point, but `localLocation` is only
+    // in `highlightParent`'s local space - `modelRoot` carries its own
+    // separate world-position offset (set for on-screen framing, never
+    // baked into the geometry). Let Three.js compose the full parent chain
+    // rather than assuming a single flat translation.
+    const targetPos = highlightParent.localToWorld(
+      new THREE.Vector3(localLocation.x, localLocation.y, localLocation.z),
     );
-    (mainMesh ?? modelRoot).add(markerMesh);
-
-    const targetPos = new THREE.Vector3(location.x, location.y, location.z);
     const currentTarget = controls.target.clone();
     const duration = 600;
     const startTime = Date.now();
