@@ -142,24 +142,39 @@ class FaceGrooveDetector:
         origin = group[0].axis_location
         bands = self._bands(group, axis, origin)
 
+        # Bands sharing the exact same axial span can stack more than two
+        # deep - e.g. a hub wall, a recess wall, a rib wall and a rim wall
+        # all at one shared span. Only RADIALLY ADJACENT bands can be the two
+        # walls of one physical channel; pairing every external band against
+        # every internal band at that span (regardless of what else sits
+        # between them) would match straight across intervening rings that
+        # are not part of the same channel at all, reporting one feature as
+        # several overlapping ones. Grouping by span and sorting by radius
+        # first, then only ever considering neighbouring entries in that
+        # order, is what restricts a pair to two walls with nothing between
+        # them.
+        by_span: Dict[Tuple[float, float], List[_Band]] = {}
+        for band in bands:
+            by_span.setdefault((band[0], band[1]), []).append(band)
+
         found: List[GrooveFeature] = []
-        for o_low, o_high, o_radius, outer_ids, outer_internal in bands:
-            if not outer_internal:
-                # The channel's outer wall must be internal (concave) -
-                # material lies outside it, the way it does around any bore.
-                continue
-            for i_low, i_high, i_radius, inner_ids, inner_internal in bands:
+        for span_bands in by_span.values():
+            span_bands.sort(key=lambda band: band[2])
+            for idx in range(len(span_bands) - 1):
+                i_low, i_high, i_radius, inner_ids, inner_internal = span_bands[idx]
+                o_low, o_high, o_radius, outer_ids, outer_internal = span_bands[
+                    idx + 1
+                ]
                 if inner_internal:
                     # The channel's inner wall must be external (convex) -
                     # material lies inside it, standing through the channel
                     # the way a boss or an unrelieved plateau does.
                     continue
-                if i_low != o_low or i_high != o_high:
-                    # Both walls must share the exact same axial span - this
-                    # is what makes them one channel rather than two
-                    # unrelated coaxial cylinders elsewhere on the part.
-                    continue
-                if i_radius >= o_radius:
+                if not outer_internal:
+                    # The channel's outer wall must be internal (concave) -
+                    # material lies outside it, the way it does around any
+                    # bore. Two adjacent external bands are a rib or a plain
+                    # step, not a channel.
                     continue
 
                 width = o_high - o_low

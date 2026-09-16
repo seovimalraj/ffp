@@ -1034,3 +1034,72 @@ class TestFaceGrooveDetector:
         # do not even border each other, let alone a common floor.
 
         assert detector.detect(model) == []
+
+    def test_only_radially_adjacent_walls_pair_up(self, detector):
+        """Four bands sharing one span - two genuine channels, no cross-pairing.
+
+        A real part with a hub wall, a recess wall, a rib wall and a rim
+        wall all sharing one axial span has two real channels (hub-to-recess,
+        rib-to-rim) - not three, and not a spurious channel spanning straight
+        across from the hub to the rim, skipping the two rings physically in
+        between. A distractor floor directly bridges the hub and rim faces
+        (simulating a large floor face that happens to also be topologically
+        reachable from both, the exact situation that let the pre-fix
+        pairwise-combination logic report a groove there) - proving it's the
+        radial-adjacency restriction rejecting that pairing, not merely an
+        absence of floor evidence.
+        """
+        model = ShapeModel()
+
+        def wall(face_id: int, radius: float, is_internal: bool) -> FaceRecord:
+            return FaceRecord(
+                id=face_id,
+                surface_type=CYLINDER,
+                radius_mm=radius,
+                is_internal=is_internal,
+                axis=(0.0, 0.0, 1.0),
+                axis_location=(0.0, 0.0, 0.0),
+                bbox_min=(-radius, -radius, 0.0),
+                bbox_max=(radius, radius, 2.0),
+            )
+
+        def floor(face_id: int, outer_radius: float) -> FaceRecord:
+            return FaceRecord(
+                id=face_id,
+                surface_type=PLANE,
+                normal=(0.0, 0.0, 1.0),
+                bbox_min=(-outer_radius, -outer_radius, 0.0),
+                bbox_max=(outer_radius, outer_radius, 0.0),
+                centroid=(0.0, 0.0, 0.0),
+            )
+
+        hub, recess, rib, rim = wall(1, 5.0, False), wall(2, 8.0, True), wall(
+            3, 12.0, False
+        ), wall(4, 15.0, True)
+        for face in (hub, recess, rib, rim):
+            model.faces[face.id] = face
+
+        floor_hub_recess = floor(100, 8.0)
+        floor_rib_rim = floor(101, 15.0)
+        floor_distractor = floor(102, 15.0)  # bridges hub straight to rim
+        for face in (floor_hub_recess, floor_rib_rim, floor_distractor):
+            model.faces[face.id] = face
+
+        model.face_neighbors = {
+            hub.id: {floor_hub_recess.id, floor_distractor.id},
+            recess.id: {floor_hub_recess.id},
+            rib.id: {floor_rib_rim.id},
+            rim.id: {floor_rib_rim.id, floor_distractor.id},
+            floor_hub_recess.id: {hub.id, recess.id},
+            floor_rib_rim.id: {rib.id, rim.id},
+            floor_distractor.id: {hub.id, rim.id},
+        }
+
+        grooves = detector.detect(model)
+        assert len(grooves) == 2
+        pairs = {
+            (round(g.diameter_mm), round(g.neighbour_diameter_mm)) for g in grooves
+        }
+        assert pairs == {(10, 16), (24, 30)}  # hub/recess and rib/rim, as diameters
+        # The hub-to-rim cross-pairing (diameters 10 and 30) must not appear.
+        assert (10, 30) not in pairs
