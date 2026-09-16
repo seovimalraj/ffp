@@ -1374,6 +1374,46 @@ class TestGrooveDetector:
         assert groove["detection"]["source"] == "GEOMETRY"
 
 
+class TestFaceGrooveDetector:
+    """A ring channel cut into a flat face - the case GrooveDetector refuses.
+
+    ``GrooveDetector``'s own module docstring says explicitly that a face
+    groove is not claimed there: it is bounded by planar and cylindrical
+    walls rather than by a coaxial neighbour on both sides. This exercises
+    the separate ``FaceGrooveDetector`` that fills that gap, verified by a
+    real planar floor rather than radius and span alone.
+    """
+
+    def test_a_face_groove_is_measured(self, analyze, step_dir):
+        result = analyze(fixtures.block_with_face_groove_ring(step_dir))
+        grooves = result["features"]["grooves"]
+        assert len(grooves) == 1
+        groove = grooves[0]
+        assert groove["subtype"] == "face"
+        assert groove["is_internal"] is False
+        assert groove["diameter_mm"] == pytest.approx(39.0, abs=1e-3)
+        assert groove["neighbour_diameter_mm"] == pytest.approx(43.0, abs=1e-3)
+        assert groove["width_mm"] == pytest.approx(2.0, abs=1e-3)
+        assert groove["depth_mm"] == pytest.approx(2.0, abs=1e-3)
+        assert groove["status"] == "resolved"
+
+    def test_the_face_groove_carries_its_evidence(self, analyze, step_dir):
+        groove = analyze(fixtures.block_with_face_groove_ring(step_dir))["features"][
+            "grooves"
+        ][0]
+        evidence = " ".join(groove["detection"]["evidence"])
+        assert "floor" in evidence
+        assert groove["detection"]["source"] == "GEOMETRY"
+
+    def test_ordinary_grooves_are_unaffected_by_the_new_detector(self, analyze, step_dir):
+        # Regression: an ordinary OD groove has no floor and no second
+        # (internal) coaxial wall of matching span, so FaceGrooveDetector
+        # must not add anything to it.
+        grooves = analyze(fixtures.shaft_with_od_groove(step_dir))["features"]["grooves"]
+        assert len(grooves) == 1
+        assert grooves[0]["subtype"] == "outer_diameter"
+
+
 class TestAnnularCapIsNotAGenuineBottom:
     """A ring channel's floor is an annulus, not a solid disk bottom.
 

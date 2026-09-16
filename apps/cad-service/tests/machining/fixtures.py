@@ -537,6 +537,39 @@ def block_with_ring_channel_around_boss(tmp_path: Path) -> str:
     return _write_step(shape, tmp_path / "block_with_ring_channel_around_boss.step")
 
 
+def block_with_face_groove_ring(tmp_path: Path) -> str:
+    """80 x 80 x 20 block with a shallow ring channel cut into its top face.
+
+    Simpler than ``block_with_ring_channel_around_boss``: no boss standing
+    through the middle, just a plain flat block. A ring tool cuts a 2 mm
+    deep, 2 mm wide annular channel into the top face (outer radius 21.5,
+    inner radius 19.5, from z = 18 down to z = 20), leaving:
+
+    - the inner wall (radius 19.5, z = 18-20) - external/convex, since the
+      untouched plateau at r < 19.5 stands full-height on the inside of it;
+    - the outer wall (radius 21.5, z = 18-20) - internal/concave, since the
+      block's own bulk lies outside it;
+    - a genuine planar annular floor at z = 18, from r = 19.5 to r = 21.5,
+      bounded by both walls;
+    - an open top: both the plateau's top face and the surrounding block's
+      top face already sit at z = 20, split apart by the channel rather than
+      closed by any separate cap.
+
+    This is the pattern ``GrooveDetector`` deliberately does not claim (see
+    its module docstring) and ``FaceGrooveDetector`` does, once it has
+    verified the floor. Unlike ``block_with_ring_channel_around_boss``,
+    nothing continues past the open end at either wall's radius, so this is
+    not also read as a coaxial-neighbour groove by ``GrooveDetector``.
+    """
+    block = _box(0, 0, 0, 80, 80, 20)
+    ring_tool = _cut(
+        _cylinder(40, 40, 18, 21.5, 2.0),
+        _cylinder(40, 40, 17, 19.5, 4.0),
+    )
+    shape = _cut(block, ring_tool)
+    return _write_step(shape, tmp_path / "block_with_face_groove_ring.step")
+
+
 def block_with_tap_drill_hole(tmp_path: Path) -> str:
     """60 x 60 x 20 block, one 6.8 mm blind hole - the M8x1.25 tap-drill size.
 

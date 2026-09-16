@@ -29,6 +29,7 @@ from .constraints import MachiningComplexityAnalyzer
 from .detectors import (
     BossDetector,
     GrooveDetector,
+    FaceGrooveDetector,
     ChamferDetector,
     FilletDetector,
     HoleDetector,
@@ -86,6 +87,7 @@ class MachiningAnalysisService:
         self.slot_detector = SlotDetector(self.config)
         self.boss_detector = BossDetector(self.config)
         self.groove_detector = GrooveDetector(self.config)
+        self.face_groove_detector = FaceGrooveDetector(self.config)
         self.fillet_detector = FilletDetector(self.config)
         self.chamfer_detector = ChamferDetector(self.config)
         self.thread_detector = ThreadDetector(self.config)
@@ -351,12 +353,29 @@ class MachiningAnalysisService:
         )
         # Grooves run after holes and bosses so a band already claimed as a
         # bore wall is not re-reported as an internal groove.
-        features.grooves = (
+        coaxial_grooves = (
             self._stage(
                 "grooves", timings, warnings, lambda: self.groove_detector.detect(model)
             )
             or []
         )
+        # Face grooves are a separate detector (see face_grooves.py for why
+        # GrooveDetector itself deliberately does not claim this pattern),
+        # run as its own stage so a failure here cannot take the ordinary
+        # coaxial grooves down with it. id_offset keeps GROOVE-NNN numbering
+        # continuous across both detectors instead of colliding.
+        face_grooves = (
+            self._stage(
+                "face_grooves",
+                timings,
+                warnings,
+                lambda: self.face_groove_detector.detect(
+                    model, id_offset=len(coaxial_grooves)
+                ),
+            )
+            or []
+        )
+        features.grooves = coaxial_grooves + face_grooves
         features.fillets = (
             self._stage("fillets", timings, warnings, lambda: self.fillet_detector.detect(model))
             or []

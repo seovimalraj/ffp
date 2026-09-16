@@ -10,7 +10,7 @@
     "include_debug_geometry": true,
     "include_topology_entities": true
   },
-  "analysis_duration_ms": 3348.374,
+  "analysis_duration_ms": 4507.435,
   "file": {
     "filename": "Ball_Plunger_Ring_2.1_1_.STEP",
     "format": "STEP",
@@ -45421,80 +45421,7 @@
     ],
     "slots": [],
     "bosses": [],
-    "grooves": [
-      {
-        "id": "GROOVE-001",
-        "type": "groove",
-        "detection": {
-          "method": "coaxial_grouping",
-          "confidence": 0.9,
-          "evidence": [
-            "coaxial band narrower than the 43.0 mm diameter on both sides",
-            "width 2.0 mm, depth 2.0 mm"
-          ],
-          "source": "GEOMETRY"
-        },
-        "status": "resolved",
-        "reason": null,
-        "face_ids": [
-          10,
-          197
-        ],
-        "subtype": "outer_diameter",
-        "diameter_mm": 39,
-        "width_mm": 2,
-        "depth_mm": 2,
-        "neighbour_diameter_mm": 43,
-        "width_depth_ratio": 1,
-        "position": {
-          "x": 0,
-          "y": 4,
-          "z": 0
-        },
-        "axis": {
-          "x": 0,
-          "y": 1,
-          "z": 0
-        },
-        "is_internal": false
-      },
-      {
-        "id": "GROOVE-002",
-        "type": "groove",
-        "detection": {
-          "method": "coaxial_grouping",
-          "confidence": 0.9,
-          "evidence": [
-            "coaxial band wider than the 39.0 mm diameter on both sides",
-            "width 2.0 mm, depth 2.0 mm"
-          ],
-          "source": "GEOMETRY"
-        },
-        "status": "resolved",
-        "reason": null,
-        "face_ids": [
-          11,
-          195
-        ],
-        "subtype": "internal",
-        "diameter_mm": 43,
-        "width_mm": 2,
-        "depth_mm": 2,
-        "neighbour_diameter_mm": 39,
-        "width_depth_ratio": 1,
-        "position": {
-          "x": 0,
-          "y": 4,
-          "z": 0
-        },
-        "axis": {
-          "x": 0,
-          "y": 1,
-          "z": 0
-        },
-        "is_internal": true
-      }
-    ],
+    "grooves": [],
     "threads": [
       {
         "id": "THREAD-001",
@@ -47888,7 +47815,7 @@
     "fillet_count": 45,
     "chamfer_count": 0,
     "boss_count": 0,
-    "groove_count": 2,
+    "groove_count": 0,
     "freeform_surface_count": 15,
     "thin_wall_count": 0,
     "unique_tool_diameter_constraints": 1,
@@ -49729,31 +49656,31 @@
     },
     "unclassified_face_ids": [],
     "detector_timings_ms": {
-      "accessibility": 1134.278,
-      "bosses": 0.151,
-      "chamfers": 0.43,
-      "dimensions": 0.047,
-      "face_classification": 0.299,
-      "fillets": 1.885,
+      "accessibility": 2256.496,
+      "bosses": 0.152,
+      "chamfers": 0.365,
+      "dimensions": 0.132,
+      "face_classification": 0.293,
+      "fillets": 2.576,
       "flags": 0.014,
-      "geometry": 425.584,
-      "grooves": 4.643,
-      "holes": 553.357,
-      "indicators": 0.082,
-      "patterns": 0.678,
-      "pmi": 24.834,
-      "pocket_candidates": 229.057,
-      "pockets": 0.201,
-      "setups": 0.154,
+      "geometry": 375.825,
+      "grooves": 8.401,
+      "holes": 712.151,
+      "indicators": 0.079,
+      "patterns": 0.744,
+      "pmi": 15.64,
+      "pocket_candidates": 303.583,
+      "pockets": 0.173,
+      "setups": 0.094,
       "slots": 0.004,
-      "stock": 0.131,
+      "stock": 0.097,
       "thin_wall_flags": 0.005,
-      "thin_walls": 0.622,
-      "threads": 11.258,
-      "tooling_constraints": 0.038,
-      "topology": 821.365,
-      "topology_entities": 76.839,
-      "topology_summary": 0.894
+      "thin_walls": 0.608,
+      "threads": 11.655,
+      "tooling_constraints": 0.207,
+      "topology": 793.963,
+      "topology_entities": 12.08,
+      "topology_summary": 4.489
     },
     "kernel": "pythonocc-core",
     "pocket_rejections": {

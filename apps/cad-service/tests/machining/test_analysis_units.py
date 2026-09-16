@@ -19,6 +19,7 @@ from app.machining.config import (
 )
 from app.machining.constraints import MachiningComplexityAnalyzer
 from app.machining.detectors.grooves import GrooveDetector
+from app.machining.detectors.face_grooves import FaceGrooveDetector
 from app.machining.detectors.threads import ThreadDetector
 from app.machining.parser import sanitize_filename, validate_extension, CADParseError
 from app.machining.patterns import PatternDetector, classify_arrangement
@@ -34,6 +35,7 @@ from app.machining.schemas import (
     Detection,
     DetectionMethod,
     FeatureCollection,
+    FeatureStatus,
     HoleFeature,
     PocketFeature,
     SlotFeature,
@@ -919,3 +921,116 @@ class TestGrooveNeighbourSameIndexRejection:
         assert len(grooves) == 1
         assert grooves[0].diameter_mm == pytest.approx(34.0)
         assert grooves[0].neighbour_diameter_mm == pytest.approx(40.0)
+
+
+# ---------------------------------------------------------------------------
+# Face grooves
+# ---------------------------------------------------------------------------
+
+
+def _face_groove_walls(
+    low: float = 18.0,
+    high: float = 20.0,
+    inner_radius: float = 19.5,
+    outer_radius: float = 21.5,
+) -> tuple:
+    """The inner (external) and outer (internal) walls of a ring channel.
+
+    Same axial span, radii matching the real-world case that motivated
+    ``FaceGrooveDetector`` (a shallow ring channel cut into a flat face).
+    """
+    inner = FaceRecord(
+        id=1,
+        surface_type=CYLINDER,
+        radius_mm=inner_radius,
+        is_internal=False,
+        axis=(0.0, 0.0, 1.0),
+        axis_location=(0.0, 0.0, 0.0),
+        bbox_min=(-inner_radius, -inner_radius, low),
+        bbox_max=(inner_radius, inner_radius, high),
+    )
+    outer = FaceRecord(
+        id=2,
+        surface_type=CYLINDER,
+        radius_mm=outer_radius,
+        is_internal=True,
+        axis=(0.0, 0.0, 1.0),
+        axis_location=(0.0, 0.0, 0.0),
+        bbox_min=(-outer_radius, -outer_radius, low),
+        bbox_max=(outer_radius, outer_radius, high),
+    )
+    return inner, outer
+
+
+def _face_groove_floor(outer_radius: float = 21.5, z: float = 18.0) -> FaceRecord:
+    """A planar annular floor at the closed (bottom) end of the channel."""
+    return FaceRecord(
+        id=3,
+        surface_type=PLANE,
+        normal=(0.0, 0.0, 1.0),
+        axis=None,
+        bbox_min=(-outer_radius, -outer_radius, z),
+        bbox_max=(outer_radius, outer_radius, z),
+        centroid=(0.0, 0.0, z),
+    )
+
+
+class TestFaceGrooveDetector:
+    """A ring cut into a flat face - verified by a real planar floor.
+
+    ``GrooveDetector`` refuses this pattern by design (see its module
+    docstring): the channel's inner and outer walls are a coaxial pair, but
+    the *top* of the channel has no neighbour at all - it simply meets the
+    surrounding flat stock face. ``FaceGrooveDetector`` claims it only once
+    it finds a genuine planar floor, topologically adjacent to both walls,
+    closing the *other* end - which is exactly what these tests check for.
+    """
+
+    @pytest.fixture
+    def detector(self, config) -> FaceGrooveDetector:
+        return FaceGrooveDetector(config)
+
+    def test_a_verified_face_groove_is_reported(self, detector):
+        model = ShapeModel()
+        inner, outer = _face_groove_walls()
+        floor = _face_groove_floor()
+        model.faces[inner.id] = inner
+        model.faces[outer.id] = outer
+        model.faces[floor.id] = floor
+        # Floor face 3 is topologically adjacent to both walls - the direct
+        # mechanism `ShapeModel.neighbors` reads (a plain face-id -> set of
+        # neighbouring face-ids index), populated here the same way
+        # `TopologyAnalyzer` populates it from real edge adjacency.
+        model.face_neighbors = {
+            inner.id: {floor.id},
+            outer.id: {floor.id},
+            floor.id: {inner.id, outer.id},
+        }
+
+        grooves = detector.detect(model)
+        assert len(grooves) == 1
+        groove = grooves[0]
+        assert groove.subtype == "face"
+        assert groove.diameter_mm == pytest.approx(39.0)
+        assert groove.neighbour_diameter_mm == pytest.approx(43.0)
+        assert groove.depth_mm == pytest.approx(2.0)
+        assert groove.width_mm == pytest.approx(2.0)
+        assert groove.status == FeatureStatus.RESOLVED
+        assert set(groove.face_ids) == {inner.id, outer.id, floor.id}
+
+    def test_no_floor_no_groove(self, detector):
+        """The same coaxial pair, but with no verifying planar floor at all.
+
+        This is the actual discriminator the module docstring promises: a
+        coincidental coaxial pair of the right radii and matching span is
+        not, by itself, enough evidence - without a real floor this must
+        return nothing rather than falling back to a radius-only guess.
+        """
+        model = ShapeModel()
+        inner, outer = _face_groove_walls()
+        model.faces[inner.id] = inner
+        model.faces[outer.id] = outer
+        # No planar floor face, and no face_neighbors at all - the two walls
+        # do not even border each other, let alone a common floor.
+
+        assert detector.detect(model) == []

@@ -10,6 +10,7 @@ from .pockets import PocketDetector
 from .slots import SlotDetector
 from .bosses import BossDetector
 from .grooves import GrooveDetector
+from .face_grooves import FaceGrooveDetector
 from .blends import ChamferDetector, FilletDetector
 from .threads import ThreadDetector
 
@@ -19,6 +20,7 @@ __all__ = [
     "SlotDetector",
     "BossDetector",
     "GrooveDetector",
+    "FaceGrooveDetector",
     "FilletDetector",
     "ChamferDetector",
     "ThreadDetector",

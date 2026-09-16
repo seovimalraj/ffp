@@ -453,10 +453,14 @@ class GrooveFeature(FeatureBase):
     length. Both are cut with a form tool whose width the groove sets, which is
     why width and depth are reported separately from the radius.
 
-    ``face`` grooves - a ring cut into a flat end - are not claimed here: they
-    are bounded by planar and cylindrical walls rather than by a coaxial
-    neighbour, and calling them grooves from radius alone would put guesses
-    into the costing input.
+    ``face`` grooves - a ring cut into a flat end - are a third subtype,
+    reported by a separate detector (``FaceGrooveDetector``) that verifies a
+    real planar floor bridging the two coaxial walls, rather than by
+    coaxial-neighbour radius comparison alone the way ``outer_diameter``/
+    ``internal`` are. For a face groove, ``width_mm``/``depth_mm`` keep this
+    schema's existing field meaning (axial extent / radial difference) even
+    though that reads the reverse of how a machinist would describe the same
+    two dimensions on a ring cut into a face.
     """
 
     type: str = "groove"
