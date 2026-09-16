@@ -104,8 +104,8 @@ class GrooveDetector:
         sections: Sequence[Tuple[float, float, float, List[int], bool]],
         index: int,
         before: bool,
-    ) -> Optional[float]:
-        """Radius of the band immediately beside ``sections[index]``.
+    ) -> Optional[Tuple[float, int]]:
+        """Radius (and section index) of the band immediately beside ``sections[index]``.
 
         A groove's neighbours are found by touching a boundary, not by list
         position - the two no longer coincide once internal and external
@@ -128,6 +128,14 @@ class GrooveDetector:
         that merely overlaps it (spans across it without sharing an edge)
         is not a valid neighbour, e.g. a full-length OD face never borders
         a short internal groove band cut somewhere along a bore.
+
+        The resolved section's own index is returned alongside its radius
+        because the radial-companion fallback has no direction of its own -
+        it answers "what sits beside this band" the same way regardless of
+        which side asked. A band with no genuine axial neighbour on *either*
+        side would otherwise get the same single companion back from both
+        calls, `_grooves_in` needs the index to tell that apart from two
+        genuinely different neighbours.
         """
         low, high, _radius, _ids, _internal = sections[index]
         target = low if before else high
@@ -137,16 +145,16 @@ class GrooveDetector:
             if other_index == index:
                 continue
             if before and o_high == target:
-                return o_radius
+                return o_radius, other_index
             if not before and o_low == target:
-                return o_radius
+                return o_radius, other_index
         for other_index, (o_low, o_high, o_radius, _o_ids, _o_internal) in enumerate(
             sections
         ):
             if other_index == index:
                 continue
             if o_low == low and o_high == high:
-                return o_radius
+                return o_radius, other_index
         return None
 
     def _grooves_in(
@@ -164,11 +172,21 @@ class GrooveDetector:
 
         found: List[GrooveFeature] = []
         for index, (low, high, radius, face_ids, internal) in enumerate(sections):
-            before_radius = self._neighbour_radius(sections, index, before=True)
-            after_radius = self._neighbour_radius(sections, index, before=False)
-            if before_radius is None or after_radius is None:
+            before = self._neighbour_radius(sections, index, before=True)
+            after = self._neighbour_radius(sections, index, before=False)
+            if before is None or after is None:
                 # No material context on one side (an open end, or a band
                 # that never actually touches another) - not a groove.
+                continue
+            before_radius, before_index = before
+            after_radius, after_index = after
+            if before_index == after_index:
+                # Both sides resolved to the very same band - a single
+                # sideways (radial-companion) neighbour, not two independent
+                # sides of material. A pin sitting with a clearance gap
+                # inside a surrounding bore, say, sees the pin's wall as its
+                # only "neighbour" on both counts; that is one relationship,
+                # not a band sandwiched between two, so it is not a groove.
                 continue
 
             # A groove floor steps away from the material on *both* sides:

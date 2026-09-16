@@ -18,6 +18,7 @@ from app.machining.config import (
     reset_config_cache,
 )
 from app.machining.constraints import MachiningComplexityAnalyzer
+from app.machining.detectors.grooves import GrooveDetector
 from app.machining.detectors.threads import ThreadDetector
 from app.machining.parser import sanitize_filename, validate_extension, CADParseError
 from app.machining.patterns import PatternDetector, classify_arrangement
@@ -838,3 +839,83 @@ class TestUnitConversion:
 
     def test_booleans_are_not_treated_as_numbers(self):
         assert to_imperial({"closed": True})["closed"] is True
+
+
+def _spanning_cylinder_face(
+    face_id: int,
+    radius: float,
+    is_internal: bool,
+    low: float = 0.0,
+    high: float = 10.0,
+    axis=(0.0, 0.0, 1.0),
+    axis_location=(0.0, 0.0, 0.0),
+) -> FaceRecord:
+    """A coaxial cylindrical band spanning ``[low, high]`` along ``axis``.
+
+    ``axial_range`` (what `GrooveDetector` actually reads) derives a face's
+    axial extent from its bounding box, so the box is built to match `low`/
+    `high` exactly rather than standing in for real geometry.
+    """
+    return FaceRecord(
+        id=face_id,
+        surface_type=CYLINDER,
+        radius_mm=radius,
+        is_internal=is_internal,
+        axis=axis,
+        axis_location=axis_location,
+        bbox_min=(-radius, -radius, low),
+        bbox_max=(radius, radius, high),
+    )
+
+
+class TestGrooveNeighbourSameIndexRejection:
+    """Regression coverage for the same-radial-companion double-count fix.
+
+    `_neighbour_radius`'s "radial companion" fallback (added so a ring
+    channel milled around a boss - internal and external bands sharing an
+    axis - could still be recognised) finds any other band spanning the
+    exact same axial range, with no sense of which side asked. A band with
+    no genuine axial-touching neighbour on *either* side therefore got the
+    same single companion back from both the "before" and "after" call,
+    which `_grooves_in` then read as material on two independent sides
+    rather than one sideways relationship counted twice - fabricating a
+    groove that is not there.
+
+    Three coaxial bands sharing one axial span, and touching nothing else at
+    all, exercise this directly: none of them has a genuine two-sided
+    neighbour, so none should be reported - before the fix, the first two
+    (by sorted radius) each borrowed the third as their sole companion for
+    both sides and were wrongly accepted.
+    """
+
+    @pytest.fixture
+    def detector(self, config) -> GrooveDetector:
+        return GrooveDetector(config)
+
+    def test_three_mutually_isolated_same_span_bands_produce_no_groove(
+        self, detector
+    ):
+        model = ShapeModel()
+        # Sorted by (low, high, radius): the 17 mm band first, then 26, then
+        # 30 - each one's only possible "neighbour" is one of the other two,
+        # never a genuine axial touch, since nothing here actually borders
+        # anything else.
+        model.faces[1] = _spanning_cylinder_face(1, 17.0, is_internal=False)
+        model.faces[2] = _spanning_cylinder_face(2, 26.0, is_internal=True)
+        model.faces[3] = _spanning_cylinder_face(3, 30.0, is_internal=False)
+
+        assert detector.detect(model) == []
+
+    def test_a_genuine_two_sided_groove_is_unaffected(self, detector):
+        # Regression: three bands that DO genuinely touch end-to-end (the
+        # original, single-pool case this detector was written for) must
+        # still be recognised - the fix must not reject real neighbours.
+        model = ShapeModel()
+        model.faces[1] = _spanning_cylinder_face(1, 20.0, False, low=-10.0, high=0.0)
+        model.faces[2] = _spanning_cylinder_face(2, 17.0, False, low=0.0, high=10.0)
+        model.faces[3] = _spanning_cylinder_face(3, 20.0, False, low=10.0, high=20.0)
+
+        grooves = detector.detect(model)
+        assert len(grooves) == 1
+        assert grooves[0].diameter_mm == pytest.approx(34.0)
+        assert grooves[0].neighbour_diameter_mm == pytest.approx(40.0)
