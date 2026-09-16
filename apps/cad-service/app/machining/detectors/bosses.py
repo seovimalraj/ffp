@@ -16,7 +16,13 @@ from ..config import MachiningConfig
 from ..records import CYLINDER, PLANE, FaceRecord, ShapeModel
 from ..schemas import BossFeature, Detection, DetectionMethod, FeatureStatus, Vector3
 from ..vectors import Vec, canonical_axis, dot, is_parallel, project_scalar, scale
-from .shared import axial_range, axis_point, feature_id, group_coaxial
+from .shared import (
+    axial_range,
+    axis_point,
+    cluster_by_axial_contiguity,
+    feature_id,
+    group_coaxial,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -39,9 +45,22 @@ class BossDetector:
 
         features: List[BossFeature] = []
         for group in group_coaxial(candidates, self.config):
-            feature = self._build(model, group, len(features) + 1)
-            if feature is not None:
-                features.append(feature)
+            axis = canonical_axis(group[0].axis)
+            origin = group[0].axis_location
+            for cluster in cluster_by_axial_contiguity(
+                group, axis, origin, self.config.linear_tolerance_mm
+            ):
+                # A kernel can split one cylindrical wall into several
+                # fragments (e.g. two 180 deg halves) that individually look
+                # too thin to be a boss but together wrap a full ring - so
+                # the wrap is judged on the fragments' combined span, not any
+                # one fragment alone.
+                span = sum(face.angular_span_deg or 360.0 for face in cluster)
+                if span < _MIN_ANGULAR_SPAN_DEG:
+                    continue
+                feature = self._build(model, cluster, len(features) + 1)
+                if feature is not None:
+                    features.append(feature)
         return features
 
     def _is_candidate(self, face: FaceRecord) -> bool:
@@ -49,8 +68,7 @@ class BossDetector:
             return False  # concave -> a hole, not a boss
         if not face.radius_mm or face.radius_mm * 2.0 < self.config.boss_min_diameter_mm:
             return False
-        span = face.angular_span_deg
-        return span is None or span >= _MIN_ANGULAR_SPAN_DEG
+        return True
 
     def _build(
         self, model: ShapeModel, group: List[FaceRecord], index: int

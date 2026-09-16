@@ -1,0 +1,709 @@
+{
+  "process": "CNC Machining Milling",
+  "features": [
+    {
+      "name": "Ball Plunger Ring 2.1",
+      "color": null,
+      "hasShapes": false,
+      "children": [
+        {
+          "name": "Circular Milled Face(s)",
+          "color": {
+            "r": 0.2,
+            "g": 0.541,
+            "b": 0.882,
+            "a": 1
+          },
+          "hasShapes": true,
+          "children": [
+            {
+              "name": "Circular Milled Face",
+              "color": {
+                "r": 0.2,
+                "g": 0.541,
+                "b": 0.882,
+                "a": 1
+              },
+              "hasShapes": true,
+              "children": []
+            },
+            {
+              "name": "Circular Milled Face",
+              "color": {
+                "r": 0.2,
+                "g": 0.541,
+                "b": 0.882,
+                "a": 1
+              },
+              "hasShapes": true,
+              "children": []
+            }
+          ]
+        },
+        {
+          "name": "Convex Profile Edge Milling Face(s)",
+          "color": {
+            "r": 0.349,
+            "g": 0.627,
+            "b": 0.902,
+            "a": 1
+          },
+          "hasShapes": true,
+          "children": [
+            {
+              "name": "Convex Profile Edge Milling Face (22.00)",
+              "color": {
+                "r": 0.349,
+                "g": 0.627,
+                "b": 0.902,
+                "a": 1
+              },
+              "hasShapes": true,
+              "children": [
+                {
+                  "name": "Radius - 22.00 mm",
+                  "color": {
+                    "r": 0.349,
+                    "g": 0.627,
+                    "b": 0.902,
+                    "a": 1
+                  },
+                  "hasShapes": true,
+                  "children": []
+                },
+                {
+                  "name": "Radius - 22.00 mm",
+                  "color": {
+                    "r": 0.349,
+                    "g": 0.627,
+                    "b": 0.902,
+                    "a": 1
+                  },
+                  "hasShapes": true,
+                  "children": []
+                },
+                {
+                  "name": "Radius - 22.00 mm",
+                  "color": {
+                    "r": 0.349,
+                    "g": 0.627,
+                    "b": 0.902,
+                    "a": 1
+                  },
+                  "hasShapes": true,
+                  "children": []
+                },
+                {
+                  "name": "Radius - 22.00 mm",
+                  "color": {
+                    "r": 0.349,
+                    "g": 0.627,
+                    "b": 0.902,
+                    "a": 1
+                  },
+                  "hasShapes": true,
+                  "children": []
+                },
+                {
+                  "name": "Radius - 22.00 mm",
+                  "color": {
+                    "r": 0.349,
+                    "g": 0.627,
+                    "b": 0.902,
+                    "a": 1
+                  },
+                  "hasShapes": true,
+                  "children": []
+                },
+                {
+                  "name": "Radius - 22.00 mm",
+                  "color": {
+                    "r": 0.349,
+                    "g": 0.627,
+                    "b": 0.902,
+                    "a": 1
+                  },
+                  "hasShapes": true,
+                  "children": []
+                },
+                {
+                  "name": "Radius - 22.00 mm",
+                  "color": {
+                    "r": 0.349,
+                    "g": 0.627,
+                    "b": 0.902,
+                    "a": 1
+                  },
+                  "hasShapes": true,
+                  "children": []
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "name": "Curved Milled Face(s)",
+          "color": {
+            "r": 0.663,
+            "g": 0.808,
+            "b": 0.949,
+            "a": 1
+          },
+          "hasShapes": true,
+          "children": [
+            {
+              "name": "Curved Milled Face",
+              "color": {
+                "r": 0.663,
+                "g": 0.808,
+                "b": 0.949,
+                "a": 1
+              },
+              "hasShapes": true,
+              "children": []
+            },
+            {
+              "name": "Curved Milled Face",
+              "color": {
+                "r": 0.663,
+                "g": 0.808,
+                "b": 0.949,
+                "a": 1
+              },
+              "hasShapes": true,
+              "children": []
+            }
+          ]
+        },
+        {
+          "name": "Flat Face Milled Face(s)",
+          "color": {
+            "r": 0.576,
+            "g": 0.757,
+            "b": 0.937,
+            "a": 1
+          },
+          "hasShapes": true,
+          "children": [
+            {
+              "name": "Flat Face Milled Face",
+              "color": {
+                "r": 0.576,
+                "g": 0.757,
+                "b": 0.937,
+                "a": 1
+              },
+              "hasShapes": true,
+              "children": []
+            },
+            {
+              "name": "Flat Face Milled Face",
+              "color": {
+                "r": 0.576,
+                "g": 0.757,
+                "b": 0.937,
+                "a": 1
+              },
+              "hasShapes": true,
+              "children": []
+            },
+            {
+              "name": "Flat Face Milled Face",
+              "color": {
+                "r": 0.576,
+                "g": 0.757,
+                "b": 0.937,
+                "a": 1
+              },
+              "hasShapes": true,
+              "children": []
+            }
+          ]
+        },
+        {
+          "name": "Flat Side Milled Face(s)",
+          "color": {
+            "r": 0.706,
+            "g": 0.831,
+            "b": 0.957,
+            "a": 1
+          },
+          "hasShapes": true,
+          "children": [
+            {
+              "name": "Flat Side Milled Face",
+              "color": {
+                "r": 0.706,
+                "g": 0.831,
+                "b": 0.957,
+                "a": 1
+              },
+              "hasShapes": true,
+              "children": []
+            },
+            {
+              "name": "Flat Side Milled Face",
+              "color": {
+                "r": 0.706,
+                "g": 0.831,
+                "b": 0.957,
+                "a": 1
+              },
+              "hasShapes": true,
+              "children": []
+            },
+            {
+              "name": "Flat Side Milled Face",
+              "color": {
+                "r": 0.706,
+                "g": 0.831,
+                "b": 0.957,
+                "a": 1
+              },
+              "hasShapes": true,
+              "children": []
+            }
+          ]
+        },
+        {
+          "name": "Countersink(s)",
+          "color": {
+            "r": 0.686,
+            "g": 0.42,
+            "b": 0.427,
+            "a": 1
+          },
+          "hasShapes": true,
+          "children": [
+            {
+              "name": "Countersink (1.50, 0.50, (-0.908, 0.000, 0.419))",
+              "color": {
+                "r": 0.686,
+                "g": 0.42,
+                "b": 0.427,
+                "a": 1
+              },
+              "hasShapes": true,
+              "children": [
+                {
+                  "name": "Radius - 1.50 mm, Depth - 0.50 mm, Axis - (-0.908, 0.000, 0.419)",
+                  "color": {
+                    "r": 0.686,
+                    "g": 0.42,
+                    "b": 0.427,
+                    "a": 1
+                  },
+                  "hasShapes": true,
+                  "children": []
+                }
+              ]
+            },
+            {
+              "name": "Countersink (1.50, 0.50, (0.419, 0.000, 0.908))",
+              "color": {
+                "r": 0.686,
+                "g": 0.42,
+                "b": 0.427,
+                "a": 1
+              },
+              "hasShapes": true,
+              "children": [
+                {
+                  "name": "Radius - 1.50 mm, Depth - 0.50 mm, Axis - (0.419, 0.000, 0.908)",
+                  "color": {
+                    "r": 0.686,
+                    "g": 0.42,
+                    "b": 0.427,
+                    "a": 1
+                  },
+                  "hasShapes": true,
+                  "children": []
+                }
+              ]
+            },
+            {
+              "name": "Countersink (1.50, 0.50, (0.908, 0.000, -0.419))",
+              "color": {
+                "r": 0.686,
+                "g": 0.42,
+                "b": 0.427,
+                "a": 1
+              },
+              "hasShapes": true,
+              "children": [
+                {
+                  "name": "Radius - 1.50 mm, Depth - 0.50 mm, Axis - (0.908, 0.000, -0.419)",
+                  "color": {
+                    "r": 0.686,
+                    "g": 0.42,
+                    "b": 0.427,
+                    "a": 1
+                  },
+                  "hasShapes": true,
+                  "children": []
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "name": "Through Hole(s)",
+          "color": {
+            "r": 0.184,
+            "g": 0.439,
+            "b": 0.125,
+            "a": 1
+          },
+          "hasShapes": true,
+          "children": [
+            {
+              "name": "Through Hole (7.50, 4.00, (0.000, -1.000, 0.000))",
+              "color": {
+                "r": 0.184,
+                "g": 0.439,
+                "b": 0.125,
+                "a": 1
+              },
+              "hasShapes": true,
+              "children": [
+                {
+                  "name": "Radius - 7.50 mm, Depth - 4.00 mm, Axis - (0.000, -1.000, 0.000)",
+                  "color": {
+                    "r": 0.184,
+                    "g": 0.439,
+                    "b": 0.125,
+                    "a": 1
+                  },
+                  "hasShapes": true,
+                  "children": []
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "name": "Threaded Blind Hole(s)",
+          "color": {
+            "r": 0.322,
+            "g": 0.569,
+            "b": 0.271,
+            "a": 1
+          },
+          "hasShapes": true,
+          "children": [
+            {
+              "name": "Threaded Blind Hole (1.50, 1.77, 4.87, 0.50, 5.50, (-0.419, 0.000, -0.908))",
+              "color": {
+                "r": 0.322,
+                "g": 0.569,
+                "b": 0.271,
+                "a": 1
+              },
+              "hasShapes": true,
+              "children": [
+                {
+                  "name": "Minor radius - 1.50 mm, Major radius - 1.77 mm, Thread length - 4.87 mm, Pitch - 0.50 mm, Depth - 5.50 mm, Axis - (-0.419, 0.000, -0.908)",
+                  "color": {
+                    "r": 0.322,
+                    "g": 0.569,
+                    "b": 0.271,
+                    "a": 1
+                  },
+                  "hasShapes": true,
+                  "children": []
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "name": "Stepped Hole(s)",
+          "color": {
+            "r": 0.443,
+            "g": 0.643,
+            "b": 0.4,
+            "a": 1
+          },
+          "hasShapes": true,
+          "children": [
+            {
+              "name": "Stepped Hole (10.00)",
+              "color": {
+                "r": 0.443,
+                "g": 0.643,
+                "b": 0.4,
+                "a": 1
+              },
+              "hasShapes": true,
+              "children": [
+                {
+                  "name": "Depth - 10.00 mm",
+                  "color": {
+                    "r": 0.443,
+                    "g": 0.643,
+                    "b": 0.4,
+                    "a": 1
+                  },
+                  "hasShapes": true,
+                  "children": []
+                },
+                {
+                  "name": "Depth - 10.00 mm",
+                  "color": {
+                    "r": 0.443,
+                    "g": 0.643,
+                    "b": 0.4,
+                    "a": 1
+                  },
+                  "hasShapes": true,
+                  "children": []
+                },
+                {
+                  "name": "Depth - 10.00 mm",
+                  "color": {
+                    "r": 0.443,
+                    "g": 0.643,
+                    "b": 0.4,
+                    "a": 1
+                  },
+                  "hasShapes": true,
+                  "children": []
+                },
+                {
+                  "name": "Depth - 10.00 mm",
+                  "color": {
+                    "r": 0.443,
+                    "g": 0.643,
+                    "b": 0.4,
+                    "a": 1
+                  },
+                  "hasShapes": true,
+                  "children": []
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "name": "Through Pocket(s)",
+          "color": {
+            "r": 0.475,
+            "g": 0.435,
+            "b": 0.11,
+            "a": 1
+          },
+          "hasShapes": true,
+          "children": [
+            {
+              "name": "Through Pocket (3.59, 3.54, 5.39, (0.419, -0.010, 0.908), 0.00)",
+              "color": {
+                "r": 0.475,
+                "g": 0.435,
+                "b": 0.11,
+                "a": 1
+              },
+              "hasShapes": true,
+              "children": [
+                {
+                  "name": "Length - 3.59 mm, Width - 3.54 mm, Depth - 5.39 mm, Axis - (0.419, -0.010, 0.908), Maximum Cutter Radius - 0.00 mm",
+                  "color": {
+                    "r": 0.475,
+                    "g": 0.435,
+                    "b": 0.11,
+                    "a": 1
+                  },
+                  "hasShapes": true,
+                  "children": []
+                }
+              ]
+            },
+            {
+              "name": "Through Pocket (3.59, 3.54, 5.39, (0.908, -0.010, -0.419), 0.00)",
+              "color": {
+                "r": 0.475,
+                "g": 0.435,
+                "b": 0.11,
+                "a": 1
+              },
+              "hasShapes": true,
+              "children": [
+                {
+                  "name": "Length - 3.59 mm, Width - 3.54 mm, Depth - 5.39 mm, Axis - (0.908, -0.010, -0.419), Maximum Cutter Radius - 0.00 mm",
+                  "color": {
+                    "r": 0.475,
+                    "g": 0.435,
+                    "b": 0.11,
+                    "a": 1
+                  },
+                  "hasShapes": true,
+                  "children": []
+                }
+              ]
+            },
+            {
+              "name": "Through Pocket (3.59, 3.54, 5.39, (0.908, 0.010, -0.419), 0.00)",
+              "color": {
+                "r": 0.475,
+                "g": 0.435,
+                "b": 0.11,
+                "a": 1
+              },
+              "hasShapes": true,
+              "children": [
+                {
+                  "name": "Length - 3.59 mm, Width - 3.54 mm, Depth - 5.39 mm, Axis - (0.908, 0.010, -0.419), Maximum Cutter Radius - 0.00 mm",
+                  "color": {
+                    "r": 0.475,
+                    "g": 0.435,
+                    "b": 0.11,
+                    "a": 1
+                  },
+                  "hasShapes": true,
+                  "children": []
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "name": "Open Pocket(s)",
+          "color": {
+            "r": 0.475,
+            "g": 0.435,
+            "b": 0.11,
+            "a": 1
+          },
+          "hasShapes": true,
+          "children": [
+            {
+              "name": "Open Pocket (7.45, 1.97, 1.00, (0.000, -1.000, 0.000), 1.00)",
+              "color": {
+                "r": 0.475,
+                "g": 0.435,
+                "b": 0.11,
+                "a": 1
+              },
+              "hasShapes": true,
+              "children": [
+                {
+                  "name": "Length - 7.45 mm, Width - 1.97 mm, Depth - 1.00 mm, Axis - (0.000, -1.000, 0.000), Maximum Cutter Radius - 1.00 mm",
+                  "color": {
+                    "r": 0.475,
+                    "g": 0.435,
+                    "b": 0.11,
+                    "a": 1
+                  },
+                  "hasShapes": true,
+                  "children": []
+                },
+                {
+                  "name": "Length - 7.45 mm, Width - 1.97 mm, Depth - 1.00 mm, Axis - (0.000, -1.000, 0.000), Maximum Cutter Radius - 1.00 mm",
+                  "color": {
+                    "r": 0.475,
+                    "g": 0.435,
+                    "b": 0.11,
+                    "a": 1
+                  },
+                  "hasShapes": true,
+                  "children": []
+                },
+                {
+                  "name": "Length - 7.45 mm, Width - 1.97 mm, Depth - 1.00 mm, Axis - (0.000, -1.000, 0.000), Maximum Cutter Radius - 1.00 mm",
+                  "color": {
+                    "r": 0.475,
+                    "g": 0.435,
+                    "b": 0.11,
+                    "a": 1
+                  },
+                  "hasShapes": true,
+                  "children": []
+                },
+                {
+                  "name": "Length - 7.45 mm, Width - 1.97 mm, Depth - 1.00 mm, Axis - (0.000, -1.000, 0.000), Maximum Cutter Radius - 1.00 mm",
+                  "color": {
+                    "r": 0.475,
+                    "g": 0.435,
+                    "b": 0.11,
+                    "a": 1
+                  },
+                  "hasShapes": true,
+                  "children": []
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "name": "Closed Pocket(s)",
+          "color": {
+            "r": 0.475,
+            "g": 0.435,
+            "b": 0.11,
+            "a": 1
+          },
+          "hasShapes": true,
+          "children": [
+            {
+              "name": "Closed Pocket (37.70, 35.92, 6.00, (0.000, -1.000, 0.000), 2.10)",
+              "color": {
+                "r": 0.475,
+                "g": 0.435,
+                "b": 0.11,
+                "a": 1
+              },
+              "hasShapes": true,
+              "children": [
+                {
+                  "name": "Length - 37.70 mm, Width - 35.92 mm, Depth - 6.00 mm, Axis - (0.000, -1.000, 0.000), Maximum Cutter Radius - 2.10 mm",
+                  "color": {
+                    "r": 0.475,
+                    "g": 0.435,
+                    "b": 0.11,
+                    "a": 1
+                  },
+                  "hasShapes": true,
+                  "children": []
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "name": "Boss(es)",
+          "color": {
+            "r": 0.122,
+            "g": 0.588,
+            "b": 0.659,
+            "a": 1
+          },
+          "hasShapes": true,
+          "children": [
+            {
+              "name": "Boss (39.00, 39.00, 2.00)",
+              "color": {
+                "r": 0.122,
+                "g": 0.588,
+                "b": 0.659,
+                "a": 1
+              },
+              "hasShapes": true,
+              "children": [
+                {
+                  "name": "Length - 39.00 mm, Width - 39.00 mm, Height - 2.00 mm",
+                  "color": {
+                    "r": 0.122,
+                    "g": 0.588,
+                    "b": 0.659,
+                    "a": 1
+                  },
+                  "hasShapes": true,
+                  "children": []
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
