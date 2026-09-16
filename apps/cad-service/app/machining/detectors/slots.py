@@ -92,9 +92,10 @@ class SlotDetector:
     def _has_undercut_wall(self, model: ShapeModel, candidate: PocketCandidate) -> bool:
         """True when a wall's neighbour leans back over the slot mouth."""
         wall_ids = {w.id for w in candidate.walls}
+        floor_ids = {f.id for f in candidate.floors}
         for wall in candidate.walls:
             for neighbor in model.neighbors(wall.id):
-                if neighbor.id in wall_ids or neighbor.id == candidate.floor.id:
+                if neighbor.id in wall_ids or neighbor.id in floor_ids:
                     continue
                 if neighbor.surface_type != PLANE or neighbor.normal is None:
                     continue
@@ -104,7 +105,7 @@ class SlotDetector:
 
                 if dot(neighbor.normal, candidate.normal) < -0.85:
                     floor_level = project_scalar(
-                        candidate.floor.centroid, (0.0, 0.0, 0.0), candidate.normal
+                        candidate.position, (0.0, 0.0, 0.0), candidate.normal
                     )
                     neighbor_level = project_scalar(
                         neighbor.centroid, (0.0, 0.0, 0.0), candidate.normal
@@ -130,7 +131,7 @@ class SlotDetector:
                     corner_radius_mm=candidate.corner_radius_mm,
                     orientation=Vector3.from_tuple(candidate.long_axis),
                     machining_direction=list(candidate.normal),
-                    position=Vector3.from_tuple(candidate.floor.centroid),
+                    position=Vector3.from_tuple(candidate.position),
                     depth_width_ratio=(
                         candidate.depth_mm / candidate.width_mm
                         if candidate.width_mm > 0

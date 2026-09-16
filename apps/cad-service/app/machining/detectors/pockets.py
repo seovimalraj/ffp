@@ -15,13 +15,15 @@ from ..config import MachiningConfig
 from ..raycast import RayProbe
 from ..records import CYLINDER, PLANE, FaceRecord, ShapeModel
 from ..schemas import Detection, DetectionMethod, FeatureStatus, PocketFeature, Vector3
-from ..vectors import Vec, dot, project_scalar, scale
+from ..vectors import Vec, add, dot, project_scalar, scale
 from .shared import (
     axial_range,
+    bbox_corners,
     feature_id,
+    group_coplanar,
     is_outer_face,
     min_corner_radius,
-    planar_dimensions,
+    planar_dimensions_from_corners,
     wall_faces_of,
 )
 
@@ -30,13 +32,15 @@ logger = logging.getLogger(__name__)
 
 @dataclass
 class PocketCandidate:
-    """A recessed floor face plus everything measured about it.
+    """A recessed floor plus everything measured about it.
 
     Shared with :mod:`.slots` so slots and pockets come from one detection pass
-    and can never both claim the same floor.
+    and can never both claim the same floor. ``floors`` holds every coplanar
+    fragment the kernel split the floor into - one element for the common case
+    of a single intact floor face.
     """
 
-    floor: FaceRecord
+    floors: List[FaceRecord]
     walls: List[FaceRecord]
     normal: Vec
     depth_mm: float
@@ -48,7 +52,13 @@ class PocketCandidate:
     corner_radius_mm: Optional[float]
     closed: bool
     bottom_type: str
+    position: Vec
     evidence: List[str] = field(default_factory=list)
+
+    @property
+    def floor(self) -> FaceRecord:
+        """The lowest-id fragment, kept as a stable representative face."""
+        return self.floors[0]
 
     @property
     def aspect_ratio(self) -> float:
@@ -56,7 +66,7 @@ class PocketCandidate:
 
     @property
     def face_ids(self) -> List[int]:
-        return sorted({self.floor.id} | {w.id for w in self.walls})
+        return sorted({f.id for f in self.floors} | {w.id for w in self.walls})
 
 
 class PocketDetector:
@@ -82,9 +92,16 @@ class PocketDetector:
                 "from pocket walls and no pockets will be reported."
             )
             return []
+
+        fragments = [
+            face
+            for face in sorted(model.faces.values(), key=lambda f: f.id)
+            if self._is_floor_fragment(model, face, probe)
+        ]
+
         candidates: List[PocketCandidate] = []
-        for face in sorted(model.faces.values(), key=lambda f: f.id):
-            candidate = self._evaluate(model, face, probe)
+        for group in group_coplanar(model, fragments, self.config):
+            candidate = self._evaluate_group(model, group)
             if candidate is not None:
                 candidates.append(candidate)
         return candidates
@@ -98,25 +115,27 @@ class PocketDetector:
         """
         self.rejections[floor.id] = reason
 
-    def _evaluate(
+    def _is_floor_fragment(
         self, model: ShapeModel, floor: FaceRecord, probe: RayProbe
-    ) -> Optional[PocketCandidate]:
+    ) -> bool:
+        """Structural floor checks that hold regardless of how big the piece is.
+
+        Area is deliberately not judged here: a floor can reach the kernel as
+        several coplanar fragments (split by a tangent edge, a small feature
+        cutting across it, or how the solid was built), each individually
+        undersized. Those are merged by :func:`group_coplanar` first, so the
+        area threshold is applied to the merged floor in
+        :meth:`_evaluate_group` instead.
+        """
         if floor.surface_type != PLANE or floor.normal is None:
-            return None
+            return False
         if floor.claimed_by == "hole":
             self._reject(floor, "already claimed by a hole or bore")
-            return None
-        if floor.area_mm2 < self.config.pocket_min_area_mm2:
-            self._reject(
-                floor,
-                f"area {round(floor.area_mm2, 2)} mm2 is below "
-                f"pocket_min_area_mm2 ({self.config.pocket_min_area_mm2})",
-            )
-            return None
+            return False
         if is_outer_face(model, floor, self.config):
             # Sits on the silhouette - this is stock surface, not a pocket floor.
             self._reject(floor, "lies on the model silhouette - stock surface")
-            return None
+            return False
 
         # A pocket *wall* also has a recessed position and perpendicular
         # neighbours, so geometry alone cannot separate it from a floor. The
@@ -126,34 +145,80 @@ class PocketDetector:
             self._reject(
                 floor, "not visible along its own normal - a wall, not a floor"
             )
+            return False
+        return True
+
+    def _evaluate_group(
+        self, model: ShapeModel, group: List[FaceRecord]
+    ) -> Optional[PocketCandidate]:
+        total_area = sum(f.area_mm2 for f in group)
+        if total_area < self.config.pocket_min_area_mm2:
+            suffix = f", combined across {len(group)} coplanar fragment(s)" if len(group) > 1 else ""
+            for face in group:
+                self._reject(
+                    face,
+                    f"area {round(total_area, 2)} mm2 is below "
+                    f"pocket_min_area_mm2 ({self.config.pocket_min_area_mm2})" + suffix,
+                )
             return None
 
-        walls = wall_faces_of(model, floor, self.config)
+        member_ids = {f.id for f in group}
+        walls: List[FaceRecord] = []
+        seen_wall_ids: set = set()
+        for face in group:
+            for wall in wall_faces_of(model, face, self.config):
+                if wall.id in member_ids or wall.id in seen_wall_ids:
+                    continue
+                seen_wall_ids.add(wall.id)
+                walls.append(wall)
+
         if len(walls) < self.config.pocket_min_wall_count:
-            self._reject(
-                floor,
-                f"{len(walls)} surrounding wall face(s), below "
-                f"pocket_min_wall_count ({self.config.pocket_min_wall_count})",
-            )
+            for face in group:
+                self._reject(
+                    face,
+                    f"{len(walls)} surrounding wall face(s), below "
+                    f"pocket_min_wall_count ({self.config.pocket_min_wall_count})",
+                )
             return None
 
-        normal = floor.normal
-        depth = self._depth(floor, walls, normal)
+        normal = group[0].normal
+        depth = self._depth(group[0], walls, normal)
         if depth < self.config.pocket_min_depth_mm:
-            self._reject(
-                floor,
-                f"depth {round(depth, 3)} mm is below pocket_min_depth_mm "
-                f"({self.config.pocket_min_depth_mm})",
-            )
+            for face in group:
+                self._reject(
+                    face,
+                    f"depth {round(depth, 3)} mm is below pocket_min_depth_mm "
+                    f"({self.config.pocket_min_depth_mm})",
+                )
             return None
 
-        length, width, long_axis, short_axis = planar_dimensions(floor, normal)
+        corners = [corner for face in group for corner in bbox_corners(face)]
+        length, width, long_axis, short_axis = planar_dimensions_from_corners(corners, normal)
         if width <= 0:
-            self._reject(floor, "degenerate in-plane dimensions")
+            for face in group:
+                self._reject(face, "degenerate in-plane dimensions")
             return None
+
+        ok_ids = member_ids | seen_wall_ids
+        closed = all(self._is_closed(model, face, ok_ids) for face in group)
+        position = self._area_weighted_centroid(group, total_area)
+
+        if len(group) > 1:
+            evidence = [
+                f"{len(group)} coplanar floor face(s) merged into one recessed "
+                f"floor: {sorted(member_ids)}",
+                f"{len(walls)} enclosing wall face(s)",
+                f"depth {round(depth, 3)} mm along the floor normal",
+            ]
+        else:
+            evidence = [
+                f"planar floor face {group[0].id} recessed below the silhouette",
+                f"{len(walls)} enclosing wall face(s)",
+                f"depth {round(depth, 3)} mm along the floor normal",
+            ]
 
         return PocketCandidate(
-            floor=floor,
+            floors=group,
             walls=walls,
             normal=normal,
             depth_mm=depth,
@@ -161,16 +226,21 @@ class PocketDetector:
             width_mm=width,
             long_axis=long_axis,
             short_axis=short_axis,
-            area_mm2=floor.area_mm2,
+            area_mm2=total_area,
             corner_radius_mm=min_corner_radius(walls),
-            closed=self._is_closed(model, floor, walls),
+            closed=closed,
             bottom_type="planar",
-            evidence=[
-                f"planar floor face {floor.id} recessed below the silhouette",
-                f"{len(walls)} enclosing wall face(s)",
-                f"depth {round(depth, 3)} mm along the floor normal",
-            ],
+            position=position,
+            evidence=evidence,
         )
+
+    def _area_weighted_centroid(self, faces: List[FaceRecord], total_area: float) -> Vec:
+        if total_area <= 0:
+            return faces[0].centroid
+        weighted = (0.0, 0.0, 0.0)
+        for face in faces:
+            weighted = add(weighted, scale(face.centroid, face.area_mm2))
+        return scale(weighted, 1.0 / total_area)
 
     def _depth(self, floor: FaceRecord, walls: List[FaceRecord], normal: Vec) -> float:
         """Height the walls rise above the floor, along the floor normal."""
@@ -181,16 +251,15 @@ class PocketDetector:
             return 0.0
         return max(0.0, max(wall_tops) - floor_level)
 
-    def _is_closed(
-        self, model: ShapeModel, floor: FaceRecord, walls: List[FaceRecord]
-    ) -> bool:
+    def _is_closed(self, model: ShapeModel, floor: FaceRecord, ok_ids: set) -> bool:
         """True when every boundary edge of the floor is met by a wall.
 
         An edge that runs out to a face which is not a wall means the pocket
         opens out to the side - an open pocket, which a downstream planner may
-        machine very differently.
+        machine very differently. ``ok_ids`` also includes the floor's own
+        coplanar sibling fragments, so a seam between two pieces of one merged
+        floor is not itself mistaken for an open boundary.
         """
-        wall_ids = {w.id for w in walls}
         for edge_id in floor.edge_ids:
             edge = model.edges.get(edge_id)
             if edge is None:
@@ -198,7 +267,7 @@ class PocketDetector:
             others = [fid for fid in edge.face_ids if fid != floor.id]
             if not others:
                 return False  # free edge - open boundary
-            if not any(fid in wall_ids for fid in others):
+            if not any(fid in ok_ids for fid in others):
                 return False
         return True
 
@@ -219,7 +288,7 @@ class PocketDetector:
                     corner_radius_mm=candidate.corner_radius_mm,
                     minimum_internal_radius_mm=candidate.corner_radius_mm,
                     machining_direction=list(candidate.normal),
-                    position=Vector3.from_tuple(candidate.floor.centroid),
+                    position=Vector3.from_tuple(candidate.position),
                     depth_width_ratio=(
                         candidate.depth_mm / candidate.width_mm
                         if candidate.width_mm > 0

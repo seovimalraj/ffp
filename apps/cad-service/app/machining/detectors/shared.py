@@ -64,8 +64,19 @@ def planar_dimensions(face: FaceRecord, normal: Vec) -> Tuple[float, float, Vec,
     The two in-plane basis vectors come from :func:`perpendicular_basis`, which
     is deterministic for a given normal, so repeated runs agree exactly.
     """
+    return planar_dimensions_from_corners(bbox_corners(face), normal)
+
+
+def planar_dimensions_from_corners(
+    corners: Sequence[Vec], normal: Vec
+) -> Tuple[float, float, Vec, Vec]:
+    """Same as :func:`planar_dimensions`, over an arbitrary point set.
+
+    Lets a caller measure the combined footprint of several faces - e.g. a
+    pocket floor the kernel represents as multiple coplanar fragments - by
+    passing the union of their corners instead of one face's own.
+    """
     u, v = perpendicular_basis(normal)
-    corners = bbox_corners(face)
     us = [dot(c, u) for c in corners]
     vs = [dot(c, v) for c in corners]
     extent_u = max(us) - min(us)
@@ -146,6 +157,55 @@ def group_coaxial(
         if not placed:
             groups.append([face])
             axes.append((axis, face.axis_location))
+    return groups
+
+
+def group_coplanar(
+    model: ShapeModel, faces: Sequence[FaceRecord], config: MachiningConfig
+) -> List[List[FaceRecord]]:
+    """Group planar faces into contiguous same-plane clusters.
+
+    A single logical floor can reach the kernel as several adjoining planar
+    faces - split apart by a tangent edge, a small feature cutting across it,
+    or how the solid was built up - rather than one face with inner wires for
+    its holes. Two faces belong together only when they are coplanar (parallel
+    normals, same offset from the origin) *and* adjacent (connected through a
+    chain of shared edges), so this merges genuine fragments of one surface
+    without pulling in an unrelated, merely coplanar face sitting elsewhere on
+    the part - two pockets machined at the same depth stay two pockets.
+    """
+    eligible = {f.id: f for f in faces if f.normal is not None}
+    visited: set = set()
+    groups: List[List[FaceRecord]] = []
+
+    for start_id in sorted(eligible):
+        if start_id in visited:
+            continue
+        start = eligible[start_id]
+        start_normal = normalize(start.normal)  # type: ignore[arg-type]
+        start_distance = dot(start.centroid, start_normal)
+
+        visited.add(start_id)
+        cluster = [start]
+        stack = [start]
+        while stack:
+            face = stack.pop()
+            for neighbor in model.neighbors(face.id):
+                if neighbor.id in visited or neighbor.id not in eligible:
+                    continue
+                if neighbor.normal is None:
+                    continue
+                neighbor_normal = normalize(neighbor.normal)
+                if not is_parallel(neighbor_normal, start_normal, config.angular_tolerance_deg):
+                    continue
+                neighbor_distance = dot(neighbor.centroid, neighbor_normal)
+                if abs(neighbor_distance - start_distance) > config.linear_tolerance_mm * 10:
+                    continue
+                visited.add(neighbor.id)
+                cluster.append(neighbor)
+                stack.append(neighbor)
+
+        groups.append(sorted(cluster, key=lambda f: f.id))
     return groups
 
 
