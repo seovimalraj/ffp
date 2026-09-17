@@ -7600,9 +7600,24 @@ export function createViewer(container: HTMLElement): Viewer {
     );
     if (!mainMesh || !mainMesh.geometry) return null;
     const posAttr = mainMesh.geometry.getAttribute("position");
+    if (!posAttr) return null;
     const indexAttr = mainMesh.geometry.getIndex();
-    if (!posAttr || !indexAttr) return null;
-    const indices = indexAttr.array as Uint32Array | Uint16Array;
+    // Per-face CAD tessellation commonly merges into a *non-indexed*
+    // geometry (`BufferGeometryUtils.mergeGeometries` only produces an index
+    // when every input face's geometry already had one, and a single
+    // non-indexed face in the loaded scene makes the whole merged mesh
+    // non-indexed) - there is no missing data here, just no index buffer, so
+    // every 3 consecutive vertices are already one triangle in vertex order.
+    // Synthesize the identity index rather than bailing, or every feature on
+    // such a mesh would silently fall back to the marker cue regardless of
+    // surface type.
+    const indices: Uint32Array | Uint16Array = indexAttr
+      ? (indexAttr.array as Uint32Array | Uint16Array)
+      : (() => {
+          const identity = new Uint32Array(posAttr.count);
+          for (let i = 0; i < identity.length; i++) identity[i] = i;
+          return identity;
+        })();
 
     // `recenterGeometryAtOrigin` bakes a `-boundingBoxCenter` shift directly
     // into this mesh's vertex data (for camera framing) - a viewer-only
