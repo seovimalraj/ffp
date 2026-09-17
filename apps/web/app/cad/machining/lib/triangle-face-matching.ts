@@ -28,6 +28,7 @@ export interface FaceSurfaceGeometry {
   axis: Vector3Like | null;
   axis_location: Vector3Like | null;
   radius_mm: number | null;
+  minor_radius_mm: number | null;
   cone_half_angle_deg: number | null;
 }
 
@@ -287,13 +288,55 @@ function triangleMatchesFace(
       return err / refRadius <= tolerances.radiusRelativeTolerance;
     }
 
-    // TORUS, BSPLINE, BEZIER, REVOLUTION, EXTRUSION, OFFSET, OTHER: no
-    // reliable analytic test available from `FaceDetail` alone (e.g. TORUS
-    // would need a minor+major radius pair tested against a doubly-curved
-    // surface, and freeform surfaces carry no closed-form equation at all).
-    // Left unsupported rather than guessed at - falls through to "no match"
-    // for that face, same honest-degradation stance as the rest of this
-    // module: no highlight rather than a silently wrong one.
+    case "TORUS": {
+      // `radius_mm` is the major radius (axis to tube centre), `minor_radius_mm`
+      // the tube radius - both real fields `FaceDetail` provides for a torus,
+      // so this is testable the same way CYLINDER/CONE are: a point lies on
+      // the surface when its distance from the tube's own centre circle
+      // equals the minor radius.
+      const axisLocation = toVec3(face.axis_location);
+      const axisDir = toVec3(face.axis);
+      const majorRadius = face.radius_mm;
+      const minorRadius = face.minor_radius_mm;
+      if (
+        !axisLocation ||
+        !axisDir ||
+        typeof majorRadius !== "number" ||
+        majorRadius <= 0 ||
+        typeof minorRadius !== "number" ||
+        minorRadius <= 0
+      ) {
+        return false;
+      }
+      const dir = normalize(axisDir);
+      const offset = sub(tri.centroid, axisLocation);
+      const t = dot(offset, dir);
+      const radial = sub(offset, scale(dir, t));
+      const rho = length(radial);
+      if (rho < 1e-9) return false;
+      const radialUnit = scale(radial, 1 / rho);
+
+      // Vector from the nearest point on the tube's centre circle (radius
+      // `majorRadius`, in the plane through `axisLocation`) to the triangle
+      // centroid - its length is the point's distance from the tube surface,
+      // and its direction is the surface normal there.
+      const fromCore = add(scale(dir, t), scale(radialUnit, rho - majorRadius));
+      const distFromCore = length(fromCore);
+      const relError = Math.abs(distFromCore - minorRadius) / minorRadius;
+      if (relError > tolerances.radiusRelativeTolerance) return false;
+      if (distFromCore < 1e-9) return true; // degenerate normal - distance alone is decisive
+
+      const surfaceNormal = scale(fromCore, 1 / distFromCore);
+      const alignment = Math.abs(dot(tri.normal, surfaceNormal));
+      return alignment >= tolerances.normalDotTolerance;
+    }
+
+    // BSPLINE, BEZIER, REVOLUTION, EXTRUSION, OFFSET, OTHER: no reliable
+    // analytic test available from `FaceDetail` alone - these freeform
+    // surfaces carry no closed-form equation to test a point against. Left
+    // unsupported rather than guessed at - falls through to "no match" for
+    // that face, same honest-degradation stance as the rest of this module:
+    // no highlight rather than a silently wrong one.
     default:
       return false;
   }

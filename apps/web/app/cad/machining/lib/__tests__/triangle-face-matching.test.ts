@@ -34,6 +34,7 @@ function makeFaceDetail(
     axis: null,
     axis_location: { x: 0, y: 0, z: 0 },
     radius_mm: null,
+    minor_radius_mm: null,
     cone_half_angle_deg: null,
     ...overrides,
   };
@@ -73,6 +74,31 @@ function cylinderBand(radius: number, zLow: number, zHigh: number) {
   return {
     positions: new Float32Array(positions),
     indices: new Uint32Array(indices),
+  };
+}
+
+// A small patch of a torus (major radius `R` around the Z axis, tube radius
+// `r`), centered at (thetaCenter, phiCenter) on its own parametrization, so
+// the geometric triangle normal closely approximates the analytic surface
+// normal there.
+function torusPatch(
+  majorRadius: number,
+  minorRadius: number,
+  thetaCenter: number,
+  phiCenter: number,
+  delta = 0.02,
+) {
+  const point = (theta: number, phi: number): [number, number, number] => {
+    const rho = majorRadius + minorRadius * Math.cos(phi);
+    return [rho * Math.cos(theta), rho * Math.sin(theta), minorRadius * Math.sin(phi)];
+  };
+  const p00 = point(thetaCenter - delta, phiCenter - delta);
+  const p10 = point(thetaCenter + delta, phiCenter - delta);
+  const p01 = point(thetaCenter - delta, phiCenter + delta);
+  const p11 = point(thetaCenter + delta, phiCenter + delta);
+  return {
+    positions: new Float32Array([...p00, ...p10, ...p01, ...p11]),
+    indices: new Uint32Array([0, 1, 2, 1, 3, 2]),
   };
 }
 
@@ -173,6 +199,38 @@ describe("classifyTriangles", () => {
     });
 
     const matched = classifyTriangles(PLANE_POSITIONS, PLANE_INDICES, [face]);
+    assert.deepEqual(matched, []);
+  });
+
+  it("matches triangles on a clear TORUS face (e.g. a fillet blend)", () => {
+    const { positions, indices } = torusPatch(10, 2, 0.3, 0.4);
+    const face = makeFaceDetail({
+      surface_type: "TORUS",
+      normal: null,
+      axis: { x: 0, y: 0, z: 1 },
+      axis_location: { x: 0, y: 0, z: 0 },
+      radius_mm: 10,
+      minor_radius_mm: 2,
+      bounding_box: makeBoundingBox([-13, -13, -3], [13, 13, 3]),
+    });
+
+    const matched = classifyTriangles(positions, indices, [face]);
+    assert.equal(matched.length, 2);
+  });
+
+  it("rejects a torus candidate whose minor radius is out of tolerance", () => {
+    const { positions, indices } = torusPatch(10, 2, 0.3, 0.4);
+    const face = makeFaceDetail({
+      surface_type: "TORUS",
+      normal: null,
+      axis: { x: 0, y: 0, z: 1 },
+      axis_location: { x: 0, y: 0, z: 0 },
+      radius_mm: 10,
+      minor_radius_mm: 5, // well outside the 2% default tolerance
+      bounding_box: makeBoundingBox([-16, -16, -6], [16, 16, 6]),
+    });
+
+    const matched = classifyTriangles(positions, indices, [face]);
     assert.deepEqual(matched, []);
   });
 });
