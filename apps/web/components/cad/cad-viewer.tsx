@@ -1115,6 +1115,12 @@ export const CadViewer = forwardRef<CadViewerRef, CadViewerProps>(
       }
       const meshData = viewerRef.current.getMainMeshGeometryData();
       if (!meshData) {
+        // TEMP DEBUG - remove once the marker-fallback issue is confirmed fixed.
+        console.debug(
+          "[feature-highlight] getMainMeshGeometryData() returned null - " +
+            "no position attribute found (or no mesh under modelRoot yet); " +
+            "every visible feature will fall back to its marker.",
+        );
         viewerRef.current.setFeatureHighlight(null);
         onFeatureHighlightResolved?.(
           Object.fromEntries(features.map((f) => [f.id, 0])),
@@ -1142,6 +1148,19 @@ export const CadViewer = forwardRef<CadViewerRef, CadViewerProps>(
         matchedByFeatureId[feature.id] = matched.length;
         for (const idx of matched) allMatchedTriangles.add(idx);
       }
+
+      // TEMP DEBUG - remove once the marker-fallback issue is confirmed fixed.
+      console.debug("[feature-highlight] classification result", {
+        meshVertexCount: meshData.positions.length / 3,
+        meshTriangleCount: meshData.indices.length / 3,
+        tolerances,
+        perFeature: features.map((f) => ({
+          id: f.id,
+          faceCount: f.faces.length,
+          surfaceTypes: [...new Set(f.faces.map((face) => face.surface_type))],
+          matchedTriangles: matchedByFeatureId[f.id],
+        })),
+      });
 
       viewerRef.current.setFeatureHighlight(
         allMatchedTriangles.size > 0 ? [...allMatchedTriangles] : null,
