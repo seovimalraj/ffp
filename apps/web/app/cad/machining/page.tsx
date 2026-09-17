@@ -238,19 +238,41 @@ export default function MachiningAnalysisPage() {
   // resolve to any `face_details` entry, is simply omitted here - its
   // fallback marker is handled separately below.
   const highlightFeatures = useMemo(() => {
-    if (status.kind !== "done") return [];
+    if (status.kind !== "done") {
+      // TEMP DEBUG - remove once the marker-fallback issue is confirmed fixed.
+      console.debug("[feature-highlight] status not done yet", status.kind);
+      return [];
+    }
     const faceDetails = status.result.face_details;
-    if (!faceDetails || faceDetails.length === 0) return [];
+    if (!faceDetails || faceDetails.length === 0) {
+      // TEMP DEBUG - remove once the marker-fallback issue is confirmed fixed.
+      console.debug(
+        "[feature-highlight] no face_details on the analysis result - " +
+          "every visible feature will fall back to its marker",
+        { faceDetailsLength: faceDetails?.length ?? null },
+      );
+      return [];
+    }
     const result: Array<{ id: string; faces: typeof faceDetails }> = [];
+    const perId: Array<Record<string, unknown>> = [];
     for (const id of visibleFeatureIds) {
       const feature = findFeatureById(status.result, id);
       if (!feature || !Array.isArray(feature.face_ids) || feature.face_ids.length === 0) {
+        perId.push({ id, found: !!feature, faceIds: feature?.face_ids ?? null });
         continue;
       }
       const faceIds = new Set(feature.face_ids);
       const faces = faceDetails.filter((detail) => faceIds.has(detail.face_id));
+      perId.push({ id, faceIdsWanted: feature.face_ids, faceDetailsResolved: faces.length });
       if (faces.length > 0) result.push({ id, faces });
     }
+    // TEMP DEBUG - remove once the marker-fallback issue is confirmed fixed.
+    console.debug("[feature-highlight] resolution", {
+      visibleFeatureCount: visibleFeatureIds.size,
+      faceDetailsCount: faceDetails.length,
+      resolvedFeatureCount: result.length,
+      perId,
+    });
     return result;
   }, [status, visibleFeatureIds]);
 
