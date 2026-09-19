@@ -157,6 +157,7 @@ class TestSuccessfulAnalysis:
             "accessibility",
             "setup_analysis",
             "stock_analysis",
+            "suggestions",
             "machining_constraints",
             "complexity_indicators",
             "pmi",

@@ -57,6 +57,7 @@ from .schemas import (
     MachiningAnalysisResponse,
     ModelInfo,
     MomentsOfInertia,
+    Suggestions,
     TopologyEntities,
     UnitSystem,
     Vector3,
@@ -262,6 +263,14 @@ class MachiningAnalysisService:
         )
         response.stock_analysis = self._stage(
             "stock", timings, warnings, lambda: self.stock_analyzer.analyze(model, mass)
+        )
+        response.suggestions = Suggestions(
+            stock_form=self._stage(
+                "stock_form_suggestion",
+                timings,
+                warnings,
+                lambda: self.stock_analyzer.suggest_form(model),
+            )
         )
 
         response.complexity_indicators = self._stage(

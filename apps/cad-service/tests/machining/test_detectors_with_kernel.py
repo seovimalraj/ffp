@@ -545,7 +545,7 @@ class TestStockAndIndicators:
         assert result["complexity_indicators"]["deep_hole_count"] == 1
 
     def test_flat_part_classifies_as_sheet(self, analyze, step_dir):
-        form = analyze(fixtures.thin_sheet_part(step_dir))["stock_analysis"][
+        form = analyze(fixtures.thin_sheet_part(step_dir))["suggestions"][
             "stock_form"
         ]
         assert form["form"] == "SHEET"
@@ -555,9 +555,9 @@ class TestStockAndIndicators:
     def test_round_bar_is_separated_from_square_bar(self, analyze, step_dir):
         """Identical extents - only the external cylinder tells them apart."""
         round_form = analyze(fixtures.round_bar_with_face_groove(step_dir))[
-            "stock_analysis"
+            "suggestions"
         ]["stock_form"]
-        square_form = analyze(fixtures.square_bar(step_dir))["stock_analysis"][
+        square_form = analyze(fixtures.square_bar(step_dir))["suggestions"][
             "stock_form"
         ]
 
@@ -571,7 +571,7 @@ class TestStockAndIndicators:
     def test_ring_turning_about_its_shortest_extent_is_round(self, analyze, step_dir):
         """A ring is nearly as tall as it is wide, so the ratios alone say
         block. The rotational axis is what makes it round stock."""
-        form = analyze(fixtures.ring(step_dir))["stock_analysis"]["stock_form"]
+        form = analyze(fixtures.ring(step_dir))["suggestions"]["stock_form"]
         assert form["form"] == "ROUND_BAR"
         assert form["round_evidence"]["radius_mm"] == pytest.approx(19.45, abs=1e-6)
 
@@ -579,7 +579,7 @@ class TestStockAndIndicators:
         self, analyze, step_dir
     ):
         """No single cylinder spans the part - the OD is a union of faces."""
-        form = analyze(fixtures.stepped_shaft(step_dir))["stock_analysis"][
+        form = analyze(fixtures.stepped_shaft(step_dir))["suggestions"][
             "stock_form"
         ]
         assert form["form"] == "ROUND_BAR"
@@ -589,7 +589,7 @@ class TestStockAndIndicators:
     def test_bent_bracket_is_sheet_not_block(self, analyze, step_dir):
         """Folding gives a sheet part the envelope of a block, so the wall is
         the only evidence left."""
-        form = analyze(fixtures.bent_sheet_bracket(step_dir))["stock_analysis"][
+        form = analyze(fixtures.bent_sheet_bracket(step_dir))["suggestions"][
             "stock_form"
         ]
         assert form["form"] == "SHEET"
@@ -598,7 +598,7 @@ class TestStockAndIndicators:
         assert evidence["formed"] is True
 
     def test_formed_enclosure_is_sheet(self, analyze, step_dir):
-        form = analyze(fixtures.formed_sheet_enclosure(step_dir))["stock_analysis"][
+        form = analyze(fixtures.formed_sheet_enclosure(step_dir))["suggestions"][
             "stock_form"
         ]
         assert form["form"] == "SHEET"
@@ -609,19 +609,19 @@ class TestStockAndIndicators:
     def test_solid_block_is_not_mistaken_for_sheet(self, analyze, step_dir):
         """The area guard has to hold, or every part becomes sheet."""
         form = analyze(fixtures.simple_block_with_through_hole(step_dir))[
-            "stock_analysis"
+            "suggestions"
         ]["stock_form"]
         assert form["form"] == "BLOCK"
         assert form["sheet_evidence"] is None
 
     def test_block_fixture_classifies_as_block(self, analyze, step_dir):
         form = analyze(fixtures.simple_block_with_through_hole(step_dir))[
-            "stock_analysis"
+            "suggestions"
         ]["stock_form"]
         assert form["form"] == "BLOCK"
 
     def test_stock_form_carries_no_material_or_cost(self, analyze, step_dir):
-        form = analyze(fixtures.square_bar(step_dir))["stock_analysis"]["stock_form"]
+        form = analyze(fixtures.square_bar(step_dir))["suggestions"]["stock_form"]
         assert not [
             key
             for key in form

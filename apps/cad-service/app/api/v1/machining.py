@@ -71,7 +71,8 @@ produces the same JSON.
 | `machining_flags` | `DEEP_HOLE`, `NARROW_SLOT`, ... against configurable thresholds |
 | `machining_constraints` | Geometric maximum tool diameter per feature |
 | `accessibility`, `setup_analysis` | Ray-cast reachability from the six principal directions |
-| `stock_analysis` | Bounding-box estimate, always marked `estimated`, plus `stock_form` |
+| `stock_analysis` | Bounding-box estimate, always marked `estimated` |
+| `suggestions` | Best-guess inferences (currently `stock_form`) kept apart from the measured facts above |
 | `complexity_indicators` | Deterministic counts - no score, no difficulty rating |
 | `pmi` | Metadata the file declares, tagged `CAD_METADATA` |
 
@@ -85,9 +86,14 @@ classification, the feature is returned with `status: "ambiguous"` and a
 A thread designation is **never** inferred from diameter: a 6.8 mm hole is the
 tap drill for M8, but that is a manufacturing decision, not a geometric fact.
 
-### Stock form
+### Suggestions - not certain, not facts
 
-`stock_analysis.stock_form` classifies the envelope as `SHEET`, `PLATE`,
+`suggestions` holds classifications inferred from evidence that could point
+another way, kept apart from the measured geometry above so a consumer never
+mistakes a guess for a fact. Everything in this section can be wrong; nothing
+in `model`, `geometry`, `features` or `stock_analysis` can.
+
+`suggestions.stock_form` classifies the envelope as `SHEET`, `PLATE`,
 `ROUND_BAR`, `SQUARE_BAR`, `RECTANGULAR_BAR` or `BLOCK`.
 
 Flat stock is decided on extent ratios. A *formed* part is caught next - a bent

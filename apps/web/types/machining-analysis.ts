@@ -441,9 +441,17 @@ export interface StockAnalysis {
   finished_volume_mm3: number;
   removed_volume_mm3: number;
   material_removal_ratio: number;
-  /** Null when the extents are degenerate. */
-  stock_form: StockForm | null;
   note: string;
+}
+
+/**
+ * Best-guess inferences, kept apart from the measured facts elsewhere in the
+ * response. Nothing here is a geometric certainty - treat it as a hint for a
+ * downstream planner, not as ground truth.
+ */
+export interface Suggestions {
+  /** Null when the extents are degenerate or no analysis ran. */
+  stock_form: StockForm | null;
 }
 
 export interface ComplexityIndicators {
@@ -534,6 +542,7 @@ export interface MachiningAnalysisResponse {
   accessibility: FeatureAccessibility[];
   setup_analysis: SetupAnalysis;
   stock_analysis: StockAnalysis | null;
+  suggestions: Suggestions;
   complexity_indicators: ComplexityIndicators;
   pmi: PMIInfo;
   warnings: AnalysisWarning[];

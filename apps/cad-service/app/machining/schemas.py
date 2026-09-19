@@ -759,9 +759,12 @@ class SheetEvidence(BaseModel):
 class StockForm(BaseModel):
     """Which mill form the envelope resembles, from extents and face evidence.
 
-    Purely geometric. It says a part *could* be cut from bar, plate or sheet of
-    these proportions; it does not say that stock is available, appropriate for
-    the material, or cheapest - those need context this endpoint does not have.
+    This is a suggestion, not a measured fact - it lives under
+    ``suggestions``, separate from the deterministic geometry in
+    ``stock_analysis``. It says a part *could* be cut from bar, plate or
+    sheet of these proportions; it does not say that stock is available,
+    appropriate for the material, or cheapest - those need context this
+    endpoint does not have.
     """
 
     method: str = "extent_ratios_and_surface_evidence"
@@ -813,16 +816,26 @@ class StockAnalysis(BaseModel):
     finished_volume_mm3: float
     removed_volume_mm3: float
     material_removal_ratio: float
+    note: str = (
+        "Bounding-box estimate. Not a commercially purchased stock size, and no "
+        "material, grade, or cost is implied."
+    )
+
+
+class Suggestions(BaseModel):
+    """Best-guess inferences, kept apart from the measured facts above.
+
+    Nothing here is a geometric certainty - each field is a classification
+    made from evidence that could point another way. Treat this section as a
+    hint for a downstream planner, not as ground truth.
+    """
+
     stock_form: Optional[StockForm] = Field(
         default=None,
         description=(
             "Which mill form the envelope resembles - sheet, plate, or bar. "
-            "Null when the extents are degenerate."
+            "Null when the extents are degenerate or no analysis ran."
         ),
-    )
-    note: str = (
-        "Bounding-box estimate. Not a commercially purchased stock size, and no "
-        "material, grade, or cost is implied."
     )
 
 
@@ -1000,6 +1013,7 @@ class MachiningAnalysisResponse(BaseModel):
     accessibility: List[FeatureAccessibility] = Field(default_factory=list)
     setup_analysis: SetupAnalysis = Field(default_factory=SetupAnalysis)
     stock_analysis: Optional[StockAnalysis] = None
+    suggestions: Suggestions = Field(default_factory=Suggestions)
     complexity_indicators: ComplexityIndicators = Field(
         default_factory=ComplexityIndicators
     )

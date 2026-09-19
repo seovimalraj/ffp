@@ -14,7 +14,7 @@ from typing import Optional
 
 from .config import MachiningConfig
 from .records import MassProperties, ShapeModel
-from .schemas import StockAnalysis, StockDimensions
+from .schemas import StockAnalysis, StockDimensions, StockForm
 from .stock_form import StockFormClassifier
 
 logger = logging.getLogger(__name__)
@@ -53,8 +53,15 @@ class StockAnalyzer:
             finished_volume_mm3=round(finished, self.config.volume_decimals),
             removed_volume_mm3=round(removed, self.config.volume_decimals),
             material_removal_ratio=round(ratio, 4),
-            stock_form=self.form_classifier.classify(model),
         )
+
+    def suggest_form(self, model: ShapeModel) -> Optional[StockForm]:
+        """Best-guess mill form for the ``suggestions`` section.
+
+        Kept separate from :meth:`analyze` - this is an inference from extent
+        ratios and face evidence, not a measured fact.
+        """
+        return self.form_classifier.classify(model)
 
     def _round_up(self, value: float) -> float:
         """Round a stock dimension up to the configured increment."""

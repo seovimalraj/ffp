@@ -441,10 +441,10 @@ export default function MachiningAnalysisPage() {
                   {status.result.model.face_count} faces ·{" "}
                   {status.result.complexity_indicators.feature_count_total}{" "}
                   features · {formatDuration(status.result.analysis_duration_ms)}
-                  {status.result.stock_analysis?.stock_form?.form && (
+                  {status.result.suggestions?.stock_form?.form && (
                     <>
                       {" · "}
-                      {humanize(status.result.stock_analysis.stock_form.form)}
+                      {humanize(status.result.suggestions.stock_form.form)}
                     </>
                   )}
                 </div>

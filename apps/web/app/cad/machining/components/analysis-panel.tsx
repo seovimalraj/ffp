@@ -130,6 +130,7 @@ function OverviewTab({
 }) {
   const geometry = result.geometry;
   const stock = result.stock_analysis;
+  const suggestions = result.suggestions;
   const indicators = result.complexity_indicators;
 
   return (
@@ -260,8 +261,8 @@ function OverviewTab({
         </Section>
       )}
 
-      {stock?.stock_form && (
-        <StockFormSection form={stock.stock_form} unit={unit} />
+      {suggestions?.stock_form && (
+        <StockFormSection form={suggestions.stock_form} unit={unit} />
       )}
 
       {result.pmi.available && (
@@ -982,10 +983,13 @@ function StockFormSection({
   const sheet = form.sheet_evidence;
 
   return (
-    <Section title="Stock form" icon={<Box className="h-3.5 w-3.5" />}>
+    <Section title="Stock form (suggested)" icon={<Box className="h-3.5 w-3.5" />}>
       <div className="flex flex-wrap items-center gap-1.5">
         <span className="rounded bg-slate-800 px-2 py-0.5 text-[11px] font-semibold text-white">
           {humanize(form.form)}
+        </span>
+        <span className="rounded bg-violet-100 px-1.5 py-0.5 text-[10px] font-medium text-violet-800">
+          suggestion
         </span>
         {ambiguous && (
           <span className="rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-medium text-amber-800">

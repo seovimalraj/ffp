@@ -284,6 +284,12 @@ SUCCESS_EXAMPLE: Dict[str, Any] = {
         "finished_volume_mm3": 321652.57,
         "removed_volume_mm3": 103347.43,
         "material_removal_ratio": 0.2432,
+        "note": (
+            "Bounding-box estimate. Not a commercially purchased stock size, and "
+            "no material, grade, or cost is implied."
+        ),
+    },
+    "suggestions": {
         "stock_form": {
             "method": "extent_ratios_and_surface_evidence",
             "form": "BLOCK",
@@ -303,10 +309,6 @@ SUCCESS_EXAMPLE: Dict[str, Any] = {
                 "or cost is implied, and this is not a purchasing recommendation."
             ),
         },
-        "note": (
-            "Bounding-box estimate. Not a commercially purchased stock size, and "
-            "no material, grade, or cost is implied."
-        ),
     },
     "complexity_indicators": {
         "hole_count": 5,

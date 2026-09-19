@@ -272,9 +272,15 @@ flagged `"estimated": true`. This is **not** a purchased stock size: real stock
 comes in discrete sizes and may be a casting or extrusion. No material, grade or
 cost is implied.
 
+## Suggestions
+
+A separate `suggestions` section holds best-guess classifications, kept apart
+from `stock_analysis` and the rest of the measured geometry so a consumer
+never mistakes an inference for a fact. It currently has one field.
+
 ### Stock form
 
-`stock_analysis.stock_form` also names the mill form the envelope resembles:
+`suggestions.stock_form` names the mill form the envelope resembles:
 `SHEET`, `PLATE`, `ROUND_BAR`, `SQUARE_BAR`, `RECTANGULAR_BAR` or `BLOCK`.
 
 Flat stock is decided first, on two ratios: thickness/width separates flat from
