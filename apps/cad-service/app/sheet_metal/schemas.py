@@ -112,10 +112,27 @@ class BendLine(BaseModel):
     end: Vector3
 
 
+class FlangeLeg(BaseModel):
+    """One flat leg on either side of a bend."""
+
+    face_id: int
+    height_mm: float = Field(
+        description=(
+            "Flat length of the leg, measured from the bend's tangent line to "
+            "the leg's far edge. Excludes the bend zone itself, so it is not an "
+            "outside-to-outside dimension."
+        )
+    )
+    height_to_thickness_ratio: Optional[float] = None
+
+
 class BendFeature(BaseModel):
     id: str
     angle_deg: float
     inner_radius_mm: float
+    radius_to_thickness_ratio: Optional[float] = Field(
+        default=None, description="inner_radius_mm / dominant sheet thickness."
+    )
     bend_line: BendLine
     axis: Vector3
     length_mm: float
@@ -127,6 +144,7 @@ class BendFeature(BaseModel):
     bend_allowance_mm: Optional[float] = None
     bend_deduction_mm: Optional[float] = None
     adjacent_flange_ids: List[str] = Field(default_factory=list)
+    flange_legs: List[FlangeLeg] = Field(default_factory=list)
     detection: Detection
 
 
@@ -151,8 +169,37 @@ class SheetMetalHole(BaseModel):
     position: Vector3
     shape: str = Field(default="round", description="round | slotted")
     quantity: int = 1
+    diameter_to_thickness_ratio: Optional[float] = Field(
+        default=None, description="diameter_mm / dominant sheet thickness."
+    )
     distance_to_nearest_edge_mm: Optional[float] = None
     distance_to_nearest_bend_mm: Optional[float] = None
+    ligament_to_nearest_edge_mm: Optional[float] = Field(
+        default=None,
+        description=(
+            "Material between the hole's edge and the part's outer edge, "
+            "measured in the sheet plane. Only set for holes on the base face - "
+            "the outer profile is the base face's boundary, so a hole on a "
+            "bent-up leg has no measurable outer edge here."
+        ),
+    )
+    ligament_to_nearest_bend_mm: Optional[float] = Field(
+        default=None,
+        description=(
+            "Material between the hole's edge and the tangent line where the "
+            "flat leg it sits on meets the bend. Null for a hole on no bent leg."
+        ),
+    )
+    distance_to_nearest_hole_mm: Optional[float] = Field(
+        default=None, description="Centre-to-centre distance to the closest other hole."
+    )
+    ligament_to_nearest_hole_mm: Optional[float] = Field(
+        default=None,
+        description=(
+            "Material left between this hole's edge and the closest other "
+            "hole's edge: centre distance minus both radii."
+        ),
+    )
 
 
 class Cutout(BaseModel):

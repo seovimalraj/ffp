@@ -202,6 +202,72 @@ def test_bend_radius_healthy_ratio_does_not_flag():
     assert not any(f.flag == "BEND_RADIUS_TOO_TIGHT" for f in flags)
 
 
+def test_hole_ratio_and_nearest_hole_ligament_are_measured():
+    model, faces = _rect_plate_model()
+    holes = [
+        _hole("HOLE-001", (30.0, 50.0, 0.0), diameter=8.0),
+        _hole("HOLE-002", (50.0, 50.0, 0.0), diameter=6.0),
+        _hole("HOLE-003", (120.0, 50.0, 0.0), diameter=8.0),
+    ]
+    compute_distance_checks(model, CONFIG, faces, holes, [], [], [], 2.0)
+
+    first, second, third = holes
+    assert first.diameter_to_thickness_ratio == pytest.approx(4.0)
+    assert second.diameter_to_thickness_ratio == pytest.approx(3.0)
+    assert first.distance_to_nearest_hole_mm == pytest.approx(20.0)
+    # 20 centre distance minus the 4 mm and 3 mm radii.
+    assert first.ligament_to_nearest_hole_mm == pytest.approx(13.0)
+    assert second.distance_to_nearest_hole_mm == pytest.approx(20.0)
+    assert second.ligament_to_nearest_hole_mm == pytest.approx(13.0)
+    assert third.distance_to_nearest_hole_mm == pytest.approx(70.0)
+
+
+def test_hole_ligament_to_outer_edge_is_measured_from_the_hole_edge():
+    model, faces = _rect_plate_model()
+    # 30 mm from the x=0 edge, 8 mm diameter -> 26 mm of material. The hole
+    # is at mid-thickness (z=1) off a z=0 skin; that offset must not count.
+    hole = _hole("HOLE-001", (30.0, 50.0, 1.0), diameter=8.0)
+    compute_distance_checks(model, CONFIG, faces, [hole], [], [], [], 2.0)
+    assert hole.ligament_to_nearest_edge_mm == pytest.approx(26.0)
+
+
+def test_hole_off_the_base_face_has_no_edge_ligament():
+    model, faces = _rect_plate_model()
+    hole = _hole("HOLE-001", (75.0, 50.0, 40.0), diameter=8.0)  # nowhere near z=0
+    compute_distance_checks(model, CONFIG, faces, [hole], [], [], [], 2.0)
+    assert hole.ligament_to_nearest_edge_mm is None
+
+
+def test_hole_ligament_to_bend_tangent_uses_the_leg_the_hole_sits_on():
+    model, faces = _rect_plate_model()
+    # Bend axis along X at y=110 (z=3 above the plate, as a radius-3 inner
+    # cylinder tangent to the z=0 plane would sit). The tangent line on the
+    # plate is therefore y=110, and a hole at y=90 is 20 mm from it.
+    bend = _bend("bend_1", (0.0, 110.0, 3.0), (150.0, 110.0, 3.0), radius=3.0)
+    bend.adjacent_flange_ids = ["1"]
+    hole = _hole("HOLE-001", (75.0, 90.0, 1.0), diameter=8.0)
+    compute_distance_checks(model, CONFIG, faces, [hole], [], [], [bend], 2.0)
+    assert hole.ligament_to_nearest_bend_mm == pytest.approx(16.0)
+
+
+def test_hole_on_no_bent_leg_has_no_bend_ligament():
+    model, faces = _rect_plate_model()
+    bend = _bend("bend_1", (0.0, 110.0, 3.0), (150.0, 110.0, 3.0), radius=3.0)
+    bend.adjacent_flange_ids = ["99"]  # not a face in the model
+    hole = _hole("HOLE-001", (75.0, 90.0, 1.0), diameter=8.0)
+    compute_distance_checks(model, CONFIG, faces, [hole], [], [], [bend], 2.0)
+    assert hole.ligament_to_nearest_bend_mm is None
+
+
+def test_single_hole_has_no_nearest_hole_and_unknown_thickness_skips_ratio():
+    model, faces = _rect_plate_model()
+    hole = _hole("HOLE-001", (75.0, 50.0, 0.0))
+    compute_distance_checks(model, CONFIG, faces, [hole], [], [], [], None)
+    assert hole.distance_to_nearest_hole_mm is None
+    assert hole.ligament_to_nearest_hole_mm is None
+    assert hole.diameter_to_thickness_ratio is None
+
+
 def test_cutout_min_feature_size_flags():
     model, faces = _rect_plate_model()
     cutout = Cutout(

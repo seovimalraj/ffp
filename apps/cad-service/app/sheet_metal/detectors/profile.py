@@ -27,7 +27,7 @@ from ..schemas import OuterProfile, ProfileValidityIssue, SheetMetalFaces
 from .cutouts import Loop, _loop_bbox_diagonal, _point_key, face_loops
 
 
-def _select_profile_face(model: ShapeModel, faces: SheetMetalFaces) -> Optional[FaceRecord]:
+def select_profile_face(model: ShapeModel, faces: SheetMetalFaces) -> Optional[FaceRecord]:
     """The face whose outer boundary stands in for the part's outer profile.
 
     Prefers the already-identified base face (stage 7); falls back to the
@@ -49,7 +49,7 @@ def _select_profile_face(model: ShapeModel, faces: SheetMetalFaces) -> Optional[
 
 def select_outer_loop(model: ShapeModel, faces: SheetMetalFaces) -> Optional[Loop]:
     """The raw edge chain forming the outer profile's boundary, or ``None``."""
-    face = _select_profile_face(model, faces)
+    face = select_profile_face(model, faces)
     if face is None:
         return None
     loops = face_loops(model, face)

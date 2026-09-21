@@ -276,6 +276,34 @@ def test_single_bend_l_bracket_fixture_reports_one_plausible_bend(analyze, step_
 
 
 @requires_kernel
+def test_hole_ligaments_on_a_bent_bracket(analyze, step_dir):
+    """8 mm hole 40 mm from the bend axis, 20 mm from the free edge."""
+    payload = analyze(fixtures.swept_l_bracket_bend(step_dir, hole_diameter=8.0))
+
+    assert len(payload["holes"]) == 1
+    hole = payload["holes"][0]
+    # Centre-to-tangent 40 mm minus the 4 mm radius.
+    assert math.isclose(hole["ligament_to_nearest_bend_mm"], 36.0, abs_tol=0.1)
+    # Nearest outer edge is the free edge at 20 mm, minus the radius.
+    assert math.isclose(hole["ligament_to_nearest_edge_mm"], 16.0, abs_tol=0.1)
+    assert math.isclose(hole["diameter_to_thickness_ratio"], 4.0, abs_tol=0.01)
+
+
+@requires_kernel
+def test_bend_reports_ratios_and_flat_leg_heights(analyze, step_dir):
+    """swept_l_bracket_bend: 2 mm sheet, 3 mm inner radius, 60 mm and 40 mm legs."""
+    bend = analyze(fixtures.swept_l_bracket_bend(step_dir))["bends"][0]
+
+    assert math.isclose(bend["radius_to_thickness_ratio"], 1.5, abs_tol=0.05)
+    legs = bend["flange_legs"]
+    assert len(legs) == 2
+    heights = sorted(leg["height_mm"] for leg in legs)
+    assert all(math.isclose(a, b, abs_tol=0.1) for a, b in zip(heights, [40.0, 60.0]))
+    ratios = sorted(leg["height_to_thickness_ratio"] for leg in legs)
+    assert all(math.isclose(a, b, abs_tol=0.1) for a, b in zip(ratios, [20.0, 30.0]))
+
+
+@requires_kernel
 def test_flat_plate_with_holes_fixture_reports_zero_bends(analyze, step_dir):
     step_path = fixtures.flat_plate_with_holes(step_dir)
     payload = analyze(step_path)

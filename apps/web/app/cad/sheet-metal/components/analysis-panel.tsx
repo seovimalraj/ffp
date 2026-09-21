@@ -467,6 +467,16 @@ function BendRow({
               rows={[
                 ["Angle", `${formatNumber(bend.angle_deg, 1)}°`],
                 ["Inner radius", formatLength(bend.inner_radius_mm, unit)],
+                [
+                  "Radius / thickness",
+                  formatNumber(bend.radius_to_thickness_ratio, 2),
+                ],
+                [
+                  "Flange heights",
+                  bend.flange_legs
+                    .map((leg) => formatLength(leg.height_mm, unit))
+                    .join(" · ") || "—",
+                ],
                 ["Length", formatLength(bend.length_mm, unit)],
                 ["Direction", bend.direction],
                 ["Sequence hint", String(bend.sequence_hint)],
@@ -580,8 +590,17 @@ function FeaturesTab({
                   {formatVector(hole.position)} ({unit})
                 </p>
                 <p className="mt-1 text-[11px] text-slate-500">
-                  edge {formatLength(hole.distance_to_nearest_edge_mm, unit)} ·
-                  bend {formatLength(hole.distance_to_nearest_bend_mm, unit)}
+                  centre to: edge{" "}
+                  {formatLength(hole.distance_to_nearest_edge_mm, unit)} · bend
+                  axis {formatLength(hole.distance_to_nearest_bend_mm, unit)} ·
+                  hole {formatLength(hole.distance_to_nearest_hole_mm, unit)}
+                </p>
+                <p className="mt-1 text-[11px] text-slate-500">
+                  material to: edge{" "}
+                  {formatLength(hole.ligament_to_nearest_edge_mm, unit)} · bend{" "}
+                  {formatLength(hole.ligament_to_nearest_bend_mm, unit)} · hole{" "}
+                  {formatLength(hole.ligament_to_nearest_hole_mm, unit)} · Ø/t{" "}
+                  {formatNumber(hole.diameter_to_thickness_ratio, 2)}
                 </p>
               </li>
             ))}

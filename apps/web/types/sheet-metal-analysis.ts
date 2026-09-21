@@ -101,10 +101,23 @@ export interface BendLine {
   end: Vector3;
 }
 
+/** One flat leg on either side of a bend. */
+export interface FlangeLeg {
+  face_id: number;
+  /**
+   * Flat length from the bend's tangent line to the leg's far edge. Excludes
+   * the bend zone, so it is not an outside-to-outside dimension.
+   */
+  height_mm: number;
+  height_to_thickness_ratio: number | null;
+}
+
 export interface BendFeature {
   id: string;
   angle_deg: number;
   inner_radius_mm: number;
+  /** inner_radius_mm / dominant sheet thickness. Null when thickness is unknown. */
+  radius_to_thickness_ratio: number | null;
   bend_line: BendLine;
   axis: Vector3;
   length_mm: number;
@@ -116,6 +129,7 @@ export interface BendFeature {
   bend_allowance_mm: number | null;
   bend_deduction_mm: number | null;
   adjacent_flange_ids: string[];
+  flange_legs: FlangeLeg[];
   detection: Detection;
 }
 
@@ -141,8 +155,24 @@ export interface SheetMetalHole {
   /** "round" | "slotted" */
   shape: string;
   quantity: number;
+  /** diameter_mm / dominant sheet thickness. Null when thickness is unknown. */
+  diameter_to_thickness_ratio: number | null;
   distance_to_nearest_edge_mm: number | null;
   distance_to_nearest_bend_mm: number | null;
+  /**
+   * Material between the hole's edge and the part's outer edge, in the sheet
+   * plane. Only set for holes on the base face.
+   */
+  ligament_to_nearest_edge_mm: number | null;
+  /**
+   * Material between the hole's edge and the tangent line where its flat leg
+   * meets the bend. Null for a hole on no bent leg.
+   */
+  ligament_to_nearest_bend_mm: number | null;
+  /** Centre-to-centre distance to the closest other hole. */
+  distance_to_nearest_hole_mm: number | null;
+  /** Edge-to-edge material between this hole and the closest other hole. */
+  ligament_to_nearest_hole_mm: number | null;
 }
 
 export interface Cutout {

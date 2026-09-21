@@ -50,14 +50,18 @@ from ...machining.vectors import (
     add,
     angle_between_deg,
     canonical_axis,
+    cross,
+    dot,
     is_parallel,
+    norm,
+    normalize,
     point_line_distance,
     project_scalar,
     scale,
     sub,
 )
 from ..config import SheetMetalConfig
-from ..schemas import BendFeature, BendLine
+from ..schemas import BendFeature, BendLine, FlangeLeg
 
 #: Straight bend-line edges must run within this many degrees of the
 #: cylinder's own axis to count as the flange-joining edge (as opposed to an
@@ -89,6 +93,33 @@ def _flange_candidates(
         if best_edge is not None:
             candidates.append((neighbor, best_edge))
     return candidates
+
+
+def _leg_height(
+    model: ShapeModel, flange: FaceRecord, tangent_edge: EdgeRecord, axis
+) -> Optional[float]:
+    """Flat length of a flange: bend tangent line to the farthest point of its edges.
+
+    The in-plane direction perpendicular to the bend axis is the direction the
+    leg runs in. Each edge contributes its endpoints and midpoint, so a rounded
+    free end (whose extreme point is mid-arc) is not under-measured. Longer
+    curved edges that bulge past all three sample points would still be, which
+    is why this is documented as a flat-length measurement rather than an exact
+    envelope.
+    """
+    run = cross(flange.normal, axis)  # type: ignore[arg-type]
+    if norm(run) < 1e-9:
+        return None
+    run = normalize(run)
+    origin = dot(tangent_edge.start, run)
+    reach = 0.0
+    for edge_id in flange.edge_ids:
+        edge = model.edges.get(edge_id)
+        if edge is None:
+            continue
+        for point in (edge.start, edge.midpoint, edge.end):
+            reach = max(reach, abs(dot(point, run) - origin))
+    return reach if reach > 0 else None
 
 
 def _bend_line(cyl: FaceRecord, length_mm: float) -> BendLine:
@@ -202,12 +233,31 @@ def detect_bends(
                 2.0 * (radius + thickness_mm) * math.tan(angle_rad / 2.0) - bend_allowance
             )
 
+        has_thickness = thickness_mm is not None and thickness_mm > 0
+        legs: List[FlangeLeg] = []
+        for flange, edge in ((flange_a, edge_a), (flange_b, edge_b)):
+            height = _leg_height(model, flange, edge, cyl.axis)
+            if height is None:
+                continue
+            legs.append(
+                FlangeLeg(
+                    face_id=flange.id,
+                    height_mm=round(height, config.length_decimals),
+                    height_to_thickness_ratio=(
+                        round(height / thickness_mm, 3) if has_thickness else None
+                    ),
+                )
+            )
+
         sequence += 1
         bends.append(
             BendFeature(
                 id=f"bend_{sequence}",
                 angle_deg=round(angle_deg, 2),
                 inner_radius_mm=round(radius, config.length_decimals),
+                radius_to_thickness_ratio=(
+                    round(radius / thickness_mm, 3) if has_thickness else None
+                ),
                 bend_line=_bend_line(cyl, length_mm),
                 axis=Vector3(x=cyl.axis[0], y=cyl.axis[1], z=cyl.axis[2]),
                 length_mm=round(length_mm, config.length_decimals),
@@ -225,6 +275,7 @@ def detect_bends(
                     else None
                 ),
                 adjacent_flange_ids=[str(flange_a.id), str(flange_b.id)],
+                flange_legs=legs,
                 detection=Detection(
                     method=DetectionMethod.TOPOLOGY_AND_SURFACE,
                     confidence=0.9,

@@ -144,7 +144,7 @@ def single_bend_l_bracket(tmp_path: Path) -> str:
     return _write_step(shape, tmp_path / "single_bend_l_bracket.step")
 
 
-def swept_l_bracket_bend(tmp_path: Path) -> str:
+def swept_l_bracket_bend(tmp_path: Path, hole_diameter: float | None = None) -> str:
     """An L-bracket built from an explicit 2D profile + prism, not a fillet.
 
     ``single_bend_l_bracket`` builds its corner via ``BRepFilletAPI_MakeFillet``
@@ -224,7 +224,16 @@ def swept_l_bracket_bend(tmp_path: Path) -> str:
     wire = wire_maker.Wire()
     face = _builder.BRepBuilderAPI_MakeFace(wire).Face()
     shape = _prim.BRepPrimAPI_MakePrism(face, _gp.gp_Vec(extrude_len, 0.0, 0.0)).Shape()
-    return _write_step(shape, tmp_path / "swept_l_bracket_bend.step")
+    if hole_diameter is None:
+        return _write_step(shape, tmp_path / "swept_l_bracket_bend.step")
+
+    # Base leg spans X 0..60, Y -60..0 (the bend's tangent line is at Y=0).
+    # The hole sits at X=30, Y=-40: 40 mm from the bend axis, 20 mm from the
+    # free edge at Y=-60, and 30 mm from each side edge.
+    shape = _cut(
+        shape, _cylinder(30.0, -40.0, -1.0, hole_diameter / 2.0, thickness + 2.0)
+    )
+    return _write_step(shape, tmp_path / "swept_l_bracket_with_hole.step")
 
 
 def flat_plate_with_holes(tmp_path: Path) -> str:
