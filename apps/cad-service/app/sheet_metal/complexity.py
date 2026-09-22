@@ -15,6 +15,7 @@ from ..machining.vectors import unique_rounded
 from .schemas import (
     BendFeature,
     Cutout,
+    FormedFeature,
     Hem,
     SheetMetalComplexityIndicators,
     SheetMetalHole,
@@ -32,6 +33,7 @@ def compute_complexity(
     cutouts: Sequence[Cutout],
     slots: Sequence[SheetMetalSlot],
     hems: Sequence[Hem],
+    formed_features: Sequence[FormedFeature] = (),
     decimals: int = 3,
 ) -> SheetMetalComplexityIndicators:
     """Tally deterministic counts/minima across every detected feature type.
@@ -66,7 +68,11 @@ def compute_complexity(
         ]
     )
 
-    total = len(bends) + len(holes) + len(cutouts) + len(slots) + len(hems)
+    emboss_count = sum(1 for f in formed_features if f.subtype == "emboss")
+    draw_count = sum(1 for f in formed_features if f.subtype == "draw")
+    total = (
+        len(bends) + len(holes) + len(cutouts) + len(slots) + len(hems) + len(formed_features)
+    )
 
     return SheetMetalComplexityIndicators(
         bend_count=len(bends),
@@ -76,6 +82,8 @@ def compute_complexity(
         cutout_count=len(cutouts),
         slot_count=len(slots),
         hem_count=len(hems),
+        emboss_count=emboss_count,
+        draw_count=draw_count,
         distinct_hole_diameter_count=len(hole_diameters),
         minimum_bend_radius_mm=(
             round(min_bend_radius, decimals) if min_bend_radius is not None else None

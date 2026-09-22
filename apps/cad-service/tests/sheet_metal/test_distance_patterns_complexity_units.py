@@ -394,7 +394,12 @@ def test_compute_complexity_empty_inputs():
 @requires_kernel
 @pytest.mark.parametrize(
     "fixture_name",
-    ["flat_plate_with_holes", "flat_plate_with_rectangular_cutout", "flat_plate_with_slot"],
+    [
+        "flat_plate_with_holes",
+        "flat_plate_with_rectangular_cutout",
+        "flat_plate_with_slot",
+        "flat_plate_with_raised_pad",
+    ],
 )
 def test_pipeline_runs_end_to_end_without_exceptions(analyze, step_dir, fixture_name):
     builder = getattr(fixtures, fixture_name)

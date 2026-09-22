@@ -213,6 +213,50 @@ class Cutout(BaseModel):
     distance_to_nearest_bend_mm: Optional[float] = None
 
 
+# ---------------------------------------------------------------------------
+# Formed features (emboss / draw)
+# ---------------------------------------------------------------------------
+
+
+class FormedFeature(BaseModel):
+    """A closed, walled island offset out of the base sheet plane.
+
+    No material is removed and the boundary never reaches the outer profile -
+    that is what separates this from a cutout or a hole. ``subtype`` is a
+    label, not a manufacturing distinction the geometry itself draws a hard
+    line on: shallow relative to its width reads as ``emboss`` (a stiffening
+    bead/boss or branding detail), deeper reads as ``draw`` (a formed cup or
+    dimple), split at a configurable ratio.
+    """
+
+    id: str
+    subtype: str = Field(description="emboss | draw")
+    shape: str = Field(default="rectangular", description="round | rectangular")
+    depth_mm: float = Field(
+        description="Offset of the floor from the base plane, along the base normal."
+    )
+    depth_to_width_ratio: Optional[float] = None
+    diameter_mm: Optional[float] = Field(
+        default=None, description="Set when shape is round."
+    )
+    length_mm: Optional[float] = Field(
+        default=None, description="Set when shape is rectangular."
+    )
+    width_mm: Optional[float] = Field(
+        default=None, description="Set when shape is rectangular."
+    )
+    area_mm2: float
+    closed: bool
+    position: Vector3
+    wall_count: int
+    face_ids: List[int] = Field(default_factory=list)
+    detection: Detection
+    status: str = Field(default="resolved", description="resolved | ambiguous")
+    reason: Optional[str] = Field(
+        default=None, description="Set when status is 'ambiguous'."
+    )
+
+
 class SheetMetalSlot(BaseModel):
     id: str
     length_mm: float
@@ -300,6 +344,8 @@ class SheetMetalComplexityIndicators(BaseModel):
     cutout_count: int = 0
     slot_count: int = 0
     hem_count: int = 0
+    emboss_count: int = 0
+    draw_count: int = 0
     distinct_hole_diameter_count: int = 0
     minimum_bend_radius_mm: Optional[float] = None
     minimum_feature_to_edge_distance_mm: Optional[float] = None
@@ -347,6 +393,7 @@ class SheetMetalAnalysisResponse(BaseModel):
     holes: List[SheetMetalHole] = Field(default_factory=list)
     cutouts: List[Cutout] = Field(default_factory=list)
     slots: List[SheetMetalSlot] = Field(default_factory=list)
+    formed_features: List[FormedFeature] = Field(default_factory=list)
     hems: List[Hem] = Field(default_factory=list)
     outer_profile: OuterProfile = Field(default_factory=OuterProfile)
     distance_flags: List[DistanceFlag] = Field(default_factory=list)

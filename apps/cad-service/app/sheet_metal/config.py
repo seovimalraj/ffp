@@ -103,6 +103,27 @@ class SheetMetalConfig(BaseModel):
         ),
     )
 
+    # --- formed features (emboss / draw) -------------------------------------
+    min_formed_feature_depth_mm: float = Field(
+        default=0.1,
+        description="Offset below this is measurement noise, not a real formed feature.",
+    )
+    formed_feature_max_area_fraction: float = Field(
+        default=0.6,
+        description=(
+            "An offset island covering more of the base face's area than this "
+            "fraction is rejected - it is more likely the sheet's opposite skin "
+            "than a nested formed feature."
+        ),
+    )
+    emboss_max_depth_to_width_ratio: float = Field(
+        default=0.15,
+        description=(
+            "At or below this depth/width ratio a formed feature is labelled "
+            "'emboss'; above it, 'draw'."
+        ),
+    )
+
     # --- DFM flag thresholds -------------------------------------------------
     min_bend_radius_to_thickness_ratio: float = Field(
         default=1.0,

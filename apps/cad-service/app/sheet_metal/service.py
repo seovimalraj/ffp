@@ -36,6 +36,7 @@ from .detectors.base_flange import detect_base_flange
 from .detectors.bend_relief import detect_bend_reliefs
 from .detectors.bends import detect_bends
 from .detectors.cutouts import detect_cutouts
+from .detectors.formed_features import detect_formed_features
 from .detectors.hems import detect_hems
 from .detectors.holes import detect_holes
 from .detectors.profile import detect_outer_profile
@@ -211,6 +212,17 @@ class SheetMetalAnalysisService:
         if slots is not None:
             response.slots = slots
 
+        # Stage 12.5: formed-feature (emboss/draw) detection - closed, walled
+        # islands offset from the base plane. Depends on stage 7's base face.
+        formed_features = self._stage(
+            "formed_features",
+            timings,
+            warnings,
+            lambda: detect_formed_features(model, self.config, response.faces),
+        )
+        if formed_features is not None:
+            response.formed_features = formed_features
+
         # Stage 13: folded-edge ("hem") detection - a documented heuristic,
         # see detectors/hems.py.
         hems = self._stage(
@@ -287,6 +299,7 @@ class SheetMetalAnalysisService:
                 response.cutouts,
                 response.slots,
                 response.hems,
+                response.formed_features,
                 self.config.length_decimals,
             ),
         )

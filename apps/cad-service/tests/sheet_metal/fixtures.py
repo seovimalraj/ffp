@@ -252,6 +252,27 @@ def flat_plate_with_holes(tmp_path: Path) -> str:
     return _write_step(shape, tmp_path / "flat_plate_with_holes.step")
 
 
+def flat_plate_with_raised_pad(tmp_path: Path, pad_height: float = 8.0) -> str:
+    """A flat 150 x 100 x 1.5 mm plate with one rectangular raised pad.
+
+    The pad is a 30 x 20 mm block fused onto the top skin, centred at
+    (75, 50). Fusing (rather than a genuinely constant-thickness stamped
+    form) is the same simplification ``single_bend_l_bracket`` documents for
+    bends: it produces the right *topology* - a bottom skin, a ring-shaped
+    remainder of the top skin at the dominant 1.5 mm thickness, and the pad's
+    own top face offset by ``pad_height`` from that ring, joined by four
+    vertical walls - which is all ``detect_formed_features`` reasons about.
+    ``pad_height`` defaults to 8.0 mm (8/20 = 0.4, above the default
+    emboss/draw split) so the fixture reads as a draw; pass a small value
+    (e.g. 2.0, 2/20 = 0.1) for an emboss.
+    """
+    thickness = 1.5
+    shape = _box(0, 0, 0, 150, 100, thickness)
+    pad = _box(60.0, 40.0, thickness, 30.0, 20.0, pad_height)
+    shape = _fuse(shape, pad)
+    return _write_step(shape, tmp_path / f"flat_plate_with_raised_pad_{pad_height}.step")
+
+
 def solid_block_non_candidate(tmp_path: Path) -> str:
     """A 60 x 60 x 40 mm solid block - not a sheet-metal candidate.
 

@@ -196,6 +196,41 @@ export interface SheetMetalSlot {
   distance_to_nearest_bend_mm: number | null;
 }
 
+/* ------------------------------------------------------------------ */
+/* Formed features (emboss / draw)                                     */
+/* ------------------------------------------------------------------ */
+
+/**
+ * A closed, walled island offset out of the base sheet plane - no material
+ * removed, boundary never reaches the outer profile. `subtype` is a label,
+ * not a hard manufacturing line: shallow relative to its width reads as
+ * "emboss", deeper reads as "draw", split at a configurable ratio.
+ */
+export interface FormedFeature {
+  id: string;
+  /** "emboss" | "draw" */
+  subtype: string;
+  /** "round" | "rectangular" */
+  shape: string;
+  /** Offset of the floor from the nearest reference skin plane. */
+  depth_mm: number;
+  depth_to_width_ratio: number | null;
+  /** Set when shape is "round". */
+  diameter_mm: number | null;
+  /** Set when shape is "rectangular". */
+  length_mm: number | null;
+  width_mm: number | null;
+  area_mm2: number;
+  closed: boolean;
+  position: Vector3;
+  wall_count: number;
+  face_ids: number[];
+  detection: Detection;
+  /** "resolved" | "ambiguous" */
+  status: string;
+  reason: string | null;
+}
+
 export interface Hem {
   id: string;
   /** "open" | "closed" | "teardrop" */
@@ -273,6 +308,8 @@ export interface SheetMetalComplexityIndicators {
   cutout_count: number;
   slot_count: number;
   hem_count: number;
+  emboss_count: number;
+  draw_count: number;
   distinct_hole_diameter_count: number;
   minimum_bend_radius_mm: number | null;
   minimum_feature_to_edge_distance_mm: number | null;
@@ -317,6 +354,7 @@ export interface SheetMetalAnalysisResponse {
   holes: SheetMetalHole[];
   cutouts: Cutout[];
   slots: SheetMetalSlot[];
+  formed_features: FormedFeature[];
   hems: Hem[];
   outer_profile: OuterProfile;
   distance_flags: DistanceFlag[];

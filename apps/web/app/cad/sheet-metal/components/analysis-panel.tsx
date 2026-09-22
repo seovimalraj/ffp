@@ -264,6 +264,8 @@ function OverviewTab({
             ["Cutouts", String(indicators.cutout_count)],
             ["Slots", String(indicators.slot_count)],
             ["Hems", String(indicators.hem_count)],
+            ["Embosses", String(indicators.emboss_count)],
+            ["Draws", String(indicators.draw_count)],
             [
               "Distinct hole diameters",
               String(indicators.distinct_hole_diameter_count),
@@ -541,6 +543,7 @@ function FeaturesTab({
     result.holes.length === 0 &&
     result.cutouts.length === 0 &&
     result.slots.length === 0 &&
+    result.formed_features.length === 0 &&
     result.hems.length === 0;
 
   if (!result.options.include_feature_details) {
@@ -557,7 +560,8 @@ function FeaturesTab({
       {empty && (
         <div className="p-4">
           <Empty>
-            No holes, cutouts, slots or hems were detected on this part.
+            No holes, cutouts, slots, formed features or hems were detected on
+            this part.
           </Empty>
         </div>
       )}
@@ -671,6 +675,59 @@ function FeaturesTab({
                 <p className="mt-1 text-[11px] text-slate-500">
                   bend {formatLength(slot.distance_to_nearest_bend_mm, unit)}
                 </p>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {result.formed_features.length > 0 && (
+        <div className="p-4">
+          <SectionTitle>
+            Formed features
+            <span className="ml-1.5 font-normal text-slate-400">
+              {result.formed_features.length}
+            </span>
+          </SectionTitle>
+          <ul className="mt-2 space-y-1.5">
+            {result.formed_features.map((feature) => (
+              <li
+                key={feature.id}
+                className="rounded-lg border border-slate-200 p-2.5 text-xs"
+              >
+                <div className="flex items-center justify-between gap-2">
+                  <span className="font-mono text-[11px] font-semibold text-slate-800">
+                    {feature.id}
+                  </span>
+                  <span className="flex items-center gap-1 text-[11px] text-slate-500">
+                    {humanize(feature.subtype)} · {humanize(feature.shape)}
+                    {feature.status === "ambiguous" && (
+                      <span className="rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-medium text-amber-800">
+                        ambiguous
+                      </span>
+                    )}
+                  </span>
+                </div>
+                <p className="mt-1 text-[11px] text-slate-600">
+                  depth {formatLength(feature.depth_mm, unit)}
+                  {feature.shape === "round"
+                    ? ` · ⌀ ${formatLength(feature.diameter_mm, unit)}`
+                    : ` · ${formatLength(feature.length_mm, unit)} × ${formatLength(
+                        feature.width_mm,
+                        unit,
+                      )}`}
+                  {" · depth/width "}
+                  {formatNumber(feature.depth_to_width_ratio, 3)}
+                </p>
+                <p className="mt-1 text-[11px] text-slate-500">
+                  area {formatArea(feature.area_mm2)} · {feature.wall_count} wall
+                  face(s) · {formatVector(feature.position)} ({unit})
+                </p>
+                {feature.reason && (
+                  <p className="mt-1 text-[11px] text-amber-700">
+                    {feature.reason}
+                  </p>
+                )}
               </li>
             ))}
           </ul>

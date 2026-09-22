@@ -119,6 +119,7 @@ class TestSuccessfulAnalysis:
             "holes",
             "cutouts",
             "slots",
+            "formed_features",
             "hems",
             "outer_profile",
             "distance_flags",
