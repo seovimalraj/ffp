@@ -965,6 +965,15 @@ class DebugGeometry(BaseModel):
             "makes a detector gap impossible to tell from a correct answer."
         ),
     )
+    formed_feature_rejections: Dict[str, str] = Field(
+        default_factory=dict,
+        description=(
+            "Sheet-metal only: ``face_id -> reason`` for every planar face "
+            "considered as an emboss/draw island and turned down. Same "
+            "rationale as ``pocket_rejections``, for "
+            "``app.sheet_metal.detectors.formed_features``."
+        ),
+    )
 
 
 # ---------------------------------------------------------------------------

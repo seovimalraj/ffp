@@ -119,7 +119,12 @@ async def analyze_sheet_metal_endpoint(
     ),
     include_debug_geometry: bool = Form(
         False,
-        description="Reserved for a later phase (debug geometry is not yet emitted).",
+        description=(
+            "Return the face-adjacency graph, unclassified face ids, "
+            "per-stage timings, and why-not-detected reasons for rejected "
+            "emboss/draw candidates. For diagnosing detection, not for "
+            "production consumers."
+        ),
     ),
     include_topology_entities: bool = Form(
         False,

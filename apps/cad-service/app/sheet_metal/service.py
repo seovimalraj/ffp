@@ -27,7 +27,14 @@ from ..machining.pmi import PMIExtractor
 from ..machining.records import MassProperties, ShapeModel
 from ..machining.schemas import AnalysisWarning, WarningCode
 from ..machining.topology import GeometryAnalyzer, TopologyAnalyzer
-from ..machining.schemas import BoundingBox, GeometryInfo, ModelInfo, MomentsOfInertia, Vector3
+from ..machining.schemas import (
+    BoundingBox,
+    DebugGeometry,
+    GeometryInfo,
+    ModelInfo,
+    MomentsOfInertia,
+    Vector3,
+)
 from ..machining.units import to_imperial
 
 from .complexity import compute_complexity
@@ -214,11 +221,16 @@ class SheetMetalAnalysisService:
 
         # Stage 12.5: formed-feature (emboss/draw) detection - closed, walled
         # islands offset from the base plane. Depends on stage 7's base face.
+        # Rejections are always collected (cheap) so include_debug_geometry
+        # can surface them below without a second detection pass.
+        formed_feature_rejections: Dict[int, str] = {}
         formed_features = self._stage(
             "formed_features",
             timings,
             warnings,
-            lambda: detect_formed_features(model, self.config, response.faces),
+            lambda: detect_formed_features(
+                model, self.config, response.faces, formed_feature_rejections
+            ),
         )
         if formed_features is not None:
             response.formed_features = formed_features
@@ -315,6 +327,23 @@ class SheetMetalAnalysisService:
         )
         if pmi is not None:
             response.pmi = pmi
+
+        if options.include_debug_geometry:
+            response.debug_geometry = DebugGeometry(
+                face_adjacency={
+                    str(face_id): sorted(neighbors)
+                    for face_id, neighbors in sorted(model.face_neighbors.items())
+                },
+                unclassified_face_ids=sorted(
+                    face.id for face in model.faces.values() if face.surface_type == "OTHER"
+                ),
+                detector_timings_ms={k: round(v, 3) for k, v in sorted(timings.items())},
+                kernel=occ.kernel_name(),
+                formed_feature_rejections={
+                    str(face_id): reason
+                    for face_id, reason in sorted(formed_feature_rejections.items())
+                },
+            )
 
         # Stage 19: response assembly - already effectively done above; every
         # section has been attached to `response` as its stage completed.

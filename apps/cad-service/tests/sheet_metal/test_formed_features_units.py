@@ -223,7 +223,9 @@ def test_bare_face_with_no_walls_is_not_reported():
         face_neighbors={2: set()},
     )
     faces = SheetMetalFaces(base_face_id=1, flange_faces=[])
-    assert detect_formed_features(model, CONFIG, faces) == []
+    rejections: dict = {}
+    assert detect_formed_features(model, CONFIG, faces, rejections) == []
+    assert "wall" in rejections[2]
 
 
 def test_no_base_face_returns_empty():
@@ -272,7 +274,31 @@ def test_island_covering_most_of_the_base_is_rejected_as_opposite_skin():
         face_neighbors={2: {3, 4, 5, 6}, 3: {2}, 4: {2}, 5: {2}, 6: {2}},
     )
     faces = SheetMetalFaces(base_face_id=1, flange_faces=[])
-    assert detect_formed_features(model, CONFIG, faces) == []
+    rejections: dict = {}
+    assert detect_formed_features(model, CONFIG, faces, rejections) == []
+    assert "opposite skin" in rejections[2]
+
+
+def test_shallow_offset_is_rejected_below_min_depth():
+    model = _rect_island_model(depth=0.02, width=20.0, length=30.0)  # default min is 0.1
+    faces = SheetMetalFaces(base_face_id=1, flange_faces=[])
+    rejections: dict = {}
+    assert detect_formed_features(model, CONFIG, faces, rejections) == []
+    assert "min_formed_feature_depth_mm" in rejections[2]
+
+
+def test_rejections_left_untouched_when_no_dict_is_passed():
+    """The optional out-param must not be required - existing callers that
+    don't care about diagnostics keep working unchanged."""
+    model = _rect_island_model(depth=5.0)
+    del model.faces[6]
+    model.face_neighbors[2] = {3, 4, 5}
+    faces = SheetMetalFaces(base_face_id=1, flange_faces=[])
+    # No rejections dict - and the open-boundary case above isn't even a
+    # rejection (it's returned as an ambiguous feature), so nothing to check
+    # beyond "this doesn't raise".
+    features = detect_formed_features(model, CONFIG, faces)
+    assert len(features) == 1
 
 
 # ---------------------------------------------------------------------------
@@ -317,3 +343,28 @@ def test_shallow_raised_pad_fixture_is_detected_as_an_emboss(analyze, step_dir):
     assert formed[0]["subtype"] == "emboss"
     assert math.isclose(formed[0]["depth_mm"], 2.0, abs_tol=0.05)
     assert payload["complexity_indicators"]["emboss_count"] == 1
+
+
+@requires_kernel
+def test_debug_geometry_is_absent_unless_requested(analyze, step_dir):
+    payload = analyze(fixtures.flat_plate_with_raised_pad(step_dir, pad_height=8.0))
+    assert payload["debug_geometry"] is None
+
+
+@requires_kernel
+def test_debug_geometry_plumbing_reaches_the_endpoint(analyze, step_dir):
+    """include_debug_geometry=true surfaces the adjacency graph, per-stage
+    timings and (empty-or-not) formed_feature_rejections through the same
+    analyze_sheet_metal() path the API uses - not just the unit-level
+    detect_formed_features() call the synthetic tests exercise directly."""
+    payload = analyze(
+        fixtures.flat_plate_with_raised_pad(step_dir, pad_height=8.0),
+        include_debug_geometry=True,
+    )
+
+    debug = payload["debug_geometry"]
+    assert debug is not None
+    assert debug["kernel"]
+    assert debug["face_adjacency"]
+    assert debug["detector_timings_ms"].get("formed_features") is not None
+    assert isinstance(debug["formed_feature_rejections"], dict)

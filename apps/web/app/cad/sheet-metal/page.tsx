@@ -56,6 +56,7 @@ export default function SheetMetalAnalysisPage() {
   );
   const [selectedFeatureId, setSelectedFeatureId] = useState<string | null>(null);
   const [includeFaceDetails, setIncludeFaceDetails] = useState(false);
+  const [includeDebugGeometry, setIncludeDebugGeometry] = useState(false);
 
   // Abort an in-flight analysis when a new file is dropped, so a slow response
   // for the previous part cannot overwrite the new one.
@@ -81,7 +82,7 @@ export default function SheetMetalAnalysisPage() {
   useEffect(() => () => requestRef.current?.abort(), []);
 
   const analyze = useCallback(
-    async (target: File, withFaceDetails: boolean) => {
+    async (target: File, withFaceDetails: boolean, withDebugGeometry: boolean) => {
       requestRef.current?.abort();
       const controller = new AbortController();
       requestRef.current = controller;
@@ -94,7 +95,7 @@ export default function SheetMetalAnalysisPage() {
       body.append("unit_system", "metric");
       body.append("include_feature_details", "true");
       body.append("include_face_details", String(withFaceDetails));
-      body.append("include_debug_geometry", "false");
+      body.append("include_debug_geometry", String(withDebugGeometry));
 
       try {
         const response = await fetch("/api/cad/analyze-sheet-metal", {
@@ -132,9 +133,9 @@ export default function SheetMetalAnalysisPage() {
       const next = accepted[0];
       if (!next) return;
       setFile(next);
-      void analyze(next, includeFaceDetails);
+      void analyze(next, includeFaceDetails, includeDebugGeometry);
     },
-    [analyze, includeFaceDetails],
+    [analyze, includeFaceDetails, includeDebugGeometry],
   );
 
   const { getRootProps, getInputProps, isDragActive, open } = useDropzone({
@@ -222,7 +223,7 @@ export default function SheetMetalAnalysisPage() {
 
           {file && status.kind !== "analyzing" && (
             <button
-              onClick={() => void analyze(file, includeFaceDetails)}
+              onClick={() => void analyze(file, includeFaceDetails, includeDebugGeometry)}
               className="flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 shadow-sm transition-colors hover:bg-slate-50"
             >
               <RefreshCw className="h-3.5 w-3.5" />
@@ -318,7 +319,7 @@ export default function SheetMetalAnalysisPage() {
                     {status.message}
                   </p>
                   <button
-                    onClick={() => void analyze(file, includeFaceDetails)}
+                    onClick={() => void analyze(file, includeFaceDetails, includeDebugGeometry)}
                     className="mt-1 rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50"
                   >
                     Try again
@@ -387,6 +388,18 @@ export default function SheetMetalAnalysisPage() {
                 className="h-3.5 w-3.5 rounded border-slate-300"
               />
               Include per-face details (larger response)
+            </label>
+
+            <label className="mt-2 flex cursor-pointer items-center gap-2 text-xs text-slate-500">
+              <input
+                type="checkbox"
+                checked={includeDebugGeometry}
+                onChange={(event) =>
+                  setIncludeDebugGeometry(event.target.checked)
+                }
+                className="h-3.5 w-3.5 rounded border-slate-300"
+              />
+              Include debug geometry (diagnostic, larger response)
             </label>
           </div>
         )}

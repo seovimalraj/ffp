@@ -39,7 +39,7 @@ already makes for a boss cap.
 
 from __future__ import annotations
 
-from typing import List, Optional, Sequence
+from typing import Dict, List, Optional, Sequence
 
 from ...machining.detectors.shared import (
     bbox_corners,
@@ -67,13 +67,23 @@ _MIN_ROUND_WRAP_DEG = 300.0
 
 
 def detect_formed_features(
-    model: ShapeModel, config: SheetMetalConfig, faces: SheetMetalFaces
+    model: ShapeModel,
+    config: SheetMetalConfig,
+    faces: SheetMetalFaces,
+    rejections: Optional[Dict[int, str]] = None,
 ) -> List[FormedFeature]:
     """Detect embosses and draws: closed, walled islands offset from the base.
 
     Never raises: no resolved base face, or no qualifying island, simply
     returns an empty list, matching every other detector's "no hard failure"
     contract in this package.
+
+    ``rejections``, when passed, is populated in place with ``face_id ->
+    reason`` for every candidate face considered and turned down - mirroring
+    ``app.machining.detectors.pockets.PocketDetector.rejections``. An empty
+    ``formed_features`` list is otherwise indistinguishable from a part that
+    genuinely has none; this is what lets ``include_debug_geometry=true``
+    answer "why wasn't X detected" instead of just "it wasn't".
     """
     base = model.faces.get(faces.base_face_id) if faces.base_face_id is not None else None
     if base is None or base.normal is None or base.area_mm2 <= 0:
@@ -107,10 +117,18 @@ def detect_formed_features(
             reference_levels,
             group,
             len(features) + 1,
+            rejections,
         )
         if feature is not None:
             features.append(feature)
     return features
+
+
+def _reject(rejections: Optional[Dict[int, str]], group: Sequence[FaceRecord], reason: str) -> None:
+    if rejections is None:
+        return
+    for face in group:
+        rejections[face.id] = reason
 
 
 def _reference_levels(
@@ -214,11 +232,29 @@ def _evaluate_group(
     reference_levels: List[float],
     group: List[FaceRecord],
     index: int,
+    rejections: Optional[Dict[int, str]] = None,
 ) -> Optional[FormedFeature]:
     total_area = sum(f.area_mm2 for f in group)
-    if total_area <= 0 or total_area > config.formed_feature_max_area_fraction * base.area_mm2:
+    if total_area <= 0:
+        _reject(rejections, group, "degenerate area")
+        return None
+    if total_area > config.formed_feature_max_area_fraction * base.area_mm2:
+        _reject(
+            rejections,
+            group,
+            f"area {round(total_area, 2)} mm2 exceeds "
+            f"{config.formed_feature_max_area_fraction * 100:.0f}% of base face "
+            f"{base.id}'s area ({round(base.area_mm2, 2)} mm2) - likely the "
+            "sheet's opposite skin, not a nested feature",
+        )
         return None
     if not _fits_inside(group, base_normal, base_u_range, base_v_range, config.linear_tolerance_mm * 10):
+        _reject(
+            rejections,
+            group,
+            f"footprint extends outside base face {base.id}'s own footprint - "
+            "not a nested island",
+        )
         return None
 
     member_ids = {f.id for f in group}
@@ -231,11 +267,23 @@ def _evaluate_group(
             seen_wall_ids.add(wall.id)
             walls.append(wall)
     if not walls:
-        return None  # a bare parallel face with no enclosure is not a feature
+        _reject(
+            rejections,
+            group,
+            "no enclosing wall face(s) found - a bare parallel face with no "
+            "enclosure is not a formed feature",
+        )
+        return None
 
     floor_level = dot(group[0].centroid, base_normal)
     depth = min(abs(floor_level - level) for level in reference_levels)
     if depth < config.min_formed_feature_depth_mm:
+        _reject(
+            rejections,
+            group,
+            f"offset {round(depth, 4)} mm from the nearest skin plane is below "
+            f"min_formed_feature_depth_mm ({config.min_formed_feature_depth_mm})",
+        )
         return None
 
     ok_ids = member_ids | seen_wall_ids
@@ -256,6 +304,7 @@ def _evaluate_group(
         corners = [c for face in group for c in bbox_corners(face)]
         length, width, _, _ = planar_dimensions_from_corners(corners, base_normal)
         if width <= 0:
+            _reject(rejections, group, "degenerate in-plane dimensions")
             return None
         length_mm = round(length, config.length_decimals)
         width_mm = round(width, config.length_decimals)
