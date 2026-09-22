@@ -24,6 +24,7 @@ from ..machining.schemas import (
     AnalysisWarning,
     Detection,
     DebugGeometry,
+    FaceDetail,
     FileInfo,
     GeometryInfo,
     ModelInfo,
@@ -382,6 +383,7 @@ class SheetMetalAnalysisResponse(BaseModel):
     model: ModelInfo = Field(default_factory=ModelInfo)
     topology: TopologyInfo = Field(default_factory=TopologyInfo)
     geometry: Optional[GeometryInfo] = None
+    face_details: Optional[List[FaceDetail]] = None
 
     # Sheet-metal specific. All Optional/empty-default: no detector runs
     # before Phase 2 onward, so these are structurally present but inert.

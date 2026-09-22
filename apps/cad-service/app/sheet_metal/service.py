@@ -22,14 +22,16 @@ import time
 from typing import Any, Callable, Dict, List, Optional, TypeVar
 
 from ..machining import occ
+from ..machining.faces import to_surface_type_enum
 from ..machining.parser import CADParser, LoadedModel
 from ..machining.pmi import PMIExtractor
-from ..machining.records import MassProperties, ShapeModel
+from ..machining.records import PLANE, MassProperties, ShapeModel
 from ..machining.schemas import AnalysisWarning, WarningCode
 from ..machining.topology import GeometryAnalyzer, TopologyAnalyzer
 from ..machining.schemas import (
     BoundingBox,
     DebugGeometry,
+    FaceDetail,
     GeometryInfo,
     ModelInfo,
     MomentsOfInertia,
@@ -136,6 +138,11 @@ class SheetMetalAnalysisService:
             "geometry", timings, warnings, lambda: self.geometry_analyzer.analyze(loaded.shape)
         ) or MassProperties()
         response.geometry = self._geometry_info(model, mass, warnings)
+
+        if options.include_face_details:
+            response.face_details = self._stage(
+                "face_details", timings, warnings, lambda: self._face_details(model)
+            )
 
         # Stages 4-6: face pairing is done inside the candidate detector
         # itself (opposed, overlapping planar face pairs), so a separate
@@ -416,6 +423,65 @@ class SheetMetalAnalysisService:
             ),
             is_closed_volume=mass.is_closed_volume,
         )
+
+    def _face_details(self, model: ShapeModel) -> List[FaceDetail]:
+        """Per-face record, reused verbatim from machining's own builder.
+
+        Lets a caller inspect exactly what a detector saw - surface type,
+        normal, area, adjacency - without guessing from aggregate counts.
+        Ported here for the same reason ``debug_geometry`` was: an empty
+        ``formed_features`` list is otherwise indistinguishable from a
+        detector that never had a qualifying face to look at.
+        """
+        return [
+            FaceDetail(
+                face_id=face.id,
+                surface_type=to_surface_type_enum(face.surface_type),
+                area_mm2=round(face.area_mm2, self.config.area_decimals),
+                bounding_box=self._bounding_box(face.bbox_min, face.bbox_max),
+                centroid=Vector3.from_tuple(face.centroid),
+                normal=Vector3.from_tuple(face.normal) if face.normal else None,
+                axis=Vector3.from_tuple(face.axis) if face.axis else None,
+                axis_location=(
+                    Vector3.from_tuple(face.axis_location)
+                    if face.axis_location
+                    else None
+                ),
+                radius_mm=face.radius_mm,
+                minor_radius_mm=face.minor_radius_mm,
+                cone_half_angle_deg=face.cone_half_angle_deg,
+                angular_span_deg=face.angular_span_deg,
+                is_internal=face.is_internal,
+                is_planar_extreme=self._is_planar_extreme(face, model),
+                edge_count=len(face.edge_ids),
+            )
+            for face in sorted(model.faces.values(), key=lambda f: f.id)
+        ]
+
+    def _is_planar_extreme(self, face, model: ShapeModel) -> bool:
+        """True when a planar face lies on the model's outer silhouette.
+
+        Ported verbatim from ``app.machining.service`` - see that copy's
+        docstring for the two-part test (flat against one bbox side, normal
+        pointing outward along that axis).
+        """
+        if face.surface_type != PLANE or face.normal is None:
+            return False
+        tolerance = self.config.linear_tolerance_mm * 10
+        for axis in range(3):
+            if face.bbox_max[axis] - face.bbox_min[axis] > tolerance:
+                continue
+            if (
+                abs(face.bbox_max[axis] - model.bbox_max[axis]) <= tolerance
+                and face.normal[axis] > 0
+            ):
+                return True
+            if (
+                abs(face.bbox_min[axis] - model.bbox_min[axis]) <= tolerance
+                and face.normal[axis] < 0
+            ):
+                return True
+        return False
 
     # -- helpers -------------------------------------------------------------
 

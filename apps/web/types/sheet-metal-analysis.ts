@@ -20,6 +20,7 @@ import type {
   AnalysisError,
   AnalysisWarning,
   Detection,
+  FaceDetail,
   FileInfo,
   GeometryInfo,
   ModelInfo,
@@ -34,6 +35,7 @@ export type {
   AnalysisError,
   AnalysisWarning,
   Detection,
+  FaceDetail,
   FileInfo,
   GeometryInfo,
   ModelInfo,
@@ -343,6 +345,8 @@ export interface SheetMetalAnalysisResponse {
   model: ModelInfo;
   topology: TopologyInfo;
   geometry: GeometryInfo | null;
+  /** Only populated when `include_face_details=true`. Diagnostic, not for production use. */
+  face_details: FaceDetail[] | null;
 
   // Sheet-metal specific. Structurally present but inert until the relevant
   // detector stage has run.

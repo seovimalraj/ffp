@@ -368,3 +368,77 @@ def test_debug_geometry_plumbing_reaches_the_endpoint(analyze, step_dir):
     assert debug["face_adjacency"]
     assert debug["detector_timings_ms"].get("formed_features") is not None
     assert isinstance(debug["formed_feature_rejections"], dict)
+
+
+@requires_kernel
+def test_face_details_are_absent_unless_requested(analyze, step_dir):
+    payload = analyze(fixtures.flat_plate_with_raised_pad(step_dir, pad_height=8.0))
+    assert payload["face_details"] is None
+
+
+@requires_kernel
+def test_face_details_report_every_face_with_surface_type_and_normal(
+    analyze, step_dir
+):
+    payload = analyze(
+        fixtures.flat_plate_with_raised_pad(step_dir, pad_height=8.0),
+        include_face_details=True,
+    )
+
+    details = payload["face_details"]
+    assert details is not None
+    assert len(details) == payload["model"]["face_count"]
+    by_id = {d["face_id"]: d for d in details}
+    pad_top = next(
+        d
+        for d in details
+        if d["surface_type"] == "PLANE"
+        and d["normal"] is not None
+        and abs(d["normal"]["z"] - 1.0) < 1e-6
+        and abs(d["area_mm2"] - 30.0 * 20.0) < 1e-3
+    )
+    assert pad_top["face_id"] not in {
+        f["face_id"] for f in payload["faces"]["flange_faces"]
+    }
+
+
+@requires_kernel
+def test_a_near_thickness_offset_gets_absorbed_as_a_flange_not_a_formed_feature(
+    analyze, step_dir
+):
+    """Regression/documentation case: when a raised island's height happens
+    to put its top face within the base/flange clustering tolerance of the
+    dominant sheet thickness, detect_base_flange's global (non-local)
+    clustering sweeps that face into flange_faces before
+    detect_formed_features ever sees it as a candidate - zero rejections,
+    zero formed_features, even though include_face_details confirms the
+    face is there. This is the mechanism suspected behind a real part's
+    raised, grille-topped collar going undetected: a genuinely formed
+    (constant-thickness) feature can be silently absorbed the same way a
+    solid-added one wrongly wasn't, here."""
+    payload = analyze(
+        fixtures.flat_plate_with_raised_pad(step_dir, pad_height=0.05),
+        include_face_details=True,
+        include_debug_geometry=True,
+    )
+
+    assert payload["formed_features"] == []
+    assert payload["debug_geometry"]["formed_feature_rejections"] == {}
+
+    pad_top_area = 30.0 * 20.0
+    pad_top_ids = {
+        d["face_id"]
+        for d in payload["face_details"]
+        if d["surface_type"] == "PLANE"
+        and d["normal"] is not None
+        and abs(d["normal"]["z"] - 1.0) < 1e-6
+        and abs(d["area_mm2"] - pad_top_area) < 1e-3
+    }
+    assert pad_top_ids, "expected to find the pad's own top face in face_details"
+    flange_ids = {f["face_id"] for f in payload["faces"]["flange_faces"]}
+    assert pad_top_ids & flange_ids, (
+        "expected the pad top face to have been swept into flange_faces - "
+        "if this now fails, the clustering bug this test documents may have "
+        "been fixed and the assertions above (empty formed_features) should "
+        "be revisited"
+    )

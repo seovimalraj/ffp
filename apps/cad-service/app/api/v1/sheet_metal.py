@@ -111,7 +111,12 @@ async def analyze_sheet_metal_endpoint(
     ),
     include_face_details: bool = Form(
         False,
-        description="Reserved for a later phase (face-level detail is not yet emitted).",
+        description=(
+            "Return one `face_details` record per face - surface type, area, "
+            "bounding box, normal, axis, radius, cone angle. For diagnosing "
+            "detection (e.g. why a face wasn't picked up as a formed feature "
+            "or a flange), not for production consumers."
+        ),
     ),
     include_feature_details: bool = Form(
         True,
