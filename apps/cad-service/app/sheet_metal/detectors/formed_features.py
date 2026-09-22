@@ -9,7 +9,7 @@ recessed floor plus surrounding walls) - the difference here is *how* floor is
 told apart from wall. Machining's ``PocketDetector`` needs a ray-cast visibility
 check because a solid part's floor and wall can otherwise look alike; a sheet
 part does not need that, because its base face is already known
-(``SheetMetalFaces.base_face_id`` from stage 7), so any other planar face
+(``SheetMetalFaces.base_face_id``), so any other planar face
 parallel to that base normal is floor-like by construction, and everything
 perpendicular to it is a wall. ``group_coplanar`` / ``wall_faces_of`` /
 ``planar_dimensions_from_corners`` are reused verbatim from
@@ -103,7 +103,7 @@ def detect_formed_features(
         return []
 
     base_u_range, base_v_range = _footprint(base, base_normal)
-    reference_levels = _reference_levels(model, config, base, base_normal, faces)
+    levels_by_face_id = _reference_levels(model, config, base, base_normal)
 
     features: List[FormedFeature] = []
     for group in group_coplanar(model, candidates, config):
@@ -114,7 +114,7 @@ def detect_formed_features(
             base_normal,
             base_u_range,
             base_v_range,
-            reference_levels,
+            levels_by_face_id,
             group,
             len(features) + 1,
             rejections,
@@ -132,29 +132,36 @@ def _reject(rejections: Optional[Dict[int, str]], group: Sequence[FaceRecord], r
 
 
 def _reference_levels(
-    model: ShapeModel,
-    config: SheetMetalConfig,
-    base: FaceRecord,
-    base_normal: Vec,
-    faces: SheetMetalFaces,
-) -> List[float]:
-    """Skin-plane levels (along ``base_normal``) an island's depth can be measured from.
+    model: ShapeModel, config: SheetMetalConfig, base: FaceRecord, base_normal: Vec
+) -> Dict[int, float]:
+    """``face_id -> level`` (along ``base_normal``) for every candidate an
+    island's depth can be measured from.
 
-    Always includes the base face itself, plus any flange face that happens to
-    be coplanar with it - e.g. the opposite side's skin around an island's
-    cutout, which ``detect_base_flange`` already groups into ``flange_faces``
-    as part of the same paired-wall system. Depth is then measured from
-    whichever of these sits closest to the island, not always the base: a
-    feature formed from the far skin would otherwise be measured against the
-    near skin and over-state its depth by roughly the sheet thickness.
+    Always includes the base face itself, plus every other planar face in the
+    model parallel to the base normal - typically fragments of the same
+    logical skin split apart by a local island's own cutout (a ring, in the
+    common case), regardless of whether ``detect_base_flange`` happened to
+    reach that fragment through a bend. Depth is then measured from whichever
+    of these sits closest to the island (excluding the island's own faces -
+    see :func:`_evaluate_group`), not always the base: a feature formed from
+    a fragment other than the chosen base would otherwise be measured against
+    the wrong skin and over- or under-state its depth by roughly the gap
+    between them.
+
+    Deliberately independent of ``SheetMetalFaces.flange_faces`` - that set
+    answers "is this reachable from the base via a real fold", a different
+    question from "is this plane close enough to measure this island from".
+    An unrelated but same-normal panel elsewhere on a folded part could in
+    principle be picked up here too, but nearest-level selection makes that
+    harmless: a genuinely local ring is, by construction, the closest
+    candidate in practice.
     """
-    levels = [dot(base.centroid, base_normal)]
-    for flange in faces.flange_faces:
-        face = model.faces.get(flange.face_id)
-        if face is None or face.normal is None:
+    levels: Dict[int, float] = {base.id: dot(base.centroid, base_normal)}
+    for face in model.faces.values():
+        if face.id == base.id or face.surface_type != PLANE or face.normal is None:
             continue
         if is_parallel(face.normal, base_normal, config.angular_tolerance_deg):
-            levels.append(dot(face.centroid, base_normal))
+            levels[face.id] = dot(face.centroid, base_normal)
     return levels
 
 
@@ -229,7 +236,7 @@ def _evaluate_group(
     base_normal: Vec,
     base_u_range,
     base_v_range,
-    reference_levels: List[float],
+    levels_by_face_id: Dict[int, float],
     group: List[FaceRecord],
     index: int,
     rejections: Optional[Dict[int, str]] = None,
@@ -276,7 +283,13 @@ def _evaluate_group(
         return None
 
     floor_level = dot(group[0].centroid, base_normal)
-    depth = min(abs(floor_level - level) for level in reference_levels)
+    other_levels = [
+        level for fid, level in levels_by_face_id.items() if fid not in member_ids
+    ]
+    if not other_levels:
+        _reject(rejections, group, "no other skin-plane face found to measure depth from")
+        return None
+    depth = min(abs(floor_level - level) for level in other_levels)
     if depth < config.min_formed_feature_depth_mm:
         _reject(
             rejections,

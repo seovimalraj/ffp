@@ -184,7 +184,7 @@ def test_detect_bends_no_cylindrical_faces_returns_empty():
 
 def test_detect_base_flange_picks_largest_face_as_base():
     model = _synthetic_l_bracket(radius=3.0, angle_deg=90.0)
-    faces = detect_base_flange(model, CONFIG)
+    faces = detect_base_flange(model, CONFIG, bends=[])
 
     # Base leg (id=1, 80x60) is larger than the upright (id=2, 60x40); the
     # cylindrical bend face (id=3) is never a candidate base/flange.
@@ -195,7 +195,111 @@ def test_detect_base_flange_picks_largest_face_as_base():
 
 def test_detect_base_flange_no_pairs_falls_back_to_largest_planar():
     model = _flat_no_bend_model()
-    faces = detect_base_flange(model, CONFIG)
+    faces = detect_base_flange(model, CONFIG, bends=[])
+    assert faces.base_face_id == 1
+    assert faces.flange_faces == []
+
+
+def _paired_skin_model() -> ShapeModel:
+    """A base panel + a bend-connected flange, each with its own paired
+    (constant-thickness) underside, plus a totally disconnected same-gap
+    pair elsewhere - standing in for an unrelated stamped feature that keeps
+    the sheet's own thickness (the real-part failure mode base_flange.py's
+    module docstring describes)."""
+    faces = {
+        # Base panel: top skin (1) / underside (2), 2 mm apart.
+        1: FaceRecord(
+            id=1, surface_type=PLANE, area_mm2=80.0 * 60.0,
+            bbox_min=(0.0, 0.0, 0.0), bbox_max=(80.0, 60.0, 0.0),
+            centroid=(40.0, 30.0, 0.0), normal=(0.0, 0.0, 1.0),
+        ),
+        2: FaceRecord(
+            id=2, surface_type=PLANE, area_mm2=80.0 * 60.0,
+            bbox_min=(0.0, 0.0, -2.0), bbox_max=(80.0, 60.0, -2.0),
+            centroid=(40.0, 30.0, -2.0), normal=(0.0, 0.0, -1.0),
+        ),
+        # Flange, joined to the base by bend "bend_1" below: outer skin (4) /
+        # inner skin (5), also 2 mm apart.
+        4: FaceRecord(
+            id=4, surface_type=PLANE, area_mm2=60.0 * 40.0,
+            bbox_min=(0.0, 60.0, 0.0), bbox_max=(60.0, 60.0, 40.0),
+            centroid=(30.0, 60.0, 20.0), normal=(0.0, -1.0, 0.0),
+        ),
+        5: FaceRecord(
+            id=5, surface_type=PLANE, area_mm2=60.0 * 40.0,
+            bbox_min=(0.0, 62.0, 0.0), bbox_max=(60.0, 62.0, 40.0),
+            centroid=(30.0, 62.0, 20.0), normal=(0.0, 1.0, 0.0),
+        ),
+        # Disconnected feature elsewhere on the part, same 2 mm gap as the
+        # dominant cluster above, but joined to nothing by any bend.
+        6: FaceRecord(
+            id=6, surface_type=PLANE, area_mm2=10.0 * 10.0,
+            bbox_min=(200.0, 0.0, 0.0), bbox_max=(210.0, 10.0, 0.0),
+            centroid=(205.0, 5.0, 0.0), normal=(0.0, 0.0, 1.0),
+        ),
+        7: FaceRecord(
+            id=7, surface_type=PLANE, area_mm2=10.0 * 10.0,
+            bbox_min=(200.0, 0.0, -2.0), bbox_max=(210.0, 10.0, -2.0),
+            centroid=(205.0, 5.0, -2.0), normal=(0.0, 0.0, -1.0),
+        ),
+    }
+    return ShapeModel(faces=faces, bbox_min=(0.0, 0.0, -2.0), bbox_max=(210.0, 62.0, 40.0))
+
+
+def _stub_bend(adjacent_flange_ids) -> BendFeature:
+    return BendFeature(
+        id="bend_1",
+        angle_deg=90.0,
+        inner_radius_mm=3.0,
+        bend_line=BendLine(
+            start=Vector3(x=0.0, y=60.0, z=0.0), end=Vector3(x=60.0, y=60.0, z=0.0)
+        ),
+        axis=Vector3(x=1.0, y=0.0, z=0.0),
+        length_mm=60.0,
+        direction="up",
+        sequence_hint=1,
+        k_factor_assumed=0.44,
+        adjacent_flange_ids=adjacent_flange_ids,
+        detection=Detection(
+            method=DetectionMethod.TOPOLOGY_AND_SURFACE,
+            confidence=0.9,
+            evidence=["synthetic"],
+            source=InformationSource.GEOMETRY,
+        ),
+    )
+
+
+def test_detect_base_flange_includes_a_flange_reached_through_a_real_bend():
+    model = _paired_skin_model()
+    bends = [_stub_bend(["1", "4"])]
+    faces = detect_base_flange(model, CONFIG, bends)
+
+    assert faces.base_face_id == 1
+    flange_ids = {f.face_id for f in faces.flange_faces}
+    assert 4 in flange_ids
+
+
+def test_detect_base_flange_excludes_a_same_thickness_pair_with_no_bend():
+    """Regression test for the fix: matching the dominant thickness gap
+    elsewhere on the part is not enough - only faces reachable from the base
+    through an actual bend count as flanges. Without this, a stamped feature
+    that keeps the sheet's own thickness (faces 6/7 here) would be excluded
+    from formed-feature detection before it was ever considered."""
+    model = _paired_skin_model()
+    bends = [_stub_bend(["1", "4"])]
+    faces = detect_base_flange(model, CONFIG, bends)
+
+    flange_ids = {f.face_id for f in faces.flange_faces}
+    assert 6 not in flange_ids
+    assert 7 not in flange_ids
+
+
+def test_detect_base_flange_with_no_bends_has_no_flanges_even_with_paired_skins():
+    """A flat, unformed part (no bends at all) must report zero flanges -
+    matching the dominant thickness gap is never, on its own, enough."""
+    model = _paired_skin_model()
+    faces = detect_base_flange(model, CONFIG, bends=[])
+
     assert faces.base_face_id == 1
     assert faces.flange_faces == []
 

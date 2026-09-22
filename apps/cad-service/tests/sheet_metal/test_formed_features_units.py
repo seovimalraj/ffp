@@ -320,6 +320,10 @@ def test_raised_pad_fixture_is_detected_as_a_draw(analyze, step_dir):
     """8 mm tall pad on 20 mm width -> 0.4 ratio, above the emboss cutoff."""
     payload = analyze(fixtures.flat_plate_with_raised_pad(step_dir, pad_height=8.0))
 
+    # No bends on this flat-plate fixture, so nothing should be a flange -
+    # in particular not the pad's own top face (see base_flange.py).
+    assert payload["faces"]["flange_faces"] == []
+
     formed = payload["formed_features"]
     assert len(formed) == 1
     feature = formed[0]
@@ -403,27 +407,25 @@ def test_face_details_report_every_face_with_surface_type_and_normal(
 
 
 @requires_kernel
-def test_a_near_thickness_offset_gets_absorbed_as_a_flange_not_a_formed_feature(
-    analyze, step_dir
-):
-    """Regression/documentation case: when a raised island's height happens
-    to put its top face within the base/flange clustering tolerance of the
-    dominant sheet thickness, detect_base_flange's global (non-local)
-    clustering sweeps that face into flange_faces before
-    detect_formed_features ever sees it as a candidate - zero rejections,
-    zero formed_features, even though include_face_details confirms the
-    face is there. This is the mechanism suspected behind a real part's
-    raised, grille-topped collar going undetected: a genuinely formed
-    (constant-thickness) feature can be silently absorbed the same way a
-    solid-added one wrongly wasn't, here."""
+def test_a_near_thickness_offset_is_no_longer_absorbed_as_a_flange(analyze, step_dir):
+    """Regression coverage for the detect_base_flange clustering fix.
+
+    A raised island whose height happens to land within the old (removed)
+    global thickness-clustering tolerance used to have its own top face swept
+    into flange_faces before detect_formed_features ever saw it as a
+    candidate - the mechanism behind a real part's grille-topped collar going
+    undetected (see base_flange.py's module docstring). Flanges are now only
+    faces reachable from the base through an actual detected bend, and this
+    flat-plate fixture has none, so the pad's own top face must not appear in
+    flange_faces regardless of how it lands relative to the sheet thickness -
+    and, being otherwise a well-formed island, must be detected."""
     payload = analyze(
         fixtures.flat_plate_with_raised_pad(step_dir, pad_height=0.05),
         include_face_details=True,
         include_debug_geometry=True,
     )
 
-    assert payload["formed_features"] == []
-    assert payload["debug_geometry"]["formed_feature_rejections"] == {}
+    assert payload["faces"]["flange_faces"] == []
 
     pad_top_area = 30.0 * 20.0
     pad_top_ids = {
@@ -435,10 +437,12 @@ def test_a_near_thickness_offset_gets_absorbed_as_a_flange_not_a_formed_feature(
         and abs(d["area_mm2"] - pad_top_area) < 1e-3
     }
     assert pad_top_ids, "expected to find the pad's own top face in face_details"
-    flange_ids = {f["face_id"] for f in payload["faces"]["flange_faces"]}
-    assert pad_top_ids & flange_ids, (
-        "expected the pad top face to have been swept into flange_faces - "
-        "if this now fails, the clustering bug this test documents may have "
-        "been fixed and the assertions above (empty formed_features) should "
-        "be revisited"
-    )
+
+    # 0.05 mm is below min_formed_feature_depth_mm (0.1) - the detector
+    # correctly turns it down, but for that reason, with a real rejection
+    # recorded, not because the candidate was never reached.
+    assert payload["formed_features"] == []
+    rejections = payload["debug_geometry"]["formed_feature_rejections"]
+    pad_top_reasons = [rejections[str(fid)] for fid in pad_top_ids if str(fid) in rejections]
+    assert pad_top_reasons, "expected the pad top face to have its own rejection reason"
+    assert all("min_formed_feature_depth_mm" in reason for reason in pad_top_reasons)

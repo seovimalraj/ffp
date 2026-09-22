@@ -168,20 +168,14 @@ class SheetMetalAnalysisService:
         if thickness is not None:
             response.thickness = thickness
 
-        # Stage 7: base/flange face identification. Runs regardless of the
-        # candidate gate, same rationale as thickness above.
-        faces = self._stage(
-            "base_flange",
-            timings,
-            warnings,
-            lambda: detect_base_flange(model, self.config),
-        )
-        if faces is not None:
-            response.faces = faces
-
-        # Stage 8: bend detection (curvature clustering over cylindrical
+        # Stage 7: bend detection (curvature clustering over cylindrical
         # faces - see detectors/bends.py). Uses the dominant thickness from
         # stage 6 for the bend-allowance/-deduction formulas when available.
+        # Runs before base/flange identification below: bend detection needs
+        # nothing from that stage (it works directly from cylindrical faces),
+        # while base/flange identification now needs bend adjacency to tell a
+        # real flange from an unrelated same-thickness feature elsewhere on
+        # the part - see base_flange.py's module docstring.
         bends = self._stage(
             "bends",
             timings,
@@ -192,6 +186,17 @@ class SheetMetalAnalysisService:
         )
         if bends is not None:
             response.bends = bends
+
+        # Stage 8: base/flange face identification. Runs regardless of the
+        # candidate gate, same rationale as thickness above.
+        faces = self._stage(
+            "base_flange",
+            timings,
+            warnings,
+            lambda: detect_base_flange(model, self.config, response.bends),
+        )
+        if faces is not None:
+            response.faces = faces
             self._link_flanges_to_bends(response.faces, response.bends)
 
         # Stage 9: bend-relief detection - a documented stub in this phase
