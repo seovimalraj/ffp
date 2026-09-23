@@ -11,9 +11,12 @@ from __future__ import annotations
 
 import math
 
+import pytest
+
 from app.machining.records import CYLINDER, PLANE, EdgeRecord, FaceRecord, ShapeModel
 from app.sheet_metal.config import SheetMetalConfig
 from app.sheet_metal.detectors.cutouts import (
+    circle_fit_from_loop,
     detect_cutouts,
     face_loops,
     inner_profile_loops,
@@ -255,6 +258,129 @@ def test_detect_holes_no_cylinders_returns_empty():
     assert detect_holes(model, CONFIG) == []
 
 
+def test_detect_holes_sums_seam_split_cylinder_fragments():
+    """Two coaxial 180-degree half-cylinder faces (a full hole split at a
+    seam - a routine kernel/export choice) must be recognised as one hole,
+    not individually rejected for falling short of the wrap threshold."""
+    half_a = FaceRecord(
+        id=1, surface_type=CYLINDER, area_mm2=math.pi * 4.0 * 1.5,
+        bbox_min=(21.0, 21.0, -1.0), bbox_max=(29.0, 29.0, 2.5),
+        centroid=(25.0, 25.0, 0.75), axis=(0.0, 0.0, 1.0),
+        axis_location=(25.0, 25.0, -1.0), radius_mm=4.0,
+        angular_span_deg=180.0, axial_extent_mm=1.5, is_internal=True,
+    )
+    half_b = FaceRecord(
+        id=2, surface_type=CYLINDER, area_mm2=math.pi * 4.0 * 1.5,
+        bbox_min=(21.0, 21.0, -1.0), bbox_max=(29.0, 29.0, 2.5),
+        centroid=(25.0, 25.0, 0.75), axis=(0.0, 0.0, 1.0),
+        axis_location=(25.0, 25.0, -1.0), radius_mm=4.0,
+        angular_span_deg=180.0, axial_extent_mm=1.5, is_internal=True,
+    )
+    model = ShapeModel(
+        faces={1: half_a, 2: half_b}, bbox_min=(0, 0, -1), bbox_max=(150, 100, 2.5)
+    )
+    holes = detect_holes(model, CONFIG)
+    assert len(holes) == 1
+    assert holes[0].diameter_mm == 8.0
+
+
+def _circle_loop_face(
+    face_id: int, edge_id_base: int, center=(75.0, 50.0, 0.0), radius=4.0, split: bool = False
+) -> tuple[FaceRecord, dict]:
+    """A 150x100 planar face with one circular inner loop - either a single
+    closed CIRCLE edge, or (``split=True``) two half-circle arcs meeting at a
+    seam, mirroring how some STEP export paths write a full circle."""
+    cx, cy, cz = center
+    outer_pts = [(0, 0, cz), (150, 0, cz), (150, 100, cz), (0, 100, cz)]
+    outer_edges = {}
+    for i in range(4):
+        a, b = outer_pts[i], outer_pts[(i + 1) % 4]
+        eid = edge_id_base + i
+        outer_edges[eid] = EdgeRecord(
+            id=eid, curve_type="LINE", length_mm=math.dist(a, b),
+            start=a, end=b, midpoint=tuple((a[j] + b[j]) / 2 for j in range(3)),
+            face_ids=[face_id],
+        )
+
+    inner_edges = {}
+    if split:
+        p0 = (cx + radius, cy, cz)
+        p90 = (cx, cy + radius, cz)
+        p180 = (cx - radius, cy, cz)
+        p270 = (cx, cy - radius, cz)
+        e1 = edge_id_base + 10
+        e2 = edge_id_base + 11
+        inner_edges[e1] = EdgeRecord(
+            id=e1, curve_type="CIRCLE", radius_mm=radius, is_closed=False,
+            start=p0, end=p180, midpoint=p90, face_ids=[face_id],
+        )
+        inner_edges[e2] = EdgeRecord(
+            id=e2, curve_type="CIRCLE", radius_mm=radius, is_closed=False,
+            start=p180, end=p0, midpoint=p270, face_ids=[face_id],
+        )
+    else:
+        p_start = (cx + radius, cy, cz)
+        p_mid = (cx - radius, cy, cz)  # antipodal point - see circle_fit_from_loop
+        eid = edge_id_base + 10
+        inner_edges[eid] = EdgeRecord(
+            id=eid, curve_type="CIRCLE", radius_mm=radius, is_closed=True,
+            start=p_start, end=p_start, midpoint=p_mid, face_ids=[face_id],
+        )
+
+    all_edges = {**outer_edges, **inner_edges}
+    face = FaceRecord(
+        id=face_id, surface_type=PLANE, area_mm2=150.0 * 100.0 - math.pi * radius * radius,
+        bbox_min=(0, 0, cz), bbox_max=(150, 100, cz), centroid=(75, 50, cz),
+        normal=(0.0, 0.0, 1.0), edge_ids=sorted(all_edges.keys()),
+    )
+    return face, all_edges
+
+
+def test_detect_holes_finds_a_single_circle_edge_loop_with_no_cylinder_face():
+    face, edges = _circle_loop_face(face_id=1, edge_id_base=100)
+    model = ShapeModel(
+        faces={1: face}, edges=edges, bbox_min=(0, 0, 0), bbox_max=(150, 100, 0)
+    )
+    holes = detect_holes(model, CONFIG)
+    assert len(holes) == 1
+    hole = holes[0]
+    assert hole.diameter_mm == 8.0
+    assert hole.position.x == pytest.approx(75.0)
+    assert hole.position.y == pytest.approx(50.0)
+
+
+def test_detect_holes_finds_a_seam_split_loop_with_no_cylinder_face():
+    face, edges = _circle_loop_face(face_id=1, edge_id_base=100, split=True)
+    model = ShapeModel(
+        faces={1: face}, edges=edges, bbox_min=(0, 0, 0), bbox_max=(150, 100, 0)
+    )
+    holes = detect_holes(model, CONFIG)
+    assert len(holes) == 1
+    assert holes[0].diameter_mm == 8.0
+
+
+def test_detect_holes_loop_fallback_does_not_duplicate_a_cylinder_hole():
+    """A through hole has a circular inner loop on *both* skins it pierces,
+    in addition to its cylindrical wall face - the loop-based fallback must
+    not report either skin's loop as a second, third hole."""
+    cyl = FaceRecord(
+        id=1, surface_type=CYLINDER, area_mm2=2 * math.pi * 4.0 * 1.5,
+        bbox_min=(71.0, 46.0, 0.0), bbox_max=(79.0, 54.0, 1.5),
+        centroid=(75.0, 50.0, 0.75), axis=(0.0, 0.0, 1.0),
+        axis_location=(75.0, 50.0, 0.0), radius_mm=4.0,
+        angular_span_deg=360.0, axial_extent_mm=1.5, is_internal=True,
+    )
+    top, top_edges = _circle_loop_face(face_id=2, edge_id_base=200, center=(75.0, 50.0, 0.0))
+    bottom, bottom_edges = _circle_loop_face(face_id=3, edge_id_base=300, center=(75.0, 50.0, 1.5))
+    model = ShapeModel(
+        faces={1: cyl, 2: top, 3: bottom},
+        edges={**top_edges, **bottom_edges},
+        bbox_min=(0, 0, 0), bbox_max=(150, 100, 1.5),
+    )
+    holes = detect_holes(model, CONFIG)
+    assert len(holes) == 1
+
+
 # ---------------------------------------------------------------------------
 # Unit tests: loop reconstruction + cutouts
 # ---------------------------------------------------------------------------
@@ -299,6 +425,44 @@ def test_detect_cutouts_ignores_slot_like_profiles():
 def test_detect_cutouts_no_edges_returns_empty():
     model = _hole_model(count=0)
     assert detect_cutouts(model, CONFIG) == []
+
+
+def test_detect_cutouts_skips_a_single_circle_edge_loop():
+    """A round hole with no cylindrical wall face is still a hole, not a
+    cutout - regression coverage for the "holes reported as cutouts" gap."""
+    face, edges = _circle_loop_face(face_id=1, edge_id_base=100)
+    model = ShapeModel(
+        faces={1: face}, edges=edges, bbox_min=(0, 0, 0), bbox_max=(150, 100, 0)
+    )
+    assert detect_cutouts(model, CONFIG) == []
+
+
+def test_detect_cutouts_skips_a_seam_split_circle_loop():
+    face, edges = _circle_loop_face(face_id=1, edge_id_base=100, split=True)
+    model = ShapeModel(
+        faces={1: face}, edges=edges, bbox_min=(0, 0, 0), bbox_max=(150, 100, 0)
+    )
+    assert detect_cutouts(model, CONFIG) == []
+
+
+def test_circle_fit_from_loop_rejects_a_non_circular_arc_loop():
+    """A closed loop of arcs whose sample points are not equidistant from
+    their centroid (a D-shape, say) must not be misread as a circle."""
+    p_start = (0.0, 0.0, 0.0)
+    p_mid = (10.0, 0.0, 0.0)
+    p_end = (20.0, 0.0, 0.0)
+    p_bottom_mid = (10.0, -2.0, 0.0)  # far flatter than the top arc's bulge
+    edges = [
+        EdgeRecord(
+            id=1, curve_type="CIRCLE", radius_mm=10.0, is_closed=False,
+            start=p_start, end=p_end, midpoint=(10.0, 10.0, 0.0),
+        ),
+        EdgeRecord(
+            id=2, curve_type="CIRCLE", radius_mm=10.0, is_closed=False,
+            start=p_end, end=p_start, midpoint=p_bottom_mid,
+        ),
+    ]
+    assert circle_fit_from_loop(edges) is None
 
 
 # ---------------------------------------------------------------------------

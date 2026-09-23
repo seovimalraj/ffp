@@ -13,11 +13,13 @@ feature (hole, cutout or slot) cut into it. The outer loop is identified as
 the one with the largest bounding-box diagonal; every other loop is an inner
 profile.
 
-An inner loop that is a single full-circle edge is a plain round hole,
-already reported by :mod:`app.sheet_metal.detectors.holes` (which finds it
-independently via the cylindrical wall face, not the planar face's boundary)
-- it is skipped here to avoid double-reporting. Everything else is either a
-cutout (this module) or, if sufficiently elongated with rounded ends, a slot
+An inner loop that traces a circle - one closed edge, or two or more arc-only
+edges meeting at a seam (see :func:`circle_fit_from_loop`) - is a plain round
+hole, already reported by :mod:`app.sheet_metal.detectors.holes` (independently
+via the cylindrical wall face where one exists, or via this same loop-fitting
+as a fallback where it doesn't) - it is skipped here to avoid double-reporting.
+Everything else is either a cutout (this module) or, if sufficiently elongated
+with rounded ends, a slot
 (:mod:`app.sheet_metal.detectors.slots`, which reuses
 :func:`inner_profile_loops` from here rather than re-deriving the loop logic -
 mirrors ``app.machining.detectors.slots`` importing ``PocketCandidate`` from
@@ -164,8 +166,63 @@ def inner_profile_loops(
     return [loop for loop in loops if loop is not outer]
 
 
-def _is_plain_circle(chain: Loop) -> bool:
-    return len(chain) == 1 and chain[0].is_closed and chain[0].curve_type == "CIRCLE"
+def circle_fit_from_loop(chain: Loop) -> Optional[Tuple[Vec, float]]:
+    """``(center, radius)`` when a loop traces a circle, else ``None``.
+
+    Two cases, both reported as holes by :mod:`app.sheet_metal.detectors.holes`
+    rather than as a cutout here:
+
+    * The common one - a single closed ``CIRCLE`` edge, whose radius the
+      kernel already resolved. Its centre is *not* ``EdgeRecord.midpoint`` -
+      that field is the curve evaluated at the parametric midpoint, i.e. a
+      point diametrically opposite ``start`` on the circle itself, not its
+      centre. The two are antipodal points on a full circle, so their
+      average is the centre - cheaper than re-deriving it from ``radius_mm``
+      and the (direction-only) ``axis`` field, which carries no location.
+    * A circle the kernel wrote as two or more arc-only edges meeting at a
+      seam - a routine STEP-export choice (a full circle split into half-arcs
+      at 0/180 degrees, say), which fails the single-edge check above even
+      though it is exactly as round a hole. Told apart from a genuinely
+      faceted/polygonal profile that happens to carry the same curve types by
+      actually checking the fit: the sampled boundary points must sit at a
+      consistent radius from their centroid, not just "all arcs".
+    """
+    if len(chain) == 1 and chain[0].is_closed:
+        edge = chain[0]
+        if edge.curve_type == "CIRCLE" and edge.radius_mm:
+            center = (
+                (edge.start[0] + edge.midpoint[0]) / 2.0,
+                (edge.start[1] + edge.midpoint[1]) / 2.0,
+                (edge.start[2] + edge.midpoint[2]) / 2.0,
+            )
+            return center, edge.radius_mm
+        return None
+
+    if len(chain) < 2 or not all(edge.curve_type in ("CIRCLE", "ELLIPSE") for edge in chain):
+        return None
+
+    points = _ordered_points(chain)
+    # The traversal closes back to its own start, so the last point repeats
+    # the first - drop it before averaging, or a closed loop's own start
+    # point gets double weight and skews the fitted centre off-centre.
+    if len(points) > 1 and _point_key(points[0]) == _point_key(points[-1]):
+        points = points[:-1]
+    if len(points) < 3:
+        return None
+    cx = sum(p[0] for p in points) / len(points)
+    cy = sum(p[1] for p in points) / len(points)
+    cz = sum(p[2] for p in points) / len(points)
+    center = (cx, cy, cz)
+    radii = [
+        ((p[0] - cx) ** 2 + (p[1] - cy) ** 2 + (p[2] - cz) ** 2) ** 0.5 for p in points
+    ]
+    mean_r = sum(radii) / len(radii)
+    if mean_r <= 0:
+        return None
+    spread = (max(radii) - min(radii)) / mean_r
+    if spread > 0.03:
+        return None
+    return center, mean_r
 
 
 def profile_metrics(
@@ -231,7 +288,7 @@ def detect_cutouts(model: ShapeModel, config: SheetMetalConfig) -> List[Cutout]:
         if face.normal is None or not face.edge_ids:
             continue
         for chain in inner_profile_loops(model, face):
-            if _is_plain_circle(chain):
+            if circle_fit_from_loop(chain) is not None:
                 continue  # reported by detectors/holes.py instead
             if is_slot_like(face, chain, config):
                 continue  # reported by detectors/slots.py instead
@@ -269,7 +326,7 @@ SLOT_MIN_ASPECT_RATIO = 3.0
 
 def is_slot_like(face: FaceRecord, chain: Loop, config: SheetMetalConfig) -> bool:
     """True when an inner loop's proportions and end geometry read as a slot."""
-    if _is_plain_circle(chain):
+    if circle_fit_from_loop(chain) is not None:
         return False
     if len(chain) < 2:
         return False
