@@ -15,7 +15,7 @@ import httpx
 from ..workers.celery import celery_app
 from ..utils.download import download_to_temp
 from ..utils.units import scale_to_mm
-from ..loaders.step_loader import occ_available, load_step_shape, load_iges_shape, shape_mass_props, count_solids_and_compounds
+from ..loaders.step_loader import occ_available, load_step_shape, load_iges_shape, shape_mass_props, count_solids_and_compounds, read_step_product_structure
 from ..loaders.stl_loader import load_stl, mesh_mass_props
 from ..extractors.holes import extract_holes_from_shape, extract_holes_from_mesh
 from ..extractors.pockets import extract_pockets_from_shape, extract_pockets_from_mesh
@@ -1271,17 +1271,37 @@ def _analyze_stl(file_path, scale, material: str = 'default'):
     return metrics
 
 
-def _detect_assembly_early(shape) -> dict | None:
+def _detect_assembly_early(shape, file_path: str | None = None) -> dict | None:
     """Run assembly detection as the absolute first step.
 
     Returns assembly metrics dict if assembly detected, else None.
     This must be resilient — if it crashes we still continue analysis.
+
+    ``file_path`` should be the source file whenever it is available. For STEP
+    input it lets us read the product structure, which is the only reliable way
+    to tell a real assembly from a multibody single part; without it we fall
+    back to body counting, which flags every multibody part as an assembly.
     """
     try:
-        assembly_info = count_solids_and_compounds(shape)
+        product_structure = None
+        if file_path and os.path.splitext(file_path)[1].lower() in ('.step', '.stp'):
+            product_structure = read_step_product_structure(file_path)
+
+        assembly_info = count_solids_and_compounds(
+            shape, product_structure=product_structure
+        )
+
+        if assembly_info.is_multi_body_part:
+            logging.info(
+                "Multi-body single part (not an assembly): solids=%d — %s",
+                assembly_info.solid_count,
+                assembly_info.reason,
+            )
+
         if assembly_info.is_assembly:
             logging.warning(
-                "Assembly detected early: solids=%d compounds=%d shells=%d — %s",
+                "Assembly detected early via %s: solids=%d compounds=%d shells=%d — %s",
+                assembly_info.detection_source,
                 assembly_info.solid_count,
                 assembly_info.compound_count,
                 assembly_info.shell_count,
@@ -1308,7 +1328,7 @@ def _analyze_step(file_path, material: str = 'default'):
     shape = load_step_shape(file_path)
 
     # Assembly detection — FIRST, before anything else
-    assembly_result = _detect_assembly_early(shape)
+    assembly_result = _detect_assembly_early(shape, file_path)
     if assembly_result is not None:
         return assembly_result
 
@@ -1499,7 +1519,8 @@ def _analyze_iges(file_path, material: str = 'default'):
     shape = load_iges_shape(file_path)
 
     # Assembly detection — FIRST, before anything else
-    assembly_result = _detect_assembly_early(shape)
+    # IGES has no product structure, so this stays on the topology heuristics.
+    assembly_result = _detect_assembly_early(shape, file_path)
     if assembly_result is not None:
         return assembly_result
 
@@ -1798,7 +1819,7 @@ def analyze_cad_file_sync(request: AnalysisRequest):
             ext = os.path.splitext(local_path)[1].lower()
             if ext in ('.step', '.stp') and occ_available():
                 shape = load_step_shape(local_path)
-                assembly_result = _detect_assembly_early(shape)
+                assembly_result = _detect_assembly_early(shape, local_path)
                 if assembly_result is not None:
                     logging.warning(
                         "Analysis crashed but assembly detected — returning assembly metrics"

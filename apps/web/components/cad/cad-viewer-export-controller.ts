@@ -44,7 +44,9 @@ export async function triggerSelectedPartExport(
     });
     return {
       ok: true,
-      message: makeSuccessfulExportMessage(result.format),
+      message: result.note
+        ? `${makeSuccessfulExportMessage(result.format)} ${result.note}`
+        : makeSuccessfulExportMessage(result.format),
       exportedFormat: result.format,
       usedFallback: !!result.fallbackFrom,
     };

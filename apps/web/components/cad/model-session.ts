@@ -7,6 +7,13 @@ type CadPartDescriptor = {
   name: string;
   cadPartId: string;
   meshIndices: number[];
+  // Set when this descriptor is ONE solid body of a CAD part that contains
+  // several. The runtime groups geometry per XCAF label, and a multibody part
+  // (one product, many bodies) exposes every body under a single label — so
+  // without this split the whole part would collapse into one selectable unit.
+  // `cadPartId` still points at the parent label, which is the granularity the
+  // runtime understands for colors, topology and exact export.
+  cadBodyIndex?: number;
 };
 
 type MeshPartDescriptor = {
@@ -167,6 +174,13 @@ export function createCadPartKey(cadPartId: string): string {
   return `cad:${trimmed}`;
 }
 
+export function createCadBodyPartKey(
+  cadPartId: string,
+  meshIndex: number,
+): string {
+  return `${createCadPartKey(cadPartId)}#body:${meshIndex}`;
+}
+
 export function createMeshPartKey(objectPath: number[]): string {
   if (objectPath.length === 0) return "mesh:root";
   return `mesh:${objectPath.join(".")}`;
@@ -279,6 +293,35 @@ function buildCadPartDescriptors(
     if (normalized.length === 0) continue;
     for (const idx of normalized) {
       assigned.add(idx);
+    }
+
+    if (entries.length === 1 && normalized.length > 1) {
+      // Multibody part: the file carries a single CAD part whose shape holds
+      // several solid bodies, so grouping by part id would collapse the whole
+      // model into one selectable unit and hide the bodies. Split it so each
+      // body can be listed, picked and isolated.
+      //
+      // Deliberately limited to the single-part case: when the file has two or
+      // more parts it is a real assembly, and one part per label is correct
+      // there (a label's extra meshes are then its own shells/loose faces, not
+      // separate bodies — a distinction the runtime payload does not expose).
+      const groupName = normalizePartName(entry.preferredName, "");
+      for (let bodyOrdinal = 0; bodyOrdinal < normalized.length; bodyOrdinal++) {
+        const meshIndex = normalized[bodyOrdinal];
+        const meshName = normalizePartName(meshes[meshIndex]?.name, "");
+        const fallback = groupName
+          ? `${groupName} — Body ${bodyOrdinal + 1}`
+          : `Body ${bodyOrdinal + 1}`;
+        descriptors.push({
+          key: createCadBodyPartKey(entry.partId, meshIndex),
+          kind: "cad",
+          name: normalizePartName(meshName, fallback),
+          cadPartId: entry.partId,
+          meshIndices: [meshIndex],
+          cadBodyIndex: meshIndex,
+        });
+      }
+      continue;
     }
 
     const fallbackName =

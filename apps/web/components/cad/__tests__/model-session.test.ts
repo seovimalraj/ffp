@@ -3,6 +3,7 @@ import { describe, it } from "node:test";
 import * as THREE from "three";
 
 import {
+  createCadBodyPartKey,
   createCadPartKey,
   createCadModelSession,
   createMeshModelSession,
@@ -82,6 +83,104 @@ describe("model-session helpers", () => {
     if (bracket?.kind === "cad") {
       assert.equal(bracket.cadPartId, "xcf:0:1");
       assert.deepEqual(bracket.meshIndices, [0, 1]);
+    }
+  });
+
+  it("splits a single multibody CAD part into one part per body", () => {
+    // A multibody part (one product, several solid bodies — e.g. a SolidWorks
+    // part built from thicken/mirror/body-copy features) arrives as several
+    // meshes sharing ONE xcaf label. Grouping by part id alone would collapse
+    // it into a single selectable unit, so the viewer would not offer its
+    // bodies at all.
+    const bodies = ["Thicken3", "Fillet26", "Mirror2"].map(makeMesh);
+    for (const body of bodies) {
+      body.userData.__cadPartId = "xcf:0:1";
+    }
+
+    const sourceGroup = new THREE.Group();
+    sourceGroup.name = "LUNCH BOX";
+    for (const body of bodies) {
+      sourceGroup.add(body);
+    }
+
+    const session = createCadModelSession(
+      {
+        object: sourceGroup,
+        root: {
+          name: "LUNCH BOX",
+          partId: "xcf:root",
+          meshes: [],
+          children: [
+            {
+              name: "LUNCH BOX",
+              partId: "xcf:0:1",
+              meshes: [0, 1, 2],
+              children: [],
+            },
+          ],
+        },
+        meshes: bodies,
+        originalBytes: new ArrayBuffer(16),
+        ext: "step",
+      },
+      { ext: "step", originalName: "lunch-box.step" },
+    );
+
+    assert.equal(session.partMap.size, 3);
+    for (let meshIndex = 0; meshIndex < bodies.length; meshIndex++) {
+      const key = createCadBodyPartKey("xcf:0:1", meshIndex);
+      const body = session.partMap.get(key);
+      assert.ok(body, `missing body descriptor for mesh ${meshIndex}`);
+      if (body?.kind === "cad") {
+        // The parent label stays the id the runtime understands, while the
+        // body index is what makes the descriptor addressable on its own.
+        assert.equal(body.cadPartId, "xcf:0:1");
+        assert.equal(body.cadBodyIndex, meshIndex);
+        assert.deepEqual(body.meshIndices, [meshIndex]);
+        assert.equal(body.name, bodies[meshIndex].name);
+      }
+    }
+  });
+
+  it("keeps one part per label when the file is a real assembly", () => {
+    // Two parts means a genuine assembly: a label's extra meshes are its own
+    // shells or loose faces, not separate bodies, so grouping must stand.
+    const first = makeMesh("Bracket");
+    first.userData.__cadPartId = "xcf:0:1";
+    const firstExtra = makeMesh("Bracket");
+    firstExtra.userData.__cadPartId = "xcf:0:1";
+    const second = makeMesh("Cover");
+    second.userData.__cadPartId = "xcf:0:2";
+
+    const sourceGroup = new THREE.Group();
+    sourceGroup.add(first);
+    sourceGroup.add(firstExtra);
+    sourceGroup.add(second);
+
+    const session = createCadModelSession(
+      {
+        object: sourceGroup,
+        root: {
+          name: "Assembly",
+          partId: "xcf:root",
+          meshes: [],
+          children: [
+            { name: "Bracket", partId: "xcf:0:1", meshes: [0, 1], children: [] },
+            { name: "Cover", partId: "xcf:0:2", meshes: [2], children: [] },
+          ],
+        },
+        meshes: [first, firstExtra, second],
+        originalBytes: new ArrayBuffer(16),
+        ext: "step",
+      },
+      { ext: "step", originalName: "assembly.step" },
+    );
+
+    assert.equal(session.partMap.size, 2);
+    const bracket = session.partMap.get(createCadPartKey("xcf:0:1"));
+    if (bracket?.kind === "cad") {
+      assert.deepEqual(bracket.meshIndices, [0, 1]);
+      assert.equal(bracket.cadBodyIndex, undefined);
     }
   });
 

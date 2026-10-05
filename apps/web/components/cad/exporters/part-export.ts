@@ -26,6 +26,10 @@ type PartExportValidationResult =
 export type PartExportResult = {
   mode: "exact" | "mesh";
   format: PartExportFormat;
+  // Set when the written file does not match the selection exactly, e.g. an
+  // exact CAD export of one body, which the runtime can only resolve to the
+  // whole parent part.
+  note?: string;
 };
 
 function isExportableMeshNode(node: THREE.Object3D): node is THREE.Mesh {
@@ -250,7 +254,12 @@ export function resolveCadPartAsObject3D(
   const group = new THREE.Group();
   group.name = descriptor.name;
 
-  const byPartId = meshesByCadPartId.get(descriptor.cadPartId);
+  // A single body of a multibody part shares its parent's cadPartId with every
+  // sibling body, so resolve it by mesh index and skip the by-part-id bucket.
+  const byPartId =
+    descriptor.cadBodyIndex === undefined
+      ? meshesByCadPartId.get(descriptor.cadPartId)
+      : undefined;
   if (byPartId && byPartId.length > 0) {
     for (const sourceMesh of byPartId) {
       const clonedMesh = sourceMesh.clone(false) as THREE.Mesh;
@@ -489,6 +498,15 @@ async function exportDescriptorAsExactCad(
     result.bytes.byteOffset + result.bytes.byteLength,
   ) as ArrayBuffer;
   download(exportBytes, fileName, exactCadMimeType(result.format));
+  if (descriptor.cadBodyIndex !== undefined) {
+    // The runtime resolves exact export per CAD part, not per body, so the
+    // written file holds every body of the parent part. Don't imply otherwise.
+    return {
+      mode: "exact",
+      format: result.format,
+      note: "Exact CAD export covers all bodies of the parent part. Export as OBJ or GLB for this body alone.",
+    };
+  }
   return { mode: "exact", format: result.format };
 }
 
