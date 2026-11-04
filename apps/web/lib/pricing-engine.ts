@@ -344,7 +344,7 @@ export const CNC_TOLERANCES = [
     label: 'Precision (±0.002" / ±0.051mm)',
     costMultiplier: 1.15,
   },
-  { value: "tight", label: 'Tight (±0.001" / ±0.025mm)', costMultiplier: 1.35 },
+  { value: "tight", label: 'Tight (±0.001" / ±0.025mm)', costMultiplier: 1.3 },
 ] as const;
 
 /**
@@ -863,6 +863,23 @@ export function getProcessDisplayName(process: string | undefined): string {
   return PROCESSES[process]?.name || "CNC Machining";
 }
 
+/**
+ * Whether a customer's quote page must show stored prices instead of repricing.
+ * The API enforces the same rule in getPricingLockReason (apps/api rfq.helpers.ts).
+ */
+export function isPricingLocked(rfq: {
+  status?: string | null;
+  order_id?: string | null;
+  rfq_type?: string | null;
+}): boolean {
+  return (
+    Boolean(rfq.order_id) ||
+    rfq.status === "paid" ||
+    rfq.status === "payment pending" ||
+    rfq.rfq_type === "manual"
+  );
+}
+
 // Helper: Check if process is CNC-based
 export function isCNCProcess(process: string | undefined): boolean {
   if (!process) return false;
@@ -894,6 +911,15 @@ export function isSheetMetalProcess(process: string | undefined): boolean {
     cleanProcess === "plasma" ||
     cleanProcess === "waterjet"
   );
+}
+
+// The process to preselect for a part, including parts saved by the old admin
+// form, whose "cnc-machining" value no longer has a pricing path of its own
+export function normalizeSelectableProcess(
+  process: string | null | undefined,
+): string {
+  if (!process || process === "cnc-machining") return "cnc-milling";
+  return process;
 }
 
 // Get default material for a process
@@ -1858,6 +1884,24 @@ export const FINISHES: Record<string, FinishOption> = {
     name: "Electropolished",
     baseCost: 35,
     perAreaCost: 0.09,
+  },
+  "zinc-plated": {
+    code: "ZINC",
+    name: "Zinc Plated",
+    baseCost: 15,
+    perAreaCost: 0.04,
+  },
+  "chrome-plated": {
+    code: "CHROME",
+    name: "Chrome Plated",
+    baseCost: 45,
+    perAreaCost: 0.12,
+  },
+  "nickel-plated": {
+    code: "NICKEL",
+    name: "Nickel Plated",
+    baseCost: 35,
+    perAreaCost: 0.1,
   },
 };
 
@@ -3719,9 +3763,29 @@ const SIZE_LIMITS = { min: 0.3, max: 700 }; // min 0.3mm for thin sheet metal
 
 // Lead time type price multipliers (applied to final price)
 const leadTimePriceMultipliers = {
-  economy: 0.8,
-  standard: 1.5,
-  expedited: 2.8,
+  economy: 0.85,
+  standard: 1,
+  expedited: 1.35,
+} as const;
+
+// Tolerance upcharge as a fraction of subtotal, added on top of it (0.15 = +15%)
+const TOLERANCE_UPCHARGE_RATES: Record<ToleranceLevel, number> = {
+  standard: 0,
+  precision: 0.15,
+  tight: 0.3,
+};
+
+// Inputs for CNC machining time estimation
+const CNC_MACHINING_TIME = {
+  stockAllowanceMm: 2.5, // per side, same allowance as the CAD service stock analyzer
+  roughingMinPerCm3: 0.2, // 5 cm³/min material removal rate on the baseline material
+  finishingMinPerCm2: 0.05,
+  holeMin: 1, // drilling + deburring
+  pocketMin: 3, // roughing + finishing passes
+  threadMin: 2, // tapping cycles
+  filletMin: 0.3, // finishing passes on radii
+  minMinutes: 5, // loading and fixturing for any part
+  complexityMultiplier: { simple: 0.8, moderate: 1, complex: 1.4 },
 } as const;
 
 // Lead time multipliers for DAYS calculation (expedited is base)
@@ -3744,9 +3808,8 @@ const SHEET_METAL_LEAD_TIME = {
   },
 } as const;
 
-// Sheet Metal Advanced Cost Multiplier (20% increase for better quality)
+// Sheet Metal Advanced Cost Multipliers
 const SHEET_METAL_COST_OPTIMIZATION = {
-  qualityPremium: 1.2, // 20% increase for quality materials and processes
   complexityMultiplier: {
     simple: 1.05, // 5% for simple parts
     moderate: 1.15, // 15% for moderate complexity
@@ -3968,8 +4031,8 @@ function calculateSheetMetalPricingInternal(
 
   // 1. Material Cost (area-based)
   const flatAreaM2 = features?.flatArea / 1_000_000;
-  const materialWeightKg =
-    (flatAreaM2 * material.thickness * material.density) / 1000;
+  // m² × mm × g/cm³ = kg (1 m² × 1 mm = 1000 cm³, and 1000 g = 1 kg)
+  const materialWeightKg = flatAreaM2 * material.thickness * material.density;
   const materialCostPerUnit = materialWeightKg * material.costPerKg * 1.15; // 15% scrap allowance
 
   // 2. Cutting Costs
@@ -4010,7 +4073,7 @@ function calculateSheetMetalPricingInternal(
   const inspectionMap = { standard: 0.02, precision: 0.05, tight: 0.08 };
   const inspectionCostPerUnit =
     (materialCostPerUnit + cuttingCosts.total + formingCosts.total) *
-    inspectionMap[tolerance];
+    (inspectionMap[tolerance] ?? inspectionMap.standard);
 
   // 9. Packaging Cost
   const packagingCostPerUnit = flatAreaM2 * 1.5 + 0.5;
@@ -4043,21 +4106,22 @@ function calculateSheetMetalPricingInternal(
   );
 
   // 13. Tolerance Upcharge
-  const toleranceMultipliers = { standard: 0, precision: 1.2, tight: 1.6 };
-  const toleranceUpcharge = subtotalPerUnit * toleranceMultipliers[tolerance];
+  const toleranceUpcharge =
+    subtotalPerUnit * (TOLERANCE_UPCHARGE_RATES[tolerance] ?? 0);
 
   // 14. Advanced adjustments
   const advancedAdjustments = calculateSheetMetalAdvancedAdjustments(
     subtotalPerUnit,
     materialCostPerUnit,
     geometry,
+    features,
     material,
     quantity,
   );
 
   // 15. Lead time
   const leadPlan = computeSheetMetalLeadTime(
-    geometry,
+    features,
     material,
     quantity,
     cuttingMethod,
@@ -4073,13 +4137,9 @@ function calculateSheetMetalPricingInternal(
     toleranceUpcharge +
     advancedAdjustments.totalAdjustment;
 
-  // Apply 5% markup for sheet metal parts (enclosures, cabinets, housings, etc.)
-  const sheetMetalMarkup = priceBeforeLeadTime * 0.05;
-  const priceWithMarkup = priceBeforeLeadTime + sheetMetalMarkup;
-
   // Minimum price floor: never go below material cost × 1.5 or $2
   const minUnitPrice = Math.max(materialCostPerUnit * 1.5, 2);
-  const unitPrice = Math.max(priceWithMarkup * leadTimePriceMultiplier, minUnitPrice);
+  const unitPrice = Math.max(priceBeforeLeadTime * leadTimePriceMultiplier, minUnitPrice);
   const totalPrice = unitPrice * quantity;
 
   // Guard: if price is still $0 or negative, push to manual quote
@@ -4104,7 +4164,6 @@ function calculateSheetMetalPricingInternal(
     complexityRiskPremium: advancedAdjustments.complexityRiskPremium,
     materialDifficultyPremium: advancedAdjustments.materialDifficultyPremium,
     batchOptimizationBonus: advancedAdjustments.batchOptimizationBonus,
-    qualityPremiumAdjustment: advancedAdjustments.qualityPremiumAdjustment,
     cuttingCost: round2(cuttingCosts.total),
     bendingCost: round2(formingCosts.total),
     hardwareCost: round2(hardwareCostPerUnit + hardwareInstallationCostPerUnit),
@@ -4112,6 +4171,8 @@ function calculateSheetMetalPricingInternal(
     totalPrice: round2(totalPrice),
     leadTimeDays: leadPlan.leadTimeDays,
     requiresManualQuote: false,
+    // Flag when backend classification confidence is low
+    ...(geometry.needsReview && { needsReview: true, classificationMethod: geometry.classificationMethod }),
     leadTimeComponents: leadPlan.components,
   };
 }
@@ -4235,6 +4296,7 @@ function calculateSheetMetalAdvancedAdjustments(
   subtotal: number,
   materialCost: number,
   geometry: GeometryData,
+  features: SheetMetalFeatures,
   material: SheetMetalMaterialSpec,
   quantity: number,
 ): {
@@ -4242,13 +4304,11 @@ function calculateSheetMetalAdvancedAdjustments(
   complexityRiskPremium: number;
   materialDifficultyPremium: number;
   batchOptimizationBonus: number;
-  qualityPremiumAdjustment: number;
   totalAdjustment: number;
 } {
   const demandMultiplier = getDemandMultiplier(ADVANCED_PRICING.capacityUtilization);
   const demandAdjustment = subtotal * (demandMultiplier - 1);
 
-  const features = geometry.sheetMetalFeatures!;
   const { level: complexityLevel, rate: complexityRate } = assessComplexity(features);
   const complexityMultiplier =
     SHEET_METAL_COST_OPTIMIZATION.complexityMultiplier[complexityLevel];
@@ -4262,16 +4322,12 @@ function calculateSheetMetalAdvancedAdjustments(
   const optimalQuantities = [5, 10, 20, 25, 50, 100, 250, 500, 1000];
   const batchOptimizationBonus = optimalQuantities.includes(quantity) ? subtotal * 0.018 : 0;
 
-  const qualityPremiumAdjustment =
-    subtotal * (SHEET_METAL_COST_OPTIMIZATION.qualityPremium - 1);
-
   const dfmSurcharge = calculateDfmSurcharge(geometry.dfmIssues ?? [], subtotal);
 
   const totalAdjustment =
     demandAdjustment +
     complexityRiskPremium +
     materialDifficultyPremium +
-    qualityPremiumAdjustment +
     dfmSurcharge -
     batchOptimizationBonus;
 
@@ -4280,7 +4336,6 @@ function calculateSheetMetalAdvancedAdjustments(
     complexityRiskPremium: round2(complexityRiskPremium),
     materialDifficultyPremium: round2(materialDifficultyPremium),
     batchOptimizationBonus: round2(batchOptimizationBonus),
-    qualityPremiumAdjustment: round2(qualityPremiumAdjustment),
     totalAdjustment: round2(totalAdjustment),
   };
 }
@@ -4290,7 +4345,7 @@ function calculateSheetMetalAdvancedAdjustments(
  * Enterprise-level lead time estimation with detailed breakdown
  */
 function computeSheetMetalLeadTime(
-  geometry: GeometryData,
+  features: SheetMetalFeatures,
   material: SheetMetalMaterialSpec,
   quantity: number,
   cuttingMethod: CuttingMethod,
@@ -4306,8 +4361,6 @@ function computeSheetMetalLeadTime(
   };
 } {
   const materialProcurementDays = getMaterialProcurementTime(material, leadTimeType);
-
-  const features = geometry.sheetMetalFeatures!;
 
   const totalComplexity =
     features?.complexCuts + features?.bendCount + features?.holeCount * 0.1;
@@ -4520,6 +4573,11 @@ export function calculatePricing(input: PricingInput): PricingBreakdown {
     return manualQuoteBreakdown(leadTimeType, geometry.manualQuoteReason || "Manual quote required by backend analysis");
   }
 
+  // A finish we have no rate for must not be priced as free
+  if (finish.code === UNRECOGNIZED_FINISH_CODE) {
+    return manualQuoteBreakdown(leadTimeType, `Finish "${finish.name}" requires manual pricing`);
+  }
+
   // Route to sheet metal pricing if process is sheet-metal
   if (process.type === "sheet-metal" && "thickness" in material) {
     const cuttingMethod = input.cuttingMethod || "laser"; // Default to laser cutting
@@ -4549,8 +4607,9 @@ export function calculatePricing(input: PricingInput): PricingBreakdown {
   const materialCostPerUnit = rawWeightKg * cncMaterial.costPerKg;
 
   // 2. Machining Cost (optimized rates and efficiency)
+  const machiningMinutes = estimateCncMachiningMinutes(geometry, process.type);
   const machiningTimeHours =
-    (geometry.estimatedMachiningTime / 60) *
+    (machiningMinutes / 60) *
     cncMaterial.machinabilityFactor *
     0.85; // 15% efficiency gain
   const machiningCostPerUnit = machiningTimeHours * process.hourlyRate;
@@ -4558,10 +4617,11 @@ export function calculatePricing(input: PricingInput): PricingBreakdown {
   // 3. Setup Cost (amortized over quantity)
   const setupCostPerUnit = process.setupCost / Math.max(1, quantity);
 
-  // 4. Finish Cost (competitive pricing)
+  // 4. Finish Cost (base fee is per batch, area cost is per part)
   const surfaceAreaCm2 = geometry.surfaceArea / 100;
   const finishCostPerUnit =
-    finish.baseCost + finish.perAreaCost * surfaceAreaCm2;
+    finish.baseCost / Math.max(1, quantity) +
+    finish.perAreaCost * surfaceAreaCm2;
 
   // 5. Tooling Cost (optimized for part complexity)
   const complexityMultiplier = { simple: 0.8, moderate: 1, complex: 1.3 }[
@@ -4605,13 +4665,8 @@ export function calculatePricing(input: PricingInput): PricingBreakdown {
     materialCostPerUnit,
   );
 
-  // 10. Tolerance Upcharge (multiplier-based)
-  const toleranceMultipliers: Record<PricingInput["tolerance"], number> = {
-    standard: 0,
-    precision: 1.5,
-    tight: 1.9,
-  };
-  const toleranceUpcharge = subtotalPerUnit * toleranceMultipliers[tolerance];
+  // 10. Tolerance Upcharge
+  const toleranceUpcharge = subtotalPerUnit * TOLERANCE_UPCHARGE_RATES[tolerance];
 
   // 11. Advanced Xometry-style price adjustments
   const advancedAdjustments = calculateAdvancedPriceAdjustments(
@@ -4652,7 +4707,7 @@ export function calculatePricing(input: PricingInput): PricingBreakdown {
     console.warn(
       `⚠️ CNC Pricing diagnostic: floor=${floorHit ? 'HIT' : 'ok'}, ` +
       `rawWeight=${rawWeightKg.toFixed(4)}kg, materialCost=$${materialCostPerUnit.toFixed(2)}, ` +
-      `machiningTime=${geometry.estimatedMachiningTime.toFixed(1)}min, ` +
+      `machiningTime=${machiningMinutes.toFixed(1)}min, ` +
       `machiningCost=$${machiningCostPerUnit.toFixed(2)}, ` +
       `calculated=$${calculatedPrice.toFixed(2)}, floor=$${minCncUnitPrice.toFixed(2)}, ` +
       `final=$${unitPrice.toFixed(2)}, bbox=${geometry.boundingBox.x.toFixed(1)}×${geometry.boundingBox.y.toFixed(1)}×${geometry.boundingBox.z.toFixed(1)}mm`
@@ -4753,32 +4808,64 @@ export function getMaterial(nameOrCode: string): MaterialSpec | null {
   return MATERIALS["aluminum-6061"];
 }
 
+const UNRECOGNIZED_FINISH_CODE = "UNRECOGNIZED";
+
+// Values a part can carry from the other process's list or a UI dropdown,
+// mapped to the equivalent key in this process's finish table.
+const CNC_FINISH_ALIASES: Record<string, string> = {
+  "as-cut": "as-machined",
+  deburred: "as-machined",
+  deburring: "as-machined",
+  "powder-coat-black": "powder-coated",
+  "powder-coat-white": "powder-coated",
+  "powder-coat-custom": "powder-coated",
+  "powder-coated-custom": "powder-coated",
+  "anodized-type-2": "anodized-clear",
+  electropolish: "electropolished",
+};
+
+const SHEET_METAL_FINISH_ALIASES: Record<string, string> = {
+  "as-machined": "as-cut",
+  deburring: "deburred",
+  "powder-coated": "powder-coat-black",
+  "powder-coated-custom": "powder-coat-custom",
+  "anodized-clear": "anodized-type-2",
+  "anodized-color": "anodized-type-2",
+  electropolished: "electropolish",
+};
+
+function normalizeFinishValue(value: string): string {
+  return value.toLowerCase().replaceAll(/[^a-z0-9]/g, "");
+}
+
 /**
- * Helper: Get finish by name/code
- * Searches both CNC and Sheet Metal finishes
+ * Helper: Get finish by name/code from the table for this process.
+ * The tables use different units: FINISHES is USD per cm², SHEET_METAL_FINISHES
+ * is USD per m², so a finish must never be priced from the other process's table.
  */
-export function getFinish(nameOrCode: string): FinishOption {
-  const normalized = nameOrCode.toLowerCase().replaceAll(/[^a-z0-9]/g, "");
+export function getFinish(
+  nameOrCode: string | null | undefined,
+  process: string,
+): FinishOption {
+  const isSheetMetal = isSheetMetalProcess(process);
+  const table: Record<string, FinishOption> = isSheetMetal
+    ? SHEET_METAL_FINISHES
+    : FINISHES;
+  if (!nameOrCode) return table[getDefaultFinishForProcess(process)];
 
-  // First search CNC finishes
-  for (const [key, fin] of Object.entries(FINISHES)) {
-    const keyNorm = key.replaceAll(/[^a-z0-9]/g, "");
-    const codeNorm = fin.code.toLowerCase().replaceAll(/[^a-z0-9]/g, "");
+  const aliases = isSheetMetal ? SHEET_METAL_FINISH_ALIASES : CNC_FINISH_ALIASES;
+  const aliasKey = Object.keys(aliases).find(
+    (key) => normalizeFinishValue(key) === normalizeFinishValue(nameOrCode),
+  );
+  const normalized = normalizeFinishValue(
+    aliasKey ? aliases[aliasKey] : nameOrCode,
+  );
 
-    if (keyNorm === normalized || codeNorm === normalized) {
-      return fin;
-    }
-  }
-
-  // Then search Sheet Metal finishes
-  for (const [key, fin] of Object.entries(SHEET_METAL_FINISHES)) {
-    const keyNorm = key.replaceAll(/[^a-z0-9]/g, "");
-    const codeNorm = (fin.code || "")
-      .toLowerCase()
-      .replaceAll(/[^a-z0-9]/g, "");
-
-    if (keyNorm === normalized || codeNorm === normalized) {
-      // Convert to FinishOption format for compatibility
+  for (const [key, fin] of Object.entries(table)) {
+    if (
+      normalizeFinishValue(key) === normalized ||
+      normalizeFinishValue(fin.code) === normalized
+    ) {
       return {
         code: fin.code,
         name: fin.name,
@@ -4788,7 +4875,12 @@ export function getFinish(nameOrCode: string): FinishOption {
     }
   }
 
-  return FINISHES["as-machined"];
+  return {
+    code: UNRECOGNIZED_FINISH_CODE,
+    name: nameOrCode,
+    baseCost: 0,
+    perAreaCost: 0,
+  };
 }
 
 function round2(value: number): number {
@@ -4814,6 +4906,7 @@ function checkCNCConstraints(
   geometry: GeometryData,
   material: MaterialSpec,
   dims: number[],
+  processType: ProcessType,
 ): ManualQuoteResult | null {
   const minDim = Math.min(...dims);
   if (minDim < CNC_CONSTRAINTS.minWallThickness && geometry.complexity !== "simple") {
@@ -4826,7 +4919,7 @@ function checkCNCConstraints(
   if (geometry.complexity === "complex" && material.machinabilityFactor > 2.5) {
     return { requiresManualQuote: true, reason: "Complex geometry with difficult-to-machine material" };
   }
-  if (geometry.estimatedMachiningTime > 3600) {
+  if (estimateCncMachiningMinutes(geometry, processType) > 3600) {
     return { requiresManualQuote: true, reason: "Machining time exceeds standard production capacity" };
   }
   return null;
@@ -4849,7 +4942,7 @@ function shouldRequestManualQuote(
   }
 
   if (process.type === "cnc-milling" || process.type === "cnc-turning") {
-    const cncCheck = checkCNCConstraints(geometry, material, dims);
+    const cncCheck = checkCNCConstraints(geometry, material, dims, process.type);
     if (cncCheck) return cncCheck;
   }
 
@@ -4950,6 +5043,67 @@ function calculateRawStockWeightKg(
 
   const rawWeightKg = (effectiveVolumeCm3 * material.density) / 1000;
   return rawWeightKg * process.materialWasteFactor;
+}
+
+function cncStockVolumeMm3(
+  geometry: GeometryData,
+  processType: ProcessType,
+): number {
+  const allowance = CNC_MACHINING_TIME.stockAllowanceMm * 2;
+  const [small, mid, large] = [
+    geometry.boundingBox.x,
+    geometry.boundingBox.y,
+    geometry.boundingBox.z,
+  ]
+    .sort((a, b) => a - b)
+    .map((dim) => dim + allowance);
+
+  if (processType === "cnc-turning") {
+    // Round bar: the two closest dimensions are the diameter (a shaft or a disc)
+    const isShaft = mid - small <= large - mid;
+    const diameter = isShaft ? mid : large;
+    const length = isShaft ? large : small;
+    return (Math.PI / 4) * diameter * diameter * length;
+  }
+  return small * mid * large;
+}
+
+/**
+ * Machining minutes per part on the baseline material, from the volume actually
+ * cut away (stock minus finished part) plus finishing and feature time.
+ * Falls back to the time saved on the geometry if the volume is unusable.
+ */
+export function estimateCncMachiningMinutes(
+  geometry: GeometryData,
+  processType: ProcessType,
+): number {
+  const stockVolumeMm3 = cncStockVolumeMm3(geometry, processType);
+  if (!(geometry.volume > 0) || geometry.volume > stockVolumeMm3) {
+    return geometry.estimatedMachiningTime;
+  }
+
+  // The analyzer's stock is a rectangular block, which doesn't fit round bar
+  const analyzedRemovedMm3 =
+    processType === "cnc-turning"
+      ? undefined
+      : geometry.stockAnalysis?.removedVolumeMm3;
+  const removedCm3 =
+    (analyzedRemovedMm3 ?? stockVolumeMm3 - geometry.volume) / 1000;
+  const surfaceAreaCm2 = geometry.surfaceArea / 100;
+  const featuresInfo = geometry.advancedFeatures;
+  const time = CNC_MACHINING_TIME;
+  const rawMinutes =
+    removedCm3 * time.roughingMinPerCm3 +
+    surfaceAreaCm2 * time.finishingMinPerCm2 +
+    (featuresInfo?.holes?.count ?? 0) * time.holeMin +
+    (featuresInfo?.pockets?.count ?? 0) * time.pocketMin +
+    (featuresInfo?.threads?.count ?? 0) * time.threadMin +
+    (featuresInfo?.fillets?.count ?? 0) * time.filletMin;
+
+  return Math.max(
+    time.minMinutes,
+    rawMinutes * (time.complexityMultiplier[geometry.complexity] ?? 1),
+  );
 }
 
 /**
@@ -5155,7 +5309,8 @@ function computeLeadTime(
 } {
   // Base machining time per part
   const perPartHours =
-    (geometry.estimatedMachiningTime / 60) * material.machinabilityFactor;
+    (estimateCncMachiningMinutes(geometry, process.type) / 60) *
+    material.machinabilityFactor;
   const totalHours = perPartHours * quantity;
 
   // Daily capacity varies by process
@@ -5281,6 +5436,23 @@ function getMaterialPriceEndpoint(options?: {
 /**
  * Helper: Get sheet metal material by code
  */
+/**
+ * Helper: The stock gauge closest to a detected wall thickness, so a part isn't
+ * quoted on the default 2 mm sheet when it was designed for another gauge.
+ */
+export function getSheetMetalMaterialForThickness(
+  thickness: number | null | undefined,
+  materialFamily: keyof typeof SHEET_METAL_MATERIALS = "aluminum-5052",
+): SheetMetalMaterialSpec {
+  const gauges = SHEET_METAL_MATERIALS[materialFamily];
+  const target = thickness && thickness > 0 ? thickness : 2;
+  return gauges.reduce((closest, gauge) =>
+    Math.abs(gauge.thickness - target) < Math.abs(closest.thickness - target)
+      ? gauge
+      : closest,
+  );
+}
+
 export function getSheetMetalMaterial(
   materialCode: string,
 ): SheetMetalMaterialSpec | null {

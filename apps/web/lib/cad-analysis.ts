@@ -368,8 +368,12 @@ export interface GeometryData {
   manualQuoteReason?: string;
 
   // === CLASSIFICATION METADATA (from backend cascade) ===
-  needsReview?: boolean; // True when classification confidence < 0.70
+  needsReview?: boolean; // True when a person should confirm the process before relying on it
   classificationMethod?: string; // Which tier resolved the classification (e.g., "face_classification", "bend_detection")
+  classifiedProcess?: string; // What the classifier picked, before the analyzers reviewed it
+  stockAnalysis?: { stockVolumeMm3: number; removedVolumeMm3: number }; // From the machining analyzer
+  recommendedMaterial?: string; // Sheet metal: the stock gauge closest to the detected thickness
+  recommendedThicknessMm?: number; // Sheet metal: that gauge's thickness
   machiningFeatureScore?: number; // 0-100, CNC machining signal from detected features
   faceClassification?: {
     histogram?: Record<string, number>;
@@ -2303,6 +2307,8 @@ function generateDFMIssues(
  * For STEP files - parse actual geometry using CAD service
  * NOTE: Backend analysis with ray-casting happens in upload modals which have fileUrl.
  * This function provides fallback estimation for when file hasn't been uploaded yet.
+ * The dimensions are guessed from file size, so they keep the UI working but must
+ * never become a price: the result is always marked for manual quoting.
  */
 export async function estimateSTEPGeometry(file: File): Promise<GeometryData> {
   console.log("⚠️ Using estimation fallback for STEP file:", file.name);
@@ -2323,12 +2329,18 @@ export async function estimateSTEPGeometry(file: File): Promise<GeometryData> {
     z: cubeRoot * 0.63, // Height (shortest dimension)
   };
 
-  return buildGeometryData(
-    file,
-    boundingBox,
-    estimatedVolume,
-    estimatedSurfaceArea,
-  );
+  return {
+    ...buildGeometryData(
+      file,
+      boundingBox,
+      estimatedVolume,
+      estimatedSurfaceArea,
+    ),
+    recommendedProcess: "manual-quote",
+    requiresManualQuote: true,
+    manualQuoteReason:
+      "This file could not be analyzed automatically, so it needs a manual quote.",
+  };
 }
 
 function _computeComplexity(

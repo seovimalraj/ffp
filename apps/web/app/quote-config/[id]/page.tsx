@@ -41,13 +41,13 @@ import {
   CNC_MATERIALS,
   SHEET_METAL_MATERIALS,
   getProcessDisplayName,
-  isCNCProcess,
   isSheetMetalProcess,
   getMaterialByValue,
   getMaterialForProcess,
   getDefaultMaterialForProcess,
   getDefaultFinishForProcess,
   getDefaultToleranceForProcess,
+  isPricingLocked,
   // getDefaultThickness,
 } from "../../../lib/pricing-engine";
 import { PartCardItem, PartCardSkeleton } from "../components/part-card-item";
@@ -277,7 +277,26 @@ type IRFQ = {
   status: string;
   user_id: string;
   rfq_type: "general" | "manual";
+  order_id?: string | null;
 };
+
+const PROCESS_OPTION_LABELS: Record<string, string> = {
+  "cnc-milling": "CNC Milling",
+  "cnc-turning": "CNC Turning",
+  "sheet-metal": "Sheet Metal",
+};
+
+// Part fields that change the price; a locked quote rejects edits to these
+const PRICE_AFFECTING_FIELDS: (keyof PartConfig)[] = [
+  "material",
+  "quantity",
+  "tolerance",
+  "finish",
+  "leadTimeType",
+  "process",
+  "geometry",
+  "is_archived",
+];
 
 // --- Moved Helper Functions ---
 
@@ -302,7 +321,7 @@ export const calculateLeadTime = (
   const process =
     PROCESSES[processType as keyof typeof PROCESSES] ||
     PROCESSES["cnc-milling"];
-  const finish = getFinish(part.finish);
+  const finish = getFinish(part.finish, processType);
 
   const pricing = calculatePricing({
     geometry: part.geometry,
@@ -343,7 +362,7 @@ const calculatePrice = (
     const process =
       PROCESSES[processType as keyof typeof PROCESSES] ||
       PROCESSES["cnc-milling"];
-    const finish = getFinish(part.finish);
+    const finish = getFinish(part.finish, processType);
     const pricing = calculatePricing({
       geometry: part.geometry,
       material: legacyMaterial,
@@ -360,7 +379,7 @@ const calculatePrice = (
   const process =
     PROCESSES[processType as keyof typeof PROCESSES] ||
     PROCESSES["cnc-milling"];
-  const finish = getFinish(part.finish);
+  const finish = getFinish(part.finish, processType);
 
   // Create material spec for pricing engine
   // IMPORTANT: Include thickness for sheet metal materials
@@ -430,9 +449,7 @@ const calculatePrice = (
     process,
     finish,
     quantity: part.quantity,
-    tolerance: isCNCProcess(processType)
-      ? (part.tolerance as "standard" | "precision" | "tight")
-      : "standard",
+    tolerance: part.tolerance as "standard" | "precision" | "tight",
     leadTimeType: tier,
     // Pass thickness for sheet metal calculations
     ...(isSheetMetalProcess(processType) && {
@@ -478,6 +495,10 @@ export default function QuoteConfigPage() {
   const partsContainerRef = useRef<HTMLDivElement>(null);
   const idleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pollingRef = useRef<NodeJS.Timeout | null>(null);
+  // Parts being re-analyzed for a new process, and the process each was switched to
+  const pendingProcessChangesRef = useRef(
+    new Map<string, { requested: string; previous: string | undefined }>(),
+  );
 
   // Show the tooltip after 1 minute of no user activity
   useEffect(() => {
@@ -750,8 +771,17 @@ export default function QuoteConfigPage() {
     return false;
   };
 
+  // True, after telling the user, when the quote's parts can't be changed
+  const rejectIfPricingLocked = () => {
+    if (!isPricingLocked(rfq)) return false;
+    notify.info("This quote's price is locked, so its parts can't be changed.");
+    return true;
+  };
+
   // Handle deleting a part
   const handleDeletePart = async (indexToDelete: number) => {
+    if (rejectIfPricingLocked()) return;
+
     if (parts.length === 1) {
       notify.error(
         "Cannot delete the last part. At least one part is required.",
@@ -788,7 +818,7 @@ export default function QuoteConfigPage() {
   // Handle archiving a single part
   const handleArchivePart = async (partId: string) => {
     const partToArchive = parts.find((p) => p.id === partId);
-    if (!partToArchive) return;
+    if (!partToArchive || rejectIfPricingLocked()) return;
 
     if (parts.length === 1) {
       notify.error(
@@ -818,7 +848,7 @@ export default function QuoteConfigPage() {
 
   // Handle bulk archive
   const handleBulkArchive = async () => {
-    if (selectedParts.size === 0) return;
+    if (selectedParts.size === 0 || rejectIfPricingLocked()) return;
 
     if (parts.length - selectedParts.size === 0) {
       notify.error("Cannot archive all parts. At least one part is required.");
@@ -852,7 +882,7 @@ export default function QuoteConfigPage() {
   // Handle unarchiving a part
   const handleUnarchivePart = async (partId: string) => {
     const partToUnarchive = archivedParts.find((p) => p.id === partId);
-    if (!partToUnarchive) return;
+    if (!partToUnarchive || rejectIfPricingLocked()) return;
 
     try {
       await apiClient.patch(`/rfq/${rfq.id}/parts/${partId}`, {
@@ -870,7 +900,7 @@ export default function QuoteConfigPage() {
 
   // Handle unarchiving all parts
   const handleUnarchiveAll = async () => {
-    if (archivedParts.length === 0) return;
+    if (archivedParts.length === 0 || rejectIfPricingLocked()) return;
 
     try {
       await Promise.all(
@@ -901,7 +931,7 @@ export default function QuoteConfigPage() {
         : idsToDelete
       : Array.from(selectedParts);
 
-    if (ids.length === 0) return;
+    if (ids.length === 0 || rejectIfPricingLocked()) return;
 
     if (parts.length - ids.length === 0) {
       notify.error("Cannot delete all parts. At least one part is required.");
@@ -929,7 +959,10 @@ export default function QuoteConfigPage() {
 
   // Removed strict authentication check to allow guest access for temp quotes
 
-  async function loadQuote(isPolling: boolean = false) {
+  async function loadQuote(
+    isPolling: boolean = false,
+    syncPrices: boolean = !isPolling,
+  ) {
     if (!quoteId) return;
 
     try {
@@ -941,6 +974,7 @@ export default function QuoteConfigPage() {
         if (response.data && response.data.parts) {
           const apiPartsRaw = response.data.parts;
           let currentRfq = response.data.rfq;
+          const pricingLocked = isPricingLocked(currentRfq);
 
           // Map and Calculate
           const partsToSync: {
@@ -1032,7 +1066,7 @@ export default function QuoteConfigPage() {
                 const process =
                   PROCESSES[processType as keyof typeof PROCESSES] ||
                   PROCESSES["cnc-milling"];
-                const finish = getFinish(part.finish);
+                const finish = getFinish(part.finish, processType);
 
                 part.pricing = calculatePricing({
                   geometry: part.geometry,
@@ -1046,6 +1080,20 @@ export default function QuoteConfigPage() {
               }
             }
 
+            // A locked quote keeps the price and lead time stored on it. So does a
+            // part being analyzed: its geometry is about to be replaced, and saving
+            // a price from it could overwrite what the finished analysis has set.
+            const isAnalyzing = [
+              RFQPartStatus.Queued,
+              RFQPartStatus.Processing,
+            ].includes(part.status);
+            if (pricingLocked || isAnalyzing) {
+              part.final_price = Number(p.final_price) || 0;
+              part.leadTime = Number(p.lead_time) || 0;
+              if (!p.is_archived) rfqTotalCalculated += part.final_price;
+              return part;
+            }
+
             // Recalculate Final Price and Lead Time
             const calculatedPrice = calculatePrice(part, part.leadTimeType);
             const calculatedLeadTime = calculateLeadTime(
@@ -1056,9 +1104,10 @@ export default function QuoteConfigPage() {
             part.final_price = calculatedPrice;
             part.leadTime = calculatedLeadTime;
 
-            rfqTotalCalculated += calculatedPrice;
+            // The API's RFQ total excludes archived parts
+            if (!p.is_archived) rfqTotalCalculated += calculatedPrice;
 
-            if (!isPolling) {
+            if (syncPrices) {
               const dbPrice = p.final_price ? Number(p.final_price) : 0;
               const dbLeadTime = p.lead_time ? Number(p.lead_time) : 0;
 
@@ -1081,20 +1130,25 @@ export default function QuoteConfigPage() {
           const dbRfqTotal = currentRfq.final_price
             ? Number(currentRfq.final_price)
             : 0;
-          if (Math.abs(rfqTotalCalculated - dbRfqTotal) > 0.01) {
+          if (
+            !pricingLocked &&
+            Math.abs(rfqTotalCalculated - dbRfqTotal) > 0.01
+          ) {
             syncNeeded = true;
           }
 
-          if (!isPolling && syncNeeded) {
+          if (syncPrices && syncNeeded) {
             await apiClient
               .post(`/rfq/${quoteId}/sync-pricing`, {
                 rfq_final_price: rfqTotalCalculated,
                 parts: partsToSync,
               })
               .then(() => {
-                notify.success(
-                  "Pricing updated based on recent material cost.",
-                );
+                if (!isPolling) {
+                  notify.success(
+                    "Pricing updated based on recent material cost.",
+                  );
+                }
                 currentRfq = {
                   ...currentRfq,
                   final_price: rfqTotalCalculated,
@@ -1154,12 +1208,70 @@ export default function QuoteConfigPage() {
 
       if (!stillPending) {
         stopPolling();
-        // Processing just completed — run a full (non-polling) load so that
-        // the sync-pricing API call fires and persists the newly calculated
-        // prices (based on the fresh geometry) back to the DB.
-        await loadQuote(true);
+        // Processing just completed — load once more with syncing on so the
+        // newly calculated prices (based on the fresh geometry) reach the DB
+        // and checkout. Stays a polling load so the page doesn't flash a loader.
+        const finalParts = await loadQuote(true, true);
+        reportProcessChanges(finalParts ?? updatedParts);
       }
     }, 5000);
+  };
+
+  // Tells the user how each process switch they asked for turned out
+  const reportProcessChanges = (latestParts: PartConfig[]) => {
+    pendingProcessChangesRef.current.forEach(({ requested, previous }, partId) => {
+      const part = latestParts.find((p) => p.id === partId);
+      if (!part) return;
+      if (part.process === requested) {
+        notify.success(
+          `${part.fileName} has been re-analyzed and re-priced for ${PROCESS_OPTION_LABELS[requested]}.`,
+        );
+      } else if (part.process === "manual-quote" && previous !== "manual-quote") {
+        notify.info(
+          part.geometry?.manualQuoteReason ??
+            `${part.fileName} needs a manual quote.`,
+        );
+      } else {
+        notify.error(
+          `We couldn't re-analyze ${part.fileName}, so it stays on its previous process. Please try again.`,
+        );
+      }
+    });
+    pendingProcessChangesRef.current.clear();
+  };
+
+  const handleChangeProcess = async (partId: string, process: string) => {
+    try {
+      // Polling reloads parts from the server, which would lose unsaved edits
+      if (unsavedChanges.size > 0) {
+        await handleSaveDraft("Changes saved", rfq.status);
+      }
+
+      await apiClient.post(`/rfq/${rfq.id}/parts/${partId}/change-process`, {
+        process,
+      });
+
+      pendingProcessChangesRef.current.set(partId, {
+        requested: process,
+        previous: parts.find((part) => part.id === partId)?.process,
+      });
+      setParts((prev) =>
+        prev.map((part) =>
+          part.id === partId
+            ? { ...part, status: RFQPartStatus.Queued }
+            : part,
+        ),
+      );
+      notify.info(
+        `Re-analyzing for ${PROCESS_OPTION_LABELS[process]}. Material, finish and tolerance will reset to its defaults.`,
+      );
+      startPolling();
+    } catch (error: any) {
+      console.error("Failed to change process:", error);
+      notify.error(
+        error?.response?.data?.message ?? "Failed to change the process",
+      );
+    }
   };
 
   const stopPolling = () => {
@@ -1232,6 +1344,17 @@ export default function QuoteConfigPage() {
     const currentPart = parts[index];
     if (!currentPart) return;
 
+    const pricingLocked = isPricingLocked(rfq);
+    if (
+      pricingLocked &&
+      PRICE_AFFECTING_FIELDS.some((field) => field in updates)
+    ) {
+      notify.info(
+        "This quote's price is locked, so this part can't be changed.",
+      );
+      return;
+    }
+
     // Calculate new state logic
     const updatedPart = { ...currentPart, ...updates };
 
@@ -1248,6 +1371,7 @@ export default function QuoteConfigPage() {
     // Recalculate pricing if geometry exists
     // Skip pricing for manual-quote parts (assemblies) — they must show $0
     if (
+      !pricingLocked &&
       updatedPart.geometry &&
       normalizeProcessString(updatedPart.process) !== "manual-quote"
     ) {
@@ -1261,7 +1385,7 @@ export default function QuoteConfigPage() {
         const process =
           PROCESSES[processType as keyof typeof PROCESSES] ||
           PROCESSES["cnc-milling"];
-        const finish = getFinish(updatedPart.finish);
+        const finish = getFinish(updatedPart.finish, processType);
 
         // Calculate pricing
         updatedPart.pricing = calculatePricing({
@@ -1326,9 +1450,9 @@ export default function QuoteConfigPage() {
         payload.is_archived = updatedPart.is_archived;
 
       // Always send price and lead time if they exist, as they might have changed due to other updates
-      if (updatedPart.final_price !== undefined)
+      if (!pricingLocked && updatedPart.final_price !== undefined)
         payload.final_price = updatedPart.final_price;
-      if (updatedPart.leadTime !== undefined)
+      if (!pricingLocked && updatedPart.leadTime !== undefined)
         payload.lead_time = updatedPart.leadTime;
 
       if (Object.keys(payload).length > 0) {
@@ -1375,6 +1499,12 @@ export default function QuoteConfigPage() {
   ) => {
     if (unsavedChanges.size === 0) {
       notify.info("No changes to save");
+      return;
+    }
+
+    // Everything saved here is price data, which a locked quote keeps as stored
+    if (isPricingLocked(rfq)) {
+      setUnsavedChanges(new Set());
       return;
     }
 
@@ -1437,6 +1567,17 @@ export default function QuoteConfigPage() {
   const handleCheckout = async () => {
     try {
       setSaving(true);
+
+      if (
+        parts.some((part) =>
+          [RFQPartStatus.Queued, RFQPartStatus.Processing].includes(part.status),
+        )
+      ) {
+        notify.info(
+          "Please wait for parts to finish being analyzed before checking out.",
+        );
+        return;
+      }
 
       if (standardPrice < 150) {
         notify.error(
@@ -1878,7 +2019,14 @@ export default function QuoteConfigPage() {
                   updatePartFields={updatePartFields}
                   handleDeletePart={handleDeletePart}
                   handleArchivePart={handleArchivePart}
-                  calculatePrice={calculatePrice}
+                  calculatePrice={(part, tier) =>
+                    isPricingLocked(rfq)
+                      ? (part.final_price ?? 0)
+                      : calculatePrice(part, tier)
+                  }
+                  onChangeProcess={
+                    isPricingLocked(rfq) ? undefined : handleChangeProcess
+                  }
                   MATERIALS_LIST={processMaterials}
                   TOLERANCES_LIST={processTolerances}
                   FINISHES_LIST={processFinishes}

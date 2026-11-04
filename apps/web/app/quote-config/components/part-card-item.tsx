@@ -4,6 +4,13 @@ import { Card } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
 import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
   Zap,
   Loader2,
   Upload,
@@ -72,6 +79,12 @@ import { Badge } from "@/components/ui/badge";
 import { useSuggestionContext } from "@/components/store/suggestion-store";
 import { PartStatusModal } from "./part-status-modal";
 
+const PROCESS_OPTIONS = [
+  { value: "cnc-milling", label: "CNC Milling" },
+  { value: "cnc-turning", label: "CNC Turning" },
+  { value: "sheet-metal", label: "Sheet Metal" },
+];
+
 // Valid sheet metal thicknesses in mm
 const VALID_SHEET_THICKNESSES = [
   0.5, 0.8, 1.0, 1.2, 1.5, 2.0, 2.5, 3.0, 4.0, 5.0, 6.0,
@@ -124,6 +137,7 @@ export function PartCardItem({
   handleDeletePart,
   handleArchivePart,
   calculatePrice,
+  onChangeProcess,
   MATERIALS_LIST,
   TOLERANCES_LIST,
   FINISHES_LIST,
@@ -153,6 +167,8 @@ export function PartCardItem({
     part: PartConfig,
     tier?: "economy" | "standard" | "expedited",
   ) => number;
+  /** Absent when the quote's price is locked, which also locks its process. */
+  onChangeProcess?: (partId: string, process: string) => void;
   MATERIALS_LIST: MaterialItem[];
   TOLERANCES_LIST: ToleranceItem[];
   FINISHES_LIST: FinishItem[];
@@ -756,10 +772,65 @@ export function PartCardItem({
                       <span className="text-sm font-bold text-slate-900">
                         Process:
                       </span>
-                      <span className="text-sm text-slate-600">
-                        {getProcessDisplayName(part.process)}
-                      </span>
+                      {onChangeProcess && !part.geometry?.isAssembly ? (
+                        <Select
+                          // A manual-quote part has no matching option, so it
+                          // shows the placeholder and can still be switched
+                          value={
+                            PROCESS_OPTIONS.some(
+                              (option) => option.value === part.process,
+                            )
+                              ? part.process
+                              : ""
+                          }
+                          onValueChange={(process) =>
+                            onChangeProcess(part.id, process)
+                          }
+                        >
+                          <SelectTrigger
+                            aria-label="Manufacturing process"
+                            className="h-8 w-40 rounded-lg text-sm"
+                          >
+                            <SelectValue
+                              placeholder={getProcessDisplayName(part.process)}
+                            />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {PROCESS_OPTIONS.map((option) => (
+                              <SelectItem
+                                key={option.value}
+                                value={option.value}
+                              >
+                                {option.label}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      ) : (
+                        <span className="text-sm text-slate-600">
+                          {getProcessDisplayName(part.process)}
+                        </span>
+                      )}
                     </div>
+
+                    {part.process === "manual-quote" &&
+                      part.geometry?.manualQuoteReason && (
+                        <p className="flex items-start gap-1.5 text-xs text-slate-600">
+                          <FileText className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                          {part.geometry.manualQuoteReason}
+                        </p>
+                      )}
+
+                    {part.process !== "manual-quote" &&
+                      part.geometry?.needsReview && (
+                        <p className="flex items-start gap-1.5 text-xs text-amber-700">
+                          <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                          {part.geometry.recommendedProcess !== part.process
+                            ? `Our analysis suggests ${PROCESS_OPTIONS.find((option) => option.value === part.geometry?.recommendedProcess)?.label ?? getProcessDisplayName(part.geometry?.recommendedProcess)}, which may cost less or suit this part better.`
+                            : (part.geometry.processReasoning ??
+                              "We're not fully certain of the best process for this part. Please check it's right.")}
+                        </p>
+                      )}
 
                     {/* Material */}
                     <div className="flex items-baseline gap-2">
