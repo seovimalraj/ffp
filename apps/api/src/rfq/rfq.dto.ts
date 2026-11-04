@@ -53,6 +53,10 @@ export type UpdatePartDto = Partial<InitialPartDto> & {
   sheet_thickness_mm?: number;
 };
 
+export type ChangePartProcessDto = {
+  process: string;
+};
+
 export type Add2DDrawingsDto = {
   file_name: string;
   file_url: string;

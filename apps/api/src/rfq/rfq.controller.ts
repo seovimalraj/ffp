@@ -19,6 +19,7 @@ import { Roles } from '../auth/roles.decorator';
 import { SupabaseService } from '../supabase/supabase.service';
 import {
   Add2DDrawingsDto,
+  ChangePartProcessDto,
   DerivedRFQDto,
   InitialPartDto,
   InitialRFQDto,
@@ -31,7 +32,12 @@ import {
 import { AuthGuard } from '../auth/auth.guard';
 import { CurrentUser } from '../auth/user.decorator';
 import { CurrentUserDto } from '../auth/auth.dto';
-import { RFQStatuses } from './rfq.helpers';
+import {
+  getPricingLockReason,
+  isSwitchableProcess,
+  PRICE_AFFECTING_PART_FIELDS,
+  RFQStatuses,
+} from './rfq.helpers';
 import { TemporalService } from '../temporal/temporal.service';
 import { RolesGuard } from 'src/auth/roles.guard';
 
@@ -619,6 +625,8 @@ export class RfqController {
     @Body() body: { parts: InitialPartDto[] },
     @CurrentUser() user: CurrentUserDto,
   ) {
+    await this.assertPricingEditable(rfqId, user);
+
     const client = this.supbaseService.getClient();
 
     const { data, error } = await client
@@ -753,6 +761,8 @@ export class RfqController {
     @CurrentUser() user: CurrentUserDto,
     @Body() body: RemovePartsDto,
   ) {
+    await this.assertPricingEditable(rfqId, user);
+
     const client = this.supbaseService.getClient();
 
     const { data, error } = await client.rpc(SQLFunctions.abandonRFQParts, {
@@ -775,13 +785,126 @@ export class RfqController {
     };
   }
 
+  /**
+   * Re-analyzes a part for the chosen process. The process and geometry are only
+   * written when the analysis succeeds, so a failure leaves the part as it was.
+   */
+  @Post(':rfqId/parts/:partId/change-process')
+  @Roles(RoleNames.Admin, RoleNames.Customer)
+  async changePartProcess(
+    @Param('rfqId') rfqId: string,
+    @Param('partId') partId: string,
+    @Body() body: ChangePartProcessDto,
+    @CurrentUser() user: CurrentUserDto,
+  ) {
+    if (!isSwitchableProcess(body.process)) {
+      throw new BadRequestException(`Unsupported process: ${body.process}`);
+    }
+
+    const client = this.supbaseService.getClient();
+
+    const { data: rfq, error: rfqError } = await client
+      .from(Tables.RFQTable)
+      .select('organization_id')
+      .eq('id', rfqId)
+      .single();
+
+    if (rfqError || !rfq) {
+      throw new HttpException('RFQ not found', HttpStatus.NOT_FOUND);
+    }
+    if (user.role !== 'admin' && rfq.organization_id !== user.organizationId) {
+      throw new HttpException('RFQ not found', HttpStatus.NOT_FOUND);
+    }
+
+    await this.assertPricingEditable(rfqId, user);
+
+    const { data: part, error: partError } = await client
+      .from(Tables.RFQPartsTable)
+      .select('id, status, process, file_name, cad_file_url, geometry')
+      .eq('id', partId)
+      .eq('rfq_id', rfqId)
+      .single();
+
+    if (partError || !part) {
+      throw new HttpException('Part not found', HttpStatus.NOT_FOUND);
+    }
+    if (part.process === body.process) {
+      return { success: true, unchanged: true };
+    }
+    if (part.geometry?.isAssembly) {
+      throw new BadRequestException(
+        'An assembly has to be quoted manually, so its process cannot be changed',
+      );
+    }
+    // A failed upload can leave a placeholder path instead of a real file
+    if (!/^https?:\/\//i.test(part.cad_file_url ?? '')) {
+      throw new BadRequestException(
+        'This part has no uploaded CAD file to analyze',
+      );
+    }
+
+    // A part left queued or processing by an analysis that died can be recovered,
+    // so only a workflow that is really running blocks the switch
+    if (
+      ['queued', 'processing'].includes(part.status) &&
+      (await this.temporalService.isPartAnalysisRunning(partId))
+    ) {
+      throw new HttpException(
+        'This part is already being analyzed',
+        HttpStatus.CONFLICT,
+      );
+    }
+
+    // Claimed against the status just read, so two requests can't both start an
+    // analysis. The price stays until the switch succeeds, and orders are blocked
+    // while the part is queued, so it can't be charged in the meantime.
+    const { data: claimed, error: claimError } = await client
+      .from(Tables.RFQPartsTable)
+      .update({ status: 'queued' })
+      .eq('id', partId)
+      .eq('status', part.status)
+      .select('id');
+
+    if (claimError) {
+      throw new HttpException(claimError.message, HttpStatus.BAD_REQUEST);
+    }
+    if (!claimed?.length) {
+      throw new HttpException(
+        'This part is already being analyzed',
+        HttpStatus.CONFLICT,
+      );
+    }
+
+    try {
+      await this.temporalService.startProcessPartGeometryWorkflow({
+        filename: part.file_name,
+        fileUrl: part.cad_file_url,
+        partId,
+        requestedProcess: body.process,
+      });
+    } catch (error) {
+      await client
+        .from(Tables.RFQPartsTable)
+        .update({ status: part.status })
+        .eq('id', partId);
+      throw error;
+    }
+
+    return { success: true };
+  }
+
   @Patch(':rfqId/parts/:partId')
   @Roles(RoleNames.Admin, RoleNames.Customer)
   async updatePart(
     @Param('rfqId') rfqId: string,
     @Param('partId') partId: string,
     @Body() body: UpdatePartDto,
+    @CurrentUser() user: CurrentUserDto,
   ) {
+    if (PRICE_AFFECTING_PART_FIELDS.some((field) => field in body)) {
+      await this.assertPricingEditable(rfqId, user);
+    }
+
     const client = this.supbaseService.getClient();
 
     const { data, error } = await client
@@ -796,7 +919,11 @@ export class RfqController {
       throw new HttpException(error.message, HttpStatus.BAD_REQUEST);
     }
 
-    if (body.final_price !== undefined || body.quantity !== undefined) {
+    if (
+      body.final_price !== undefined ||
+      body.quantity !== undefined ||
+      body.is_archived !== undefined
+    ) {
       await this.recalculateRfqTotal(rfqId);
     }
 
@@ -808,7 +935,15 @@ export class RfqController {
 
   @Patch(':rfq_id')
   @Roles(RoleNames.Admin, RoleNames.Customer)
-  async updateRfq(@Body() body: UpdateRfqDto, @Param('rfq_id') rfq_id: string) {
+  async updateRfq(
+    @Body() body: UpdateRfqDto,
+    @Param('rfq_id') rfq_id: string,
+    @CurrentUser() user: CurrentUserDto,
+  ) {
+    if (body.final_price !== undefined) {
+      await this.assertPricingEditable(rfq_id, user);
+    }
+
     const client = this.supbaseService.getClient();
 
     const { data, error } = await client
@@ -998,7 +1133,10 @@ export class RfqController {
   async syncPricing(
     @Param('rfqId') rfqId: string,
     @Body() body: SyncPricingDto,
+    @CurrentUser() user: CurrentUserDto,
   ) {
+    await this.assertPricingEditable(rfqId, user);
+
     const client = this.supbaseService.getClient();
 
     // 1. Update RFQ Total Price
@@ -1022,7 +1160,8 @@ export class RfqController {
             final_price: p.final_price,
             lead_time: p.lead_time,
           })
-          .eq('id', p.id),
+          .eq('id', p.id)
+          .eq('rfq_id', rfqId),
       ),
     );
 
@@ -1050,6 +1189,28 @@ export class RfqController {
       success: true,
       total,
     };
+  }
+
+  private async assertPricingEditable(rfqId: string, user: CurrentUserDto) {
+    const client = this.supbaseService.getClient();
+
+    const { data: rfq, error } = await client
+      .from(Tables.RFQTable)
+      .select('status, order_id, rfq_type')
+      .eq('id', rfqId)
+      .single();
+
+    if (error || !rfq) {
+      throw new HttpException(
+        error?.message ?? 'RFQ not found',
+        HttpStatus.NOT_FOUND,
+      );
+    }
+
+    const lockReason = getPricingLockReason(rfq, user.role);
+    if (lockReason) {
+      throw new HttpException(lockReason, HttpStatus.CONFLICT);
+    }
   }
 
   private async recalculateRfqTotal(rfqId: string) {
