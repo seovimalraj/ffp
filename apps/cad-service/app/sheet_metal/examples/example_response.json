@@ -84,7 +84,7 @@
     "is_candidate": true,
     "confidence": 0.8,
     "evidence": {
-      "paired_area_fraction": 0.4479,
+      "paired_area_fraction": 0.8958,
       "flatness_ratio": 0.033333,
       "dominant_thickness_mm": 2.0,
       "method": "paired_planar_faces"

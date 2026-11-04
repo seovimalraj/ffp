@@ -1,5 +1,19 @@
 import { NextRequest, NextResponse } from 'next/server';
 
+import {
+  machiningComplexityFromAnalyzer,
+  type ProcessAnalyzers,
+  reconcileProcess,
+  requestedProcessProblem,
+  sheetMetalComplexityFromAnalyzer,
+  sheetMetalFeaturesFromAnalyzer,
+} from '@/lib/cad/analyzer-geometry';
+import {
+  estimateCncMachiningMinutes,
+  getSheetMetalMaterialForThickness,
+  type ProcessType,
+} from '@/lib/pricing-engine';
+
 /**
  * Enterprise-level CAD geometry analysis API
  * Connects to Python CAD service for advanced thickness detection using ray-casting
@@ -12,11 +26,18 @@ export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
     console.log('   Request body:', body);
-    const { fileUrl, fileName } = body;
+    const { fileUrl, fileName, requestedProcess } = body;
 
     if (!fileUrl || !fileName) {
       return NextResponse.json(
         { error: 'Missing required fields: fileUrl, fileName' },
+        { status: 400 }
+      );
+    }
+
+    if (requestedProcess !== undefined && !SWITCHABLE_PROCESSES.includes(requestedProcess)) {
+      return NextResponse.json(
+        { error: `Unsupported process: ${requestedProcess}` },
         { status: 400 }
       );
     }
@@ -122,8 +143,10 @@ export async function POST(request: NextRequest) {
         confidence: cadResult.metrics.advanced_metrics?.thickness_confidence
       });
 
+      const analyzers = await runProcessAnalyzers(cadServiceUrl, fileUrl, fileName);
+
       // Transform backend response to frontend GeometryData format
-      const geometry = transformBackendGeometry(cadResult.metrics, fileName);
+      const geometry = transformBackendGeometry(cadResult.metrics, fileName, analyzers, requestedProcess);
 
       return NextResponse.json(geometry);
 
@@ -182,6 +205,114 @@ interface GeometryContext {
   sheetMetalScore: number;
   volumeMm3: number;
   complexity: ComplexityLevel;
+}
+
+const SWITCHABLE_PROCESSES = ['cnc-milling', 'cnc-turning', 'sheet-metal'];
+const ANALYZER_TIMEOUT_MS = 60000;
+const ANALYZER_FILE_EXTENSIONS = new Set(['step', 'stp', 'iges', 'igs']);
+
+async function callAnalyzer<T>(
+  cadServiceUrl: string,
+  analyzerName: string,
+  file: Blob,
+  fileName: string,
+): Promise<T | null> {
+  const form = new FormData();
+  form.append('file', file, fileName);
+  const res = await fetch(`${cadServiceUrl}/api/v1/cad/${analyzerName}`, {
+    method: 'POST',
+    body: form,
+    signal: AbortSignal.timeout(ANALYZER_TIMEOUT_MS),
+  });
+  if (!res.ok) {
+    console.warn(`⚠️ ${analyzerName} failed:`, res.status);
+    return null;
+  }
+  const body = await res.json();
+  return body.success ? (body as T) : null;
+}
+
+/**
+ * Runs the process-specific analyzers. They read B-Rep files only and they add
+ * accuracy rather than being required, so any failure leaves the classifier's
+ * own measurements in place.
+ */
+async function runProcessAnalyzers(
+  cadServiceUrl: string,
+  fileUrl: string,
+  fileName: string,
+): Promise<ProcessAnalyzers> {
+  const none: ProcessAnalyzers = { sheetMetal: null, machining: null };
+  const extension = fileName.toLowerCase().split('.').pop() ?? '';
+  if (!ANALYZER_FILE_EXTENSIONS.has(extension)) return none;
+
+  try {
+    const fileRes = await fetch(fileUrl, { signal: AbortSignal.timeout(ANALYZER_TIMEOUT_MS) });
+    if (!fileRes.ok) return none;
+    const file = await fileRes.blob();
+
+    const [sheetMetal, machining] = await Promise.allSettled([
+      callAnalyzer<NonNullable<ProcessAnalyzers['sheetMetal']>>(cadServiceUrl, 'analyze-sheet-metal', file, fileName),
+      callAnalyzer<NonNullable<ProcessAnalyzers['machining']>>(cadServiceUrl, 'analyze-machining', file, fileName),
+    ]);
+    return {
+      sheetMetal: sheetMetal.status === 'fulfilled' ? sheetMetal.value : null,
+      machining: machining.status === 'fulfilled' ? machining.value : null,
+    };
+  } catch (error: any) {
+    console.warn('⚠️ Process analyzers unavailable:', error?.message);
+    return none;
+  }
+}
+
+/** Replaces the classifier's rough measurements with the analyzers' real ones. */
+function applyAnalyzerResults(
+  geometry: any,
+  analyzers: ProcessAnalyzers,
+  pricedProcess: string,
+): any {
+  const { sheetMetal, machining } = analyzers;
+  const isSheetMetal = pricedProcess === 'sheet-metal';
+
+  if (isSheetMetal && sheetMetal) {
+    geometry.sheetMetalFeatures = {
+      ...geometry.sheetMetalFeatures,
+      ...sheetMetalFeaturesFromAnalyzer(sheetMetal),
+      complexity: sheetMetalComplexityFromAnalyzer(sheetMetal),
+    };
+    geometry.complexity = sheetMetalComplexityFromAnalyzer(sheetMetal);
+    geometry.detectedWallThickness = sheetMetal.thickness.dominant_thickness_mm;
+    geometry.thicknessDetectionMethod = sheetMetal.thickness.method;
+    geometry.thicknessConfidence = sheetMetal.sheet_metal_candidate.confidence;
+  }
+
+  if (!isSheetMetal && machining) {
+    const indicators = machining.complexity_indicators;
+    geometry.advancedFeatures.holes.count = indicators.hole_count;
+    geometry.advancedFeatures.pockets.count = indicators.pocket_count;
+    geometry.advancedFeatures.threads.count = indicators.thread_count;
+    geometry.advancedFeatures.fillets.count = indicators.fillet_count;
+    geometry.complexity = machiningComplexityFromAnalyzer(machining);
+    if (machining.stock_analysis) {
+      geometry.stockAnalysis = {
+        stockVolumeMm3: machining.stock_analysis.stock_volume_mm3,
+        removedVolumeMm3: machining.stock_analysis.removed_volume_mm3,
+      };
+    }
+  }
+
+  if (isSheetMetal) {
+    const gauge = getSheetMetalMaterialForThickness(geometry.sheetMetalFeatures?.thickness);
+    geometry.recommendedMaterial = gauge.code;
+    geometry.recommendedThicknessMm = gauge.thickness;
+  } else if (pricedProcess !== 'manual-quote') {
+    geometry.estimatedMachiningTime = estimateCncMachiningMinutes(
+      geometry,
+      pricedProcess as ProcessType,
+    );
+  }
+
+  return geometry;
 }
 
 // ---------- Helpers for transformBackendGeometry ----------
@@ -335,7 +466,12 @@ function mapCostImpactToSavings(costImpact: string | undefined): number {
 /**
  * Transform backend Python analysis to frontend TypeScript GeometryData format
  */
-function transformBackendGeometry(backendData: any, _fileName: string): any {
+function transformBackendGeometry(
+  backendData: any,
+  _fileName: string,
+  analyzers: ProcessAnalyzers,
+  requestedProcess?: string,
+): any {
   // Handle both 'bbox' (STL/STEP) and 'boundingBox' (legacy DXF) keys
   const bboxData = backendData.bbox || backendData.boundingBox || { min: { x: 0, y: 0, z: 0 }, max: { x: 0, y: 0, z: 0 } };
   const boundingBox = {
@@ -369,14 +505,22 @@ function transformBackendGeometry(backendData: any, _fileName: string): any {
     'cnc_turning': 'cnc-turning',
     'assembly': 'manual-quote',
   };
-  const recommendedProcess = processMap[backendData.process_type] || 'cnc-milling';
+  const classifiedProcess = processMap[backendData.process_type] || 'cnc-milling';
+  // Types such as casting or molding have no pricing path of their own, so they
+  // are priced as CNC milling. Someone should confirm that makes sense for the part.
+  const hasPricingPath = backendData.process_type in processMap;
   const sheetMetalScore = backendData.sheet_metal_score || 0;
 
-  const processConfidence = resolveProcessConfidence(
+  const classifierConfidence = resolveProcessConfidence(
     advancedMetrics.classification_confidence,
-    recommendedProcess, thicknessConfidence, sheetMetalScore,
+    classifiedProcess, thicknessConfidence, sheetMetalScore,
   );
-  const processReasoning = resolveProcessReasoning(
+  const decision = reconcileProcess(classifiedProcess, classifierConfidence, analyzers);
+  // Measurements follow the process being priced, which a user's choice can set.
+  // The recommendation stays on the geometry, so the UI can show what we detected.
+  const recommendedProcess = requestedProcess ?? decision.process;
+  const processConfidence = decision.confidence;
+  const processReasoning = decision.reason ?? resolveProcessReasoning(
     advancedMetrics.reasoning,
     detectedThickness, thicknessConfidence, recommendedProcess, sheetMetalScore,
   );
@@ -389,12 +533,32 @@ function transformBackendGeometry(backendData: any, _fileName: string): any {
   const volumeMm3 = sanitizeVolumeMm3(backendData.volume, boundingBox);
   const complexity = resolveComplexity(backendData, recommendedProcess, bendData.bendCount);
 
-  return buildGeometryResult({
+  const geometry = buildGeometryResult({
     backendData, advancedMetrics, boundingBox, detectedThickness,
     thicknessConfidence, thicknessMethod, thicknessWarning,
     bendData, recommendedProcess, processConfidence, processReasoning,
     sheetMetalScore, volumeMm3, complexity,
   });
+
+  geometry.classifiedProcess = classifiedProcess;
+  geometry.recommendedProcess = decision.process;
+  geometry.needsReview =
+    geometry.needsReview ||
+    decision.needsReview ||
+    !hasPricingPath ||
+    recommendedProcess !== decision.process;
+  // DFM issues were judged against the classifier's process, so they don't apply
+  if (recommendedProcess !== classifiedProcess) geometry.dfmIssues = [];
+
+  const problem = requestedProcess
+    ? requestedProcessProblem(requestedProcess, analyzers)
+    : null;
+  if (problem) {
+    geometry.requiresManualQuote = true;
+    geometry.manualQuoteReason = problem;
+  }
+
+  return applyAnalyzerResults(geometry, analyzers, recommendedProcess);
 }
 
 function buildGeometryResult(ctx: GeometryContext): any {

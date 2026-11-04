@@ -45,11 +45,17 @@ from __future__ import annotations
 from typing import Dict, List, Optional, Sequence, Tuple
 
 from ...machining.records import PLANE, EdgeRecord, FaceRecord, ShapeModel
-from ...machining.vectors import Vec, dot, perpendicular_basis
+from ...machining.vectors import Vec, dot, normalize, perpendicular_basis, sub
 from ..config import SheetMetalConfig
 from ..schemas import Cutout, Vector3
 
 Loop = List[EdgeRecord]
+
+#: ``(face normal, profile centroid, perimeter)`` of a profile already reported.
+SeenProfile = Tuple[Vec, Vec, float]
+
+#: Antiparallel dot-product threshold for "the two opposite skins of a wall".
+_OPPOSITE_SKIN_DOT_MAX = -0.98
 
 
 def _point_key(p: Vec, decimals: int = 4) -> Tuple[float, float, float]:
@@ -276,6 +282,34 @@ def _shape_type(chain: Loop) -> str:
     return "irregular"
 
 
+def is_opposite_skin_duplicate(
+    normal: Vec,
+    centroid: Vec,
+    perimeter: float,
+    seen: Sequence[SeenProfile],
+    config: SheetMetalConfig,
+) -> bool:
+    """True when this profile is one already seen, viewed from the wall's other skin.
+
+    A pierced profile goes through the sheet, so it appears as an inner loop on
+    both skin faces. It is one feature: reporting it twice doubles its cut length.
+    """
+    unit_normal = normalize(normal)
+    for seen_normal, seen_centroid, seen_perimeter in seen:
+        if dot(unit_normal, normalize(seen_normal)) > _OPPOSITE_SKIN_DOT_MAX:
+            continue
+        offset = sub(centroid, seen_centroid)
+        gap = abs(dot(offset, unit_normal))
+        if gap > config.max_sheet_thickness_mm * 1.5:
+            continue
+        in_plane_squared = max(0.0, dot(offset, offset) - gap * gap)
+        if in_plane_squared > 1.0:
+            continue
+        if abs(perimeter - seen_perimeter) <= 0.05 * max(perimeter, seen_perimeter):
+            return True
+    return False
+
+
 def detect_cutouts(model: ShapeModel, config: SheetMetalConfig) -> List[Cutout]:
     """Detect non-circular pierced profiles on planar flange/base faces.
 
@@ -284,6 +318,7 @@ def detect_cutouts(model: ShapeModel, config: SheetMetalConfig) -> List[Cutout]:
     empty list.
     """
     cutouts: List[Cutout] = []
+    seen: List[SeenProfile] = []
     for face in sorted(model.faces_of_type(PLANE), key=lambda f: f.id):
         if face.normal is None or not face.edge_ids:
             continue
@@ -296,6 +331,9 @@ def detect_cutouts(model: ShapeModel, config: SheetMetalConfig) -> List[Cutout]:
             perimeter, area, extent_long, extent_short, centroid = profile_metrics(
                 face, chain
             )
+            if is_opposite_skin_duplicate(face.normal, centroid, perimeter, seen, config):
+                continue
+            seen.append((face.normal, centroid, perimeter))
             cutouts.append(
                 Cutout(
                     id=f"CUTOUT-{len(cutouts) + 1:03d}",

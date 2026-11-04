@@ -1,6 +1,7 @@
 import {
   BadRequestException,
   Body,
+  ConflictException,
   Controller,
   Delete,
   Get,
@@ -31,6 +32,7 @@ import {
 import { ShippingAddressService } from './shipping-address.service';
 import { SupabaseService } from 'src/supabase/supabase.service';
 import { RoleNames, SQLFunctions, Tables } from '../../libs/constants';
+import { getOrderBlockReason } from '../rfq/rfq.helpers';
 import { OrderService } from './order.service';
 import { TemporalService } from 'src/temporal/temporal.service';
 import { RolesGuard } from 'src/auth/roles.guard';
@@ -265,6 +267,31 @@ export class OrdersController {
     @Body() body: CreateOrderDto,
   ) {
     const client = this.supabaseService.getClient();
+
+    const { data: rfq, error: rfqError } = await client
+      .from(Tables.RFQTable)
+      .select('order_id')
+      .eq('id', body.rfqId)
+      .single();
+    if (rfqError || !rfq) {
+      throw new BadRequestException('Quote not found');
+    }
+
+    // An RFQ that already has an order returns that order unchanged
+    if (!rfq.order_id) {
+      const { data: rfqParts, error: partsError } = await client
+        .from(Tables.RFQPartsTable)
+        .select('status, final_price, is_archived')
+        .eq('rfq_id', body.rfqId);
+      if (partsError) {
+        throw new InternalServerErrorException(partsError.message);
+      }
+      const blockReason = getOrderBlockReason(rfqParts, body.subtotal);
+      if (blockReason) {
+        throw new ConflictException(blockReason);
+      }
+    }
+
     const { data, error } = await client.rpc(SQLFunctions.createOrder, {
       p_organization_id: currentUser.organizationId,
       p_created_by: currentUser.id,

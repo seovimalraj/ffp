@@ -181,7 +181,9 @@ const UploadFileModal = ({
           });
 
           // Use process-specific defaults
-          const defaultMaterial = getDefaultMaterialForProcess(detectedProcess);
+          const defaultMaterial =
+            geometry?.recommendedMaterial ??
+            getDefaultMaterialForProcess(detectedProcess);
           const defaultFinish = getDefaultFinishForProcess(detectedProcess);
           const defaultTolerance =
             getDefaultToleranceForProcess(detectedProcess);

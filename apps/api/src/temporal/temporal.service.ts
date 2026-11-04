@@ -4,7 +4,11 @@ import {
   Logger,
   InternalServerErrorException,
 } from '@nestjs/common';
-import { Connection, Client } from '@temporalio/client';
+import {
+  Connection,
+  Client,
+  WorkflowNotFoundError,
+} from '@temporalio/client';
 import { ConfigService } from '@nestjs/config';
 import { TaskQueues, TemporalEvents } from '../../libs/constants';
 
@@ -99,6 +103,7 @@ export class TemporalService implements OnModuleInit {
     partId: string;
     filename: string;
     fileUrl: string;
+    requestedProcess?: string;
   }) {
     try {
       if (!this.client) {
@@ -122,6 +127,22 @@ export class TemporalService implements OnModuleInit {
         error.message,
       );
       throw new InternalServerErrorException({ error });
+    }
+  }
+
+  /** Whether a part's analysis is really running, rather than the part being stuck. */
+  async isPartAnalysisRunning(partId: string): Promise<boolean> {
+    if (!this.client) {
+      throw new Error('Temporal client not initialized');
+    }
+    try {
+      const description = await this.client.workflow
+        .getHandle(`cad-process-${partId}`)
+        .describe();
+      return description.status.name === 'RUNNING';
+    } catch (error) {
+      if (error instanceof WorkflowNotFoundError) return false;
+      throw error;
     }
   }
 

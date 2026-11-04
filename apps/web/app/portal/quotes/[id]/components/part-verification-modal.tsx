@@ -141,7 +141,9 @@ export function PartVerificationModal({
                   </div>
                   <div className="text-xl font-black text-emerald-600">
                     {part.final_price
-                      ? formatCurrencyGeneric(part.final_price)
+                      ? formatCurrencyGeneric(
+                          part.final_price / (part.quantity || 1),
+                        )
                       : "TBD"}
                   </div>
                 </div>

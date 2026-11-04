@@ -26,6 +26,7 @@ import {
   CNC_TOLERANCES,
   SHEET_METAL_THICKNESSES,
   isSheetMetalProcess,
+  normalizeSelectableProcess,
 } from "@/lib/pricing-engine";
 import { Checkbox } from "@/components/ui/checkbox";
 
@@ -93,7 +94,7 @@ export default function EditPartSpecsModal({
   const [currentStep, setCurrentStep] = useState(0);
 
   // Local state for all fields
-  const [process, setProcess] = useState(part?.process || "cnc-machining");
+  const [process, setProcess] = useState(normalizeSelectableProcess(part?.process));
   const [material, setMaterial] = useState(part?.material || "");
   const [finish, setFinish] = useState(part?.finish || "as-machined");
   const [tolerance, setTolerance] = useState(part?.tolerance || "standard");
@@ -109,10 +110,7 @@ export default function EditPartSpecsModal({
 
   useEffect(() => {
     if (part) {
-      setProcess(
-        part.process ||
-          (isSheetMetalProcess(part.process) ? "sheet-metal" : "cnc-machining"),
-      );
+      setProcess(normalizeSelectableProcess(part.process));
       setMaterial(part.material || "");
       setFinish(part.finish || "as-machined");
       setTolerance(part.tolerance || "standard");
@@ -191,12 +189,20 @@ export default function EditPartSpecsModal({
                   <SelectValue placeholder="Select Process" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="cnc-machining">CNC Machining</SelectItem>
+                  <SelectItem value="cnc-milling">CNC Milling</SelectItem>
+                  <SelectItem value="cnc-turning">CNC Turning</SelectItem>
                   <SelectItem value="sheet-metal">
                     Sheet Metal Fabrication
                   </SelectItem>
                 </SelectContent>
               </Select>
+              {process !== normalizeSelectableProcess(part?.process) && (
+                <p className="text-xs text-slate-500">
+                  Changing the process re-analyzes the part and resets its
+                  material, finish and tolerance. Any changes to those here
+                  won&apos;t be saved.
+                </p>
+              )}
             </div>
 
             {/* Material Selection */}

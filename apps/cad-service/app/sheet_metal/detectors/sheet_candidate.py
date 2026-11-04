@@ -138,7 +138,9 @@ def find_opposed_planar_pairs(
                 continue
             if not _faces_overlap_in_plane(face_a, face_b, normal_a):
                 continue
-            support_area = min(face_a.area_mm2, face_b.area_mm2)
+            # Both skins count, because total surface area includes both: a part
+            # that is entirely paired walls then reads as a fraction of 1.0.
+            support_area = 2.0 * min(face_a.area_mm2, face_b.area_mm2)
             pairs.append(PlanarPair(face_a, face_b, gap, support_area))
     return pairs
 

@@ -212,6 +212,7 @@ export default function CheckoutPage() {
     {},
   );
   const [showManualExceededModal, setShowManualExceededModal] = useState(false);
+  const [isManualRfq, setIsManualRfq] = useState(false);
 
   const selectedAddress = addresses.find((a) => a.id === selectedAddressId);
 
@@ -409,7 +410,25 @@ export default function CheckoutPage() {
 
         console.log(data);
 
-        const mappedParts: PartConfig[] = data.parts.map((p: any) => ({
+        const activeParts = data.parts.filter((p: any) => !p.is_archived);
+
+        // Prices are only final once analysis has finished and the quote page has
+        // calculated them, so send the customer back there until that has happened.
+        // A manual-quote part has no price either, but the modal below handles it.
+        const needsQuotePage = activeParts.some(
+          (p: any) =>
+            ["queued", "processing"].includes(p.status) ||
+            (p.process !== "manual-quote" && !(Number(p.final_price) > 0)),
+        );
+        if (needsQuotePage && !data.rfq.order_id) {
+          notify.info("Please review your updated quote before checking out.");
+          router.replace(`/quote-config/${quoteId}`);
+          return;
+        }
+
+        setIsManualRfq(data.rfq.rfq_type === "manual");
+
+        const mappedParts: PartConfig[] = activeParts.map((p: any) => ({
           id: p.id,
           fileName: p.file_name,
           material: p.material,
@@ -480,12 +499,13 @@ export default function CheckoutPage() {
   }, [quoteId, session.data?.user?.email]);
 
   useEffect(() => {
-    if (manualParts && manualParts.length > 0) {
+    // A manual quote has already been priced by our team, whatever its parts' process
+    if (!isManualRfq && manualParts && manualParts.length > 0) {
       setShowManualExceededModal(true);
     } else {
       setShowManualExceededModal(false);
     }
-  }, [manualParts]);
+  }, [manualParts, isManualRfq]);
 
   /* ------------------------------------------------------------------ */
   /* Handlers */
@@ -580,7 +600,7 @@ export default function CheckoutPage() {
       rfq_part_id: p.id,
       part_name: p.fileName,
       quantity: p.quantity,
-      unit_price: p.finalPrice,
+      unit_price: Number((p.finalPrice / (p.quantity || 1)).toFixed(2)),
       lead_time: p.leadTime,
       lead_time_type: p.leadTimeType,
     }));

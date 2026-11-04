@@ -56,6 +56,35 @@ MATERIAL_THICKNESS_RANGES = {
 }
 
 
+def credible_step_bends(bends, face_classification) -> list:
+    """STEP-extracted bends that are real evidence of a formed part.
+
+    A radiused bend is. A sharp plane-plane edge only is when the part also has
+    paired thin walls, because every corner of a machined block looks the same.
+    """
+    pair_thickness = getattr(face_classification, 'dominant_pair_thickness', None) or 0.0
+    has_thin_walls = (
+        SHEET_METAL_MIN_THICKNESS <= pair_thickness <= SHEET_METAL_MAX_THICKNESS
+        and getattr(face_classification, 'paired_plane_count', 0) >= 2
+    )
+    return [
+        bend for bend in bends or []
+        if has_thin_walls or not getattr(bend, 'is_sharp_edge', False)
+    ]
+
+
+def classification_needs_review(confidence: float, metadata: Optional[Dict[str, Any]] = None) -> bool:
+    """Whether a person should confirm this classification before it is relied on.
+
+    The default CNC tier is a fallback rather than a positive identification, so
+    it is always flagged, whatever confidence it reports. That has its own flag
+    because agreement from the ML classifier rewrites classification_method.
+    """
+    if (metadata or {}).get('is_default_tier'):
+        return True
+    return confidence <= 0.70
+
+
 class ProcessClassifier:
     """
     Enterprise-level manufacturing process classification.
@@ -178,7 +207,7 @@ class ProcessClassifier:
         # FIX: Store STEP-extracted bends for accurate bend detection
         # STEP bends are extracted from BRep face pairs and are more reliable
         # than heuristic-based detection (which relies on volume efficiency)
-        self._step_bends = bends or []
+        self._step_bends = credible_step_bends(bends, face_classification)
         
         # NEW: Store extended analysis results for ML and advanced classification
         self._surface_finish_analysis = surface_finish_analysis
@@ -1912,6 +1941,7 @@ class ProcessClassifier:
         rule_meta = {
             **metadata,
             'classification_method': 'default_cnc',
+            'is_default_tier': True,
             'reasoning': reasoning,
             'cnc_likelihood': cnc_likelihood,
         }

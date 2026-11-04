@@ -377,7 +377,9 @@ export default function QuoteDetailPage() {
                       <div className="flex items-baseline gap-1">
                         <span className="text-2xl font-bold text-slate-900">
                           {part.final_price
-                            ? formatCurrencyGeneric(part.final_price)
+                            ? formatCurrencyGeneric(
+                                part.final_price / (part.quantity || 1),
+                              )
                             : "—"}
                         </span>
                         <span className="text-[10px] font-medium text-slate-400 uppercase">
@@ -387,9 +389,7 @@ export default function QuoteDetailPage() {
                       <div className="text-[10px] font-bold text-slate-500 mt-2 bg-slate-100 px-2 py-0.5 rounded inline-block">
                         Total:{" "}
                         {part.final_price
-                          ? formatCurrencyGeneric(
-                              part.final_price * part.quantity,
-                            )
+                          ? formatCurrencyGeneric(part.final_price)
                           : "—"}
                       </div>
                     </div>
@@ -571,7 +571,7 @@ function RfqDetailDrawer({
                 </span>
                 <span className="text-xl font-bold">
                   {part.final_price
-                    ? formatCurrencyGeneric(part.final_price * part.quantity)
+                    ? formatCurrencyGeneric(part.final_price)
                     : "—"}
                 </span>
               </div>

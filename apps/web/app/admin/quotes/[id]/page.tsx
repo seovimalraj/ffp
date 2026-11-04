@@ -38,7 +38,11 @@ import { metalTranslation } from "@cnc-quote/shared";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/components/ui/use-toast";
-import { isCNCProcess, isSheetMetalProcess } from "@/lib/pricing-engine";
+import {
+  isCNCProcess,
+  isSheetMetalProcess,
+  normalizeSelectableProcess,
+} from "@/lib/pricing-engine";
 import EditPartSpecsModal from "./components/edit-part-specs-modal";
 import { notify } from "@/lib/toast";
 
@@ -127,6 +131,9 @@ export type IRFQFull = {
    PAGE
 ======================= */
 
+const toLineTotal = (unitPrice: number, quantity: number) =>
+  Number((unitPrice * quantity).toFixed(2));
+
 export default function AdminQuoteDetailPage() {
   const params = useParams();
   const id = (params?.id as string) || "";
@@ -162,7 +169,10 @@ export default function AdminQuoteDetailPage() {
       const prices: Record<string, number> = {};
       const leadTimes: Record<string, number> = {};
       rfqData.parts.forEach((part) => {
-        prices[part.id] = part.final_price || 0;
+        // final_price is the line total; this form edits the unit price
+        prices[part.id] = part.final_price
+          ? Number((part.final_price / (part.quantity || 1)).toFixed(4))
+          : 0;
         leadTimes[part.id] = part.lead_time || 0;
       });
       setPartPrices(prices);
@@ -216,7 +226,7 @@ export default function AdminQuoteDetailPage() {
         rfq_final_price: totalCalculated,
         parts: data.parts.map((p) => ({
           id: p.id,
-          final_price: partPrices[p.id] || 0,
+          final_price: toLineTotal(partPrices[p.id] || 0, p.quantity),
           lead_time: partLeadTimes[p.id] || 0,
         })),
       });
@@ -250,14 +260,45 @@ export default function AdminQuoteDetailPage() {
     if (!editingPart || !data) return;
     setSaving(true);
     try {
+      // final_price is the line total, so a new quantity keeps the unit price
+      const unitPrice = partPrices[editingPart.id] || 0;
+      const quantityChanged =
+        updatedFields.quantity !== undefined &&
+        updatedFields.quantity !== editingPart.quantity;
+
+      const { process, ...specs } = updatedFields;
+      const processChanged =
+        process !== normalizeSelectableProcess(editingPart.process);
+      // Re-analysis sets these to the new process's defaults
+      if (processChanged) {
+        delete specs.material;
+        delete specs.finish;
+        delete specs.tolerance;
+        delete specs.sheet_thickness_mm;
+      }
+
       await apiClient.patch(
         `/rfq/${data.rfq.id}/parts/${editingPart.id}`,
-        updatedFields,
+        quantityChanged && unitPrice > 0
+          ? {
+              ...specs,
+              final_price: toLineTotal(unitPrice, updatedFields.quantity),
+            }
+          : specs,
       );
+
+      if (processChanged) {
+        await apiClient.post(
+          `/rfq/${data.rfq.id}/parts/${editingPart.id}/change-process`,
+          { process },
+        );
+      }
 
       toast({
         title: "Specifications Updated",
-        description: `Successfully updated details for ${editingPart.file_name}`,
+        description: processChanged
+          ? `${editingPart.file_name} is being re-analyzed for the new process. Refresh shortly to see the result, then check its price.`
+          : `Successfully updated details for ${editingPart.file_name}`,
       });
 
       setEditingPart(null);
@@ -322,7 +363,7 @@ export default function AdminQuoteDetailPage() {
         rfq_final_price: totalCalculated,
         parts: data.parts.map((p) => ({
           id: p.id,
-          final_price: partPrices[p.id] || 0,
+          final_price: toLineTotal(partPrices[p.id] || 0, p.quantity),
           lead_time: partLeadTimes[p.id] || 0,
         })),
       });
@@ -743,7 +784,10 @@ export default function AdminQuoteDetailPage() {
                             </label>
                             <div className="flex items-baseline gap-2">
                               <span className="text-2xl font-bold text-slate-900">
-                                {formatCurrencyGeneric(part.final_price || 0)}
+                                {formatCurrencyGeneric(
+                                  (part.final_price || 0) /
+                                    (part.quantity || 1),
+                                )}
                               </span>
                               <span className="text-xs font-medium text-slate-500">
                                 / unit
@@ -751,9 +795,7 @@ export default function AdminQuoteDetailPage() {
                             </div>
                             <div className="text-xs text-slate-500 font-medium">
                               Total:{" "}
-                              {formatCurrencyGeneric(
-                                (part.final_price || 0) * part.quantity,
-                              )}
+                              {formatCurrencyGeneric(part.final_price || 0)}
                             </div>
                           </div>
 

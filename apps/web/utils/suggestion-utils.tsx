@@ -338,7 +338,7 @@ function generateMarketingSuggestions(part: PartConfig): Suggestion[] {
   const suggestions: Suggestion[] = [];
   const geometry = part.geometry;
   const currentQty = part.quantity || 1;
-  const unitPrice = part.final_price || 0;
+  const unitPrice = (part.final_price || 0) / currentQty;
 
   if (!geometry || unitPrice === 0) return suggestions;
 
@@ -738,7 +738,7 @@ function generateBundleSuggestions(parts: PartConfig[]): Suggestion[] {
   const suggestions: Suggestion[] = [];
 
   const totalValue = parts.reduce(
-    (sum, p) => sum + (p.final_price || 0) * (p.quantity || 1),
+    (sum, p) => sum + (p.final_price || 0),
     0,
   );
   const totalParts = parts.reduce((sum, p) => sum + (p.quantity || 1), 0);
