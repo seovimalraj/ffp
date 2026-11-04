@@ -43,6 +43,56 @@ async function updatePart(partId: string, values: any) {
   return data;
 }
 
+/**
+ * The part's automatic price belonged to its old process, so a completed switch
+ * clears it. Orders are blocked until the quote page calculates the new one. An
+ * admin enters a manual quote's prices, so those are left for them to review.
+ */
+async function priceResetAfterProcessChange(partId: string) {
+  const { data: part, error: partError } = await supabase
+    .from(Tables.RFQPartsTable)
+    .select("rfq_id")
+    .eq("id", partId)
+    .single();
+  if (partError) throw partError;
+
+  const { data: rfq, error: rfqError } = await supabase
+    .from(Tables.RFQTable)
+    .select("rfq_type")
+    .eq("id", part.rfq_id)
+    .single();
+  if (rfqError) throw rfqError;
+
+  return rfq.rfq_type === "manual" ? {} : { final_price: 0 };
+}
+
+async function recalculateRfqTotalForPart(partId: string) {
+  const { data: part, error: partError } = await supabase
+    .from(Tables.RFQPartsTable)
+    .select("rfq_id")
+    .eq("id", partId)
+    .single();
+  if (partError) throw partError;
+
+  const { data: parts, error: partsError } = await supabase
+    .from(Tables.RFQPartsTable)
+    .select("final_price")
+    .eq("rfq_id", part.rfq_id)
+    .eq("is_archived", false);
+  if (partsError) throw partsError;
+
+  const total = parts.reduce(
+    (sum: number, row: { final_price: number | null }) =>
+      sum + Number(row.final_price ?? 0),
+    0,
+  );
+  const { error } = await supabase
+    .from(Tables.RFQTable)
+    .update({ final_price: total })
+    .eq("id", part.rfq_id);
+  if (error) throw error;
+}
+
 /* ---------------------------------------------------------- */
 /* activity: set processing */
 /* ---------------------------------------------------------- */
@@ -75,6 +125,7 @@ export async function analyzeGeometry(
   partId: string,
   fileUrl: string,
   filename: string,
+  requestedProcess?: string,
 ): Promise<GeometryResult> {
   const ctx = Context.current();
 
@@ -101,7 +152,11 @@ export async function analyzeGeometry(
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ fileUrl, fileName: filename }),
+          body: JSON.stringify({
+            fileUrl,
+            fileName: filename,
+            requestedProcess,
+          }),
           signal: controller.signal,
         },
       );
@@ -120,6 +175,12 @@ export async function analyzeGeometry(
     }
 
     /* ---------------- fallback CAD service ---------------- */
+
+    // The fallback can't analyze for a chosen process, and would turn an outage
+    // into a manual quote. Retrying, then restoring the part, is the right result.
+    if (!geometry && requestedProcess) {
+      throw ApplicationFailure.retryable("CAD analysis failed for process change");
+    }
 
     if (!geometry) {
       logger.info({ partId }, "Attempting fallback CAD analysis");
@@ -171,6 +232,7 @@ export async function analyzeGeometry(
 export async function saveGeometryAndMarkProcessed(
   partId: string,
   geometry: GeometryResult,
+  requestedProcess?: string,
 ) {
   logger.info({ partId }, "Saving geometry and marking as processed");
 
@@ -182,37 +244,75 @@ export async function saveGeometryAndMarkProcessed(
     "manual-quote": "manual-quote",
   };
 
-  const detectedProcess = geometry?.recommendedProcess
-    ? processMap[geometry.recommendedProcess] || "cnc-milling"
-    : "cnc-milling";
+  const detectedProcess =
+    requestedProcess ??
+    (geometry?.recommendedProcess
+      ? processMap[geometry.recommendedProcess] || "cnc-milling"
+      : "cnc-milling");
 
-  const defaultMaterial = getDefaultMaterialForProcess(detectedProcess);
+  // Sheet metal: analysis picks the stock gauge closest to the detected thickness
+  const defaultMaterial =
+    geometry?.recommendedMaterial ??
+    getDefaultMaterialForProcess(detectedProcess);
   const defaultFinish = getDefaultFinishForProcess(detectedProcess);
   const defaultTolerance = getDefaultToleranceForProcess(detectedProcess);
   const defaultThicknessMm = detectedProcess?.includes("sheet")
-    ? parseFloat(getDefaultThickness()) || 2.0
+    ? geometry?.recommendedThicknessMm ??
+      (parseFloat(getDefaultThickness()) || 2.0)
     : undefined;
 
-  return updatePart(partId, {
+  const priceReset = requestedProcess
+    ? await priceResetAfterProcessChange(partId)
+    : {};
+
+  const updated = await updatePart(partId, {
+    ...priceReset,
     geometry,
     material: defaultMaterial,
     tolerance: defaultTolerance,
     finish: defaultFinish,
-    sheet_thickness_mm: defaultThicknessMm,
+    // A switch away from sheet metal must clear the old thickness
+    sheet_thickness_mm: defaultThicknessMm ?? (requestedProcess ? null : undefined),
     process: detectedProcess,
     status: RFQPartStatus.Processed,
   });
+
+  if (requestedProcess) await recalculateRfqTotalForPart(partId);
+
+  return updated;
 }
 
 /* ---------------------------------------------------------- */
 /* activity: mark manual quote */
 /* ---------------------------------------------------------- */
 
-export async function markManualQuote(partId: string) {
+export async function markManualQuote(
+  partId: string,
+  geometry?: GeometryResult,
+) {
   logger.info({ partId }, "Marking manual quote");
 
-  return updatePart(partId, {
+  // Geometry is only passed for a switched part, whose old price no longer applies
+  const priceReset = geometry ? await priceResetAfterProcessChange(partId) : {};
+
+  const updated = await updatePart(partId, {
+    ...priceReset,
     process: "manual-quote",
     status: "processed",
+    ...(geometry && { geometry }),
   });
+
+  if (geometry) await recalculateRfqTotalForPart(partId);
+
+  return updated;
+}
+
+/* ---------------------------------------------------------- */
+/* activity: restore part after a failed process change */
+/* ---------------------------------------------------------- */
+
+export async function restorePartAfterFailedProcessChange(partId: string) {
+  logger.warn({ partId }, "Process change failed, restoring part");
+
+  return updatePart(partId, { status: RFQPartStatus.Processed });
 }
