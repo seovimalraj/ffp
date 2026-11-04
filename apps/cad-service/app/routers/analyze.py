@@ -37,7 +37,7 @@ from ..models import FeaturesJson, BBox, MassProps, HoleFeature, PocketFeature, 
 # Import new core modules for clean architecture
 from ..core.geometry import GeometricMetrics, calculate_sheet_metal_score, calculate_advanced_metrics
 from ..core.bend_detection import AdvancedBendDetector
-from ..core.classification import ProcessClassifier
+from ..core.classification import ProcessClassifier, classification_needs_review
 from ..core.face_classification import classify_faces
 from ..core.machining_complexity import analyze_machining_complexity, analyze_machining_complexity_from_mesh
 from ..core.assembly_analysis import analyze_multi_body_assembly, get_per_body_classifications
@@ -537,7 +537,7 @@ def _classify_process(bbox_dims, vol_mm3, area_mm2, detected_thickness,
         logging.warning("Unknown process type '%s' from classifier, defaulting to cnc_milling", process_type)
 
     # Confidence calibration: flag low-confidence classifications for review
-    needs_review = confidence < 0.70
+    needs_review = classification_needs_review(confidence, metadata)
     if needs_review:
         logging.warning(
             "LOW CONFIDENCE classification: %s at %.2f — flagged for review",

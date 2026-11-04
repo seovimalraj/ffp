@@ -31,6 +31,7 @@ class BendFeature:
     bend_deduction_mm: float  # Flat pattern shortening per bend
     is_acute: bool            # angle < 90°
     is_obtuse: bool           # angle > 90°
+    is_sharp_edge: bool = False  # Two planes meeting with no radius, also what a machined corner looks like
 
     def to_dict(self) -> dict:
         return {
@@ -45,6 +46,7 @@ class BendFeature:
             "bend_deduction_mm": round(self.bend_deduction_mm, 3),
             "is_acute": self.is_acute,
             "is_obtuse": self.is_obtuse,
+            "is_sharp_edge": self.is_sharp_edge,
         }
 
 
@@ -389,6 +391,7 @@ def extract_bend_angles_from_shape(shape, thickness_mm: Optional[float] = None) 
             bend_deduction_mm=bend_deduction,
             is_acute=angle_deg < 88.0,
             is_obtuse=angle_deg > 92.0,
+            is_sharp_edge=s1_type == GeomAbs_Plane and s2_type == GeomAbs_Plane,
         ))
 
     bends = _deduplicate_bends(bends)

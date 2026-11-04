@@ -26,7 +26,9 @@ from ...machining.records import PLANE, ShapeModel
 from ..config import SheetMetalConfig
 from ..schemas import SheetMetalSlot, Vector3
 from .cutouts import (
+    SeenProfile,
     inner_profile_loops,
+    is_opposite_skin_duplicate,
     is_slot_like,
     profile_metrics,
 )
@@ -45,6 +47,7 @@ def detect_slots(model: ShapeModel, config: SheetMetalConfig) -> List[SheetMetal
     Never raises: no qualifying inner loops simply yields an empty list.
     """
     slots: List[SheetMetalSlot] = []
+    seen: List[SeenProfile] = []
     for face in sorted(model.faces_of_type(PLANE), key=lambda f: f.id):
         if face.normal is None or not face.edge_ids:
             continue
@@ -55,6 +58,9 @@ def detect_slots(model: ShapeModel, config: SheetMetalConfig) -> List[SheetMetal
             perimeter, area, extent_long, extent_short, centroid = profile_metrics(
                 face, chain
             )
+            if is_opposite_skin_duplicate(face.normal, centroid, perimeter, seen, config):
+                continue
+            seen.append((face.normal, centroid, perimeter))
             # A rough long-axis direction: the face's own u/v basis vector
             # that carried the longer projected extent. Recomputed here
             # (cheaply) rather than threading it back out of profile_metrics,

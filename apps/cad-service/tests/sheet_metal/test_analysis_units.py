@@ -118,12 +118,9 @@ def test_sheet_candidate_flat_plate_is_candidate():
     assert result.status == "resolved"
     assert result.confidence > 0.5
     assert result.evidence.dominant_thickness_mm == 2.0
-    # Only the two paired faces exist in this synthetic model; the pairing
-    # support area is min(face_a, face_b) - one "skin" - against a total
-    # surface area that counts both skins, so the fraction is 0.5 here (a
-    # real part's non-wall faces are a small share of a much larger total,
-    # so paired_area_fraction reads far closer to 1.0 there).
-    assert result.evidence.paired_area_fraction == 0.5
+    # Only the two paired faces exist in this synthetic model, and the pairing
+    # support counts both skins, so the whole surface is paired wall.
+    assert result.evidence.paired_area_fraction == 1.0
     assert result.evidence.method == "paired_planar_faces"
 
 
